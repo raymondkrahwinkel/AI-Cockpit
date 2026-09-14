@@ -2617,10 +2617,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // carries it from its first event, and a `/clear` gives the conversation a new one mid-session.
         _cliSessionId = evt.SessionId ?? _cliSessionId;
 
-        // AC-1319: the CLI starts turns this pane never sent — a prompt written mid-turn that it queued past the
-        // `result`, or a task-notification for a finished background task — and its stream has no turn-start line,
-        // so the agent's own first output is the signal. A sub-agent's output does not speak for the main agent.
-        if (!IsBusy && evt.ParentToolUseId is null
+        // AC-1319: a CLI that keeps its own input queue (SupportsMidTurnInput) starts turns this pane never sent — a
+        // prompt queued past the `result`, or a task-notification for a finished background task — with no turn-start
+        // line, so the agent's own first output is the signal. A sub-agent's output does not speak for the main agent.
+        if (!IsBusy && Capabilities.SupportsMidTurnInput && evt.ParentToolUseId is null
             && evt is AssistantTextDelta or AssistantThinkingDelta or AssistantTextCompleted or ToolUseRequested or ToolResult)
         {
             IsBusy = true;

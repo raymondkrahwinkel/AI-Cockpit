@@ -26,6 +26,11 @@ public class SessionOutstandingWorkStatusTests
     private static TurnCompleted Turn() =>
         new() { SessionId = "s1", Subtype = "success", Result = "done", IsError = false };
 
+    // The Claude SDK driver as the host sees it: it keeps its own input queue (AC-739), which is the one capability
+    // that lets a turn the host never sent exist. A driver without it never starts a turn by itself (AC-1319).
+    private static SessionViewModel _ClaudeSdkSession() =>
+        new(Substitute.For<ISessionManager>()) { Capabilities = SessionCapabilities.ClaudeCli with { SupportsMidTurnInput = true } };
+
     [Fact]
     public void ATurnEndingWhileASubAgentRuns_ReadsAsWorkingBackground_NotDone() => HeadlessAvalonia.Run(() =>
     {
@@ -138,7 +143,7 @@ public class SessionOutstandingWorkStatusTests
     [Fact]
     public void ATurnTheCliStartsFromItsOwnQueue_ReadsAsBusyFromItsFirstEvent_AndDoneAfterItsResult() => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        var session = _ClaudeSdkSession();
         session.IsBusy = true;
         session.Apply(Turn());
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
@@ -157,9 +162,9 @@ public class SessionOutstandingWorkStatusTests
     // AC-1319, PP-110 (07:57:37Z): the async sub-agent finished, its task-notification started a turn, and the
     // ledger emptying in the same instant took the session from WorkingBackground to Idle while the agent worked.
     [Fact]
-    public void ATaskNotificationTurn_ReadsAsBusy_NotIdle_WhenTheLastSubAgentEndsAsItStarts() => HeadlessAvalonia.Run(() =>
+    public void ATaskNotificationTurn_ReadsAsBusy_NotDone_WhenTheLastSubAgentEndsAsItStarts() => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        var session = _ClaudeSdkSession();
         session.IsBusy = true;
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
         session.Apply(Turn());
@@ -181,7 +186,7 @@ public class SessionOutstandingWorkStatusTests
     [Fact]
     public void EventsAfterTheResultThatAreNotTheAgentsOwn_LeaveAFinishedSessionDone() => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        var session = _ClaudeSdkSession();
         session.IsBusy = true;
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
         session.Apply(Turn());
@@ -194,5 +199,19 @@ public class SessionOutstandingWorkStatusTests
 
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
         Assert.False(session.IsBusy);
+    });
+
+    // Tegenproef on the gate: a driver without its own input queue (Kimi polls /usage after each turn and a reply
+    // chunk can fall through as plain text) never starts a turn by itself, so its stray output leaves Done alone.
+    [Fact]
+    public void AStrayDeltaFromADriverWithoutMidTurnInput_LeavesAFinishedSessionDone() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        session.IsBusy = true;
+        session.Apply(Turn());
+
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "context: 12%" });
+
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
     });
 }
