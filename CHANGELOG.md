@@ -470,6 +470,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an agent-chat session no longer reads "Idle" or "Done" through a turn its assistant started on its own —
+  a message that arrived just as the previous turn ended, or a finished background task waking it up. The sidebar,
+  `list_sessions` and the busy-to-idle watch now see such a turn as working from its first output, so a test run
+  inside it is no longer reported as a stopped session.
 - fixed: a terminal session that sits quiet for two minutes while a tool or a slow MCP server answers no longer
   reads as "Done". The cockpit now looks at what the session actually has running: while it holds processes of its
   own beyond its shell, the pane goes on saying it is working, which is what an agent-chat pane in the same spot

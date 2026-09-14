@@ -1,5 +1,7 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -12,6 +14,8 @@ namespace Cockpit.App.ViewTests;
 /// not, because a dev server would otherwise pin the session there for as long as it runs — instead it is
 /// reported alongside the status via <see cref="SessionViewModel.HasOutstandingBackgroundShells"/>, never inside
 /// it, so it cannot blot out <see cref="SessionStatus.NeedsAttention"/> or hide a crashed turn behind "Done".
+/// AC-1319 adds the turn the host never sent: the CLI starts one itself from its own queue, and the stream has no
+/// turn-start line for it — measured on 2026-09-14 as a session reading Idle through a 40-minute turn.
 /// </summary>
 [Collection("avalonia")]
 public class SessionOutstandingWorkStatusTests
@@ -127,5 +131,68 @@ public class SessionOutstandingWorkStatusTests
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
         Assert.True(session.HasOutstandingBackgroundShells);
         Assert.False(session.RequiresCloseConfirmation, "only Busy/WorkingBackground ask before closing — the outstanding-work field must not join that set");
+    });
+
+    // AC-1319: the CLI's own queue starts a turn the host never sent — a prompt written mid-turn that arrived after
+    // the `result` (SF-161, 07:58:55Z), whose first tool call then ran for eleven minutes under an Idle status.
+    [Fact]
+    public void ATurnTheCliStartsFromItsOwnQueue_ReadsAsBusyFromItsFirstEvent_AndDoneAfterItsResult() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        session.IsBusy = true;
+        session.Apply(Turn());
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+
+        // Acceptance 1: a foreground tool call without a result is never Idle or Done.
+        session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        Assert.Equal(SessionStatus.Busy, session.SessionStatus);
+
+        // Tegenproef: the same session after its ToolResult and TurnCompleted is Done — acceptance 4 for the watcher,
+        // which reads exactly this status and only ever saw Busy → Idle mid-turn because the status was wrong.
+        session.Apply(new ToolResult { SessionId = "s1", ToolUseId = "t1", Content = "ok", IsError = false });
+        session.Apply(Turn());
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+    });
+
+    // AC-1319, PP-110 (07:57:37Z): the async sub-agent finished, its task-notification started a turn, and the
+    // ledger emptying in the same instant took the session from WorkingBackground to Idle while the agent worked.
+    [Fact]
+    public void ATaskNotificationTurn_ReadsAsBusy_NotIdle_WhenTheLastSubAgentEndsAsItStarts() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        session.IsBusy = true;
+        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
+        session.Apply(Turn());
+        // Acceptance 2: the launched sub-agent holds WorkingBackground once the launching turn ends.
+        Assert.Equal(SessionStatus.WorkingBackground, session.SessionStatus);
+
+        session.Apply(Outstanding());
+        session.Apply(new AssistantThinkingDelta { SessionId = "s1", BlockIndex = 0, Thinking = "The agent is done." });
+
+        Assert.Equal(SessionStatus.Busy, session.SessionStatus);
+        // Tegenproef: with the sub-agent gone and the turn over, nothing holds it any more.
+        session.Apply(Turn());
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+    });
+
+    // The opposite bug the trigger must not introduce: what still arrives after a `result` without a new turn —
+    // measured as none of the agent's own output in 721 turn endings across 18 sessions, only sub-agent traffic and
+    // ledger events — leaves a finished session finished.
+    [Fact]
+    public void EventsAfterTheResultThatAreNotTheAgentsOwn_LeaveAFinishedSessionDone() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        session.IsBusy = true;
+        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
+        session.Apply(Turn());
+
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "sub-agent prose", ParentToolUseId = "task-1" });
+        session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "t9", ToolName = "Read", InputJson = "{}", ParentToolUseId = "task-1" });
+        session.Apply(new BackgroundTaskNotification { SessionId = "s1", TaskId = "a1", ToolUseId = "task-1", Status = BackgroundTaskStatus.Completed });
+        session.Apply(Outstanding());
+        session.Apply(new SessionStatusChanged { SessionId = "s1" });
+
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+        Assert.False(session.IsBusy);
     });
 }

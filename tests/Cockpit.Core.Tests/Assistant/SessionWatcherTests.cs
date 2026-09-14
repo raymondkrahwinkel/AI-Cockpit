@@ -93,6 +93,12 @@ public class SessionWatcherTests
         using var watcher = _Watcher(pane);
         Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null)).Ok);
 
+        // AC-1319: a turn the CLI chains straight onto the last one keeps the pane Busy across the tick, so the
+        // report comes once, at the real end — not at every seam between two turns.
+        pane.Rows.Add("Running the tests now.");
+        await watcher.RunOnceAsync();
+        _Delivered(0, "busy-to-idle");
+
         pane.Rows.Add("Which base branch should I cut from?");
         pane.Status = SessionStatus.Idle;
         await watcher.RunOnceAsync();
