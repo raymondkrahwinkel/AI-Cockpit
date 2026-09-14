@@ -180,15 +180,9 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                     ? (HostExecutableProbe.Resolve(command) is not null ? ProviderDetectionState.Found : ProviderDetectionState.NotFound)
                     : ProviderDetectionState.NotApplicable;
 
-                var provider = new ProviderPickerRowViewModel(row, detection);
-                if (detection == ProviderDetectionState.Found)
-                {
-                    Providers.Insert(Providers.TakeWhile(candidate => candidate.Detection == ProviderDetectionState.Found).Count(), provider);
-                }
-                else
-                {
-                    Providers.Add(provider);
-                }
+                // Appended in the catalogue's own order: what is found stands apart from the rest because the view
+                // draws `FoundProviders` and `OtherProviders` as two lists, not because this collection is sorted.
+                Providers.Add(new ProviderPickerRowViewModel(row, detection));
             }
         }
 
