@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
+  panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
+  switching to Panels or remembering a shortcut.
 - added: the cockpit now has a light theme beside the dark one, and a **Theme** choice in Options → Appearance to
   pick between them: **System** follows whatever your desktop is set to and changes with it, **Light** and **Dark**
   hold where you put them. Every screen, every dialog and the drawing tools — diagrams, whiteboard, wireframes,
