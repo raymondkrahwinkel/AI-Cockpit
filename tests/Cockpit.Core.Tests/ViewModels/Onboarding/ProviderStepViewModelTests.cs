@@ -163,41 +163,32 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Equal(ProviderDetectionState.NotApplicable, vm.Providers[0].Detection);
     }
 
+    /// <summary>
+    /// AC-510[b] criterion 1, as the step draws it: what is already on the machine stands apart from what is only
+    /// on offer, and each group keeps the catalogue's own order.
+    /// </summary>
     [Fact]
-    public async Task LoadAsync_FoundProvidersComeFirst_PreservingCatalogueOrderWithinGroups()
+    public void TheStepOffersWhatWasFoundApartFromTheRest_EachInCatalogueOrder()
     {
-        var storeDir = Path.Combine(_tempDir, "mixed-store");
-        Directory.CreateDirectory(storeDir);
-        File.WriteAllText(Path.Combine(storeDir, "index.json"), """
+        // Detection is handed in rather than probed, the same way the Screenshotter stages this step: a test that
+        // writes an executable onto PATH asserts the host's file rules, not the step's, and gets a different
+        // answer per operating system.
+        var vm = new ProviderStepViewModel();
+        foreach (var row in new[]
         {
-          "name": "AI-Cockpit Plugins",
-          "plugins": [
-            { "id": "gemini-provider", "name": "Gemini", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
-            { "id": "cli-agent-provider", "name": "Codex", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
-            { "id": "claude-provider", "name": "Claude", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
-            { "id": "kimi-provider", "name": "Kimi", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] }
-          ]
-        }
-        """);
-        File.WriteAllText(Path.Combine(_tempDir, "claude.cmd"), string.Empty);
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        Environment.SetEnvironmentVariable("PATH", _tempDir);
-
-        try
+            _SelectableRow("gemini-provider"),
+            _SelectableRow("cli-agent-provider", ProviderDetectionState.NotFound),
+            _SelectableRow("claude-provider", ProviderDetectionState.Found),
+            _SelectableRow("kimi-provider", ProviderDetectionState.Found),
+        })
         {
-            var store = PluginStoreConfig.Local(storeDir);
-            var configStore = Substitute.For<IPluginStoreConfigStore>();
-            configStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([store]);
-            var vm = new ProviderStepViewModel(configStore, new PluginStoreClient(), Substitute.For<IPluginProvisioningService>(), _EmptyBootstrap());
-
-            await vm.LoadAsync();
-
-            Assert.Equal(["claude-provider", "gemini-provider", "cli-agent-provider", "kimi-provider"], vm.Providers.Select(row => row.Row.Id));
+            vm.Providers.Add(row);
         }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-        }
+
+        Assert.True(vm.HasFoundProviders);
+        Assert.True(vm.HasOtherProviders);
+        Assert.Equal(["claude-provider", "kimi-provider"], vm.FoundProviders.Select(row => row.Row.Id));
+        Assert.Equal(["gemini-provider", "cli-agent-provider"], vm.OtherProviders.Select(row => row.Row.Id));
     }
 
     // --- Criterion 2, "half succeeded": one plugin failing in the batch is isolated, and the summary names it
@@ -266,7 +257,8 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.False(vm.CanInstallSelected);
     }
 
-    private static ProviderPickerRowViewModel _SelectableRow(string id)
+    private static ProviderPickerRowViewModel _SelectableRow(
+        string id, ProviderDetectionState detection = ProviderDetectionState.NotApplicable)
     {
         var entry = new PluginStoreEntry(
             id, id, "d", "Cockpit", "1.0.0",
@@ -274,6 +266,6 @@ public class ProviderStepViewModelTests : IDisposable
             Category: PluginStoreEntry.ProviderCategory);
         var row = new Cockpit.App.ViewModels.StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://example.com/index.json"), installedVersion: null);
 
-        return new ProviderPickerRowViewModel(row, ProviderDetectionState.NotApplicable);
+        return new ProviderPickerRowViewModel(row, detection);
     }
 }
