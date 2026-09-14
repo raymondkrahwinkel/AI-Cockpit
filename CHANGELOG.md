@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the cockpit now has a light theme beside the dark one, and a **Theme** choice in Options → Appearance to
+  pick between them: **System** follows whatever your desktop is set to and changes with it, **Light** and **Dark**
+  hold where you put them. Every screen, every dialog and the drawing tools — diagrams, whiteboard, wireframes,
+  Mermaid — are painted from the same named colours in both, so nothing is legible in one and washed out in the
+  other. What the window's own title bar and border do is still up to your desktop: that is the operating system's
+  to paint, not Cockpit's, so on a light desktop the frame stays light even with **Dark** chosen.
+- added: a project's jobs can now repeat — pick a week of the month and a weekday, and the job says when it last
+  came round. A reminder only reminds: nothing starts on its own, and a reminder you were closed for is still
+  there when you open up, showing the date it was actually due rather than today's.
+- added: a job now keeps a history of its runs, so a job you started last week is still the same job with the same
+  runs after you reword its prompt, and the agent's own progress note is kept beside the run and labelled as the
+  agent's claim rather than as something Cockpit checked.
 - added: a **Quick note** key — a desktop-wide hotkey (F7 by default, off until you switch it on under
   Options → Shortcuts) that opens a small note window over whatever you are doing, so a thought lands in a
   project's memory without Cockpit coming to the front and without a session starting. The window asks which
@@ -422,6 +434,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the first-run question "What kind of work is this for?" now reads as a choice. The four kinds sit in one
+  framed track as buttons — the same control as the Simple/Panels switch — instead of a row of labels that gave no
+  sign they could be clicked, and a line above the list says what your pick did to it: which plugins were suggested,
+  or that nothing is suggested for that kind yet so the ticks are yours to make. Each plugin now leads with what it
+  does; what it may do, where it comes from and its checksum fold away per row rather than crowding the line, and
+  the note that plugins run outside the sandbox is stated once instead of on every row.
+- changed: the first-run provider list is now in two groups — **Found on this machine** first, then **Available to
+  add** — so what you already have is not buried among what you do not.
 - changed: the Simple stand no longer asks "which project" before you can type. The conversation column holds
   the assistant from the first moment — before it has started, and with it switched off, where it says so — and
   the project cards and starting points stand inside that conversation as an offer while nothing has been said,
