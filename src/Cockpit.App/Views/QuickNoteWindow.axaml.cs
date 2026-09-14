@@ -12,6 +12,10 @@ public partial class QuickNoteWindow : Window
 {
     private bool _wasActivated;
 
+    // The view model this window is listening to, held rather than read back off DataContext: a DataContext
+    // swapped for another would otherwise leave the old one still holding the handler (AssistantChatView's rule).
+    private QuickNoteViewModel? _attachedNote;
+
     public QuickNoteWindow()
     {
         InitializeComponent();
@@ -22,11 +26,30 @@ public partial class QuickNoteWindow : Window
         Opened += (_, _) => NoteBox.Focus();
         DataContextChanged += (_, _) =>
         {
+            _DetachNote();
             if (DataContext is QuickNoteViewModel note)
             {
-                note.Saved += (_, _) => Close();
+                _attachedNote = note;
+                note.Saved += _OnNoteSaved;
             }
         };
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        _DetachNote();
+    }
+
+    private void _OnNoteSaved(object? sender, EventArgs e) => Close();
+
+    private void _DetachNote()
+    {
+        if (_attachedNote is { } note)
+        {
+            note.Saved -= _OnNoteSaved;
+            _attachedNote = null;
+        }
     }
 
     // A note that was never typed does not need a window kept around after the operator clicked elsewhere; one
