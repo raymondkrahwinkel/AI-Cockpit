@@ -123,6 +123,46 @@ public class Ac490ProjectJobRunTests
         return (vm, history);
     }
 
+    // One pane's trail, and the runs it has to fold into — newest start first, each with the report that followed
+    // its own start. The second row is the case a pane that came back from a restore writes.
+    public static TheoryData<ProjectJobRunEvent[], DateTimeOffset[], string?[]> Trails => new()
+    {
+        {
+            [
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero), ProjectJobRunEventKind.Started),
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 9, 30, 0, TimeSpan.Zero), ProjectJobRunEventKind.Progress, "read the inbox"),
+            ],
+            [new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero)],
+            ["read the inbox"]
+        },
+        {
+            [
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero), ProjectJobRunEventKind.Started),
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 9, 30, 0, TimeSpan.Zero), ProjectJobRunEventKind.Progress, "read the inbox"),
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 11, 0, 0, TimeSpan.Zero), ProjectJobRunEventKind.Started),
+                new("pane-1", "p1", "invoices", new DateTimeOffset(2026, 9, 14, 11, 15, 0, TimeSpan.Zero), ProjectJobRunEventKind.Progress, "chased the unpaid ones"),
+            ],
+            [new DateTimeOffset(2026, 9, 14, 11, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero)],
+            ["chased the unpaid ones", "read the inbox"]
+        },
+    };
+
+    /// <summary>
+    /// AC-490: a pane keeps its id across a restore, so the trail can hold a second start under the same pane.
+    /// One start stays one run and two stay two — the same fold, and a report belongs to the start it followed,
+    /// never to the oldest one in the pane.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Trails))]
+    public void EachStartOpensItsOwnRun_AndAReportBelongsToTheStartItFollowed(
+        ProjectJobRunEvent[] trail, DateTimeOffset[] expectedStarts, string?[] expectedSummaries)
+    {
+        var runs = ProjectJobRun.Fold(trail);
+
+        Assert.Equal(expectedStarts, runs.Select(run => run.StartedAt));
+        Assert.Equal(expectedSummaries, runs.Select(run => run.AgentSummary));
+    }
+
     // The trail as a list, so a test can read what was written without a file.
     private sealed class RecordingJobHistory : IProjectJobHistory
     {

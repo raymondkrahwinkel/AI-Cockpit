@@ -12,19 +12,44 @@ public sealed record ProjectJobRun(
 {
     // Folds `events` (any order) into runs, newest start first. A `Progress` line without a `Started` line is
     // dropped: a report against a run the host never saw begin belongs to nothing.
+
+    // Each `Started` opens a run of its own, the way `RunTracker` keeps runs apart by an identity of the run and
+    // not of the session it sits in. A pane keeps its id across a restore, so a second job started in it writes a
+    // second `Started` — folded on the pane alone, the card shows the first start's date beside the last summary.
     public static IReadOnlyList<ProjectJobRun> Fold(IEnumerable<ProjectJobRunEvent> events)
     {
         var runs = new List<ProjectJobRun>();
         foreach (var byPane in events.GroupBy(entry => entry.PaneId, StringComparer.Ordinal))
         {
-            if (byPane.FirstOrDefault(entry => entry.Kind == ProjectJobRunEventKind.Started) is not { } started)
+            ProjectJobRunEvent? started = null;
+            ProjectJobRunEvent? latestReport = null;
+
+            // A report stamped at the same moment as a start belongs to that start, not to the one before it.
+            foreach (var entry in byPane
+                .OrderBy(entry => entry.At)
+                .ThenBy(entry => entry.Kind == ProjectJobRunEventKind.Started ? 0 : 1))
             {
-                continue;
+                if (entry.Kind == ProjectJobRunEventKind.Started)
+                {
+                    _Close(runs, started, latestReport);
+                    (started, latestReport) = (entry, null);
+                }
+                else if (started is not null)
+                {
+                    latestReport = entry;
+                }
             }
 
-            var latestReport = byPane
-                .Where(entry => entry.Kind == ProjectJobRunEventKind.Progress)
-                .MaxBy(entry => entry.At);
+            _Close(runs, started, latestReport);
+        }
+
+        return runs.OrderByDescending(run => run.StartedAt).ToList();
+    }
+
+    private static void _Close(List<ProjectJobRun> runs, ProjectJobRunEvent? started, ProjectJobRunEvent? latestReport)
+    {
+        if (started is not null)
+        {
             runs.Add(new ProjectJobRun(
                 started.PaneId,
                 started.ProjectId,
@@ -33,7 +58,5 @@ public sealed record ProjectJobRun(
                 latestReport?.At,
                 latestReport?.AgentSummary));
         }
-
-        return runs.OrderByDescending(run => run.StartedAt).ToList();
     }
 }
