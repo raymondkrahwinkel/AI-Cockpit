@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="180"
+             x:Class="Cockpit.App.Views.SidebarFooter"
+             x:DataType="vm:CockpitViewModel">
+
+    <!-- The left column's footer — Plugin store, Menu and Help — at the bottom of both stands, directly above
+         the Simple/Panels switch. One control rather than the markup twice (the ViewModeSwitch rule, AC-1301):
+         the Simple stand's rail had no footer at all, which left Options, Profiles, MCP servers and About
+         reachable there only by shortcut or by leaving the stand.
+         Secondary "Tools" section — Audio (F0) lives here, out of the way of the primary session overview per
+         AI-Cockpit's design goal (sidebar = sessions, not tools). -->
+    <StackPanel Spacing="4">
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+        <!-- The "Open mic" toggle that stood here is gone (AC-543). It drove exactly the command the
+             assistant chip's listening mode now drives, so the two were one state with two switches —
+             and its label still promised the old behaviour, dictating into the selected session, which
+             open mic stopped doing. Comment 5 on the ticket puts that switch in the indicator on
+             purpose: the chip is where you look to see who is listening, so it is where you reach to
+             change it. -->
+        <!-- The plugin store sits in the menu column rather than inside the menu: it is where the plugins
+             and the workflow templates come from, and it is the one thing in that menu people go looking
+             for. A door you have to open a drawer to find is a door most people never open. -->
+        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                Command="{Binding OpenPluginStoreCommand}"
+                ToolTip.Tip="Browse, install and update plugins — and the workflow templates they ship with">
+            <DockPanel>
+                <!-- AC-76: a persistent accent count-pill on the right when plugin updates are waiting, so
+                     an update shows in the main window rather than only a transient toast. The button
+                     opens the store on the Updates filter while the badge is showing. -->
+                <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasUpdateBadge}"
+                        Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
+                        VerticalAlignment="Center" Margin="6,0,0,0"
+                        ToolTip.Tip="Plugin updates available — click to review them">
+                    <TextBlock Text="{Binding Plugins.UpdateBadgeCount}" FontSize="10" FontWeight="SemiBold"
+                               Foreground="White"/>
+                </Border>
+                <!-- AC-208: a persistent badge while any installed plugin is sitting at awaiting-approval
+                     (new, or its bytes changed) — mirrors the AC-76 update pill so the two read as the
+                     same kind of indicator; it clears once every such plugin is approved or disabled. -->
+                <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasPendingApproval}"
+                        Background="{DynamicResource CockpitStatusWaitingBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
+                        VerticalAlignment="Center" Margin="6,0,0,0"
+                        ToolTip.Tip="Plugins awaiting your approval — click to review them">
+                    <TextBlock Text="{Binding Plugins.PendingApprovalCount}" FontSize="10" FontWeight="SemiBold"
+                               Foreground="White"/>
+                </Border>
+                <TextBlock Text="Plugin store" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Button>
+
+        <!-- Everything you configure or look up once, behind one menu: the sidebar is for sessions,
+             and six permanent text rows of setup drowned that out. Styled like the plugin rows above
+             it rather than as a faint chromeless link: it sits in the same column and does the same
+             kind of thing, and a row that is styled differently reads as a different kind of control.
+             AC-937: right-hand flush-list Flyout, same shell as "Plugins ›", not a MenuFlyout card. -->
+        <Button Content="Menu" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                ToolTip.Tip="Profiles, MCP servers, plugins, options and about">
+            <Button.Flyout>
+                <Flyout Placement="Right">
+                    <StackPanel Spacing="0" MinWidth="200">
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Profiles"
+                                Command="{Binding ManageProfilesCommand}"
+                                ToolTip.Tip="Add, edit or remove session profiles"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="MCP servers"
+                                Command="{Binding OpenMcpServersCommand}"
+                                ToolTip.Tip="Add, edit or remove shared MCP servers"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Verify runners"
+                                Command="{Binding OpenVerifyRunnersCommand}"
+                                ToolTip.Tip="Register the per-project command the visual verify loop may run"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Command palette"
+                                Command="{Binding ShowCommandPaletteCommand}"
+                                ToolTip.Tip="Run any app or plugin command by name — Ctrl+K"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Options"
+                                Command="{Binding OptionsCommand}"
+                                ToolTip.Tip="Configure notifications, sessions, and voice — Ctrl+O"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="About"
+                                Command="{Binding AboutCommand}"
+                                ToolTip.Tip="App version and links"/>
+                    </StackPanel>
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+
+        <!-- AC-512: the guide's content lives on the website, not in the app (Raymond) — this is the
+             one findable door to it, plus the two things that need no browser at all: a glossary and
+             re-running first-run setup. AC-937: same flush-list Flyout shell as "Menu"/"Plugins ›". -->
+        <Button x:Name="HelpButton" Content="Help" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
+            <Button.Flyout>
+                <Flyout Placement="Right">
+                    <StackPanel Spacing="0" MinWidth="200">
+                        <!-- AC-1033: first, because it is the one that answers without a browser and
+                             covers the app and every installed plugin at once. -->
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Documentation"
+                                Command="{Binding ShowDocumentationCommand}"
+                                ToolTip.Tip="Everything Cockpit and its plugins ship documentation for — a window of its own, no connection needed"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Guide"
+                                Command="{Binding OpenGuideCommand}"
+                                ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Glossary"
+                                Command="{Binding ShowGlossaryCommand}"
+                                ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <!-- AC-397: the only window on traffic the operator is not part of. Under Help
+                             because it is something you go and look at, not something you act from. -->
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Agent line"
+                                Command="{Binding ShowAgentLineCommand}"
+                                ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="8,8" CornerRadius="0" Content="Run setup again"
+                                Command="{Binding RunSetupAgainCommand}"
+                                ToolTip.Tip="Reopens the first-run wizard"/>
+                    </StackPanel>
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+    </StackPanel>
+</UserControl>
