@@ -751,10 +751,11 @@ internal static class Screenshotter
         ToolTip.SetIsOpen(_Named<Control>(window, controlName), true);
 
     // By name over the whole rendered tree, because the header bar is a control of its own and its named parts
-    // are not in the view's name scope — FindControl on the view would come back empty.
+    // are not in the view's name scope — FindControl on the view would come back empty. Visible only: both stands
+    // stand in the tree (AC-1303) and the footer sits in each, so a name may exist twice (AC-1316).
     private static T _Named<T>(Window window, string name)
         where T : Control
-        => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name);
+        => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name && control.IsEffectivelyVisible);
 
     // Its own step so the table above can be held to a test — a scene that stopped building was otherwise found by
     // whoever next asked for a render, which on this surface has meant finding it after it shipped.

@@ -693,6 +693,13 @@
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
+    <!-- Accent and Compact together (Approve, Allow, Send, the Simple rail's "+ New session"): Compact is declared
+         after Accent, so its secondary fill would win and leave the accent's white label on a grey slab — which the
+         light palette turns into white on near-white. Declared after both, it gives the pair the accent fill back. -->
+    <Style Selector="Button.Accent.Compact">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextOnAccentBrush}"/>
+    </Style>
 
     <!-- Composer action (session composer, beside the message box): Background, Screenshot, Stop and Send all sit
          on one bottom-anchored row next to the input, so they only read as a row if they are the same height as
