@@ -5942,8 +5942,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _projectJobHistory.RecordAsync(new ProjectJobRunEvent(paneId, projectId, jobId, DateTimeOffset.Now, ProjectJobRunEventKind.Started));
-        await Projects.RefreshJobRunsAsync();
+        // Nobody awaits this method, so anything thrown past here is an unobserved task exception: no log, no
+        // notification, and a card that quietly never mentions the run. Caught and logged like the save above.
+        try
+        {
+            await _projectJobHistory.RecordAsync(new ProjectJobRunEvent(paneId, projectId, jobId, DateTimeOffset.Now, ProjectJobRunEventKind.Started));
+            await Projects.RefreshJobRunsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "The job run for pane {PaneId} could not be written to the job history.", paneId);
+        }
     }
 
     // When asked and the folder is a git repository, a worktree is created for this session on its own branch — keyed
