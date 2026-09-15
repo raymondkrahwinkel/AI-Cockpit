@@ -29,6 +29,40 @@
          window closes; ~600 rows/360MB on a long assistant conversation). The rounded hairline frame is a SIBLING
          overlay at the end of this Grid; the window's outer corners are rounded by the OS (Win11 DWM under
          ExtendClientAreaToDecorationsHint), so dropping the old frame's ClipToBounds changes no visible corner. -->
+
+    <!-- AC-1316: the composer's look while it stands in the start offer (the code-behind moves the one
+         ComposerBorder between its two hosts; `offer` follows ShowsStartOffer). One bordered well, the box bare
+         inside it (Theme.axaml's AC-425 pattern), the buttons on a row of their own under the text. -->
+    <UserControl.Styles>
+        <Style Selector="Button#ScreenshotButton">
+            <Setter Property="Grid.Column" Value="1"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer">
+            <Setter Property="Width" Value="720"/>
+            <Setter Property="Padding" Value="12,10,10,10"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer TextBox#InputBox">
+            <Setter Property="Grid.ColumnSpan" Value="4"/>
+            <Setter Property="MinHeight" Value="58"/>
+            <Setter Property="Padding" Value="0,2,0,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer Button.composerAction">
+            <Setter Property="Grid.Row" Value="1"/>
+            <Setter Property="Margin" Value="6,8,0,0"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer Button#ScreenshotButton">
+            <Setter Property="Grid.Column" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Margin" Value="0,8,0,0"/>
+        </Style>
+    </UserControl.Styles>
+
     <Grid>
         <DockPanel>
 
@@ -481,7 +515,12 @@
                  attachments, the screenshot button). Still no send button: Enter sends, Shift+Enter inserts a
                  newline, Ctrl+V attaches an image and Arrow-Up recalls the last queued message, so the whole
                  composer stays reachable from the keyboard alone (criterion 8). -->
-            <Border x:Name="ComposerBorder" DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
+            <!-- AC-1316: one composer, two hosts. It sits here at the foot of the column as in every chat surface,
+                 and moves into the start offer's stack (OfferComposerHost, below) for as long as that offer stands;
+                 the code-behind swaps it on ShowsStartOffer. Never a second box to keep in step. -->
+            <ContentControl x:Name="BottomComposerHost" DockPanel.Dock="Bottom">
+            <Border x:Name="ComposerBorder" Padding="10,6,10,10" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                    Classes.offer="{Binding ShowsStartOffer}">
                 <StackPanel Spacing="6">
                     <!-- Progress, read straight off the session the same way SessionView.axaml reads it. The window
                          is a narrower frame on the same SDK view, so it owes the operator the same answer to "is it
@@ -676,33 +715,37 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <DockPanel>
-                        <!-- AC-855: a clickable send button next to Enter, same convention as SessionView.axaml. -->
-                        <Button x:Name="SendButton" DockPanel.Dock="Right" Command="{Binding SendCommand}"
-                                IsEnabled="{Binding CanSend}"
-                                Classes="Accent composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0"
-                                Content="Send"/>
+                    <!-- A Grid rather than a DockPanel so the `offer` styles above can drop the buttons under the
+                         box; in this row they stand beside it, the same row SessionComposerAlignmentTests measure. -->
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
+                        <TextBox x:Name="InputBox" Text="{Binding InputText}"
+                                 PlaceholderText="{Binding PushToTalkKeyName, StringFormat='Type, or hold {0} to talk…'}"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
+                        <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
+                             its marking tools, landing as an attachment on the composer rather than a message of its
+                             own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
+                             where a session that cannot take an image says why. -->
+                        <!-- Its column and margin come from the styles above, not from here: a local value would
+                             outrank the `offer` style that moves it to the left of its own row. -->
+                        <Button x:Name="ScreenshotButton" Command="{Binding Session.CaptureScreenshotCommand}"
+                                Classes="Compact composerAction" VerticalAlignment="Bottom" Padding="8,6"
+                                ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                            <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
+                        </Button>
                         <!-- AC-942: same shape and placement as SessionView.axaml's Stop button, only visible while a
                              turn is running. Also cuts read-aloud (AssistantChatViewModel.StopCommand). -->
-                        <Button x:Name="StopButton" DockPanel.Dock="Right" Command="{Binding StopCommand}"
+                        <Button x:Name="StopButton" Grid.Column="2" Command="{Binding StopCommand}"
                                 IsVisible="{Binding Session.IsBusy, FallbackValue=False}"
                                 Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
                                 ToolTip.Tip="Stop the current turn (interrupt)">
                             <materialIcons:MaterialIcon Kind="Stop" Width="14" Height="14"/>
                         </Button>
-                        <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
-                             its marking tools, landing as an attachment on the composer rather than a message of its
-                             own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
-                             where a session that cannot take an image says why. -->
-                        <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding Session.CaptureScreenshotCommand}"
-                                Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="6,0,0,0" Padding="8,6"
-                                ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
-                            <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
-                        </Button>
-                        <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                                 PlaceholderText="{Binding PushToTalkKeyName, StringFormat='Type, or hold {0} to talk…'}"
-                                 AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
-                    </DockPanel>
+                        <!-- AC-855: a clickable send button next to Enter, same convention as SessionView.axaml. -->
+                        <Button x:Name="SendButton" Grid.Column="3" Command="{Binding SendCommand}"
+                                IsEnabled="{Binding CanSend}"
+                                Classes="Accent composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0"
+                                Content="Send"/>
+                    </Grid>
 
                     <!-- AC-740: the @-mention picker — same shape as SessionView.axaml's. IsLightDismissEnabled off
                          because open/close is driven entirely by MentionPickerViewModel's own state, and the
@@ -748,6 +791,7 @@
                     </Popup>
                 </StackPanel>
             </Border>
+            </ContentControl>
 
             <Grid>
                 <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
@@ -790,23 +834,25 @@
 
                 <!-- AC-1316: the Simple stand's start offer, in the transcript's place while nothing has been said
                      or `+ New session` asks for it (AC-1304's three doors, answered by `ShowsStartOffer`). An
-                     offer, not a gate: the composer below stays the first thing to use, and the cards stand beside
-                     it. Deliberately NOT a projects list of its own — it draws `Cockpit.Projects.ProjectCategoryGroups`
-                     and `ProjectCardView`, the same source and the same card as the panels stand's overview
-                     (AC-1304 criterion 1(b)); a cockpit with no projects draws the starting points (AC-488). -->
+                     offer, not a gate: the composer stands at the head of it, the first thing on screen, and the
+                     cards follow under "Or start on a project". Centred while it fits the column, scrolling from the
+                     top once it does not. Deliberately NOT a projects list of its own — it draws
+                     `Cockpit.Projects.ProjectCategoryGroups` and `ProjectCardView`, the same source and the same
+                     card as the panels stand's overview (AC-1304 criterion 1(b)); a cockpit with no projects draws
+                     the starting points (AC-488). -->
                 <ScrollViewer x:Name="StartOffer" IsVisible="{Binding ShowsStartOffer}"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
-                        <!-- What typing here does, in three facts the system knows — where it works, on whose
-                             say-so, and that a project is the other way in. No promise beyond that. -->
-                        <TextBlock Text="Type your question below — it works in your Cockpit folder, with what your assistant profile allows. Or start on a project:"
-                                   FontSize="13" Margin="0,0,0,18" HorizontalAlignment="Center"
+                    <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- What typing here does, in the facts the system knows — where it works and on whose
+                             say-so. No promise beyond that. -->
+                        <TextBlock Text="Type your question — it works in your Cockpit folder, with what your assistant profile allows."
+                                   FontSize="13" Margin="0,0,0,10" HorizontalAlignment="Center" MaxWidth="640"
                                    TextWrapping="Wrap" TextAlignment="Center"
                                    IsVisible="{Binding !IsUnavailable}"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <!-- Switched off or no profile: the reason stands where the hint would, and the cards
                              stay — a project still starts on its own settings without the assistant. -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,18"
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10"
                                     HorizontalAlignment="Center" IsVisible="{Binding IsUnavailable}">
                             <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="18" Height="18"
                                                         VerticalAlignment="Center"
@@ -815,6 +861,16 @@
                                        VerticalAlignment="Center" MaxWidth="560"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
+
+                        <!-- The composer's other host: ComposerBorder from the foot of the column, while the offer stands. -->
+                        <ContentControl x:Name="OfferComposerHost" HorizontalAlignment="Center"/>
+
+                        <Grid ColumnDefinitions="*,Auto,*" Width="560" Margin="0,22,0,18">
+                            <Border Height="1" VerticalAlignment="Center" Background="{DynamicResource CockpitHairlineBrush}"/>
+                            <TextBlock Grid.Column="1" Text="Or start on a project" FontSize="12" Margin="12,0"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <Border Grid.Column="2" Height="1" VerticalAlignment="Center" Background="{DynamicResource CockpitHairlineBrush}"/>
+                        </Grid>
 
                         <Panel IsVisible="{Binding !Cockpit.Projects.HasProjects}">
                             <controls:StartingPointsView DataContext="{Binding Cockpit.Projects}"/>

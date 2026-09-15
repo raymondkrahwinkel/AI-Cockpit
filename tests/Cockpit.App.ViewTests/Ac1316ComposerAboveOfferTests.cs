@@ -1,0 +1,87 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
+
+namespace Cockpit.App.ViewTests;
+
+/// <summary>
+/// AC-1316: in the Simple stand's start screen the composer stands at the head of the offer — a wide field above
+/// the cards — and drops back to the foot of the column once there is a conversation. One composer with two
+/// hosts, measured on the full CockpitView the way the operator meets it.
+/// </summary>
+[Collection("avalonia")]
+public class Ac1316ComposerAboveOfferTests
+{
+    // While the offer stands, the box is inside the offer's own scroll stack, not docked under the transcript's
+    // place. Measured on where it hangs in the visual tree rather than on a flag.
+    [Fact]
+    public void WhileTheOfferStands_TheComposerStandsInsideIt_NotAtTheFoot() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
+        try
+        {
+            window.UpdateLayout();
+
+            var input = _Named<TextBox>(window, "InputBox");
+            var ancestors = input.GetVisualAncestors().ToList();
+
+            Assert.Contains(ancestors, a => a is ScrollViewer { Name: "StartOffer" });
+            Assert.DoesNotContain(ancestors, a => a is ContentControl { Name: "BottomComposerHost" });
+
+            var column = window.GetVisualDescendants().OfType<AssistantChatView>().First(v => v.IsEffectivelyVisible);
+            var top = input.TranslatePoint(new Point(0, 0), column)!.Value.Y;
+            Assert.True(top < column.Bounds.Height / 2, $"the box stands in the upper half of the column, not as a strip at the bottom (top {top:0} of {column.Bounds.Height:0})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    // The first message sent from the offer: the same box — not a second one — is now at the foot of the column,
+    // the offer is gone, and the caret is still in it. Measured on the empty-conversation door: the scene's
+    // `+ New session` door rebuilds the whole column when the request stands down, so it cannot show the move.
+    [Fact]
+    public async Task TheFirstMessage_MovesTheSameComposerToTheFoot_AndKeepsTheCaret() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var window = Screenshotter.ShowScene("simple-view-start-screen");
+        try
+        {
+            var cockpit = (CockpitViewModel)window.DataContext!;
+            var conversation = cockpit.AssistantChat!.Session!;
+            conversation.Transcript.Clear();
+            cockpit.SimpleStartScreenRequested = false;
+            window.UpdateLayout();
+
+            var input = _Named<TextBox>(window, "InputBox");
+            var offer = _Named<ScrollViewer>(window, "StartOffer");
+            Assert.Contains(input.GetVisualAncestors(), a => ReferenceEquals(a, offer));
+
+            input.Focus();
+            var chat = (AssistantChatViewModel)input.DataContext!;
+            chat.InputText = "what is still open on AC-1316?";
+            await chat.SendCommand.ExecuteAsync(null);
+            // What the real host does with a sent message: it lands in the transcript, and that is what takes
+            // the offer away (the scene's host sends nowhere).
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what is still open on AC-1316?"));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            window.UpdateLayout();
+
+            Assert.False(offer.IsVisible);
+            Assert.Same(input, window.GetVisualDescendants().OfType<TextBox>().Single(b => b.Name == "InputBox"));
+            Assert.Contains(input.GetVisualAncestors(), a => a is ContentControl { Name: "BottomComposerHost" });
+            Assert.DoesNotContain(input.GetVisualAncestors(), a => ReferenceEquals(a, offer));
+            Assert.True(input.IsFocused, "the caret follows the box to its new host");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    private static T _Named<T>(Window window, string name) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
+}
