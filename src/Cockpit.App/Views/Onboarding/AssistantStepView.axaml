@@ -58,6 +58,6 @@
         </StackPanel>
 
         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
-                   Text="You can turn this on or off, or change its profile, later in Options → Voice → Assistant."/>
+                   Text="You can turn this on or off, or change its profile, later in Options → Assistant."/>
     </StackPanel>
 </UserControl>

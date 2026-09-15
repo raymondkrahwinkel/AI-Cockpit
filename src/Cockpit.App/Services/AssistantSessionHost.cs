@@ -73,7 +73,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // exactly while `Activity` is `AssistantActivity.Unavailable` — an unavailable chip that
     // doesn't say why sends someone into Options hunting for a setting that isn't the problem.
     [ObservableProperty]
-    private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
+    private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Assistant.";
 
     // AC-740: the picker's fallback working directory before a session exists. Lazily loaded on first read
     // (see the field above); the very first '@' before that resolves reads null, so the picker's own
@@ -322,7 +322,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         var stopping = Session;
         Session = null;
-        _SetUnavailable("The assistant is switched off. Turn it on in Options → Voice.");
+        _SetUnavailable("The assistant is switched off. Turn it on in Options → Assistant.");
 
         if (stopping is not null)
         {
@@ -338,14 +338,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             // Criterion 1: with the feature off the hotkey does nothing — and says why, rather than being a key
             // that quietly is not there.
-            _SetUnavailable("The assistant is switched off. Turn it on in Options → Voice.");
+            _SetUnavailable("The assistant is switched off. Turn it on in Options → Assistant.");
             return null;
         }
 
         var slot = await _profiles.LoadAsync(cancellationToken).ConfigureAwait(true);
         if (slot.Profile is not { } profile)
         {
-            _SetUnavailable(slot.UnsetReason ?? "No Assistant Profile is set. Pick one in Options → Voice.");
+            _SetUnavailable(slot.UnsetReason ?? "No Assistant Profile is set. Pick one in Options → Assistant.");
             return null;
         }
 

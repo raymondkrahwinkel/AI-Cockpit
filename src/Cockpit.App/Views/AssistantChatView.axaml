@@ -38,6 +38,25 @@
             <Setter Property="Grid.Column" Value="1"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
         </Style>
+        <Style Selector="TextBlock#ScreenshotLabel">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer TextBlock#ScreenshotLabel">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="TextBox#InputBox">
+            <Setter Property="PlaceholderText" Value="{Binding PushToTalkKeyName, StringFormat='Type, or hold {0} to talk…'}"/>
+        </Style>
+        <Style Selector="TextBox#InputBox.unavailable">
+            <Setter Property="PlaceholderText" Value="Turn the assistant on first."/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer TextBox#InputBox.unavailable">
+            <Setter Property="PlaceholderText" Value="Turn the assistant on first, or start on a project below."/>
+        </Style>
+        <!-- The gallery's own heading repeats the "Or start on a project" line that stands above it here. -->
+        <Style Selector="TextBlock#StartingPointsHeading">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
         <Style Selector="Border#ComposerBorder.offer">
             <Setter Property="Width" Value="720"/>
             <Setter Property="Padding" Value="12,10,10,10"/>
@@ -93,15 +112,19 @@
                                    IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- AC-575, criterion 5. This window is where the assistant's work is read, so it is also
                              where "some of these were never shown to you" has to be legible. Says that it is on,
-                             not which sources — that list is Options', and a header is not a settings page. -->
-                        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ConsentBypassActive}">
-                            <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
-                            <TextBlock Text="Consent card skipped for some sources" FontSize="10.5"
-                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"
-                                       ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
-                        </StackPanel>
+                             not which sources — that list is Options', and a header is not a settings page.
+                             AC-1316: said in the operator's terms, and a button onto that page rather than a route to walk. -->
+                        <Button x:Name="ConsentBypassNotice" Classes="Subtle" Padding="0" IsVisible="{Binding ConsentBypassActive}"
+                                Command="{Binding Cockpit.OpenAssistantOptionsCommand}"
+                                ToolTip.Tip="For the sources ticked in Options → Assistant, the assistant skips Cockpit's consent card. Every skipped card is still written to the consent trail. Click to change it.">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                <TextBlock Text="Some actions run without asking you first" FontSize="10.5"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     <!-- AC-662/AC-694: the sidebar chip's listening mode (AssistantIndicator.axaml), driven through
                          `Indicator` so the one-time cost confirmation stays in step instead of being copied. An icon
@@ -718,8 +741,10 @@
                     <!-- A Grid rather than a DockPanel so the `offer` styles above can drop the buttons under the
                          box; in this row they stand beside it, the same row SessionComposerAlignmentTests measure. -->
                     <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
-                        <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                                 PlaceholderText="{Binding PushToTalkKeyName, StringFormat='Type, or hold {0} to talk…'}"
+                        <!-- The placeholder comes from the styles above: typing stays on while the assistant is
+                             unavailable (retyping is the retry after a failed start, AC-1316), so only the
+                             invitation changes — the action to take, not a second copy of the reason. -->
+                        <TextBox x:Name="InputBox" Text="{Binding InputText}" Classes.unavailable="{Binding IsUnavailable}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
@@ -727,10 +752,17 @@
                              where a session that cannot take an image says why. -->
                         <!-- Its column and margin come from the styles above, not from here: a local value would
                              outrank the `offer` style that moves it to the left of its own row. -->
+                        <!-- Hidden until a session exists to take the image: with none, the command is null and the
+                             button would be live but dead (AC-1316). The label shows only in the offer stand,
+                             where the row has the room — see the `offer` styles above. -->
                         <Button x:Name="ScreenshotButton" Command="{Binding Session.CaptureScreenshotCommand}"
                                 Classes="Compact composerAction" VerticalAlignment="Bottom" Padding="8,6"
+                                IsVisible="{Binding Session, Converter={x:Static ObjectConverters.IsNotNull}}"
                                 ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
-                            <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ScreenshotLabel" Text="Screenshot" VerticalAlignment="Center"/>
+                            </StackPanel>
                         </Button>
                         <!-- AC-942: same shape and placement as SessionView.axaml's Stop button, only visible while a
                              turn is running. Also cuts read-aloud (AssistantChatViewModel.StopCommand). -->
@@ -851,7 +883,8 @@
                                    IsVisible="{Binding !IsUnavailable}"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <!-- Switched off or no profile: the reason stands where the hint would, and the cards
-                             stay — a project still starts on its own settings without the assistant. -->
+                             stay — a project still starts on its own settings without the assistant. The button
+                             lands on the page the reason names (same deep-link as the pairing banner's "Review it"). -->
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10"
                                     HorizontalAlignment="Center" IsVisible="{Binding IsUnavailable}">
                             <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="18" Height="18"
@@ -860,6 +893,10 @@
                             <TextBlock Text="{Binding UnavailableReason}" TextWrapping="Wrap" FontSize="13"
                                        VerticalAlignment="Center" MaxWidth="560"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <Button x:Name="OpenAssistantOptionsButton" Content="Open Options" Classes="Compact"
+                                    VerticalAlignment="Center"
+                                    Command="{Binding Cockpit.OpenAssistantOptionsCommand}"
+                                    ToolTip.Tip="Options → Assistant: the switch, the profile and what it may do"/>
                         </StackPanel>
 
                         <!-- The composer's other host: ComposerBorder from the foot of the column, while the offer stands. -->

@@ -84,6 +84,18 @@ public class Ac1316DirectTypingTests
         Assert.Equal("is the invoice run done?", chat.InputText);
     }
 
+    // The "switched off" notice is an action, not a route to walk: its button opens Options on the page the
+    // switch actually lives on — Assistant, not Voice, since AC-1000 moved it.
+    [Fact]
+    public async Task TheSwitchedOffNotice_OpensOptionsOnTheAssistantPage()
+    {
+        var cockpit = Voice.TestCockpit.NewViewModel(out var dialogs);
+
+        await cockpit.OpenAssistantOptionsCommand.ExecuteAsync(null);
+
+        await dialogs.Received(1).ShowOptionsDialogAsync(cockpit, "assistant");
+    }
+
     private static AssistantChatViewModel _Chat(CockpitViewModel cockpit, SessionViewModel? session)
     {
         var host = Substitute.For<IAssistantSessionHost>();

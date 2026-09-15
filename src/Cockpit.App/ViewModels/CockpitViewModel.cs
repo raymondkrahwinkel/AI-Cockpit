@@ -6267,6 +6267,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task ManageProfilesAsync() => _ShowOptionsAsync("profiles");
 
+    // AC-1316: where the assistant's switch, profile and consent bypass live — the chat surfaces link here instead
+    // of describing the route in words.
+    [RelayCommand]
+    private Task OpenAssistantOptionsAsync() => _ShowOptionsAsync("assistant");
+
     // The command lives here rather than on `AssistantOptionsViewModel` because the dialog it opens needs
     // `IAssistantSessionHost` for its restart button, and that host is constructed from this view model — so injecting
     // it into the dialog service (which this view model already depends on) would be a cycle.

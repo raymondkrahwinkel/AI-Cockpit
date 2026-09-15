@@ -345,6 +345,9 @@ internal static class Screenshotter
         // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
         // for this one, and the second place the starting-point gallery is drawn.
         ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
+        // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
+        // composer that says what to do first rather than inviting a message that cannot go anywhere.
+        ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2126,12 +2129,16 @@ internal static class Screenshotter
         ViewModels.SessionViewModel? session,
         bool speakReplies = true,
         bool alwaysOn = false,
-        ViewModels.CockpitViewModel? cockpit = null)
+        ViewModels.CockpitViewModel? cockpit = null,
+        string? unavailableReason = null)
     {
         var host = new _FakeAssistantSessionHost
         {
             Session = session,
-            Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
+            Activity = unavailableReason is null
+                ? Cockpit.Core.Assistant.AssistantActivity.Ready
+                : Cockpit.Core.Assistant.AssistantActivity.Unavailable,
+            UnavailableReason = unavailableReason,
         };
 
         // AC-662: the same Indicator the coordinator feeds the real window, so the header's always-on switch
@@ -2151,7 +2158,7 @@ internal static class Screenshotter
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant)
+    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false)
     {
         var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
         conversation.ActiveProfileLabel = "work";
@@ -2168,7 +2175,8 @@ internal static class Screenshotter
         // One chat view model for both hosts, the way `AssistantIndicatorCoordinator` holds one: it is also what
         // puts itself on `cockpit.AssistantChat`, so building it inside a factory would leave the rail without its
         // root until that factory happened to run.
-        var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit);
+        var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit,
+            unavailableReason: assistantOff ? "The assistant is switched off. Turn it on in Options → Assistant." : null);
 
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId,
@@ -2232,9 +2240,10 @@ internal static class Screenshotter
     // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
     // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
     // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true)
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false)
     {
-        var cockpit = _SimpleStand(withAssistant: true);
+        // Off means no session either: the host never starts one it is not allowed to.
+        var cockpit = _SimpleStand(withAssistant: !assistantOff, assistantOff);
 
         // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
         // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.

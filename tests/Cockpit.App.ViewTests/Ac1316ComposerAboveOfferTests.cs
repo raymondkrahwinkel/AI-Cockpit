@@ -82,6 +82,52 @@ public class Ac1316ComposerAboveOfferTests
         }
     });
 
+    // With the assistant switched off, the offer's notice carries a button onto the cockpit's own Options deep-link
+    // — the same command the pairing banner uses — and the screenshot button, whose command would be null with
+    // no session to take the image, is not on screen at all.
+    [Fact]
+    public void WhileTheAssistantIsOff_TheNoticeOpensOptions_AndTheDeadScreenshotButtonIsGone() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("simple-view-start-screen-off");
+        try
+        {
+            window.UpdateLayout();
+            var cockpit = (CockpitViewModel)window.DataContext!;
+
+            var button = _Named<Button>(window, "OpenAssistantOptionsButton");
+            Assert.True(button.IsEffectivelyVisible, "the notice offers the way in, not a route to walk");
+            Assert.Contains(button.GetVisualAncestors(), a => a is ScrollViewer { Name: "StartOffer" });
+            Assert.Same(cockpit.OpenAssistantOptionsCommand, button.Command);
+
+            var screenshot = _Named<Button>(window, "ScreenshotButton");
+            Assert.False(screenshot.IsEffectivelyVisible, "a button with a null command is not offered");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    // Typing stays on while the assistant is off (retyping is the retry route after a failed start), so the box
+    // changes only what it invites: the action to take first, not the F10 invitation.
+    [Fact]
+    public void WhileTheAssistantIsOff_TheBoxNamesTheActionFirst_AndStillTakesTyping() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("simple-view-start-screen-off");
+        try
+        {
+            window.UpdateLayout();
+            var input = _Named<TextBox>(window, "InputBox");
+
+            Assert.Equal("Turn the assistant on first, or start on a project below.", input.PlaceholderText);
+            Assert.True(input.IsEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     private static T _Named<T>(Window window, string name) where T : Control =>
         window.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
 }

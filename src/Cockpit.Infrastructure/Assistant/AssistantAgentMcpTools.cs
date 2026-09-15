@@ -31,7 +31,7 @@ internal sealed class AssistantAgentMcpTools(
     // before the assistant reads a result.
     private const string AskingCanBeSwitchedOff =
         " THE CLICK IS THE DEFAULT AND NOT A PROMISE: the operator can switch the asking off ahead of time — for this"
-        + " kind of request in Options → Voice, or by giving the Assistant Profile a permission mode that bypasses"
+        + " kind of request in Options → Assistant, or by giving the Assistant Profile a permission mode that bypasses"
         + " prompts — and then no row appears and the call simply goes through. NEVER SAY THAT AN APPROVAL IS WAITING"
         + " ON THEIR SCREEN: this call does that waiting itself and returns only once the row has been answered or"
         + " was never raised, so by the time you are reading a result nothing about it is still pending and there is"

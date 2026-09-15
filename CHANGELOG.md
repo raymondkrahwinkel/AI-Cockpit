@@ -533,6 +533,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the "assistant is switched off" and "no profile" notices sent you to Options → Voice, a page the
+  switch left when the Assistant page was added. They now name Options → Assistant, and on the Simple stand's
+  start screen the notice carries an "Open Options" button that lands on that page. While the assistant is
+  off, the box says what to do first instead of inviting a message, the screenshot button — which had nothing
+  to take the image and did nothing when pressed — stays out of the way until a session exists, and the
+  "some consent cards are skipped" line in the assistant's header is worded for the operator and opens the same
+  page.
 - fixed: a message typed into the assistant while it was switched off, had no profile, or had just failed to
   start was cleared from the box before the assistant answered that it could not take it — the words were gone
   with no notice. They now stay in the box when nothing was sent.

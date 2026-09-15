@@ -319,12 +319,12 @@ public class AssistantChatViewModelTests
     public void UnavailableHost_SurfacesTheReasonRatherThanAnEmptyWindow()
     {
         var host = FakeHost(activity: AssistantActivity.Unavailable);
-        host.UnavailableReason.Returns("The assistant is switched off. Turn it on in Options → Voice.");
+        host.UnavailableReason.Returns("The assistant is switched off. Turn it on in Options → Assistant.");
 
         var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
 
         Assert.True(vm.IsUnavailable);
-        Assert.Equal("The assistant is switched off. Turn it on in Options → Voice.", vm.UnavailableReason);
+        Assert.Equal("The assistant is switched off. Turn it on in Options → Assistant.", vm.UnavailableReason);
     }
 
     // AC-545 criterion 5: the flyout's own contract on this view model — load lazily, newest first, never throw
