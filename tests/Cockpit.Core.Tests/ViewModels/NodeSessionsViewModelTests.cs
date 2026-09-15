@@ -243,6 +243,9 @@ public class NodeSessionsViewModelTests
 
         public bool FailNextInboxRead { get; set; }
 
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodePermissionAnswer(false));
+
         public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
         {
             if (FailNextInboxRead)

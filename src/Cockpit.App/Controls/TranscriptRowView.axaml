@@ -690,10 +690,13 @@
                             <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
                                     Command="{Binding Session.DenyToolCommand}"
                                     CommandParameter="{Binding}"/>
+                            <!-- AC-1324: not on a node's question — an always-rule lands in that machine's profile. -->
                             <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
+                                    IsVisible="{Binding CanAllowAlways}"
                                     Command="{Binding Session.AllowAlwaysExactToolCommand}"
                                     CommandParameter="{Binding}"/>
                             <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
+                                    IsVisible="{Binding CanAllowAlways}"
                                     Command="{Binding Session.AllowAlwaysWildcardToolCommand}"
                                     CommandParameter="{Binding}"/>
                         </WrapPanel>

@@ -193,6 +193,18 @@ public interface IAssistantAgentGateway
     /// </remarks>
     Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(ClearConversationResult.Refused("Clearing the conversation is not available here."));
+
+    /// <summary>
+    /// AC-1324: resolves the Allow/Deny row <paramref name="toolUseId"/> on session <paramref name="paneId"/> the
+    /// way the operator's own click does — the click just came from the controller's screen. False when that row
+    /// is not open (any more), in which case nothing was done. Never called for the assistant's own decisions:
+    /// the assistant does not answer permissions, its operator does.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented so the test doubles of this interface that never answer a permission stay as they are.
+    /// </remarks>
+    Task<bool> RespondToPermissionAsync(string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
 }
 
 // AC-1261: what came of a clear_conversation request. AlreadyQueued distinguishes a fresh request from a second

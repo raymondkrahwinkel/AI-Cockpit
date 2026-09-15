@@ -73,7 +73,21 @@ public interface INodeSessionsClient
     /// leaves the node holding the same messages for the next one. Never throws for an unreachable node — see <see cref="NodeInboxBatch.Error"/>.
     /// </summary>
     Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1324: answers one open Allow/Deny question on <paramref name="nodeName"/> — the operator's click on the
+    /// row this cockpit drew for it. Never throws for an unreachable node — see <see cref="NodePermissionAnswer.Error"/>.
+    /// </summary>
+    Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default);
 }
+
+// AC-1324: what an answer on a node came to. `Answered` false with no error means the question was no longer
+// open there — answered on the node itself, or the session gone — and nothing was done.
+public sealed record NodePermissionAnswer(bool Answered, string? Error = null);
+
+// AC-1324: one Allow/Deny question a session on a node is stopped on, as the node reports it. `InputJson` is
+// already bounded by the node.
+public sealed record NodePendingPermission(string ToolUseId, string ToolName, string InputJson, DateTimeOffset SinceUtc);
 
 // AC-1323: what a start on a node came back with — the node's pane id (that machine's, never this one's) and the
 // profile that actually ran, or `Error`, in which case nothing else here is set.
@@ -115,7 +129,8 @@ public sealed record NodeSessionsSnapshot(
     string DiscoveryId = "");
 
 // One session running on a node. The pane id is that machine's, never this one's. Status, NeedsYou and
-// HasOutstandingWork mean what they mean on the assistant's own list_sessions (AC-1320).
+// HasOutstandingWork mean what they mean on the assistant's own list_sessions (AC-1320). PendingPermissions are
+// the Allow/Deny questions it is stopped on (AC-1324) — null from a node build that predates the field.
 public sealed record NodeSessionRow(
     string PaneId,
     string Name,
@@ -123,7 +138,8 @@ public sealed record NodeSessionRow(
     string Statusline,
     string Status = "",
     bool NeedsYou = false,
-    bool HasOutstandingWork = false);
+    bool HasOutstandingWork = false,
+    IReadOnlyList<NodePendingPermission>? PendingPermissions = null);
 
 // One project a node's operator has allowed this controller to start work on.
 public sealed record NodeProjectRow(string Id, string Name);

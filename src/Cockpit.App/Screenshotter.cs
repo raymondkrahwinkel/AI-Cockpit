@@ -342,6 +342,9 @@ internal static class Screenshotter
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
+
+        // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
+        ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
         // question only stands there while no conversation does, which every other Simple scene has.
         ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
@@ -2341,6 +2344,20 @@ internal static class Screenshotter
         // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
         _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
         _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
+        cockpit.SimpleSelectedSession = null;
+        return cockpit;
+    }
+
+    // AC-1324: the row a controller draws for a question on a paired node — built by the same factory the poll
+    // uses, so the scene cannot show a row the poll would not. Answered in the scene by nobody; a render never clicks.
+    private static ViewModels.CockpitViewModel _SimpleStandNodePermission()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.AssistantChat!.Session!.Transcript.Add(Services.NodePermissionRelay.Row(
+            "LAPTOP",
+            new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
+            new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
+            _ => Task.FromResult(new NodePermissionAnswer(true))));
         cockpit.SimpleSelectedSession = null;
         return cockpit;
     }

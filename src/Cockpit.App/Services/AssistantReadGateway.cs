@@ -16,6 +16,16 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
 
     public Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync() => UiThreadCall.RunAsync(_ListProjects);
 
+    // AC-1324: the rows a session's own pane shows Allow/Deny for, read from the same flag — an SDK session only;
+    // a TTY session's prompt lives in its own TUI, which the host cannot see into (AC-294).
+    public Task<IReadOnlyList<AssistantPendingPermission>> ListPendingPermissionsAsync() => UiThreadCall.RunAsync(() =>
+        (IReadOnlyList<AssistantPendingPermission>)
+        [
+            .. cockpit.AllSessions().OfType<SessionViewModel>()
+                .SelectMany(session => session.PendingToolPermissionRows().Select(row => new AssistantPendingPermission(
+                    session.PaneId, row.ToolUseId ?? "", row.ToolName ?? "", row.InputJson ?? "{}", row.Timestamp))),
+        ]);
+
     // The registered sources and the bound/hidden filter ids, read together on the UI thread via
     // `ProjectsViewModel.SharedProjectVisibilityFilterIds` (AC-797) — the same rule the Projects workspace
     // itself filters on, not a second copy of it. The per-source network calls then run off the UI thread.

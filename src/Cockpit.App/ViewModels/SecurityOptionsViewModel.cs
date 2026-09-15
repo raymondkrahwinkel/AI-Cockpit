@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -43,8 +44,9 @@ public sealed partial class SecurityOptionsViewModel(
     // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
     INodeSessionsClient? nodeSessions = null,
     // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
-    // design-time/unit-test graph like the client above.
-    NodeInboxRelay? nodeInboxRelay = null) : ObservableObject
+    // design-time/unit-test graph like the client above. AC-1324: the permission relay rides the same poll.
+    NodeInboxRelay? nodeInboxRelay = null,
+    NodePermissionRelay? nodePermissionRelay = null) : ObservableObject
 {
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
@@ -403,7 +405,7 @@ public sealed partial class SecurityOptionsViewModel(
 
             foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
             {
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay);
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay);
                 PairedNodes.Add(card);
                 card.StartPolling();
 

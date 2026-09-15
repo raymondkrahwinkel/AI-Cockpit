@@ -2454,34 +2454,88 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
     {
+        // AC-1324: a node's question drawn here — the same row, but the click goes over the line, not to a runtime.
+        if (entry.NodePermission is { } onNode)
+        {
+            await _AnswerOnNodeAsync(entry, onNode, allow);
+            return;
+        }
+
         if (_runtime is null || entry.ToolUseId is null)
         {
             return;
         }
 
-        entry.PermissionDecision = answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
+        _MarkDecided(entry, answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied");
+        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
+    }
+
+    // AC-1324: three outcomes, each told on the row itself. Answered there: closed with the machine named. No
+    // longer open there (answered on the node, or the session gone): closed, nothing done. Line failed: the row
+    // stays open with the reason, so the buttons still work once the node is back.
+    private static async Task _AnswerOnNodeAsync(TranscriptEntryViewModel entry, NodePermissionOrigin onNode, bool allow)
+    {
+        var reply = await onNode.Answer(allow);
+        if (reply.Error is { } error)
+        {
+            entry.PermissionDecision = $"Not answered — {error}";
+            return;
+        }
+
+        entry.PermissionDecision = reply.Answered
+            ? $"{(allow ? "Allowed" : "Denied")} on {onNode.Node}"
+            : $"Already answered on {onNode.Node}";
+        entry.IsPendingPermission = false;
+    }
+
+    // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
+    // open here — answered already, or never asked — and then nothing is done.
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow)
+    {
+        if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
+        {
+            return false;
+        }
+
+        await RespondToPermissionAsync(entry, allow);
+        return true;
+    }
+
+    // AC-1324: every consent row waiting on a click, top-level and nested alike — the rows a controller draws for
+    // this session. A question row (AskUserQuestion) wants an answer, not a click, so it is not among them.
+    internal IEnumerable<TranscriptEntryViewModel> PendingToolPermissionRows() => _PendingRows().Where(row => !row.HasQuestionPrompts);
+
+    private IEnumerable<TranscriptEntryViewModel> _PendingRows() =>
+        Transcript.Concat(Transcript.SelectMany(row => row.SubAgentRowsForDisplay)).Where(row => row.IsPendingPermission);
+
+    private void _MarkDecided(TranscriptEntryViewModel entry, string decision)
+    {
+        entry.PermissionDecision = decision;
         entry.IsPendingPermission = false;
         // AC-532: the operator's decision may be what the composer's activity band was showing "waiting for
         // permission" for — re-raise so it reverts to the normal running text (or goes quiet, if this was the
         // call's only reason to still be shown).
         _RaiseActiveToolActivityChanged();
-        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
+
+        // AC-1324: `needsYou` means "stopped on a question nobody answered", and this was the last one — the
+        // session runs on from here, so it stops flagging itself the moment the click lands, not at the next message.
+        if (_needsAttention && !_PendingRows().Any())
+        {
+            _needsAttention = false;
+            _RecomputeStatus();
+        }
     }
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (_runtime is null || entry.ToolUseId is null || entry.ToolName is null)
+        if (_runtime is null || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
         {
             return;
         }
 
-        entry.PermissionDecision = scope == PermissionRuleScope.Wildcard
+        _MarkDecided(entry, scope == PermissionRuleScope.Wildcard
             ? $"Always allowed ({entry.ToolName}:*)"
-            : $"Always allowed (exact: {entry.ToolName})";
-        entry.IsPendingPermission = false;
-        // AC-532: see RespondToPermissionAsync above — this decision can end the composer's "waiting for
-        // permission" text too.
-        _RaiseActiveToolActivityChanged();
+            : $"Always allowed (exact: {entry.ToolName})");
 
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }

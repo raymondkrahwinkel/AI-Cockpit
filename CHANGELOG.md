@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: when a session on a paired node stops on an Allow/Deny question, that question now appears in the
+  controller's assistant conversation as the same row it would show locally, with the machine named on it,
+  and clicking Allow or Deny there answers it on the node; a question already answered on the node says so
+  instead of doing anything twice (AC-1324).
 - added: the assistant's session list now also shows what is running on every paired node, with the machine
   named on every row, and says when a node cannot be reached instead of leaving it out (AC-1320).
 - added: while a paired controller is connected, this cockpit's own assistant stands down and the assistant
@@ -552,6 +556,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session no longer keeps flagging "needs attention" in the sidebar and to the assistant after its
+  last open Allow/Deny question has been answered; it drops the moment the click lands rather than at the
+  next message (AC-1324).
 - fixed: a table in a reply — in a session pane or the assistant chat — was drawn at its full natural width
   and ran off the right edge of the pane with no way to reach the cut-off columns. It now fits the pane: the
   wider columns wrap their text, a column holding only a number or a short code name keeps its width, and a

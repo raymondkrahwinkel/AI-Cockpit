@@ -34,7 +34,7 @@ internal sealed class NodeSessionMcpTools(
         "This tool belongs to the cockpit that is paired to this one as its controller. It is not available to a session on this machine.";
 
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
-    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so.")]
+    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so. pendingPermissions lists the Allow/Deny questions a session is stopped on; they are for the operator's own screen on the controller, never for you to answer.")]
     public async Task<string> ListNodeSessionsAsync()
     {
         try
@@ -44,6 +44,10 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
+            var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
+            // AC-1324: the open questions ride on the same read as the sessions they belong to, so needsYou and the
+            // rows the controller draws for it can never come from two different moments.
+            var pending = (await read.ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
             return _Serialize(new
             {
                 ok = true,
@@ -51,7 +55,7 @@ internal sealed class NodeSessionMcpTools(
                 // AC-1320: the origin the controller's assistant stamps on every row it lists from here — a name
                 // can be shared by two machines, this id cannot.
                 discoveryId = discoveryId.Value,
-                sessions = (await _VisibleSessionsAsync().ConfigureAwait(false)).Select(session => new
+                sessions = visible.Select(session => new
                 {
                     paneId = session.PaneId,
                     name = session.Name,
@@ -62,6 +66,13 @@ internal sealed class NodeSessionMcpTools(
                     // AC-1311: the second wire copy of this field — easiest one to forget, since it lives
                     // beside the assistant's own list_sessions rather than in it.
                     hasOutstandingWork = session.HasOutstandingWork,
+                    pendingPermissions = pending[session.PaneId].Select(permission => new
+                    {
+                        toolUseId = permission.ToolUseId,
+                        tool = permission.ToolName,
+                        input = AssistantReadMcpTools.Bounded(permission.InputJson).Text,
+                        sinceUtc = permission.SinceUtc,
+                    }),
                 }),
             });
         }
@@ -400,6 +411,37 @@ internal sealed class NodeSessionMcpTools(
                     var (result, resultTruncated) = AssistantReadMcpTools.Bounded(entry.ToolResult);
                     return new { kind = entry.Kind, text, toolResult = entry.ToolResult is null ? null : result, truncated = textTruncated || resultTruncated };
                 }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "answer_node_permission", ReadOnly = false, Destructive = true)]
+    [Description("Places the operator's Allow or Deny on one open permission question of a session on the node — the click on the row the controller's screen drew for it. THIS IS THE OPERATOR'S CLICK CARRIED OVER THE LINE, NOT A DECISION OF YOURS: an assistant never answers a permission, on any machine. The pane id is the node's, from list_node_sessions, and the tool-use id is the one that list reported under pendingPermissions. `answered` false means the question was no longer open there — answered on the node itself, or the session gone — and nothing was done.")]
+    public async Task<string> AnswerNodePermissionAsync(
+        [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId,
+        [Description("The tool-use id of the open question, exactly as list_node_sessions reports it.")] string toolUseId,
+        [Description("True to allow the call, false to deny it.")] bool allow)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            {
+                return refusal;
+            }
+
+            var answered = await gateway.RespondToPermissionAsync(paneId, toolUseId, allow).ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                node = Environment.MachineName,
+                paneId,
+                toolUseId,
+                answered,
+                outcome = answered ? allow ? "Allowed" : "Denied" : "That question is no longer open on this node; nothing was done.",
             });
         }
         catch (Exception exception)

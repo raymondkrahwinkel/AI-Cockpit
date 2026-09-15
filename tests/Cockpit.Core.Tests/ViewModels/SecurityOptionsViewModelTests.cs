@@ -488,6 +488,9 @@ public class SecurityOptionsViewModelTests
 
         public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeInboxBatch(nodeName, []));
+
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodePermissionAnswer(false));
     }
 
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient

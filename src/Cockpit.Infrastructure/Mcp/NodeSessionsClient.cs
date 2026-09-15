@@ -72,7 +72,12 @@ internal sealed class NodeSessionsClient(
                     _Text(row, "statusline"),
                     _Text(row, "status"),
                     _Bool(row, "needsYou"),
-                    _Bool(row, "hasOutstandingWork")))],
+                    _Bool(row, "hasOutstandingWork"),
+                    [.. _Array(row, "pendingPermissions").Select(permission => new NodePendingPermission(
+                        _Text(permission, "toolUseId"),
+                        _Text(permission, "tool"),
+                        _Text(permission, "input"),
+                        permission.TryGetProperty("sinceUtc", out var since) && since.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))]))],
                 [.. _Array(profiles, "profiles").Select(row => new NodeScopedProfileSummary(
                     _Text(row, "label"),
                     // An unknown provider name is not a reason to drop a profile the operator is allowed to run:
@@ -233,6 +238,32 @@ internal sealed class NodeSessionsClient(
         {
             logger.LogInformation(exception, "Could not read the assistant's mail on node {Node}.", nodeName);
             return new NodeInboxBatch(nodeName, [], Error: Classify(nodeName, exception));
+        }
+    }
+
+    public async Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "answer_node_permission",
+                new Dictionary<string, object?> { ["paneId"] = paneId, ["toolUseId"] = toolUseId, ["allow"] = allow },
+                cancellationToken).ConfigureAwait(false);
+
+            return _ErrorIn(result) is { } refusal
+                ? new NodePermissionAnswer(false, refusal)
+                : new NodePermissionAnswer(_Bool(result, "answered"));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not reach node {Node} to answer a permission.", nodeName);
+            return new NodePermissionAnswer(false, Classify(nodeName, exception));
         }
     }
 
