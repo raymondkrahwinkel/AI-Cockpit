@@ -3,80 +3,22 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Core.Tests.Styles;
 
-/// <summary>
-/// A UI colour lives in one place: <c>Theme.axaml</c> (AC-334). Every hardcoded hex literal that used to sit in a
-/// view, a control or the plugin SDK's shared widgets was replaced by a token lookup — either a static
-/// <c>{StaticResource ...}</c> in markup, or a live <c>ThemeBrush.Resolve(key, fallbackHex)</c> call for the few
-/// spots that build their visuals in code (<c>MicLevelMeter</c>'s custom render, <c>MarkdownView</c>, and the SDK's
-/// <c>ProviderConfigStatus</c>/<c>ManagedCliConfigSection</c>, which keep their own tiny copy of the same helper
-/// rather than referencing <c>Cockpit.App</c>'s — sharing it would make the helper public SDK API). This guards
-/// the regression: a new literal hex slipping back in instead of going through either of those two.
-/// <para>
-/// Reading the source rather than the compiled app, the way <c>ExternalLinkSingleSourceTests</c> does it: a literal
-/// like <c>Background="#123456"</c> is text in the .axaml/.cs source and is not reliably recoverable once Avalonia
-/// has folded it into a compiled resource tree.
-/// </para>
-/// <para>
-/// It is a tripwire, not a proof: a hex built from string concatenation, or read from a constant defined elsewhere,
-/// would not be a literal match and would slip past.
-/// </para>
-/// <para>
-/// Three spellings of a hardcoded colour are covered: a quoted hex literal, <c>Color.FromRgb</c>/<c>FromArgb</c>
-/// components, and — since AC-402 — a named framework colour, <c>Brushes.X</c>/<c>Colors.X</c>, except
-/// <c>Transparent</c>, which names the absence of a colour rather than one of the cockpit's own.
-/// </para>
-/// <para>
-/// It scans <c>Cockpit.App</c>, <c>Cockpit.Plugins.Abstractions</c> <b>and every plugin under <c>plugins-dev/</c></b>
-/// (AC-337). The plugins were outside it until the repaint reached them, and that is exactly where the drift had
-/// collected: fallbacks still holding the pre-AC-334 orange, and one naming a <c>CockpitTextBrush</c> that has never
-/// existed — a lookup that could only ever return its literal. A plugin is an independently published artifact and
-/// keeps its own copy of the tiny <c>_Brush</c> helper rather than sharing one, so this guard matches on the call
-/// <em>shape</em>, not on a shared type. It is a source-tree lint, not a runtime coupling: it reads files, so it
-/// lives once here instead of being copied into ten plugin test projects.
-/// </para>
-/// </summary>
+// AC-334: reads the source, not the compiled app — a hex literal is not recoverable once Avalonia folds it into resources.
 public partial class ThemeHexColorGuardTests
 {
-    /// <summary>
-    /// A hex literal outside <c>Theme.axaml</c> that is not a hardcoded colour: an alpha-tinted echo of a token
-    /// (the properties that carry transparency — <c>BoxShadow</c>, a translucent <c>Background</c> — have no brush
-    /// type to hang a <c>{StaticResource}</c> on) or a plain black scrim/shadow that is deliberately colour-agnostic
-    /// — no theme token means "black", so there is nothing for it to point at. Keyed by the file's path relative to
-    /// the repository root plus the exact literal, so a second, different literal landing in the same file does not
-    /// silently inherit this file's allowance.
-    /// </summary>
+    // Keyed by path plus the exact literal, so a second literal in the same file inherits nothing; echoes are tokens since AC-860.
     private static readonly Dictionary<(string Path, string Hex), (int Occurrences, string Reason)> AllowedLiterals =
         new()
         {
-            [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
-                (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
-            [("src/Cockpit.App/Styles/Theme.axaml", "#2AE0A33E")] =
-                (1, "2A-alpha echo of CockpitStatusWaitingColor for the needs-attention sidebar row (AC-406) — " +
-                     "replaces a pre-mixed opaque #2E2A26 that would have held the old waiting colour through a " +
-                     "repaint; the alpha was picked by rendering the row against CockpitSecondaryBgColor, the " +
-                     "sidebar's real background, and matching the previous pixels"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
-            [("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
-                (2, "CC-alpha echo of CockpitWindowBgColor, shared by the migration and calibration blocking overlays"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#F01a1d24")] =
-                (1, "F0-alpha echo of CockpitPanelBgColor for the voice pill background"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#1AFFFFFF")] =
-                (1, "white hairline border at low alpha — colourless, not a theme colour"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#2E3b82f6")] =
-                (1, "2E-alpha echo of CockpitAccentColor for the listening-dot glow"),
-            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#F01a1d24")] =
-                (1, "F0-alpha echo of CockpitPanelBgColor, same card background as VoiceOverlayWindow (AC-237)"),
-            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#1AFFFFFF")] =
-                (1, "white hairline border at low alpha — colourless, same as VoiceOverlayWindow's own"),
+            [("src/Cockpit.App/Views/CockpitView.axaml", "#66000000")] =
+                (1, "black drop-shadow on AC-1305's consent notification, the same colourless kind as the one "
+                    + "above and heavier because that card floats over a conversation rather than over chrome"),
             [("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000")] =
-                (4, "black screen-dim scrim outside the selection rectangle, not tied to any theme colour"),
+                (4, "dims a picture of the operator's screen outside the selection — not a surface of the app, so no variant has a say (AC-860)"),
             [("src/Cockpit.App/Controls/ConsentBanner.axaml", "#66000000")] =
                 (1, "black drop-shadow, not tied to any theme colour"),
-            [("src/Cockpit.App/Controls/ConsentBannerHost.axaml", "#B3000000")] =
-                (1, "black modal scrim, not tied to any theme colour"),
-            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/NodeDialog.cs", "#B0000000")] =
-                (1, "black modal scrim behind the node dialog, not tied to any theme colour"),
             // The canvas's two non-accent kind stripes. A categorical palette, like the usage chart's: their only
             // job is to be told apart from each other and from the trigger's accent. Pointing them at status
             // tokens would give a decision node a colour this app reads as "blocked" — and the card's border is
@@ -85,17 +27,9 @@ public partial class ThemeHexColorGuardTests
                 (1, "the decision node's kind stripe — a categorical colour, not a status"),
             [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
                 (1, "the plain step's kind stripe — a neutral slate, deliberately hueless so it cannot be read as a faded accent"),
-
-            // AC-985: same argument as the whiteboard's other content files below — white paper, not UI chrome.
-            [("plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/WhiteboardControl.cs", "Brushes.White")] =
-                (1, "the default colour swatch's paper-white fill, whiteboard content like its neighbours in AllowedFiles"),
         };
 
-    /// <summary>
-    /// Files whose hex literals are not the cockpit's colour at all, because they are not drawing the cockpit.
-    /// Listed whole rather than literal by literal: everything in them is picture, so a per-literal allowance
-    /// would be the same reason repeated and would break on every edit to the picture.
-    /// </summary>
+    // Listed whole rather than per literal: everything in these files is picture, and a per-literal list breaks on every edit.
     private static readonly HashSet<string> AllowedFiles = new(StringComparer.Ordinal)
     {
         // The stand-in desktop the selection surface is rendered over headless (AC-357). Its colours are the
@@ -117,21 +51,10 @@ public partial class ThemeHexColorGuardTests
         // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
         "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
 
-        // The diagram plugin's sample render (AC-809): a fixed palette for Mermaider, not the cockpit's UI chrome.
-        "plugins-dev/Cockpit.Plugin.Diagram/DiagramWorkspaceBody.cs",
-
-        // The seven Mermaid render colours above, pulled into their own file at AC-911 so DiagramWorkspaceBody's
-        // own render and the template previews share one copy — same reason, new file.
-        "plugins-dev/Cockpit.Plugin.Diagram/DiagramTheme.cs",
-
-        // The whiteboard's own surface (AC-821/AC-822): white paper, a yellow pencil ink and a blue shape stroke,
-        // same argument as the workflow canvas's kind stripes above — a whiteboard's content is deliberately not
-        // theme-driven, the way a real sheet of paper stays white under any repaint of the app around it.
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/WhiteboardCanvasControl.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/FreehandLayer.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/ResizeHandle.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardSnapshotVisual.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardObjectPainter.cs",
+        // The whiteboard's own surface (AC-821/AC-822), one named palette since AC-860: white paper, a yellow pencil
+        // ink and a blue shape stroke — a whiteboard's content is deliberately not theme-driven, the way a real sheet
+        // of paper stays white under any repaint of the app around it.
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardPalette.cs",
 
         // The wireframe sketch's greys (AC-871): a wireframe must read as a sketch, never as a finished design, so
         // no product colour belongs in it. All eight literals are achromatic — no token to point at even in
@@ -208,7 +131,8 @@ public partial class ThemeHexColorGuardTests
             }
         }
 
-        Assert.Contains(("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"), found.Keys);
+        // A literal the scan is known to reach: proof the walk and the regex work before the empty-set check below.
+        Assert.Contains(("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000"), found.Keys);
 
         var unexpected = found
             .Where(entry => !AllowedLiterals.TryGetValue(entry.Key, out var allowed) || allowed.Occurrences != entry.Value)
@@ -219,12 +143,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Empty(unexpected);
     }
 
-    /// <summary>
-    /// Every <c>ThemeBrush.Resolve("XxxBrush", "#hex")</c> fallback must equal the value of <c>Theme.axaml</c>'s
-    /// matching <c>XxxColor</c> token (compared case-insensitively — the tokens are deliberately mixed-case), so a
-    /// future token-value change (another AC-334-style repaint) cannot drift from the fallback that fires for the
-    /// few callers that build their visuals outside Avalonia's styling system.
-    /// </summary>
+    // Compared against the dark value: a fallback fires when no theme is loaded, and dark is what the app starts in (AC-860).
     [Fact]
     public void ResolveFallback_MatchesThemeAxamlColorToken()
     {
@@ -274,10 +193,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Empty(mismatches);
     }
 
-    /// <summary>
-    /// Avalonia's colour parser also accepts the CSS 3- and 4-digit shorthand (<c>#f80</c>, <c>#f80c</c>), so the
-    /// hex regex has to catch those too, not only 6/8-digit hex.
-    /// </summary>
+    // Avalonia's colour parser also accepts the CSS 3- and 4-digit shorthand (#f80, #f80c), so the regex has to catch those too.
     [Fact]
     public void HexColorRegex_CatchesCssShorthand()
     {
@@ -287,10 +203,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Single(HexColorRegex().Matches("Background=\"#263b82f6\""));
     }
 
-    /// <summary>
-    /// The third spelling (AC-402): <c>Brushes.X</c>/<c>Colors.X</c> is caught regardless of which of the two
-    /// static classes it names, but <c>Transparent</c> is not a hardcoded colour and must not match.
-    /// </summary>
+    // AC-402: Brushes.X and Colors.X are both caught, but Transparent is not a hardcoded colour and must not match.
     [Fact]
     public void NamedFrameworkColorRegex_CatchesBrushesAndColorsButNotTransparent()
     {
@@ -299,12 +212,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Empty(NamedFrameworkColorRegex().Matches("Background = Brushes.Transparent"));
     }
 
-    /// <summary>
-    /// A named colour is bare code, so — unlike the hex regex, which is saved by the quoted-string check — a
-    /// mention in a doc comment (<c>Brushes.Orange</c>, right here in this sentence) would otherwise match. This is
-    /// the exact shape <c>ClusterRowControl.cs</c> has: a <c>&lt;c&gt;Brushes.Orange&lt;/c&gt;</c> in its XML doc
-    /// remarking on a colour it used to hardcode.
-    /// </summary>
+    // A named colour is bare code, so a mention in a doc comment would match — the shape ClusterRowControl.cs has in its XML doc.
     [Fact]
     public void NamedFrameworkColorMatches_IgnoresLineComments()
     {
@@ -314,12 +222,7 @@ public partial class ThemeHexColorGuardTests
             _NamedFrameworkColorMatches("Foreground = Brushes.Gray; // was Brushes.Orange before AC-402"));
     }
 
-    /// <summary>
-    /// The <c>ThemeBrush.Resolve(key, fallback)</c> exemption is expression-based, not line-based: a hex on the
-    /// same line as a legitimate call — but not itself that call's fallback argument — must still be caught. This
-    /// is the shape <c>MicLevelMeter.cs</c> already has (two <c>Resolve</c> calls sharing one line); the assertion
-    /// here is what would have caught a stray literal smuggled onto that same line.
-    /// </summary>
+    // The Resolve exemption is per expression, not per line: a stray literal beside a real call (MicLevelMeter.cs) is still caught.
     [Fact]
     public void NonExemptHexMatches_CatchesStrayLiteralOnAResolveLine()
     {
@@ -329,12 +232,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Equal(new[] { "#abcdef" }, _NonExemptHexMatches(line));
     }
 
-    /// <summary>
-    /// A plugin resolves through its own copy of the helper — <c>_Brush("key", "#hex")</c> — because a plugin is an
-    /// independently published artifact and does not share a type with the host for this. The exemption therefore
-    /// matches the call shape, and it has to reach that copy as well as the host's <c>ThemeBrush.Resolve</c>; a
-    /// literal that is not anyone's fallback argument still has to be caught on the same line.
-    /// </summary>
+    // A plugin keeps its own _Brush copy rather than a host type, so the exemption matches the call shape and reaches that copy.
     [Fact]
     public void NonExemptHexMatches_ReachesThePluginsOwnBrushHelper()
     {
@@ -344,11 +242,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Equal(new[] { "#5A9BD4" }, _NonExemptHexMatches(line));
     }
 
-    /// <summary>
-    /// The mismatch this whole guard exists for, asserted directly rather than only through the repo walk: a key
-    /// that names no token at all reports, instead of passing because there was nothing to compare against. This is
-    /// what session-review's <c>CockpitTextBrush</c> was doing — a lookup that could only ever return its literal.
-    /// </summary>
+    // Asserted directly: a key naming no token must report, not pass for lack of a comparison — CockpitTextBrush once did.
     [Fact]
     public void ResolveCallRegex_MatchesBothHelperShapes()
     {
@@ -357,12 +251,7 @@ public partial class ThemeHexColorGuardTests
         Assert.Single(ResolveCallRegex().Matches("""Brush("CockpitAccentBrush", "#3b82f6")"""));
     }
 
-    /// <summary>
-    /// Filters the hex literals on one source line down to the ones that are an actual hardcoded colour: a match
-    /// has to sit inside a quoted string (a bare <c>#34b</c> ticket reference in a <c>///</c>/<c>&lt;!-- --&gt;</c>
-    /// comment is prose, not a colour — see <c>SessionPanelViewModel</c>'s "(#35b)"), and it must not be the second,
-    /// quoted argument of a <c>ThemeBrush.Resolve("key", "fallback")</c> call — the one sanctioned fallback pattern.
-    /// </summary>
+    // A bare #34b in a comment is a ticket reference, not a colour, and Resolve's second argument is the one sanctioned fallback.
     private static IEnumerable<string> _NonExemptHexMatches(string line)
     {
         var quotedSpans = QuotedSpanRegex().Matches(line)
@@ -392,13 +281,7 @@ public partial class ThemeHexColorGuardTests
         }
     }
 
-    /// <summary>
-    /// Unlike a hex literal, a named framework colour is bare code — <c>Brushes.Gray</c>, no quotes — so it cannot
-    /// be told from prose by "is it inside a string". It can be told apart by comment position instead: this
-    /// codebase's doc comments are the reason a name like this shows up in a sentence at all (see this file's own
-    /// <c>NamedFrameworkColorRegex</c> doc), so anything from the first non-string <c>//</c> onward is prose, not
-    /// code.
-    /// </summary>
+    // A named colour is bare code, so quotes cannot tell it from prose; anything from the first non-string // onward is prose.
     private static IEnumerable<string> _NamedFrameworkColorMatches(string line)
     {
         var commentStart = _FindLineCommentStart(line);
@@ -431,8 +314,13 @@ public partial class ThemeHexColorGuardTests
 
     private static Dictionary<string, string> _ParseThemeColorTokens(string themeAxamlPath)
     {
+        // The Dark dictionary only: Theme.axaml declares every colour once per variant (AC-860), and a merged read
+        // would hand back whichever variant happens to be written last.
+        var dark = DarkDictionaryRegex().Match(File.ReadAllText(themeAxamlPath));
+        Assert.True(dark.Success, "Theme.axaml no longer carries a ResourceDictionary keyed \"Dark\" — the parse below would read nothing");
+
         var tokens = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (Match match in ThemeColorTokenRegex().Matches(File.ReadAllText(themeAxamlPath)))
+        foreach (Match match in ThemeColorTokenRegex().Matches(dark.Value))
         {
             tokens[match.Groups["key"].Value] = match.Groups["hex"].Value;
         }
@@ -443,33 +331,22 @@ public partial class ThemeHexColorGuardTests
     [GeneratedRegex(@"#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{3})\b")]
     private static partial Regex HexColorRegex();
 
-    /// <summary>
-    /// The same violation spelled in components rather than in hex: <c>Color.FromRgb(0x1A, 0x12, 0x0E)</c>. Autopilot
-    /// held nine of these — inks mixed for the pre-AC-334 orange, sitting on fills that had since moved — and the
-    /// hex-only rule could not see a single one. There is no sanctioned fallback form here: a fallback is written as
-    /// a hex string, so anything reaching this regex is a hardcoded colour or an exempt picture.
-    /// </summary>
+    // Autopilot held nine of these — inks mixed for the pre-AC-334 orange — and the hex-only rule could not see a single one.
     [GeneratedRegex(@"Color\.From(?:Rgb|Argb)\s*\([^)]*\)")]
     private static partial Regex ColorFromComponentsRegex();
 
-    /// <summary>
-    /// The third spelling (AC-402): a named framework colour, <c>Brushes.X</c> or <c>Colors.X</c>, used directly
-    /// instead of a theme token. <c>Transparent</c> is excluded — it names the absence of a colour, not one of the
-    /// cockpit's own, and both <c>StatusBrushConverter</c> and this file's own <c>_Brush</c>/<c>Brush</c> callers
-    /// legitimately fall back to it.
-    /// </summary>
+    // AC-402: Transparent is excluded — it names the absence of a colour, and StatusBrushConverter legitimately falls back to it.
     [GeneratedRegex(@"\b(?:Brushes|Colors)\.(?!Transparent\b)[A-Za-z]+\b")]
     private static partial Regex NamedFrameworkColorRegex();
 
-    /// <summary>
-    /// Both shapes of the one sanctioned fallback: the host's <c>ThemeBrush.Resolve(key, hex)</c> and the copy a
-    /// plugin keeps for itself, <c>_Brush(key, hex)</c> / <c>Brush(key, hex)</c>.
-    /// </summary>
     [GeneratedRegex("""(?:ThemeBrush\.Resolve|\b_?Brush)\(\s*"(?<key>[^"]+)"\s*,\s*"(?<hex>#[0-9A-Fa-f]{3,8})"\s*\)""")]
     private static partial Regex ResolveCallRegex();
 
     [GeneratedRegex("""<Color x:Key="(?<key>[^"]+)">(?<hex>#[0-9A-Fa-f]{3,8})</Color>""")]
     private static partial Regex ThemeColorTokenRegex();
+
+    [GeneratedRegex("""<ResourceDictionary x:Key="Dark">.*?</ResourceDictionary>""", RegexOptions.Singleline)]
+    private static partial Regex DarkDictionaryRegex();
 
     [GeneratedRegex("\"[^\"]*\"")]
     private static partial Regex QuotedSpanRegex();
@@ -480,10 +357,7 @@ public partial class ThemeHexColorGuardTests
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
-    /// <summary>
-    /// Everything the palette rule covers: the two host projects AC-334 repainted, plus every plugin AC-337 brought
-    /// in. Test projects are left out — a fixture may well name a colour to assert on one.
-    /// </summary>
+    // Test projects are left out: a fixture may well name a colour to assert on one.
     private static List<string> _ScannedFiles(string repositoryRoot)
     {
         var files = _SourceFiles(Path.Combine(repositoryRoot, "src", "Cockpit.App"))
@@ -507,9 +381,5 @@ public partial class ThemeHexColorGuardTests
     private static string _RepositoryPath(string repositoryRoot, string file) =>
         Path.GetRelativePath(repositoryRoot, file).Replace(Path.DirectorySeparatorChar, '/');
 
-    /// <summary>
-    /// The repository this test belongs to. Shared with the theme baseline in the view tests, which reads the same
-    /// tree from a different assembly — the second copy was written and then removed the same day.
-    /// </summary>
     private static string _LocateRepositoryRoot() => RepositoryPaths.Root;
 }

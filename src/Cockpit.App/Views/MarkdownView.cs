@@ -276,7 +276,7 @@ public sealed class MarkdownView : ContentControl
     // (design-time preview): nothing to compare, so nothing is ever discarded.
     private static Color? _CurrentPalette() =>
         Application.Current is { } app
-        && app.TryGetResource("CockpitTextPrimaryBrush", null, out var value)
+        && app.TryGetResource("CockpitTextPrimaryBrush", app.ActualThemeVariant, out var value)
         && value is ISolidColorBrush brush
             ? brush.Color
             : null;
@@ -712,15 +712,11 @@ public sealed class MarkdownView : ContentControl
     // fragment's rows alone, and a fragment with no header of its own (`block.Items` empty) draws none.
     private Control _Table(MarkdownBlock block, bool joinedAbove, bool joinedBelow, MarkdownView owner)
     {
-        var shared = joinedAbove || joinedBelow ? _SpannedColumnWidths(owner) : null;
-        var columns = shared?.Length ?? block.Items.Count;
-        var grid = new Grid();
-        for (var c = 0; c < columns; c++)
+        var grid = new TableGrid
         {
-            grid.ColumnDefinitions.Add(shared is null
-                ? new ColumnDefinition(GridLength.Auto)
-                : new ColumnDefinition(new GridLength(shared[c], GridUnitType.Pixel)));
-        }
+            Columns = block.Items.Count,
+            Shared = joinedAbove || joinedBelow ? _SpannedColumnWidths(owner) : null,
+        };
 
         var rowIndex = 0;
         if (block.Items.Count > 0)
@@ -745,10 +741,65 @@ public sealed class MarkdownView : ContentControl
     // text width needs added back before it becomes a column's own width.
     private const double TableCellChrome = 24;
 
+    // AC-1316: Auto columns measured cells at infinite width, so the wrapping every cell has never got a say and a
+    // wide table ran off the pane. Star weights from the natural widths, measured at no more than their sum (a table
+    // that fits stays pixel-identical), floored at the widest single word so only columns that can wrap take the squeeze.
+    private sealed class TableGrid : Grid
+    {
+        public required int Columns { get; init; }
+
+        // AC-1272: fixed for every fragment of a split table, so the seams stay aligned.
+        public required (double[] Widths, double[] Mins)? Shared { get; init; }
+
+        private double[]? _widths;
+        private double[]? _mins;
+
+        // Sized here, not when built: only in the layout pass are the cells attached and their fonts resolved.
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var (widths, mins) = Shared ?? _Natural();
+            if (_widths is null || !widths.SequenceEqual(_widths) || !mins.SequenceEqual(_mins!))
+            {
+                (_widths, _mins) = (widths, mins);
+                ColumnDefinitions.Clear();
+                for (var c = 0; c < widths.Length; c++)
+                {
+                    ColumnDefinitions.Add(new ColumnDefinition(widths[c], GridUnitType.Star) { MinWidth = mins[c] });
+                }
+            }
+
+            return base.MeasureOverride(availableSize.WithWidth(Math.Min(availableSize.Width, widths.Sum())));
+        }
+
+        // A cell past the header's columns is clamped into the last one, as the Grid itself does.
+        private (double[] Widths, double[] Mins) _Natural()
+        {
+            var widths = new double[Math.Max(Columns, 1)];
+            var mins = new double[widths.Length];
+            foreach (var cell in Children.OfType<Border>())
+            {
+                var c = Math.Min(GetColumn(cell), widths.Length - 1);
+                var text = (TextBlock)cell.Child!;
+                text.Measure(Size.Infinity);
+                widths[c] = Math.Max(widths[c], text.DesiredSize.Width + TableCellChrome);
+                foreach (var run in text.Inlines?.OfType<Run>() ?? [])
+                {
+                    var typeface = new Typeface(run.FontFamily, run.FontStyle, run.FontWeight);
+                    foreach (var word in (run.Text ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        mins[c] = Math.Max(mins[c], _TextWidth(word, typeface) + TableCellChrome);
+                    }
+                }
+            }
+
+            return (widths, mins);
+        }
+    }
+
     // AC-1272, route A2: a fragment's own Grid auto-sizes independently of its siblings', so two fragments of
     // one streamed table would otherwise misalign on the seam. Measuring every cell of the whole table once
     // and handing every fragment the same fixed widths keeps them aligned without realising any of them.
-    private static double[]? _SpannedColumnWidths(MarkdownView owner)
+    private static (double[] Widths, double[] Mins)? _SpannedColumnWidths(MarkdownView owner)
     {
         if ((owner.DataContext as ISpannedTableSource)?.SpannedTableText is not { Length: > 0 } whole
             || MarkdownParser.Parse(whole).LastOrDefault(b => b.Kind == MarkdownBlockKind.Table) is not { } table
@@ -758,31 +809,39 @@ public sealed class MarkdownView : ContentControl
         }
 
         var widths = new double[table.Items.Count];
-        _MeasureTableRow(table.Items, bold: true, widths);
+        var mins = new double[widths.Length];
+        _MeasureTableRow(table.Items, bold: true, widths, mins);
         foreach (var row in table.Rows)
         {
-            _MeasureTableRow(row, bold: false, widths);
+            _MeasureTableRow(row, bold: false, widths, mins);
         }
 
         for (var c = 0; c < widths.Length; c++)
         {
             widths[c] += TableCellChrome;
+            mins[c] += TableCellChrome;
         }
 
-        return widths;
+        return (widths, mins);
     }
 
-    private static void _MeasureTableRow(IReadOnlyList<IReadOnlyList<MarkdownInline>> row, bool bold, double[] widths)
+    private static void _MeasureTableRow(IReadOnlyList<IReadOnlyList<MarkdownInline>> row, bool bold, double[] widths, double[] mins)
     {
         var typeface = new Typeface(FontFamily.Default, weight: bold ? FontWeight.SemiBold : FontWeight.Normal);
         for (var c = 0; c < row.Count && c < widths.Length; c++)
         {
             var text = string.Concat(row[c].Select(inline => inline.Text));
-            var width = new FormattedText(
-                text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, 13, TextPrimary).Width;
-            widths[c] = Math.Max(widths[c], width);
+            widths[c] = Math.Max(widths[c], _TextWidth(text, typeface));
+            foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                mins[c] = Math.Max(mins[c], _TextWidth(word, typeface));
+            }
         }
     }
+
+    // Rounded up: a column floored at a fractional width can land a pixel short after layout rounding.
+    private static double _TextWidth(string text, Typeface typeface) => Math.Ceiling(
+        new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, 13, TextPrimary).Width);
 
     private void _AddTableRow(Grid grid, IReadOnlyList<IReadOnlyList<MarkdownInline>> cells, int rowIndex, bool isHeader)
     {

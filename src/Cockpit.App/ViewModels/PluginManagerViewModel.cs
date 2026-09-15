@@ -499,7 +499,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        if (await _dialogService.PickPluginStoreFolderAsync() is { } folder)
+        if (await _dialogService.PickFolderAsync("Choose a plugin store folder") is { } folder)
         {
             NewStoreFolder = folder;
         }

@@ -69,6 +69,7 @@ internal static class DepotMemorySource
             SignInAsync = host is null ? null : async cancellationToken =>
                 await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
             CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, value, cancellationToken),
+            AppendNoteAsync = host is null ? null : (value, note, cancellationToken) => _AppendNoteAsync(host, connection, value, note, cancellationToken),
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
         };
@@ -261,6 +262,31 @@ internal static class DepotMemorySource
                 _LogCheckFailure(host, connection, value, reason);
                 return ProjectMemorySourceReachabilityResult.CheckFailed(result.Error);
         }
+    }
+
+    // AC-492: where the host's quick notes land inside a Depot project. A fixed name at the root so a session that
+    // follows this source's Instruction finds them without being told; the file is created on first append.
+    internal const string NotesPath = "Inbox.md";
+
+    // AC-492: `append` is Depot's server-side atomic append — safe under concurrent writers, and the only Depot
+    // tool this writer may call: `write` would replace the file, which the contract forbids.
+    private static async Task<ProjectMemoryAppendResult> _AppendNoteAsync(
+        ICockpitHost host, DepotConnectionRegistration connection, string slug, string note, CancellationToken cancellationToken)
+    {
+        var result = await host.CallMcpToolAsync(
+            connection.McpServerName,
+            "append",
+            new Dictionary<string, object?> { ["project"] = slug, ["path"] = NotesPath, ["content"] = note },
+            // Same reasoning as _ListLocationsAsync: a Depot connection is shared, not project-scoped.
+            projectId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        return result.Outcome switch
+        {
+            PluginMcpToolCallOutcome.Success => ProjectMemoryAppendResult.Success,
+            PluginMcpToolCallOutcome.AuthorizationRequired => ProjectMemoryAppendResult.AuthorizationRequired,
+            _ => ProjectMemoryAppendResult.Failed(result.Error is { Length: > 0 } error ? error : "Depot did not accept the note."),
+        };
     }
 
     private static ProjectMemorySourceReachabilityResult _MatchReachability(

@@ -12,7 +12,7 @@
         WindowStartupLocation="CenterOwner"
         Topmost="{Binding AlwaysOnTop}"
         ExtendClientAreaToDecorationsHint="True"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <!-- AC-543 criterion 5/7: a pop-out onto the assistant's own standing conversation, not a pane in the
          workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),

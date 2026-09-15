@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
@@ -7,10 +8,6 @@ using Cockpit.Infrastructure.SessionBehavior;
 
 namespace Cockpit.Core.Tests.Layout;
 
-/// <summary>
-/// Load/save round-trip for the layout section of <c>cockpit.json</c>, plus the invariant that saving
-/// it leaves the sibling sections (notifications, session behaviour) intact.
-/// </summary>
 public class LayoutSettingsStoreTests : IDisposable
 {
     private readonly string _tempDir;
@@ -36,6 +33,9 @@ public class LayoutSettingsStoreTests : IDisposable
         Assert.Equal(LayoutSettings.DefaultDockRailWidth, settings.DockRailWidth);
         Assert.Null(settings.OpenDockPanelId);
         Assert.False(settings.AssistantDocked);
+
+        // AC-1301: an install that never chose opens in the panels stand, exactly as it did before the stand existed.
+        Assert.False(settings.OpenInSimpleView);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class LayoutSettingsStoreTests : IDisposable
     {
         var store = new LayoutSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, FocusRailLayout = true, MinimizeToTrayOnClose = true, SidebarWidth = 260, FocusRailWeight = 0.5, DockRailWidth = 420, OpenDockPanelId = "assistant", AssistantDocked = true });
+        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, FocusRailLayout = true, MinimizeToTrayOnClose = true, SidebarWidth = 260, FocusRailWeight = 0.5, DockRailWidth = 420, OpenDockPanelId = "assistant", AssistantDocked = true, OpenInSimpleView = true });
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.SingleSessionLayout);
@@ -55,6 +55,7 @@ public class LayoutSettingsStoreTests : IDisposable
         Assert.Equal(420, loaded.DockRailWidth);
         Assert.Equal("assistant", loaded.OpenDockPanelId);
         Assert.True(loaded.AssistantDocked);
+        Assert.True(loaded.OpenInSimpleView);
     }
 
     [Fact]
@@ -118,6 +119,19 @@ public class LayoutSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equal(LayoutSettings.MaxSidebarWidth, loaded.SidebarWidth);
+    }
+
+    // AC-1301 criterion 2: one stand for the whole cockpit, so it is written under `layout` and not per project —
+    // the variant that was weighed and turned down.
+    [Fact]
+    public async Task SaveAsync_WritesTheStandOnceUnderLayout()
+    {
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new LayoutSettings { OpenInSimpleView = true });
+        var json = JsonDocument.Parse(await File.ReadAllTextAsync(_configFilePath));
+
+        Assert.True(json.RootElement.GetProperty("Layout").GetProperty("OpenInSimpleView").GetBoolean());
     }
 
     [Fact]

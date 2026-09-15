@@ -35,6 +35,8 @@ internal sealed class WorkspacePaneEntry
 
     public string? ProjectId { get; set; }
 
+    public bool StartedByTheAssistant { get; set; }
+
     public static WorkspacePaneEntry FromDomain(WorkspacePane pane) => new()
     {
         Id = pane.Id,
@@ -51,6 +53,7 @@ internal sealed class WorkspacePaneEntry
         NameIsChosen = pane.NameIsChosen,
         SessionKind = pane.SessionKind.ToString(),
         ProjectId = pane.ProjectId,
+        StartedByTheAssistant = pane.StartedByTheAssistant,
     };
 
     // This entry as a domain record; spans are floored at one so a zero-span pane cannot render as invisible.
@@ -73,6 +76,7 @@ internal sealed class WorkspacePaneEntry
             NameIsChosen = NameIsChosen,
             SessionKind = sessionKind,
             ProjectId = ProjectId,
+            StartedByTheAssistant = StartedByTheAssistant,
         };
     }
 }

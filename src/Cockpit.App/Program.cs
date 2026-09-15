@@ -189,7 +189,8 @@ sealed class Program
         var lastRenderClockRecovery = Cockpit.App.Diagnostics.RenderClockRecovery.NeverRecovered;
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
-            var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
+            // Not from the container: teardown disposes it while the dispatcher still drains, and the net must not throw.
+            var logger = loggerFactory.CreateLogger("Cockpit.App.UIThread");
 
             // AC-1236: read the tree before anything else, while it still carries what the cut pass left unfinished.
             if (Cockpit.App.Diagnostics.RenderClockRecovery.IsCutOff(exceptionEvent.Exception))
@@ -198,20 +199,13 @@ sealed class Program
                     _OpenWindows(), Cockpit.App.Diagnostics.LayoutLoopReport.RecordPathFor(logPath), logger);
             }
 
-            if (logger is not null)
-            {
-                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
-            }
-            else
-            {
-                Console.Error.WriteLine($"Unhandled UI-thread exception caught by the global net; the cockpit stays up.\n{exceptionEvent.Exception}");
-            }
+            logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
 
             if (Cockpit.App.Diagnostics.RenderClockRecovery.ShouldRecover(
                     exceptionEvent.Exception, uptime.Elapsed - lastRenderClockRecovery))
             {
                 lastRenderClockRecovery = uptime.Elapsed;
-                logger?.LogWarning("renderclock restart requested after a cut-off layout pass (AC-1104).");
+                logger.LogWarning("renderclock restart requested after a cut-off layout pass (AC-1104).");
                 _RequestRenderClockRestart();
             }
 

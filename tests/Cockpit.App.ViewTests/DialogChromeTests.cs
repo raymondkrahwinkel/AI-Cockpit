@@ -7,14 +7,11 @@ using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Configuration;
+using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The window shell every dialog wears (AC-335). Two things had drifted: two dialogs never got the cockpit's own
-/// title bar and showed the OS one instead, and nine drew their name a second time inside their content — so the
-/// same word appeared twice, at two sizes, one above the other. These measure the real windows.
-/// </summary>
+// AC-335: two dialogs showed the OS title bar and nine drew their own name twice, so these measure the real windows.
 [Collection("avalonia")]
 public class DialogChromeTests
 {
@@ -361,10 +358,7 @@ public class DialogChromeTests
     private static TextBlock _Name(ProjectsDialog window) =>
         Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Projects");
 
-    private static Color _Colour(string key) =>
-        Avalonia.Application.Current?.TryFindResource(key, out var value) == true && value is Color colour
-            ? colour
-            : throw new InvalidOperationException($"The theme has no '{key}' — the dialog chrome is built on it.");
+    private static Color _Colour(string key) => ThemeTokens.Colour(key);
 
     private static List<TextBlock> _VisibleTextBlocks(Window window) =>
         window.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsVisible).ToList();

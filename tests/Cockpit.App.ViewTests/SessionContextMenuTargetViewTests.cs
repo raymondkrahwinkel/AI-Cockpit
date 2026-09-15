@@ -11,35 +11,7 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-561: a right-click's whole action set (Rename, Duplicate, Clear context, Set status, Resume later, Clear
-/// status, Move up, Move down, Close) routes through <see cref="CockpitView._InvokeSessionCommand"/> via each
-/// <c>MenuItem</c>'s <c>Click</c> handler. Reported symptom: Rename opened no field on the clicked row and a
-/// different session activated, for a user with several sessions open.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Measured, not assumed: a real headless mouse right-click, resolved through
-/// Avalonia's own hit-testing and <c>ContextRequested</c> pipeline (not a hand-picked sender), against a row picked
-/// out of the visual tree — repeated for a fresh list, after a full pointer-driven drag-reorder
-/// (<see cref="CockpitViewModel.MoveSessionToVisibleIndex"/>), and with a second Sessions workspace filtering
-/// <see cref="CockpitViewModel.VisibleSessions"/> — always resolved the <em>correct</em> row via
-/// <c>MenuItem.DataContext</c> (Popup DataContext inheritance, resolved at <c>ContextMenu.Open()</c>) in every one
-/// of those three conditions. So candidate 1 (a stale/misrouted DataContext on the menu item itself) is ruled out.
-/// </para>
-/// <para>
-/// The genuine, reproducible failure mode is candidate 2 and is exercised by
-/// <see cref="AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn"/>: an <em>already-open</em> context menu's
-/// owning <c>Border</c> was torn down and rebuilt — silently closing the Popup — the moment any reorder shifted
-/// <em>any</em> row's list position, even one the operator did not touch, because
-/// <c>CockpitViewModel.VisibleSessions</c> used to hand back a fresh snapshot on every read. Avalonia's own
-/// <c>ContextMenu.ControlDetachedFromVisualTree</c> closes the popup as soon as its owning control detaches, and a
-/// click aimed at a menu item that has just vanished this way falls through to whatever the sidebar now shows at
-/// that pixel — the "different session becomes active" half of the report. The fix makes
-/// <c>VisibleSessions</c> diff into a stable <c>ObservableCollection</c> with in-place Add/Remove/Move instead, so
-/// an unrelated row's container - and any Popup open on it - survives.
-/// </para>
-/// </remarks>
+// AC-561: reported as Rename opening no field on the clicked row and a different session activating, with several open.
 [Collection("avalonia")]
 public class SessionContextMenuTargetViewTests
 {
@@ -166,9 +138,12 @@ public class SessionContextMenuTargetViewTests
             window.Show();
             window.UpdateLayout();
 
+            // AC-1306: the strip is a workspace tree now, so Session 2 is on screen after all — under Desk2's own
+            // node, below Desk1's two. Which row a right-click lands on is what this test is about, and the row it
+            // has to land on is still the one at that pixel.
             var rows = _Rows(_Strip(view));
-            Assert.Equal(2, rows.Count);
-            var target = rows[1]; // second visible row = Session 3, the hidden Session 2 sits between them in Sessions
+            Assert.Equal(3, rows.Count);
+            var target = rows[1]; // second row under Desk1's node = Session 3; Desk2's node comes after both
             var expected = (SessionPanelViewModel)target.DataContext!;
             Assert.Equal("Session 3", expected.Title);
 
@@ -271,20 +246,7 @@ public class SessionContextMenuTargetViewTests
         });
     }
 
-    /// <summary>
-    /// AC-561's actual root cause, pinned down: before the fix, <c>VisibleSessions</c> returned a fresh
-    /// <c>List&lt;&gt;</c> on every read and every change fired one <c>OnPropertyChanged(nameof(VisibleSessions))</c>
-    /// - to Avalonia's binding system that reads as "everything is different", so the whole ItemsControl tore down
-    /// and rebuilt every row container, including ones an unrelated reorder never touched. A row's ContextMenu is a
-    /// Popup attached to its owning Border; Avalonia's own <c>ControlDetachedFromVisualTree</c> handler closes that
-    /// Popup the moment the Border is torn down - so an already-open menu on session 2 was silently closed by
-    /// moving session 3, and the next click landed on whatever the sidebar now showed underneath (the "different
-    /// session becomes active" half of the report). The fix (<see cref="CockpitViewModel"/>'s
-    /// <c>_SyncVisibleSessions</c>) diffs into the same <c>ObservableCollection</c> instance the ItemsControl is
-    /// bound to instead, so a row not part of the diff keeps its container - and its open Popup - alive.
-    /// Confirmed red against the pre-fix code and green against the fix, both by the builder and independently by
-    /// an adversarial review pass.
-    /// </summary>
+    // AC-561 root cause: a fresh VisibleSessions list on every read rebuilt every row, closing the Popup of any open menu.
     [Fact]
     public void AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn()
     {

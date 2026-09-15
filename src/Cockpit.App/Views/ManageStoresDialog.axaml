@@ -10,7 +10,7 @@
         Title="Manage plugin stores"
         Width="560" Height="560" MinWidth="440" MinHeight="360"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:PluginManagerViewModel/>
@@ -19,12 +19,12 @@
     <DockPanel>
 
         <!-- Footer: the manager's status line on the left, Close on the right. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
                            MaxWidth="360" TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 <Button Grid.Column="1" Content="Close" Click="OnClose"/>
             </Grid>
@@ -34,7 +34,7 @@
         <StackPanel DockPanel.Dock="Top" Margin="18,16,18,10" Spacing="10">
             <TextBlock Text="A store is an index.json listing plugins and workflow templates — a public or private repo, or a folder on this machine. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
                        FontSize="11.5" TextWrapping="Wrap"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
             <!-- Remote (public or private) vs. a local folder — the fields below follow the choice. -->
             <StackPanel Orientation="Horizontal" Spacing="18">
@@ -70,7 +70,7 @@
                        IsVisible="{Binding !StoreInfos.Count}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="300"
                        TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
 
             <ScrollViewer IsVisible="{Binding StoreInfos.Count}">
                 <ItemsControl ItemsSource="{Binding StoreInfos}">
@@ -81,13 +81,13 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:PluginStoreInfo">
-                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                     CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12,10">
                                 <Grid ColumnDefinitions="Auto,*,Auto">
 
                                     <Border Grid.Column="0" Width="40" Height="40" CornerRadius="9" ClipToBounds="True"
-                                            Background="{StaticResource CockpitPanelBgBrush}" VerticalAlignment="Center">
+                                            Background="{DynamicResource CockpitPanelBgBrush}" VerticalAlignment="Center">
                                         <Panel>
                                             <!-- The store's real logo when its index.json advertised one; otherwise
                                                  its own icon glyph, otherwise the default storefront icon. -->
@@ -109,26 +109,26 @@
                                             <!-- A private (token) or local store says so, so a glance tells them apart. -->
                                             <materialIcons:MaterialIcon Kind="Lock" Width="13" Height="13"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        IsVisible="{Binding IsPrivate}"
                                                        ToolTip.Tip="Private store — reached with a token"/>
                                             <materialIcons:MaterialIcon Kind="FolderOutline" Width="13" Height="13"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        IsVisible="{Binding IsLocal}"
                                                        ToolTip.Tip="Local folder store"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Url}" FontSize="11"
                                                    FontFamily="{StaticResource CockpitMonoFont}"
                                                    TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <TextBlock Text="{Binding CountText}" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     </StackPanel>
 
                                     <Button Grid.Column="2" Content="Remove" Classes="Subtle Compact"
                                             VerticalAlignment="Center"
-                                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                                             Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemoveStoreCommand}"
                                             CommandParameter="{Binding}"
                                             ToolTip.Tip="Remove this store from the catalogue"/>

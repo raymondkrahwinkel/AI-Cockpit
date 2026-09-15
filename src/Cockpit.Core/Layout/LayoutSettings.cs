@@ -48,6 +48,15 @@ public sealed record LayoutSettings
     // requiring the tray toggle every time.
     public bool CompanionWindowVisible { get; init; }
 
+    // Which stand the cockpit opens in (AC-1301): the Simple one — a single conversation filling the window —
+    // or the panels stand. Off by default, so an existing install opens exactly as it did. The Simple/Panels
+    // switch at the bottom of the left column changes what is on screen now and leaves this alone.
+    public bool OpenInSimpleView { get; init; }
+
+    // Which stand the theme follows (AC-860). Dark by default, so an existing install keeps its palette until the
+    // operator chooses otherwise.
+    public ThemeMode ThemeMode { get; init; } = ThemeMode.Dark;
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;

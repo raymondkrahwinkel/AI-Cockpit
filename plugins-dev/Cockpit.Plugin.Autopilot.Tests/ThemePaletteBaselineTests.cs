@@ -1,6 +1,4 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -17,18 +15,19 @@ public class ThemePaletteBaselineTests
 {
     private static readonly string[] SceneNames = ["workspace", "settings"];
 
-    public static TheoryData<string> Scenes => [.. SceneNames];
+    public static IEnumerable<object[]> Scenes =>
+        from scene in SceneNames from variant in ThemeVariants.Names select new object[] { scene, variant };
 
     private static string BaselineDirectory =>
         Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.Autopilot.Tests", "Baselines");
 
     [Theory]
     [MemberData(nameof(Scenes))]
-    public void AScene_PaintsNothingItsBaselineDoesNotAccountFor(string scene)
+    public void AScene_PaintsNothingItsBaselineDoesNotAccountFor(string scene, string variant)
     {
-        var painted = _Painted(scene);
+        var painted = ThemeVariants.Under(variant, () => _Painted(scene));
 
-        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene), painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene, variant), painted);
     }
 
     // The other direction (AC-414): the theory above walks the scenes, so a scene that goes away takes its test
@@ -43,8 +42,7 @@ public class ThemePaletteBaselineTests
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun()
     {
-        var primary = (Color)(Application.Current?.FindResource("CockpitTextPrimaryColor")
-            ?? throw new InvalidOperationException("The theme has no CockpitTextPrimaryColor."));
+        var primary = ThemeTokens.Colour("CockpitTextPrimaryColor");
 
         var painted = _Painted("settings");
 

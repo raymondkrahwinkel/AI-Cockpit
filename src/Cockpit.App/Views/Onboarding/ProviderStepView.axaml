@@ -11,6 +11,50 @@
     <Design.DataContext>
         <vm:ProviderStepViewModel/>
     </Design.DataContext>
+    <UserControl.Resources>
+        <!-- One provider row, used by both lists below (found and the rest): the two differ in which rows they
+             hold, never in how a row reads, so there is one template and not one per heading. -->
+        <DataTemplate x:Key="ProviderRow" x:DataType="vm:ProviderPickerRowViewModel">
+            <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
+                <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Row.Name}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"/>
+
+                        <!-- Criterion 1: found is shown differently from not-found, and neither ever claims the provider works. -->
+                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
+                                IsVisible="{Binding ShowDetectionPill}" BorderThickness="1" VerticalAlignment="Center"
+                                BorderBrush="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
+                            <TextBlock Text="{Binding DetectionLabel}" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                        </Border>
+
+                        <!-- Criterion 2, "incompatible" — shown proactively, the same computation the plugin store already uses. -->
+                        <TextBlock Text="Not compatible with this build" FontSize="10.5" FontWeight="SemiBold"
+                                   IsVisible="{Binding Row.IsIncompatible}"
+                                   ToolTip.Tip="{Binding Row.IncompatibilityReason}"
+                                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
+                        <!-- Criterion 2, "already installed" — shown proactively too, from the same discovery the plugin store reads. -->
+                        <TextBlock Text="{Binding Row.StatusText}" FontSize="10.5"
+                                   IsVisible="{Binding Row.IsInstalled}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Row.Description}" TextWrapping="Wrap" FontSize="11"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="28,0,0,0"/>
+
+                    <!-- The remaining two of the four outcomes (offline is above; incompatible/installed are the
+                         proactive lines above) land here once InstallSelectedCommand's batch result comes back. -->
+                    <TextBlock Text="{Binding OutcomeText}" IsVisible="{Binding HasOutcome}"
+                               TextWrapping="Wrap" FontSize="11" Margin="28,0,0,0"
+                               Foreground="{Binding OutcomeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <!-- AC-510[b]: what the operator already has, observed where possible (criterion 1); the four ways an install
          can land (criterion 2); offline as a first-class, non-error state with the local providers still working
@@ -20,15 +64,15 @@
 
         <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
             <TextBlock Text="Add AI providers" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Optional — install one now, or skip and add it later from the plugin store. &quot;Found&quot; only means a matching command exists on this machine; whether it is logged in is something only the provider itself can tell you, after it is installed."/>
         </StackPanel>
 
         <!-- Always shown, on any network (criterion 3): the two core local providers need neither an install nor internet. -->
-        <Border Grid.Row="1" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+        <Border Grid.Row="1" Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8" Margin="0,0,0,10">
-            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}">
+            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}">
                 <Run Text="Already available, right now: "/>
                 <Run Text="{Binding LocalProvidersText}" FontWeight="SemiBold"/>
                 <Run Text=" — both run entirely on this machine, no install and no internet needed."/>
@@ -37,12 +81,12 @@
 
         <Panel Grid.Row="2">
             <TextBlock Text="Checking your configured plugin store…" IsVisible="{Binding IsLoading}"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"/>
 
             <!-- Offline / store unreachable (criterion 3): a plain statement of fact, not styled as an error —
                  the note above already said the local providers work regardless. -->
-            <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                    Background="{StaticResource CockpitSecondaryBgBrush}"
+            <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    Background="{DynamicResource CockpitSecondaryBgBrush}"
                     CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,10" VerticalAlignment="Top">
                 <Border.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -53,14 +97,14 @@
                 <StackPanel Spacing="4">
                     <TextBlock Text="Couldn't reach the plugin store" FontWeight="SemiBold" FontSize="12.5"/>
                     <TextBlock Text="{Binding OfflineMessage}" TextWrapping="Wrap" FontSize="11.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                Text="No internet, no cloud providers to add — Ollama and LM Studio above are unaffected, and you can add a provider any time later from the plugin store."/>
                 </StackPanel>
             </Border>
 
             <TextBlock Text="Your configured plugin store doesn't list any AI providers right now."
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12">
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12">
                 <TextBlock.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
                         <Binding Path="!IsLoading"/>
@@ -78,62 +122,34 @@
                         <Binding Path="HasProviders"/>
                     </MultiBinding>
                 </ScrollViewer.IsVisible>
-                <ItemsControl ItemsSource="{Binding Providers}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="6"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ProviderPickerRowViewModel">
-                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
-                                <StackPanel Spacing="3">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Row.Name}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"/>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Found on this machine" FontWeight="SemiBold" FontSize="12"
+                               IsVisible="{Binding HasFoundProviders}"/>
+                    <ItemsControl ItemsSource="{Binding FoundProviders}" ItemTemplate="{StaticResource ProviderRow}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
 
-                                        <!-- Criterion 1: found is shown differently from not-found, and neither ever claims the provider works. -->
-                                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
-                                                IsVisible="{Binding ShowDetectionPill}" BorderThickness="1" VerticalAlignment="Center"
-                                                BorderBrush="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
-                                            <TextBlock Text="{Binding DetectionLabel}" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                        </Border>
-
-                                        <!-- Criterion 2, "incompatible" — shown proactively, the same computation the plugin store already uses. -->
-                                        <TextBlock Text="Not compatible with this build" FontSize="10.5" FontWeight="SemiBold"
-                                                   IsVisible="{Binding Row.IsIncompatible}"
-                                                   ToolTip.Tip="{Binding Row.IncompatibilityReason}"
-                                                   Foreground="{StaticResource CockpitStatusErrorBrush}"/>
-
-                                        <!-- Criterion 2, "already installed" — shown proactively too, from the same discovery the plugin store reads. -->
-                                        <TextBlock Text="{Binding Row.StatusText}" FontSize="10.5"
-                                                   IsVisible="{Binding Row.IsInstalled}"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                    </StackPanel>
-
-                                    <TextBlock Text="{Binding Row.Description}" TextWrapping="Wrap" FontSize="11"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="28,0,0,0"/>
-
-                                    <!-- The remaining two of the four outcomes (offline is above; incompatible/installed are the
-                                         proactive lines above) land here once InstallSelectedCommand's batch result comes back. -->
-                                    <TextBlock Text="{Binding OutcomeText}" IsVisible="{Binding HasOutcome}"
-                                               TextWrapping="Wrap" FontSize="11" Margin="28,0,0,0"
-                                               Foreground="{Binding OutcomeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    <TextBlock Text="Available to add" FontWeight="SemiBold" FontSize="12"
+                               IsVisible="{Binding HasOtherProviders}"/>
+                    <ItemsControl ItemsSource="{Binding OtherProviders}" ItemTemplate="{StaticResource ProviderRow}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
             </ScrollViewer>
         </Panel>
 
         <StackPanel Grid.Row="3" Spacing="6" Margin="0,10,0,0">
             <TextBlock Text="{Binding SummaryMessage}" TextWrapping="Wrap" FontSize="11.5"
                        IsVisible="{Binding SummaryMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             <Button Content="Install selected" Classes="Accent" HorizontalAlignment="Left"
                     Command="{Binding InstallSelectedCommand}"
                     IsVisible="{Binding HasProviders}"/>

@@ -27,11 +27,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// Starting a session from a project (AC-164): the sidebar's ▶ and its context menu. The quick start itself is
-/// <see cref="ProjectQuickStart"/>'s; what is exercised here is that the cockpit launches what it composes and
-/// asks the operator when it composes nothing.
-/// </summary>
+// AC-164: the quick start itself is ProjectQuickStart's; here the cockpit launches what it composes and asks when it has none.
 public class CockpitViewModelProjectStartTests
 {
     [Fact]
@@ -240,6 +236,36 @@ public class CockpitViewModelProjectStartTests
         // it, and where projects come from is about to widen beyond this machine.
         await dialogs.Received(1).ShowProjectsDialogAsync(projects);
         await dialogs.DidNotReceive().ShowOptionsDialogAsync(Arg.Any<CockpitViewModel>());
+    }
+
+    // AC-493 criterion 2: a recurring job is a reminder, not a trigger — opening the cockpit starts nothing (Raymond's correction).
+    [Fact]
+    public async Task ProjectsWhoseRecurringJobsLastCameRoundLongAgo_StartNothingOnTheirOwn()
+    {
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var overdue = Enumerable.Range(1, 5)
+            .Select(week => Project.Create($"Invoices {week}") with
+            {
+                DefaultProfileLabel = "work",
+                Jobs =
+                [
+                    new ProjectJob("Process this month's invoices", "changes nothing · reports only",
+                        new JobRecurrence(week, DayOfWeek.Monday)),
+                ],
+            })
+            .ToList();
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [.. overdue] });
+        var projects = new ProjectsViewModel(store, dialogs);
+        await projects.LoadAsync();
+
+        var vm = NewVm(dialogs, projects: projects);
+
+        // Not one session, and not one dialog either — "it is due anyway, so run it" is the simplest wrong
+        // implementation and the only one this catches.
+        Assert.Empty(vm.Sessions);
+        await dialogs.DidNotReceive().ShowNewSessionDialogAsync(
+            Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>());
     }
 
     private static NewSessionResult Confirmed() => new(

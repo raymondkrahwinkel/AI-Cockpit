@@ -91,14 +91,14 @@ public sealed class WhiteboardControl : UserControl
 
     // A swatch row, not a colour picker (AC4) — one flyout of buttons, the same shape _BuildShapeFlyout already
     // uses for shape templates. Picking a swatch sets what gets drawn/placed next and recolours the selection, if
-    // any. AC-982: leads with a default swatch (SetColor(null)) — never WhiteboardObjectPainter.PlacedColor.
+    // any. AC-982: leads with a default swatch (SetColor(null)) — never WhiteboardPalette.PlacedColor.
     private Flyout _BuildColorFlyout()
     {
         var flyout = new Flyout();
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4) };
 
         row.Children.Add(_ColorSwatchButton(flyout, null));
-        foreach (var hex in WhiteboardObjectPainter.Palette)
+        foreach (var hex in WhiteboardPalette.Swatches)
         {
             row.Children.Add(_ColorSwatchButton(flyout, hex));
         }
@@ -117,7 +117,7 @@ public sealed class WhiteboardControl : UserControl
             CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(2),
             BorderBrush = Brushes.Transparent,
-            Background = hex is null ? Brushes.White : new SolidColorBrush(Color.Parse(hex)),
+            Background = hex is null ? WhiteboardPalette.Paper : new SolidColorBrush(Color.Parse(hex)),
             Tag = hex,
         };
 

@@ -60,7 +60,7 @@ public sealed class MarkdownBlockReuseTests
             var (built, rendered) = await _Stream(start, start + "| two | official |\n");
 
             Assert.Same(built, Assert.Single(rendered.Children));
-            var grid = Assert.IsType<Grid>(Assert.IsAssignableFrom<Border>(built).Child);
+            var grid = Assert.IsAssignableFrom<Grid>(Assert.IsAssignableFrom<Border>(built).Child);
 
             // Header row plus both body rows, in the grid that was there before the second row arrived.
             Assert.Equal(3, grid.RowDefinitions.Count);

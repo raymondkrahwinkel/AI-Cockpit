@@ -11,6 +11,11 @@ public sealed record WorkspaceSettings
     // The active workspace's `Workspace.Id`. Null, or an id no workspace carries, resolves to the first one.
     public string? ActiveWorkspaceId { get; init; }
 
+    // AC-1306: the workspace nodes the panels sidebar's session tree shows collapsed. Here rather than on
+    // `Workspace` because it is one strip's view state, not part of what a desk is — and here rather than in a
+    // store of its own, since it has to survive a restart alongside the desks it names.
+    public IReadOnlyList<string> CollapsedSidebarWorkspaceIds { get; init; } = [];
+
     // A Sessions workspace and the projects overview, sessions active. One instance, not minted fresh per access.
     // AC-1013: trimmed — a getter calling `Workspace.Create` minted a new id per read, so view-model and store
     // defaults diverged — see ticket.
@@ -59,7 +64,13 @@ public sealed record WorkspaceSettings
             ? overview
             : ordered.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? ordered[0];
 
-        return new WorkspaceSettings { Workspaces = ordered, ActiveWorkspaceId = active.Id };
+        // Collapsed ids of desks that are gone are dropped here rather than carried forever: a reused id would
+        // otherwise open a brand-new desk collapsed.
+        return (this with
+        {
+            Workspaces = ordered,
+            CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds.Where(id => ordered.Any(workspace => workspace.Id == id))],
+        }).WithActive(active.Id);
     }
 
     // These settings with `workspace` appended and made active. Adding a second projects
@@ -67,7 +78,7 @@ public sealed record WorkspaceSettings
     public WorkspaceSettings WithWorkspace(Workspace workspace) =>
         workspace.Type == WorkspaceType.Projects && Workspaces.Any(existing => existing.Type == WorkspaceType.Projects)
             ? this
-            : new() { Workspaces = [.. Workspaces, workspace], ActiveWorkspaceId = workspace.Id };
+            : (this with { Workspaces = [.. Workspaces, workspace] }).WithActive(workspace.Id);
 
     // These settings with `workspaceId` removed. Removing the active one selects its neighbour (next, else
     // previous), matching how closing a session picks the next selection. Removing the last workspace, or the
@@ -85,16 +96,42 @@ public sealed record WorkspaceSettings
             ? remaining[Math.Min(index, remaining.Count - 1)].Id
             : ActiveWorkspaceId;
 
-        return new WorkspaceSettings { Workspaces = remaining, ActiveWorkspaceId = active };
+        return (this with
+        {
+            Workspaces = remaining,
+            CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds.Where(id => id != workspaceId)],
+        }).WithActive(active ?? remaining[0].Id);
     }
 
     // These settings with `workspace` swapped in by id (a no-op when it holds no such workspace).
     public WorkspaceSettings WithUpdated(Workspace workspace) =>
         this with { Workspaces = [.. Workspaces.Select(existing => existing.Id == workspace.Id ? workspace : existing)] };
 
-    // These settings with `workspaceId` active (a no-op when it holds no such workspace).
+    // These settings with `workspaceId` active (a no-op when it holds no such workspace). Every route that walks
+    // to another desk goes through here — the tab strip, the sidebar tree, the Ctrl+Shift+arrows and the add/close
+    // helpers above — so the two rules below hold wherever the operator switched from.
     public WorkspaceSettings WithActive(string workspaceId) =>
-        _IndexOf(workspaceId) < 0 ? this : this with { ActiveWorkspaceId = workspaceId };
+        _IndexOf(workspaceId) < 0
+            ? this
+            : this with
+            {
+                ActiveWorkspaceId = workspaceId,
+                // AC-1306: walking to a desk opens its node in the sidebar tree. A collapsed active node hides
+                // exactly the sessions just switched to, so the tree would stop pointing at where you are.
+                CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds.Where(id => id != workspaceId)],
+            };
+
+    // AC-1306: these settings with `workspaceId`'s sidebar node collapsed or expanded. Collapsing is the one
+    // gesture that does not walk anywhere — see the chevron in `CockpitView.axaml`.
+    public WorkspaceSettings WithSidebarCollapsed(string workspaceId, bool collapsed) =>
+        _IndexOf(workspaceId) < 0 || collapsed == CollapsedSidebarWorkspaceIds.Contains(workspaceId)
+            ? this
+            : this with
+            {
+                CollapsedSidebarWorkspaceIds = collapsed
+                    ? [.. CollapsedSidebarWorkspaceIds, workspaceId]
+                    : [.. CollapsedSidebarWorkspaceIds.Where(id => id != workspaceId)],
+            };
 
     // These settings with `workspaceId` moved to `targetIndex` in the tab strip, closing the gap behind it.
     // Selection is untouched — reordering rearranges the desks, it does not walk you to a different one.
@@ -131,7 +168,7 @@ public sealed record WorkspaceSettings
 
         var current = Math.Max(0, _IndexOf(Active?.Id ?? string.Empty));
         var next = ((current + direction) % Workspaces.Count + Workspaces.Count) % Workspaces.Count;
-        return this with { ActiveWorkspaceId = Workspaces[next].Id };
+        return WithActive(Workspaces[next].Id);
     }
 
     private int _IndexOf(string workspaceId)

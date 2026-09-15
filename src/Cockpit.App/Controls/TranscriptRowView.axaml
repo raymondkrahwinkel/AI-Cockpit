@@ -19,12 +19,12 @@
         <DataTemplate x:Key="ClampedOutputFooter" DataType="vm:TranscriptEntryViewModel">
             <StackPanel Spacing="2" Margin="0,2,0,0">
                 <TextBlock Text="{Binding TruncationNotice}" FontSize="10.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 <Button Content="Show full result" Classes="Subtle Compact" HorizontalAlignment="Left"
                         Command="{Binding LoadFullResultCommand}"
                         ToolTip.Tip="Reads the whole result back from the CLI's own session transcript"/>
                 <TextBlock Text="{Binding FullResultNotice}" FontSize="10.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                            IsVisible="{Binding FullResultNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             </StackPanel>
         </DataTemplate>
@@ -53,7 +53,7 @@
                  Suppressed for user and tool-use rows (AC-144): those carry the timestamp
                  inline in their own header line, so the top label would double it. -->
             <TextBlock Text="{Binding TimestampText}" FontSize="10"
-                       Foreground="{StaticResource CockpitTextFaintBrush}">
+                       Foreground="{DynamicResource CockpitTextFaintBrush}">
                 <TextBlock.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
                         <Binding Path="Session.ShowTimestamps"/>
@@ -76,7 +76,7 @@
                      sits above the bubble here and nowhere else. -->
                 <Button Classes="Subtle Compact" Click="_OnJumpToReplyTargetClick"
                         IsVisible="{Binding HasReplyTo}" HorizontalAlignment="Right"
-                        Foreground="{StaticResource CockpitTextFaintBrush}"
+                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                         ToolTip.Tip="Jump to the message this replies to">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="11" Height="11"/>
@@ -90,10 +90,10 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
                                        HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                        IsVisible="{Binding Session.ShowTimestamps}"/>
                             <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         </Grid>
                         <!-- AC-936: PreserveLineBreaks so a Shift+Enter'd chat message keeps its lines apart
                              instead of collapsing to CommonMark's single-space join — the only call site
@@ -107,7 +107,7 @@
                              longer available) simply shows no chip. -->
                         <Button Classes="Subtle Compact" Click="_OnImagesClick"
                                 IsVisible="{Binding HasImages}" HorizontalAlignment="Right"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Open the images from this message">
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="13" Height="13"/>
@@ -124,19 +124,19 @@
                             Command="{Binding Session.SetReplyTargetCommand}"
                             CommandParameter="{Binding}"
                             Click="_OnReplyClick"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Reply to this message">
                         <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
                     </Button>
                     <Button x:Name="UserRowCopyButton" Classes="Subtle Compact" Click="_OnCopyMessageClick"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Copy this message">
                         <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
                     </Button>
                     <!-- AC-935: this message has at least one reply — jumps to the latest one. -->
                     <Button Classes="Subtle Compact" Click="_OnJumpToLatestReplyClick"
                             IsVisible="{Binding HasReplies}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Jump to the reply">
                         <materialIcons:MaterialIcon Kind="CommentArrowRightOutline" Width="13" Height="13"/>
                     </Button>
@@ -170,7 +170,7 @@
                     <StackPanel Spacing="4">
                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="transcript"/>
                         <TextBlock Text="{Binding RetryAfterText}" IsVisible="{Binding HasRetryAfter}"
-                                   FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -186,12 +186,12 @@
                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
             <Grid ColumnDefinitions="*,Auto,*" Margin="0,8">
                 <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
-                        Background="{StaticResource CockpitHairlineBrush}"/>
+                        Background="{DynamicResource CockpitHairlineBrush}"/>
                 <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="dividerLabel" Margin="10,0" FontSize="10.5"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
-                        Background="{StaticResource CockpitHairlineBrush}"/>
+                        Background="{DynamicResource CockpitHairlineBrush}"/>
             </Grid>
                 </DataTemplate>
               </ContentControl.DataTemplates>
@@ -213,7 +213,7 @@
                         Opacity="{Binding ReplyBadgeOpacity}">
                     <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
@@ -242,19 +242,19 @@
                                 Command="{Binding Session.SetReplyTargetCommand}"
                                 CommandParameter="{Binding}"
                                 Click="_OnReplyClick"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Reply to this message">
                             <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
                         </Button>
                         <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Copy this reply">
                             <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
                         </Button>
                         <!-- AC-935: this message has at least one reply — jumps to the latest one. -->
                         <Button Classes="Subtle Compact" Click="_OnJumpToLatestReplyClick"
                                 IsVisible="{Binding HasReplies}"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Jump to the reply">
                             <materialIcons:MaterialIcon Kind="CommentArrowRightOutline" Width="13" Height="13"/>
                         </Button>
@@ -284,7 +284,7 @@
                 </Button>
                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                      Classes="toolBody" FontStyle="Italic"
-                                     Foreground="{StaticResource CockpitTextFaintBrush}"
+                                     Foreground="{DynamicResource CockpitTextFaintBrush}"
                                      IsVisible="{Binding IsExpanded}"/>
             </StackPanel>
                 </DataTemplate>
@@ -332,7 +332,7 @@
                     <Border IsVisible="{Binding HasPlainConsentPaths}" Classes="paneChrome" Padding="8,6">
                         <SelectableTextBlock Text="{Binding PlainConsentPathsText}" TextWrapping="Wrap"
                                              Classes="toolBody"
-                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                             Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </Border>
                 </StackPanel>
 
@@ -348,7 +348,7 @@
                     </Button>
                     <SelectableTextBlock IsVisible="{Binding ShowConsentCommand}" Text="{Binding Text}"
                                          TextWrapping="Wrap" Classes="toolBody"
-                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                         Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
 
                 <!-- AC-715: an AskUserQuestion rides the permission callback like any other tool,
@@ -360,10 +360,10 @@
                     <DataTemplate DataType="vm:TranscriptEntryViewModel">
                 <Border ClipToBounds="True"
                         CornerRadius="{StaticResource CockpitControlRadius}"
-                        Background="{StaticResource CockpitPanelBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                        Background="{DynamicResource CockpitPanelBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                     <DockPanel>
-                        <Border DockPanel.Dock="Left" Width="3" Background="{StaticResource CockpitAccentBrush}"/>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{DynamicResource CockpitAccentBrush}"/>
                         <StackPanel Margin="11,9,11,10" Spacing="9">
                             <!-- One card, one block per question (1-4 per call) and one Send at the
                                  bottom: four cards for one round-trip would be four things to scroll
@@ -381,11 +381,11 @@
                                                 <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="HelpCircleOutline"
                                                                             Width="14" Height="14" Margin="0,1,7,0"
                                                                             VerticalAlignment="Top"
-                                                                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                            Foreground="{DynamicResource CockpitAccentBrush}"/>
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Header}"
                                                            IsVisible="{Binding HasHeader}" Margin="8,0,0,0"
                                                            VerticalAlignment="Top" FontSize="11"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                 <SelectableTextBlock Text="{Binding Question}" TextWrapping="Wrap"
                                                                      FontWeight="SemiBold" FontSize="12.5"/>
                                             </DockPanel>
@@ -410,14 +410,14 @@
                                                                          that is sometimes blank for no visible reason. -->
                                                                     <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="13" Height="13"
                                                                                                 VerticalAlignment="Center"
-                                                                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
                                                                 </Panel>
                                                                 <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold"
                                                                            VerticalAlignment="Center"/>
                                                                 <TextBlock Grid.Column="2" Text="{Binding Description}" Margin="8,0,0,0"
                                                                            IsVisible="{Binding HasDescription}" TextWrapping="Wrap"
                                                                            VerticalAlignment="Center"
-                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                             </Grid>
                                                         </Button>
                                                     </DataTemplate>
@@ -436,7 +436,7 @@
                                                         <Panel Grid.Column="0" Width="13" Margin="0,0,7,0">
                                                             <materialIcons:MaterialIcon Kind="{Binding OtherIconKind}" Width="13" Height="13"
                                                                                         VerticalAlignment="Center"
-                                                                                        Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
                                                         </Panel>
                                                         <TextBlock Grid.Column="1" Text="Other, namely…" FontWeight="SemiBold"
                                                                    VerticalAlignment="Center"/>
@@ -447,7 +447,7 @@
                                                 <TextBox Grid.Column="1" Text="{Binding OtherText}" Margin="8,0,0,0"
                                                          IsReadOnly="{Binding IsAnswered}" AcceptsReturn="False"
                                                          PlaceholderText="Type your own answer"
-                                                         Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                                         Background="{DynamicResource CockpitSecondaryBgBrush}"/>
                                             </Grid>
                                         </StackPanel>
                                     </DataTemplate>
@@ -495,25 +495,25 @@
                              the raw input JSON, which is folded away until the operator expands the row. -->
                         <Border IsVisible="{Binding IsBackgroundTool}" VerticalAlignment="Center"
                                 Padding="6,1" CornerRadius="{StaticResource CockpitControlRadius}"
-                                Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                             <TextBlock Text="{Binding BackgroundStatusText}" FontSize="10.5"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </Border>
                         <TextBlock Text="{Binding PermissionDecision}" VerticalAlignment="Center"
                                    FontStyle="Italic" FontSize="11"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="{Binding TimestampText}" FontSize="10"
                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                IsVisible="{Binding Session.ShowTimestamps}"/>
                 </Grid>
                 <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                          Classes="toolBody"
-                                         Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                         Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
                         <Border IsVisible="{Binding ResultIsCodeLike}" Classes="codeBox">
                             <Grid>
@@ -527,7 +527,7 @@
                         </Border>
                         <SelectableTextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
                                              Classes="toolBody"
-                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                             Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                              IsVisible="{Binding !ResultIsCodeLike}"/>
                         <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
                                         IsVisible="{Binding IsTruncated}"/>
@@ -566,7 +566,7 @@
                             <Border Classes="transcriptRow" Padding="6,4" CornerRadius="{StaticResource CockpitControlRadius}">
                                 <StackPanel Spacing="4">
                                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="transcript"
-                                                         FontStyle="Italic" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                         FontStyle="Italic" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                          IsVisible="{Binding IsPlainText}"/>
 
                                     <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
@@ -582,22 +582,22 @@
                                                 <!-- AC-1056: same background badge as the top-level chip; a sub-agent lets go of tasks too. -->
                                                 <Border IsVisible="{Binding IsBackgroundTool}" VerticalAlignment="Center"
                                                         Padding="6,1" CornerRadius="{StaticResource CockpitControlRadius}"
-                                                        Background="{StaticResource CockpitSecondaryBgBrush}"
-                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                                        Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                                                     <TextBlock Text="{Binding BackgroundStatusText}" FontSize="10.5"
-                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 </Border>
                                             </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{Binding PermissionDecision}" VerticalAlignment="Center"
                                                        FontStyle="Italic" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </Grid>
                                         <StackPanel IsVisible="{Binding IsExpanded}" Spacing="4" Margin="14,2,0,2">
                                             <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
-                                                                 Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                             <SelectableTextBlock Text="{Binding ResultDisplayText}" TextWrapping="Wrap"
-                                                                 Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                 Classes="toolBody" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                                  IsVisible="{Binding HasResult}"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
                                                             IsVisible="{Binding IsTruncated}"/>
@@ -631,9 +631,9 @@
                                         </Button>
                                         <StackPanel IsVisible="{Binding IsExpanded}" Spacing="0">
                                             <TextBlock Text="{Binding ToolResultPrefix}" Classes="toolBody"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
-                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                 Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
                                                             IsVisible="{Binding IsTruncated}"/>
                                         </StackPanel>
@@ -659,10 +659,10 @@
                 </Button>
                 <StackPanel IsVisible="{Binding IsExpanded}" Spacing="0">
                     <TextBlock Text="{Binding ToolResultPrefix}" Classes="toolBody"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                Classes="toolBody"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
                                     IsVisible="{Binding IsTruncated}"/>
                 </StackPanel>

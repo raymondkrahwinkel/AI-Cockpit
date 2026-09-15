@@ -186,6 +186,18 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _isDocked;
 
+    // AC-1301: whether that host is the Simple stand's conversation column — the third one, beside the floating
+    // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
+    // down here: undocking would pop the conversation out and leave the column it fills empty.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsStartOffer))]
+    private bool _isSimpleViewHost;
+
+    // AC-1316: whether the start offer — the project cards, or the starting points on an empty cockpit — stands in
+    // the transcript's place. Only in the Simple stand's column: the window and the dock keep their plain empty
+    // state. The cockpit answers when (AC-1304's three doors); this only says which host draws it.
+    public bool ShowsStartOffer => IsSimpleViewHost && (_cockpit?.SimpleStandShowsTheStartScreen ?? false);
+
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
     // model, and the transcript comes from the session: the scroll offset is the only thing a fresh view per host would
     // otherwise lose (AC-953).
@@ -228,7 +240,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (_cockpit is not null)
         {
             _cockpit.Sessions.CollectionChanged += _OnCockpitSessionsChanged;
+            _cockpit.PropertyChanged += _OnCockpitPropertyChanged;
             _RebuildLiveSessions();
+
+            // AC-1302: hand ourselves to the cockpit here, next to the subscription above, because this is the
+            // moment this view model becomes the one attached to that cockpit — the Simple stand's rail has no
+            // other route to the relation, and every construction path passes through here.
+            _cockpit.AssistantChat = this;
         }
     }
 
@@ -244,6 +262,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     // Read-through, like `Session` below: never assigned locally, only ever reports whatever `_indicator` holds.
     public AssistantIndicatorViewModel? Indicator => _indicator;
+
+    // AC-1316: the Simple stand's start offer is drawn inside this conversation, off the cockpit's own project
+    // cards — the same source as the panels stand's overview (AC-1304 criterion 1(b)), reached and not copied.
+    public CockpitViewModel? Cockpit => _cockpit;
 
     // The assistant's own session, bound straight through to the existing SDK transcript view.
     public SessionViewModel? Session => _host.Session;
@@ -284,6 +306,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // start/stop — real SessionPanelViewModel instances, not a DTO, so the header binds to them directly.
     public ObservableCollection<SessionPanelViewModel> LiveSessions { get; } = new();
 
+    // AC-1300: of those, the ones the assistant itself started — the only source a hierarchy may be drawn on. A
+    // second collection filled in the same rebuild, deliberately not a filter over `LiveSessions`, which has to go
+    // on showing every live session for the badges and the `⋯` list.
+    public ObservableCollection<SessionPanelViewModel> SessionsStartedByTheAssistant { get; } = new();
+
     // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
     // usage pill's `HasUsagePillRegion`: a session badge must not disappear just because the assistant itself has
     // not reported usage yet.
@@ -305,6 +332,14 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private void _OnCockpitSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildLiveSessions();
 
+    private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(CockpitViewModel.SimpleStandShowsTheStartScreen))
+        {
+            OnPropertyChanged(nameof(ShowsStartOffer));
+        }
+    }
+
     private void _RebuildLiveSessions()
     {
         if (_cockpit is null)
@@ -322,9 +357,14 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             .ToList();
 
         LiveSessions.Clear();
+        SessionsStartedByTheAssistant.Clear();
         foreach (var session in sessions)
         {
             LiveSessions.Add(session);
+            if (AssistantSessionOrigin.Resolve(session))
+            {
+                SessionsStartedByTheAssistant.Add(session);
+            }
         }
 
         DeskNameByPaneId = sessions.ToDictionary(
@@ -416,10 +456,24 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
 
         InputText = string.Empty;
+
+        // AC-1316: typing is the answer to the question the start screen asks, the same as picking a card.
+        if (_cockpit is not null)
+        {
+            _cockpit.SimpleStartScreenRequested = false;
+        }
+
         // Goes through the host, not Session.SendCommand: Session can still be null here (nothing typed yet since
         // this instance came up), and the host's SendAsync is what performs the lazy start — the first message
         // typed into an unstarted assistant is exactly what starts it (criterion 1).
         await _host.SendAsync(text);
+
+        // AC-1316: the host comes back unavailable (switched off, no profile, a failed start) without having sent
+        // anything, so the words go back where they were typed instead of vanishing with no notice.
+        if (IsUnavailable && Session is null && InputText.Length == 0)
+        {
+            InputText = text;
+        }
     }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
@@ -604,6 +658,14 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (_cockpit is not null)
         {
             _cockpit.Sessions.CollectionChanged -= _OnCockpitSessionsChanged;
+            _cockpit.PropertyChanged -= _OnCockpitPropertyChanged;
+
+            // Only when it is still us: a replacement is stood up before the old one is disposed, and clearing
+            // unconditionally would leave the rail reading a chat that no longer exists.
+            if (ReferenceEquals(_cockpit.AssistantChat, this))
+            {
+                _cockpit.AssistantChat = null;
+            }
         }
     }
 }

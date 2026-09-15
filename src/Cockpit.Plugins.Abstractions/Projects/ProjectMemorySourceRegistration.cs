@@ -61,6 +61,20 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>>? CheckReachability { get; init; }
 
     /// <summary>
+    /// Appends one note block to the location a project's <c>MemoryRef</c> names (AC-492) — the host's own quick
+    /// note, written without a session. Takes the row's typed value (the bare identifier), the block to append
+    /// verbatim, and a cancellation token.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="null"/> (the default) means "cannot write" — the host offers this source nowhere a note could
+    /// be captured, and a plugin built against an older SDK reads as null without recompiling. The block is the
+    /// whole of what the host hands over: there is no way to pass existing content, so an implementation can only
+    /// ever add after it, never replace it. Two calls for the same location may overlap; both notes must land.
+    /// Where inside the location the block goes is the plugin's own fixed choice.
+    /// </remarks>
+    public Func<string, string, CancellationToken, Task<ProjectMemoryAppendResult>>? AppendNoteAsync { get; init; }
+
+    /// <summary>
     /// Which <see cref="ProjectMemorySourceFamily.Key"/> this instance belongs to (AC-499), grouping however many
     /// connections a plugin has configured under one entry in the picker instead of one row per connection.
     /// </summary>

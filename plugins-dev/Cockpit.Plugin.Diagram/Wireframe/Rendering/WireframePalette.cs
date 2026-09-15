@@ -3,7 +3,8 @@ using Avalonia.Media;
 namespace Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 // Greys and one font, so a wireframe reads as a sketch and never as a finished design (AC-871). The one exception is
-// Accent (AC-903): `primary` marks the single thing the screen wants you to do, and grey cannot say that.
+// Accent (AC-903): `primary` marks the single thing the screen wants you to do, and grey cannot say that. Deliberately
+// outside the app theme (AC-860): a sketch is paper, not chrome, and stays the same sketch under any repaint.
 internal static class WireframePalette
 {
     public static readonly IBrush Paper = new SolidColorBrush(Color.Parse("#FFFFFF"));

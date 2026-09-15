@@ -25,8 +25,8 @@ internal sealed class ResizeHandle : Border
         Corner = corner;
         Width = Size;
         Height = Size;
-        Background = new SolidColorBrush(WhiteboardObjectPainter.PlacedColor);
-        BorderBrush = Brushes.White;
+        Background = new SolidColorBrush(WhiteboardPalette.PlacedColor);
+        BorderBrush = WhiteboardPalette.Paper;
         BorderThickness = new Thickness(1);
         Cursor = new Cursor(corner is HandleCorner.TopLeft or HandleCorner.BottomRight
             ? StandardCursorType.TopLeftCorner

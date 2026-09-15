@@ -27,8 +27,10 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Hotkeys;
+using Cockpit.Core.QuickNotes;
 using Cockpit.Core.Screenshots;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Usage;
@@ -121,6 +123,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
+
+    // AC-490: the job-run trail a session started from a project job is written to.
+    private readonly IProjectJobHistory? _projectJobHistory;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -143,6 +148,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IUsagePillSettingsStore? _usagePillSettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly IScreenshotSettingsStore? _screenshotSettingsStore;
+    private readonly IQuickNoteSettingsStore? _quickNoteSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private Task _layoutPersist = Task.CompletedTask;
     private readonly IDockPanelRegistry? _dockPanelRegistry;
@@ -236,6 +242,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // ItemsControl only tears down and rebuilds the containers for entries an Add/Remove/Move actually touches, so a
     // session with an open ContextMenu that is not part of the change keeps its own Border alive and the popup stays
     private readonly ObservableCollection<SessionPanelViewModel> _visibleSessions = [];
+
+    // AC-1306: the same stability rule one level up — a node that did not change keeps its own container, and with
+    // it every row and popup underneath.
+    private readonly ObservableCollection<SessionWorkspaceGroupViewModel> _sessionWorkspaceGroups = [];
 
     // Left-menu accordion sections contributed by plugins (#14), shown under the session list.
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
@@ -468,8 +478,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool ShowSessionGrid => HasSessionsHere && Workspaces.IsSessionsActive;
 
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
-    // own empty state.
-    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive;
+    // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
+    // or by the start screen — and whose "+ New session" opens the dialog this one offers.
+    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive && !SimpleView;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
@@ -886,7 +897,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // When true the left sidebar is collapsed out of view; the session content takes its space.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
     private bool _sidebarCollapsed;
+
+    // AC-1303: the left column carries the sidebar in one stand and the Simple stand's rail in the other, so
+    // "is the sidebar showing" is no longer the same question as "is it collapsed". The rail has no collapsed
+    // state of its own: collapsing it would leave that stand with no way to pick a session at all.
+    public bool ShowPanelsSidebar => !SimpleView && !SidebarCollapsed;
 
     // Width in pixels of the right dock rail's expanded panel (AC-951) — the sidebar's mirror image, same
     // drag/persist wiring via `SetDockRailWidthAsync` and `CockpitView.axaml.cs`.
@@ -896,6 +913,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Which dock panel is open, by id; null collapses the rail to its 40px strip. Toggled by clicking a rail
     // tab — the same tab again closes it, a different one switches straight to it (one panel open at a time).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     private string? _openDockPanelId;
 
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). Nothing
@@ -917,6 +935,268 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool IsAssistantDropZoneVisible => AssistantDropZoneWidth > 0;
 
+    // AC-1301: which stand is on screen right now — the Simple one (a single conversation filling the window) or
+    // the panels stand. Seeded from `OpenInSimpleView` on load and moved by the Simple/Panels switch, which
+    // deliberately does not write back: the switch says what you see now, the setting says what you open in.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
+    private bool _simpleView;
+
+    // AC-1304: the start screen — "which project do you want to work on" — holds the conversation column while
+    // this is set. One flag rather than a screen per door: `+ New session` sets it, and the other two doors reach
+    // the same screen through the column simply having nothing to draw (criterion 1(a)).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    private bool _simpleStartScreenRequested;
+
+    // The setting behind that seed, persisted in the `layout` section of `cockpit.json` and edited in
+    // Options -> Appearance. One stand for the whole cockpit: it is not held per project, and switching project
+    // does not move it.
+    [ObservableProperty]
+    private bool _openInSimpleView;
+
+    // The theme stand (AC-860), edited in Options -> Appearance. `App` turns it into the variant on screen; what
+    // is actually showing is read from `Application.ActualThemeVariant`, never from here.
+    [ObservableProperty]
+    private ThemeMode _themeMode = ThemeMode.Dark;
+
+    public static ThemeMode[] ThemeModes { get; } = Enum.GetValues<ThemeMode>();
+
+    // AC-1301 criterion 4: the Simple stand keeps its own selection, apart from `SelectedSession`, so a stand
+    // switch returns to what you were looking at in each rather than to one shared choice. Written by the rail
+    // (AC-1302); what the conversation column does with it is AC-1303.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    private SessionPanelViewModel? _simpleSelectedSession;
+
+    // AC-1302: the standing assistant chat, which is what carries the relation AC-1300 established. Set by
+    // `AssistantChatViewModel` itself when it is built against this cockpit; `AssistantIndicatorCoordinator`
+    // still owns it, this is only how the Simple stand's rail reaches the one collection it may draw on.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AssistantRootSession))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    private AssistantChatViewModel? _assistantChat;
+
+    // AC-1302 criterion 4: the session the rail hangs its tree under, or null when there is none — with no
+    // assistant session there is nothing to draw a node from, and the rail lists the sessions flat instead of
+    // drawing an empty root.
+    public SessionPanelViewModel? AssistantRootSession => AssistantChat?.Session;
+
+    // AC-1303: the Simple stand's two roles, answered here rather than in the rail's click handler. The state
+    // moves along more paths than that click — the assistant is switched off, or comes back, while a session
+    // stands picked (criterion 5). Computed, so no copy of the answer can go stale between those paths.
+    public bool SimpleStandDocksTheAssistant =>
+        SimpleView
+        && AssistantRootSession is not null
+        && SimpleSelectedSession is not null
+        && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession);
+
+    // The other half of the same answer. With no assistant session there is nothing to put in either place: a
+    // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
+    // (criterion 4(b)) — both of these are false at once, which is what says so.
+
+    // AC-1316: not gated on the assistant's session existing — that gate was a circle (the session starts once a
+    // host shows the chat view; the column showed it once the session existed). The chat view says "switched off"
+    // itself and starts the assistant on the first message, so the column holds it whenever nothing else is picked.
+    public bool SimpleStandShowsTheAssistantInTheMainColumn =>
+        SimpleView
+        && (SimpleSelectedSession is null || ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
+
+    // AC-1304 criterion 1(a): the three doors, answered in one place. AC-1316: the screen is the empty state of
+    // the assistant's own conversation, drawn inside the chat view — `+ New session` lays it over a conversation,
+    // and a conversation with nothing said in it shows it of its own accord.
+    public bool SimpleStandShowsTheStartScreen =>
+        SimpleView
+        && (SimpleStartScreenRequested || (SimpleSelectedSession is null && !(AssistantChat?.HasMessages ?? false)));
+
+    // AC-1303: which panel the rail shows. In the Simple stand this follows the roles above and is deliberately
+    // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
+    // session would leave the assistant tab open there too, on a rail the operator had closed.
+    public string? EffectiveOpenDockPanelId => SimpleView
+        ? SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
+        : OpenDockPanelId;
+
+    partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.PropertyChanged -= _OnAssistantChatPropertyChanged;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.PropertyChanged += _OnAssistantChatPropertyChanged;
+        }
+    }
+
+    // The assistant session arrives after the chat view model does — it is started, and it comes back after a
+    // restart — so the root has to follow that rather than only the chat swap.
+    private void _OnAssistantChatPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // AC-1316: the first reply is what takes the offer away, so the screen follows the transcript too.
+        if (e.PropertyName is null or nameof(AssistantChatViewModel.HasMessages))
+        {
+            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
+        }
+
+        if (e.PropertyName is null or nameof(AssistantChatViewModel.Session))
+        {
+            OnPropertyChanged(nameof(AssistantRootSession));
+
+            // AC-1303 criterion 5: this is the path the roles were once left out of. Switching the assistant off
+            // and on again does not touch the stand or the selection, so without these two the picked session
+            // would keep the column while the returning assistant stood in neither place.
+            OnPropertyChanged(nameof(SimpleStandDocksTheAssistant));
+            OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
+            OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
+            OnPropertyChanged(nameof(ShowDockRail));
+
+            // AC-1304: switching the assistant off with nothing picked empties the column, which is the third
+            // door onto the start screen — and switching it back on takes the screen away again.
+            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
+        }
+    }
+
+    // AC-1304 criterion 1(a): `+ New session` in the Simple stand asks for the start screen rather than the
+    // New-session dialog. The selection goes first, so the stand lands in one state — the question in the column,
+    // nothing docked beside it — rather than the screen laid over a conversation still marked as picked.
+    [RelayCommand]
+    private void ShowSimpleStartScreen()
+    {
+        SimpleSelectedSession = null;
+        SimpleStartScreenRequested = true;
+    }
+
+    // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
+    // moves the panels stand's selection — the two stands deliberately do not share one choice (AC-1301).
+    [RelayCommand]
+    private void SelectSimpleSession(SessionPanelViewModel session) => SimpleSelectedSession = session;
+
+    // Marks the picked row in the rail, the way `OnSelectedSessionChanged` marks it in the sidebar. Without this
+    // a click in the rail changes nothing you can see, which reads as a list that does not work.
+    partial void OnSimpleSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.IsSelectedInSimpleStand = false;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.IsSelectedInSimpleStand = true;
+
+            // AC-1304: picking a conversation is the answer to the question the start screen asks, so the screen
+            // stands down here rather than at each of the places that can pick one — the rail, `Go there`, and a
+            // project just started from the screen itself.
+            SimpleStartScreenRequested = false;
+        }
+
+        // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
+        RefreshPaneVisibility();
+        _RefreshSimpleConsentAlerts();
+    }
+
+    // AC-1305: the sessions with a consent request open that the Simple stand is not showing. That stand has room
+    // for one conversation, so a request on any other session would sit there unseen — the panels stand has the
+    // sidebar's hand for that (AC-47) and needs none of this.
+    public ObservableCollection<SessionPanelViewModel> SimpleConsentAlerts { get; } = [];
+
+    // Whether there is anything to show, so the notification can be animated open rather than toggled visible.
+    public bool HasSimpleConsentAlerts => SimpleConsentAlerts.Count > 0;
+
+    // Prompt ids the operator waved away with `Ignore`. Ignoring takes the notification off the screen and does
+    // nothing else: the consent stays open and unanswered. Answering it here would be a refusal nobody made, and
+    // no screen in the cockpit would show that it had happened.
+    private readonly HashSet<Guid> _ignoredConsentAlerts = [];
+
+    // What the column actually draws, which since AC-1303 is the picked session — its pane takes the main column
+    // and the assistant moves to the dock. Falling back to the assistant covers the two states where nothing is
+    // picked and the ones where the pick is the assistant itself, in both of which the column draws it.
+    private SessionPanelViewModel? _SimpleViewSession => SimpleSelectedSession ?? _assistantSession;
+
+    // `Ignore`. Deliberately not a Deny: see `_ignoredConsentAlerts`.
+    [RelayCommand]
+    private void IgnoreConsentAlert(SessionPanelViewModel? session)
+    {
+        if (session?.PendingConsent is { } consent)
+        {
+            _ignoredConsentAlerts.Add(consent.Id);
+            _RefreshSimpleConsentAlerts();
+        }
+    }
+
+    // `Go there`: pick the asking session, which is as far as this can go until AC-1303 couples the conversation
+    // column to that pick. The notification deliberately stays up until then — taking it down on the pick alone
+    // would leave the card nowhere at all, the one state this notification exists to prevent.
+    [RelayCommand]
+    private void GoToConsentAlert(SessionPanelViewModel? session)
+    {
+        if (session is not null)
+        {
+            SimpleSelectedSession = session;
+        }
+    }
+
+    // Rebuilt rather than patched: the list is small and derived from three things that move independently —
+    // which sessions have a request open, which one is in view, and which ones were waved away.
+    private void _RefreshSimpleConsentAlerts()
+    {
+        var inView = _SimpleViewSession;
+        var waiting = _ConsentPanes()
+            .Where(pane => pane.PendingConsent is { } consent
+                && !_ignoredConsentAlerts.Contains(consent.Id)
+                && !ReferenceEquals(pane, inView))
+            .ToList();
+
+        if (SimpleConsentAlerts.SequenceEqual(waiting))
+        {
+            return;
+        }
+
+        SimpleConsentAlerts.Clear();
+        foreach (var pane in waiting)
+        {
+            SimpleConsentAlerts.Add(pane);
+        }
+
+        OnPropertyChanged(nameof(HasSimpleConsentAlerts));
+    }
+
+    // AC-1303: the stand decides which panes are drawn as much as zoom does, so the switch refreshes them too.
+    partial void OnSimpleViewChanged(bool value) => RefreshPaneVisibility();
+
+    // How the Simple stand builds its conversation column: a factory owned by `AssistantIndicatorCoordinator`,
+    // which is what holds the standing chat view model and knows which hosts there are. Null until it starts,
+    // so the view rebuilds on this as well as on the stand itself.
+    [ObservableProperty]
+    private Func<Control>? _createSimpleViewChatView;
+
+    // The Simple/Panels switch. Two commands rather than one taking the stand as a parameter: a command
+    // parameter would be a string to parse, and there are exactly two stands.
+    [RelayCommand]
+    private void ShowSimpleView() => SimpleView = true;
+
+    [RelayCommand]
+    private void ShowPanelsView() => SimpleView = false;
+
     // What the rail's tab strip lists — read straight off the registry rather than copied into a collection of
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
     public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];
@@ -925,6 +1205,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // 40px strip of empty chrome against the right edge is worse than no rail — so the whole column stands down
     // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
     public bool HasDockPanels => DockPanels.Count > 0;
+
+    // AC-1303: whether the rail stands at all. The Simple stand answers it differently: it draws no tab strip, so
+    // a rail with nothing open there would be exactly the 40px strip of chrome the line above rejects — and one
+    // you could not even click your way out of.
+    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant : HasDockPanels;
 
     // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
     // (or, since AC-953, be withdrawn) long after this view model is built.
@@ -939,6 +1224,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             OnPropertyChanged(nameof(DockPanels));
             OnPropertyChanged(nameof(HasDockPanels));
+            OnPropertyChanged(nameof(ShowDockRail));
         };
     }
 
@@ -1973,6 +2259,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", ScreenshotHotkeyKeyName));
         }
 
+        if (QuickNoteGlobalHotkeyEnabled)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.QuickNote, "Quick note", QuickNoteHotkeyKeyName));
+        }
+
         return bindings;
     }
 
@@ -2009,6 +2300,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             GlobalHotkeyEnabled = ScreenshotGlobalHotkeyEnabled,
             HotkeyKeyName = string.IsNullOrWhiteSpace(ScreenshotHotkeyKeyName) ? "F8" : ScreenshotHotkeyKeyName.Trim(),
             PreviewEnabled = ScreenshotPreviewEnabled,
+        });
+    }
+
+    // Whether the quick-note key fires while the cockpit has no focus (AC-492); off by default like the others.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private bool _quickNoteGlobalHotkeyEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private string _quickNoteHotkeyKeyName = "F7";
+
+    // What the quick-note hotkey is really triggered by, in the words of whoever bound it.
+    [ObservableProperty]
+    private string _quickNoteHotkeyTrigger = string.Empty;
+
+    private async Task LoadQuickNoteSettingsAsync()
+    {
+        if (_quickNoteSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _quickNoteSettingsStore.LoadAsync();
+        QuickNoteGlobalHotkeyEnabled = settings.GlobalHotkeyEnabled;
+        QuickNoteHotkeyKeyName = settings.HotkeyKeyName;
+    }
+
+    [RelayCommand]
+    private async Task SaveQuickNoteSettingsAsync()
+    {
+        if (_quickNoteSettingsStore is null)
+        {
+            return;
+        }
+
+        await _quickNoteSettingsStore.SaveAsync(new QuickNoteSettings
+        {
+            GlobalHotkeyEnabled = QuickNoteGlobalHotkeyEnabled,
+            HotkeyKeyName = string.IsNullOrWhiteSpace(QuickNoteHotkeyKeyName) ? "F7" : QuickNoteHotkeyKeyName.Trim(),
         });
     }
 
@@ -2116,6 +2447,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // discovered per button.
     [ObservableProperty]
     private ScreenshotCoordinator? _screenshots;
+
+    // The quick-note coordinator (AC-492), wired at startup — the palette's way to the note window without the key.
+    public QuickNoteCoordinator? QuickNotes { get; set; }
 
     partial void OnScreenshotsChanged(ScreenshotCoordinator? value)
     {
@@ -2328,15 +2662,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Sets each session's `SessionPanelViewModel.IsPaneVisible` for the current layout: all visible in the
-    // multi-session grid, only the selected one in single-pane mode (#24 / Zoom).
+    // multi-session grid, only the selected one in single-pane mode (#24 / Zoom), and in the Simple stand
+    // (AC-1303) only the picked one.
+
+    // AC-1303 reaches these same panes rather than building its own: a session may have exactly one live view,
+    // since `TtyView` owns the pty and `OnUnloaded` both disposes it and reports the pane closed. That rules out
+    // a second copy for that stand, and a move between stands too — a detach would count as a close.
     private void RefreshPaneVisibility()
     {
         var single = ShowSinglePane;
+        var simple = SimpleView;
         foreach (var session in Sessions)
         {
             var here = BelongsToActiveWorkspace(session);
             session.IsOnActiveDesk = here;
-            session.IsPaneVisible = here && (!single || session.IsSelected);
+            session.IsPaneVisible = here && (simple
+                ? ReferenceEquals(session, SimpleSelectedSession)
+                : !single || session.IsSelected);
         }
     }
 
@@ -2374,6 +2716,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _SyncVisibleSessions();
             return _visibleSessions;
         }
+    }
+
+    // AC-1306: what the panels sidebar draws — see `_SyncSessionWorkspaceGroups` for what this tree groups and
+    // what it deliberately is not.
+    public IEnumerable<SessionWorkspaceGroupViewModel> SessionWorkspaceGroups
+    {
+        get
+        {
+            _SyncVisibleSessions();
+            return _sessionWorkspaceGroups;
+        }
+    }
+
+    // How many Sessions workspaces the tree left out for holding nothing (criterion 4a). Set by the sync, so it
+    // never disagrees with the nodes drawn beside it.
+    [ObservableProperty]
+    private int _omittedEmptyWorkspaceCount;
+
+    public bool HasOmittedEmptyWorkspaces => OmittedEmptyWorkspaceCount > 0;
+
+    // Says where the left-out tabs went, since the tree is not the only way to them — the strip above the grid is.
+    public string OmittedEmptyWorkspacesLabel =>
+        OmittedEmptyWorkspaceCount == 1
+            ? "1 empty workspace tab hidden — it is in the tab strip"
+            : $"{OmittedEmptyWorkspaceCount} empty workspace tabs hidden — they are in the tab strip";
+
+    partial void OnOmittedEmptyWorkspaceCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasOmittedEmptyWorkspaces));
+        OnPropertyChanged(nameof(OmittedEmptyWorkspacesLabel));
     }
 
     // Brings `_sidebarOrder` back in line with `Sessions`: drops sessions that have closed and appends any that
@@ -2418,32 +2790,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ReconcileSidebarOrder();
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
 
-        for (var i = _visibleSessions.Count - 1; i >= 0; i--)
-        {
-            if (!target.Contains(_visibleSessions[i]))
-            {
-                _visibleSessions.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < target.Count; i++)
-        {
-            var session = target[i];
-            if (i < _visibleSessions.Count && ReferenceEquals(_visibleSessions[i], session))
-            {
-                continue;
-            }
-
-            var existingIndex = _visibleSessions.IndexOf(session);
-            if (existingIndex >= 0)
-            {
-                _visibleSessions.Move(existingIndex, i);
-            }
-            else
-            {
-                _visibleSessions.Insert(i, session);
-            }
-        }
+        _ReconcileInto(_visibleSessions, target);
+        _SyncSessionWorkspaceGroups();
 
         // Stamped on every reconcile, not just on change: the focus-rail's ordering (AC-444 #2) reads this
         // straight off the pane, so it has to track "the sidebar's own order" exactly, including a plain
@@ -2452,6 +2800,77 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             target[i].SidebarIndex = i;
         }
+    }
+
+    // Diffs `target` into `live` in place rather than clearing and re-adding: a row that only moved gets a single
+    // `Move`, which Avalonia honours by relocating the existing container instead of discarding it. AC-561 depends
+    // on it — a context menu open on one row must survive a change to another.
+    private static void _ReconcileInto<T>(ObservableCollection<T> live, IReadOnlyList<T> target)
+        where T : class
+    {
+        for (var i = live.Count - 1; i >= 0; i--)
+        {
+            if (!target.Contains(live[i]))
+            {
+                live.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < target.Count; i++)
+        {
+            if (i < live.Count && ReferenceEquals(live[i], target[i]))
+            {
+                continue;
+            }
+
+            var existingIndex = live.IndexOf(target[i]);
+            if (existingIndex >= 0)
+            {
+                live.Move(existingIndex, i);
+            }
+            else
+            {
+                live.Insert(i, target[i]);
+            }
+        }
+    }
+
+    // AC-1306: the sidebar tree — every Sessions workspace holding a session, plus the one now showing even when it
+    // holds none. Deliberately NOT filtered to the active desk the way `VisibleSessions` is: it exists to make work
+    // on a tab you are not looking at findable, and picking such a row walks to its tab (see `SelectSession`).
+    private void _SyncSessionWorkspaceGroups()
+    {
+        var fallback = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        var activeId = Workspaces.Active is { } active && active.Type == WorkspaceType.Sessions ? active.Id : null;
+        var placed = _sidebarOrder
+            .Select(session => (Session: session, WorkspaceId: SessionWorkspacePlacement.Resolve(session, fallback)))
+            .Where(entry => entry.WorkspaceId is not null)
+            .ToList();
+
+        // A Projects or plugin workspace cannot host a session at all, so it is never a node here — its tab is
+        // the only way to it, which is half of why the tab strip stays.
+        var candidates = Workspaces.Settings.Workspaces.Where(workspace => workspace.Type == WorkspaceType.Sessions).ToList();
+        var wanted = candidates
+            .Select(workspace => (Workspace: workspace, Sessions: placed.Where(entry => entry.WorkspaceId == workspace.Id).Select(entry => entry.Session).ToList()))
+            .Where(node => node.Sessions.Count > 0 || node.Workspace.Id == activeId)
+            .ToList();
+
+        OmittedEmptyWorkspaceCount = candidates.Count - wanted.Count;
+
+        var groups = wanted
+            .Select(node =>
+            {
+                var group = _sessionWorkspaceGroups.FirstOrDefault(existing => existing.Id == node.Workspace.Id)
+                    ?? new SessionWorkspaceGroupViewModel(node.Workspace.Id);
+                group.Name = node.Workspace.Name;
+                group.IsActive = node.Workspace.Id == activeId;
+                group.IsExpanded = !Workspaces.IsSidebarCollapsed(node.Workspace.Id);
+                _ReconcileInto(group.Sessions, node.Sessions);
+                return group;
+            })
+            .ToList();
+
+        _ReconcileInto(_sessionWorkspaceGroups, groups);
     }
 
     // Called from both constructors, right after `Workspaces` is built — the design-time/test graph needs this exactly
@@ -2468,6 +2887,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(ShowSessionEmptyState));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
 
@@ -2630,6 +3050,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
         ProjectQuickStart? projectQuickStart = null,
         IScreenshotSettingsStore? screenshotSettingsStore = null,
+        IQuickNoteSettingsStore? quickNoteSettingsStore = null,
         ISessionResourceResolver? sessionResourceResolver = null,
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
@@ -2677,7 +3098,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodeSessionsClient? nodeSessionsClient = null,
         // AC-927: where the launch routes say which MCP servers a session really got, so its header can name
         // those. Absent in the design-time/unit-test graph, where the header keeps showing the selection alone.
-        SessionMcpMounts? sessionMcpMounts = null)
+        SessionMcpMounts? sessionMcpMounts = null,
+        // AC-490: where a session started from a project job is recorded as a run of it. Absent in the design-time
+        // and unit-test graph, where starting a job records nothing.
+        IProjectJobHistory? projectJobHistory = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2773,6 +3197,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
+        _projectJobHistory = projectJobHistory;
 
         // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
         // ProjectCardView serve both the Projects workspace and the Manage-projects window.
@@ -2845,6 +3270,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _usagePillSettingsStore = usagePillSettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _screenshotSettingsStore = screenshotSettingsStore;
+        _quickNoteSettingsStore = quickNoteSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
@@ -2884,6 +3310,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasSessions));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
             OnPropertyChanged(nameof(StackSessionsInStack));
@@ -2897,7 +3324,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadUsagePillSettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadScreenshotSettingsAsync();
-        _ = LoadLayoutSettingsAsync();
+        _ = LoadQuickNoteSettingsAsync();
+        _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
         _ = LoadShortcutSettingsAsync();
@@ -2988,9 +3416,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             pane.PendingConsent = new ConsentPromptViewModel(prompt, _consentBroker!);
 
+            // AC-1305: this and the close side are the open and shut of every banner there is, so the Simple stand's
+            // notification list is recomputed from both. `OnSessionPropertyChanged` is the net under them, for the
+            // one setter that bypasses the broker: the assistant host denying an unanswered card on teardown.
+            _RefreshSimpleConsentAlerts();
+
             // If the pane needing consent is not the one in view, point the operator at it. The assistant gets a
             // toast with no Review action: selecting it would put a session that belongs to no workspace into the
             // grid, and its consent is answered in the chat window, which is the one place it can be.
+            if (SimpleView)
+            {
+                // AC-1305: that stand has a notification of its own for exactly this, so here it would be a second
+                // one for the same request — with a Review that moves a selection it does not use, and a five
+                // second timeout, which a consent barrier must not have.
+                return;
+            }
+
             if (ReferenceEquals(pane, _assistantSession))
             {
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, actionLabel: null, onAction: null);
@@ -3000,6 +3441,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
             }
         });
+
     }
 
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
@@ -3012,6 +3454,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 pane.PendingConsent = null;
             }
+
+            _RefreshSimpleConsentAlerts();
         });
 
     // Fires a sample consent prompt on the selected session so the banner can be seen and tried before a real
@@ -4485,7 +4929,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DebugSettingsStatus = "Saved";
     }
 
-    private async Task LoadLayoutSettingsAsync()
+    // `seedCurrentStand` only on the startup load: `CancelOptionsAsync` runs this too, and a Cancel that
+    // reset the stand on screen would throw away a Simple/Panels switch the dialog never touched.
+    private async Task LoadLayoutSettingsAsync(bool seedCurrentStand = false)
     {
         if (_layoutSettingsStore is null)
         {
@@ -4503,6 +4949,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
         AssistantDocked = settings.AssistantDocked;
+        OpenInSimpleView = settings.OpenInSimpleView;
+        ThemeMode = settings.ThemeMode;
+
+        // The stand the app opens in is the setting, never the stand last looked at (AC-1301 criterion 1) — this
+        // is the only place the two are joined.
+        if (seedCurrentStand)
+        {
+            SimpleView = settings.OpenInSimpleView;
+        }
     }
 
     // Each layout write starts from the saved record, then overrides only values this view model owns.
@@ -4518,6 +4973,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
+        OpenInSimpleView = OpenInSimpleView,
+        ThemeMode = ThemeMode,
     };
 
     private Task _PersistLayoutSettingsAsync()
@@ -5161,7 +5618,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
     // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
-    private async Task StartProjectSessionAsync(Project? project)
+    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, job: null);
+
+    // AC-1304 criterion 2(a) and 3(a): a job started straight away, the way Start above already is — the start
+    // screen's own answer for a job. `StartProjectJobAsync` keeps the dialog it has offered since AC-491; which of
+    // the two a surface wants is the surface's to say (`ProjectCardView.JobCommand`), not this command's to guess.
+    [RelayCommand]
+    private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
+        _QuickStartProjectAsync(choice?.Project, choice?.Job);
+
+    // AC-492's "save and start": the same dialog-free start as the sidebar's ▶, with the note in the composer.
+    internal Task StartProjectSessionWithPromptAsync(Project project, string prompt) =>
+        _QuickStartProjectAsync(project, job: null, prompt);
+
+    // The dialog-free start, carrying `job` when one was picked, or a bare `prompt` (AC-492). Whichever it is goes
+    // into the composer once the session exists, through the same seam the dialog route uses — nothing is sent,
+    // which is the promise the start screen makes out loud (criterion 3).
+    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job, string? prompt = null)
     {
         if (project is null)
         {
@@ -5173,43 +5646,57 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
             // composed is also what gets it numbered against the sessions already open, in
             // _LaunchSessionFromResultAsync.
-            await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name, ProjectJobId = job?.Id });
+            var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
+            if ((prompt ?? job?.Prompt) is { } composerText)
+            {
+                started?.InjectText(composerText);
+            }
+
+            // AC-1304: the Simple stand draws what it has picked, so without this the click would open a session
+            // and change nothing on screen. Written whichever stand did the starting — it is that stand's own
+            // remembered choice (AC-1301 criterion 4), and what was just started is what it should open on.
+            if (started is not null)
+            {
+                SimpleSelectedSession = started;
+            }
 
             return;
         }
 
         // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
         // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
-        await NewSessionForProjectAsync(project);
+        // Criterion 4 rests on exactly this: `ComposeAsync` says whether it can start, and nothing here re-asks.
+        await _NewSessionForProjectAsync(project, job);
     }
 
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
     // start, for when the operator wants to change something the project would otherwise decide.
     [RelayCommand]
-    private Task NewSessionForProjectAsync(Project? project) => _NewSessionForProjectAsync(project, prompt: null);
+    private Task NewSessionForProjectAsync(Project? project) => _NewSessionForProjectAsync(project, job: null);
 
     // Starts one of the project's own jobs (AC-491) — the same dialog, seeded with the job's prompt.
     [RelayCommand]
     private Task StartProjectJobAsync(ProjectJobChoice? choice) =>
-        _NewSessionForProjectAsync(choice?.Project, choice?.Job.Prompt);
+        _NewSessionForProjectAsync(choice?.Project, choice?.Job);
 
-    // The dialog on `project`, carrying `prompt` when a job was picked. The prompt is placed in the composer once
+    // The dialog on `project`, carrying `job` when one was picked. Its prompt is placed in the composer once
     // the session exists, through the seam a plugin's prefill already uses — the operator reads it there and still
-    // decides when, or whether, to send it. Without a prompt this is the plain route, unchanged.
-    private async Task _NewSessionForProjectAsync(Project? project, string? prompt)
+    // decides when, or whether, to send it. Without a job this is the plain route, unchanged.
+    private async Task _NewSessionForProjectAsync(Project? project, ProjectJob? job)
     {
         if (project is null || _dialogService is null)
         {
             return;
         }
 
-        var prefill = string.IsNullOrWhiteSpace(prompt) ? null : new NewSessionPrefill(InitialPrompt: prompt);
+        var prefill = string.IsNullOrWhiteSpace(job?.Prompt) ? null : new NewSessionPrefill(InitialPrompt: job.Prompt);
         if (await _dialogService.ShowNewSessionDialogAsync(prefill, project: project) is not { } result)
         {
             return;
         }
 
-        var paneId = await _LaunchSessionFromResultAsync(result);
+        var paneId = await _LaunchSessionFromResultAsync(result with { ProjectJobId = job?.Id });
         if (paneId is not null && prefill?.InitialPrompt is { } initialPrompt)
         {
             Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(initialPrompt);
@@ -5423,10 +5910,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (result.ProjectId is { Length: > 0 } projectId
             && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
         {
-            _ = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+            var marked = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+            _ = result.ProjectJobId is { } jobId
+                ? _RecordJobStartedAfterAsync(marked, paneId, projectId, jobId)
+                : marked;
         }
 
         return paneId;
+    }
+
+    // AC-490: writes the run's `Started` line only once `saved` — the project save above, which carries the job's id —
+    // has succeeded. A run recorded against an id that never reached disk would point at nothing after the next
+    // load, so a failed or skipped save means no line rather than an orphan.
+    private async Task _RecordJobStartedAfterAsync(Task<bool> saved, string paneId, string projectId, string jobId)
+    {
+        if (_projectJobHistory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!await saved)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Not recording the job run for pane {PaneId}: the project could not be saved.", paneId);
+            return;
+        }
+
+        // Nobody awaits this method, so anything thrown past here is an unobserved task exception: no log, no
+        // notification, and a card that quietly never mentions the run. Caught and logged like the save above.
+        try
+        {
+            await _projectJobHistory.RecordAsync(new ProjectJobRunEvent(paneId, projectId, jobId, DateTimeOffset.Now, ProjectJobRunEventKind.Started));
+            await Projects.RefreshJobRunsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "The job run for pane {PaneId} could not be written to the job history.", paneId);
+        }
     }
 
     // When asked and the folder is a git repository, a worktree is created for this session on its own branch — keyed
@@ -5610,9 +6136,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The reorder lands in `_sidebarOrder`, never in `Sessions`: the session grid binds to `Sessions` and keeps its own
     // positional cell layout, so touching that collection would rebuild panes and drag the grid tiles along with the
     // strip — the very coupling this separation removes (AC-115).
+
+    // AC-1306: the index counts rows inside the session's own workspace node — the one list the sidebar draws it
+    // in. On the tab now showing that is exactly `VisibleSessions`, so nothing changes there. A drop outside the
+    // node is not a move: that would put the session on another desk, which is its own decision.
     public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
     {
-        var visible = VisibleSessions.ToList();
+        var visible = _SidebarGroupOf(session);
         var currentVisibleIndex = visible.IndexOf(session);
         if (currentVisibleIndex < 0
             || targetVisibleIndex < 0
@@ -5629,7 +6159,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _sidebarOrder.RemoveAt(from);
             _sidebarOrder.Insert(to, session);
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
         }
+    }
+
+    // The rows drawn under `session`'s own workspace node, in sidebar order.
+    private List<SessionPanelViewModel> _SidebarGroupOf(SessionPanelViewModel session)
+    {
+        var fallback = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        var workspaceId = SessionWorkspacePlacement.Resolve(session, fallback);
+        _SyncVisibleSessions();
+        return workspaceId is null
+            ? []
+            : [.. _sidebarOrder.Where(other => SessionWorkspacePlacement.Resolve(other, fallback) == workspaceId)];
     }
 
     // AC-674: WorkspaceId is stamped before the pane write, since the write's Settings change synchronously
@@ -5658,7 +6200,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)
     {
-        var index = VisibleSessions.ToList().IndexOf(session);
+        var index = _SidebarGroupOf(session).IndexOf(session);
         if (index > 0)
         {
             MoveSessionToVisibleIndex(session, index - 1);
@@ -5669,7 +6211,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void MoveSessionDown(SessionPanelViewModel session)
     {
-        var visible = VisibleSessions.ToList();
+        var visible = _SidebarGroupOf(session);
         var index = visible.IndexOf(session);
         if (index >= 0 && index < visible.Count - 1)
         {
@@ -5724,6 +6266,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // into Options instead, so there is one place for the setting rather than two ways to reach it (AC-1001).
     [RelayCommand]
     private Task ManageProfilesAsync() => _ShowOptionsAsync("profiles");
+
+    // AC-1316: where the assistant's switch, profile and consent bypass live — the chat surfaces link here instead
+    // of describing the route in words.
+    [RelayCommand]
+    private Task OpenAssistantOptionsAsync() => _ShowOptionsAsync("assistant");
 
     // The command lives here rather than on `AssistantOptionsViewModel` because the dialog it opens needs
     // `IAssistantSessionHost` for its restart button, and that host is constructed from this view model — so injecting
@@ -6052,6 +6599,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
+        if (QuickNotes is { } quickNotes)
+        {
+            commands.Add(new PaletteCommand("Quick note", string.Empty, quickNotes.Open));
+        }
+
         // Debug-only (#73): a way to raise a sample consent prompt on the selected session so the AC-47 banner can
         // be tried before a real consumer wires one up. Hidden unless the debug controls are on.
         if (ShowDebugControls && _consentBroker is not null)
@@ -6079,6 +6631,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
         // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
+        await SaveQuickNoteSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
@@ -6349,6 +6902,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadUsagePillSettingsAsync();
         await LoadSessionBehaviorSettingsAsync();
         await LoadScreenshotSettingsAsync();
+        await LoadQuickNoteSettingsAsync();
         await LoadLayoutSettingsAsync();
         await LoadVoiceSettingsAsync();
         await LoadTerminalSettingsAsync();
@@ -6416,11 +6970,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ScreenshotHotkeyKeyName = screenshot.HotkeyKeyName;
         ScreenshotPreviewEnabled = screenshot.PreviewEnabled;
 
+        var quickNotes = new QuickNoteSettings();
+        QuickNoteGlobalHotkeyEnabled = quickNotes.GlobalHotkeyEnabled;
+        QuickNoteHotkeyKeyName = quickNotes.HotkeyKeyName;
+
         var layout = new LayoutSettings();
         GlobalSingleSessionLayout = layout.SingleSessionLayout;
         GlobalStackSessionsVertically = layout.StackSessionsVertically;
         GlobalFocusRailLayout = layout.FocusRailLayout;
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
+        OpenInSimpleView = layout.OpenInSimpleView;
+        ThemeMode = layout.ThemeMode;
 
         var voice = new VoiceSettings();
         VoiceEnabled = voice.IsEnabled;
@@ -6586,6 +7146,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.Title = string.IsNullOrWhiteSpace(pane.Title) ? "Session" : pane.Title;
         session.HasGeneratedName = !pane.NameIsChosen;
         session.ProjectId = pane.ProjectId;
+        session.StartedByTheAssistant = pane.StartedByTheAssistant;
         session.HasPersistedPane = true;
         _AttachSession(session);
     }
@@ -6601,6 +7162,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             Title = session.Title,
             NameIsChosen = result.NameIsChosen,
             ProjectId = result.ProjectId,
+            StartedByTheAssistant = result.StartedByTheAssistant,
         };
 
     // Persists `session`'s pane record right after `AddSession` — deliberately before `_StartSessionAsync` runs, not
@@ -6608,6 +7170,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // one that comes back describing a session that never actually started this way (AC-410).
     private void _PersistNewSessionPane(SessionPanelViewModel session, NewSessionResult result)
     {
+        session.StartedByTheAssistant = result.StartedByTheAssistant;
         session.HasPersistedPane = true;
         _ = Workspaces.AddPaneAsync(session.WorkspaceId, _BuildSessionPane(session, result));
     }
@@ -6976,6 +7539,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // AC-1305: this is the one place every pane's `PendingConsent` lands, whoever set it — the routing below,
+        // the close side, or the assistant host denying a card on teardown. Above the assistant's return, because
+        // the assistant asks for consent like any other session.
+        if (e.PropertyName == nameof(SessionPanelViewModel.PendingConsent))
+        {
+            _RefreshSimpleConsentAlerts();
+        }
+
         // The assistant's session feeds this handler only for status plumbing (AC-543), never for the
         // OS-level attention/finished toasts a real session gets (AC-735).
         if (ReferenceEquals(session, _assistantSession))
@@ -7204,6 +7775,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void SelectSession(SessionPanelViewModel session)
     {
+        // AC-1306: the sidebar tree lists sessions standing on a tab that is not showing, so picking one walks
+        // there first — the strip must still never offer a session the grid then hides, which is what the removed
+        // filter was for. Through `WorkspacesViewModel`, the one place the tab strip switches through too.
+        if (!BelongsToActiveWorkspace(session)
+            && SessionWorkspacePlacement.Resolve(session, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+        {
+            Workspaces.SelectWorkspaceCommand.Execute(workspaceId);
+        }
+
         SelectedSession = session;
     }
 
@@ -7793,6 +8373,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 : Sessions[Math.Min(index, Sessions.Count - 1)];
         }
 
+        // AC-1304 criterion 1(a): the Simple stand's own selection, which nothing cleared — closing the conversation
+        // it drew left the column pointing at a session that no longer exists. Null, not the neighbour the panels
+        // stand falls back to: this stand then draws the assistant, or the start screen — the second of its doors.
+        if (ReferenceEquals(SimpleSelectedSession, session))
+        {
+            SimpleSelectedSession = null;
+        }
+
         if (Sessions.Count == 0)
         {
             IsZoomed = false;
@@ -7880,7 +8468,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         bool? isolateInWorktree = null,
         // This is the sole thing that changes about how a project is found: given, it is looked up directly and the
         // folder map-match below never runs; left out, the folder decides exactly as it always has (AC-773).
-        string? explicitProjectId = null)
+        string? explicitProjectId = null,
+        // AC-1300: true only when the assistant itself asked. A coordinator's or a paired controller's spawn comes
+        // through this same door but is somebody else's session, so it is stamped like an operator's own.
+        bool startedByTheAssistant = false)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
@@ -7933,6 +8524,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId = projectId,
             // The tri-state override applied last, over whatever the project resolved (or false, with no project).
             IsolateInWorktree = isolateInWorktree ?? composed?.IsolateInWorktree ?? false,
+            StartedByTheAssistant = startedByTheAssistant,
         };
 
         // Non-interactive (AC-719): a failed isolation refuses with a reason instead of raising a modal on the main

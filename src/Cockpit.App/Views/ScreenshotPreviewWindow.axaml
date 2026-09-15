@@ -4,12 +4,12 @@
         Width="720" Height="640"
         MinWidth="420" MinHeight="360"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
   <DockPanel Margin="20,16">
     <TextBlock Name="DestinationText" DockPanel.Dock="Top" Margin="0,0,0,12"
                FontSize="12.5" TextWrapping="Wrap"
-               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
       <Button Classes="Ghost" Content="Back" Click="OnBack"/>
@@ -18,7 +18,7 @@
 
     <!-- Byte-for-byte the image that gets injected (AC-566): Stretch="Uniform" only scales how it is drawn on
          screen, the same as any other Image control — the bytes behind Preview.Source are untouched. -->
-    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
       <Image Name="Preview" Stretch="Uniform"/>
     </Border>
   </DockPanel>

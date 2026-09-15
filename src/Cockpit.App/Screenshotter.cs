@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -15,7 +16,9 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -56,6 +59,15 @@ internal static class Screenshotter
         var snapshotPath = _Value(args, "--snapshot");
         var snapshotTarget = _Value(args, "--snapshot-target");
 
+        // "--theme Light|Dark" renders the other variant (AC-860); the app's own default stands when it is absent.
+        var theme = _Value(args, "--theme");
+        if (theme is not null && theme is not ("Light" or "Dark"))
+        {
+            Console.Error.WriteLine($"--theme must be Light or Dark; it is \"{theme}\".");
+
+            return 1;
+        }
+
         var width = DefaultWindowWidth;
         var height = DefaultWindowHeight;
         if (_Value(args, "--size") is { } size)
@@ -83,7 +95,7 @@ internal static class Screenshotter
 
         try
         {
-            Run(outputPngPath, width, height, scene, snapshotPath, snapshotTarget);
+            Run(outputPngPath, width, height, scene, snapshotPath, snapshotTarget, theme);
         }
         catch (Exception exception)
         {
@@ -111,7 +123,7 @@ internal static class Screenshotter
     private static string? _Value(string[] args, string name) =>
         Array.IndexOf(args, name) is var index && index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
 
-    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null)
+    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null, string? theme = null)
     {
         if (!Path.GetExtension(outputPngPath).Equals(".png", StringComparison.OrdinalIgnoreCase))
         {
@@ -119,6 +131,11 @@ internal static class Screenshotter
         }
 
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
+
+        if (theme is not null)
+        {
+            Application.Current!.RequestedThemeVariant = theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
+        }
 
         var window = ShowScene(scene, width, height);
 
@@ -170,12 +187,14 @@ internal static class Screenshotter
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
         // tab, not the Notifications tab "options" opens on.
         ["session-layout"] = (_, _) => _OptionsOnTab("Sessions"),
         // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
+        ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
@@ -289,6 +308,9 @@ internal static class Screenshotter
         // Rendered although the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable) — the
         // layout is built, and this is what will show whether it is worth offering.
         ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
+        // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
+        // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
+        ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -303,7 +325,29 @@ internal static class Screenshotter
         // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        // AC-492: the quick-note surface with a failed write, since that is the state the ticket's one hard rule is
+        // about — the note stays, and the line under it says why.
+        ["quick-note"] = (_, _) => new QuickNoteWindow { DataContext = new ViewModels.QuickNoteViewModel { Note = "Ask finance for the Q3 numbers before Friday.", Message = "Could not save: Depot is unreachable. Your note is kept here." } },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // AC-1301: the Simple stand. Its own scene because it is the one thing no other scene can show — that
+        // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around
+        // both stands are the same in either.
+        ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: true) },
+        // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
+        // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
+        ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
+        // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
+        // the notification only exists in that state, and because two at once is the case the prototype never drew.
+        ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
+        // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
+        // question only stands there while no conversation does, which every other Simple scene has.
+        ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
+        // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
+        // for this one, and the second place the starting-point gallery is drawn.
+        ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
+        // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
+        // composer that says what to do first rather than inviting a message that cannot go anywhere.
+        ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -333,6 +377,9 @@ internal static class Screenshotter
         // Rendered rather than only asserted on the parser, because "a link is there" and "it reads as a link, and the
         // one next to it is a different link" are separate claims and only the second is visible (AC-558).
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        // AC-1316: a four-column reply table wider than the pane — the shape that used to run off the right edge —
+        // with a one-character column beside a long prose one, so the squeeze can be seen landing on the right one.
+        ["session-table"] = (width, height) => new Window { Width = width, Height = height, Content = _TableTranscript() },
         // AC-745: the user's own message bubble now carries the same hover copy action the assistant reply
         // already had — focused via the Hovers table below, since the row keeps it at opacity 0 until then.
         ["session-user-row-copy"] = (width, height) => new Window { Width = width, Height = height, Content = _UserRowCopySession() },
@@ -547,6 +594,9 @@ internal static class Screenshotter
         // case where the confirm button can be pushed past the bottom edge, and nobody sees that on three rows.
         ["first-run-work-kind"] = (_, _) => _WorkKindWizard(pluginCount: 3),
         ["first-run-work-kind-long"] = (_, _) => _WorkKindWizard(pluginCount: 6),
+        // AC-1316: the fold open on one row — the grant, the origin and the checksum are folded, never hidden, and
+        // this is the half of that sentence the two scenes above cannot show.
+        ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
     };
 
     private static Window _WorkKindWizard(int pluginCount)
@@ -557,7 +607,9 @@ internal static class Screenshotter
             author: "Cockpit",
             from: $"https://plugins.example.org/index.json → pack-{index}/pack-1.{index}.0.zip",
             checksum: $"9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b{index:D2}",
-            isSelected: true));
+            isSelected: true,
+            description: WorkKindPluginDescriptions[(index - 1) % WorkKindPluginDescriptions.Length],
+            audience: [PluginWorkKinds.Developer]));
 
         var step = new Views.Onboarding.WorkKindStep(new ViewModels.Onboarding.WorkKindStepViewModel(rows));
 
@@ -592,6 +644,16 @@ internal static class Screenshotter
 
     private static readonly string[] WorkKindPluginNames =
         ["GitHub Issues", "GitHub Pull Requests", "YouTrack", "Weather", "Time Tracking", "Invoices"];
+
+    private static readonly string[] WorkKindPluginDescriptions =
+    [
+        "Browse open GitHub issues across your repos in a searchable, sortable dialog.",
+        "Shows how many open pull requests are yours in the left menu, with a live badge.",
+        "Lists open YouTrack issues across your configured projects, one click from a session.",
+        "The weather where you are, for a Dashboard workspace.",
+        "Tracks the hours a session spends per project and totals them per week.",
+        "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
+    ];
 
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
@@ -633,6 +695,13 @@ internal static class Screenshotter
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
+        ["first-run-work-kind"] = _ChooseWorkKind,
+        ["first-run-work-kind-long"] = _ChooseWorkKind,
+        ["first-run-work-kind-unfolded"] = window =>
+        {
+            _ChooseWorkKind(window);
+            window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(toggle => toggle.Name == "Fold").IsChecked = true;
+        },
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),
@@ -648,6 +717,15 @@ internal static class Screenshotter
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
     };
+
+    // AC-1316: screenshot scenes click a segment so the selected state follows the operator's command path.
+    private static void _ChooseWorkKind(Window window)
+    {
+        var segment = window.GetVisualDescendants().OfType<Button>()
+            .First(button => button.Classes.Contains("Segment") && (string?)button.Content == PluginWorkKinds.All[0].Label);
+        segment.Command!.Execute(segment.CommandParameter);
+        segment.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    }
 
     private static void _OpenMentionPicker(Window window)
     {
@@ -679,10 +757,11 @@ internal static class Screenshotter
         ToolTip.SetIsOpen(_Named<Control>(window, controlName), true);
 
     // By name over the whole rendered tree, because the header bar is a control of its own and its named parts
-    // are not in the view's name scope — FindControl on the view would come back empty.
+    // are not in the view's name scope — FindControl on the view would come back empty. Visible only: both stands
+    // stand in the tree (AC-1303) and the footer sits in each, so a name may exist twice (AC-1316).
     private static T _Named<T>(Window window, string name)
         where T : Control
-        => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name);
+        => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name && control.IsEffectivelyVisible);
 
     // Its own step so the table above can be held to a test — a scene that stopped building was otherwise found by
     // whoever next asked for a render, which on this surface has meant finding it after it shipped.
@@ -1200,6 +1279,24 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
+    // AC-1306: the sidebar's workspace tree with something to group — three Sessions tabs, one holding two
+    // sessions, one holding one, one holding none. The default graph has a single tab, on which the tree is a
+    // node with everything under it and neither the omitted-tabs note nor a second node ever renders.
+    private static MainWindow _MainWindowWithSessionTree(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        var infra = Core.Workspaces.Workspace.Create("Infra", Core.Workspaces.WorkspaceType.Sessions);
+        var empty = Core.Workspaces.Workspace.Create("Spare", Core.Workspaces.WorkspaceType.Sessions);
+        cockpit.Workspaces.Settings = cockpit.Workspaces.Settings.WithWorkspace(infra).WithWorkspace(empty)
+            .WithActive(cockpit.Workspaces.Settings.Workspaces[0].Id);
+
+        cockpit.Sessions[2].WorkspaceId = infra.Id;
+        cockpit.Sessions[1].ProcessCount = 2;
+        cockpit.Sessions[1].AbandonedProcessCount = 1;
+        cockpit.Sessions[1].ProcessMemoryBytes = 1019L * 1024 * 1024;
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
     // Renders the Options dialog with one of its sidebar categories selected (AC-1000: the sidebar's CategoryNav
     // ListBox replaced the old per-tab TabControl), so a category other than the first one can be verified without a
     // display.
@@ -1306,7 +1403,7 @@ internal static class Screenshotter
 
     // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
     // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout)
+    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout, bool withProjects = true)
     {
         var cockpit = new ViewModels.CockpitViewModel();
 
@@ -1320,8 +1417,14 @@ internal static class Screenshotter
             cockpit.OpenProjectFolderCommand,
             cockpit.ShareProjectCommand,
             cockpit.SyncProjectNowCommand);
-        cockpit.Projects.StageDesignSample();
-        cockpit.Projects.StageDesignSharedProjects();
+        // AC-488: a workspace staged with nothing is not a variation of this scene, it is the other half of it —
+        // the state this screen spends its first minute in, and the only one the starting-point gallery draws in.
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+            cockpit.Projects.StageDesignSharedProjects();
+        }
+
         cockpit.Projects.LayoutMode = layout;
 
         cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
@@ -1434,6 +1537,31 @@ internal static class Screenshotter
                    Notes are in the *[release page](https://github.com/raymondkrahwinkel/AI-Cockpit/releases)*
                    (https://github.com/raymondkrahwinkel/AI-Cockpit/wiki), and `curl https://api.github.com/rate_limit`
                    stays plain text.
+                   """,
+        });
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    private static SessionView _TableTranscript()
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+
+        viewModel.Apply(new AssistantTextDelta
+        {
+            SessionId = "s1",
+            BlockIndex = 0,
+            Text = """
+                   Here is what each guard checks and where it runs:
+
+                   | # | Guard | What it checks | Where it runs |
+                   |---|---|---|---|
+                   | 1 | `xmldoc-scope.py` | Every public member of a shipped assembly carries an XML doc comment that names its scope | CI on every pull request, and locally before a push |
+                   | 2 | `comment-length.py` | No comment line runs past the column the repository agreed on | CI on every pull request |
+                   | 3 | `duplicate-bodies.py` | Two tests never share a body byte for byte, so a copied test cannot pass on its twin's behalf | CI only |
+                   | 4 | `classify.test.sh` | The change classifier tells a docs-only change from a code change | Nightly |
+
+                   The rest of the reply wraps as prose does.
                    """,
         });
 
@@ -1920,6 +2048,8 @@ internal static class Screenshotter
             (Cockpit.Core.Assistant.AssistantActivity.Thinking, null),
             (Cockpit.Core.Assistant.AssistantActivity.Speaking, null),
             (Cockpit.Core.Assistant.AssistantActivity.Dictating, null),
+            // The one state whose means differs per theme variant (AC-860) — the gallery used to leave it out.
+            (Cockpit.Core.Assistant.AssistantActivity.AwaitingOperator, null),
             (Cockpit.Core.Assistant.AssistantActivity.Unavailable, "No model on this machine"),
         };
 
@@ -2024,12 +2154,19 @@ internal static class Screenshotter
     }
 
     private static ViewModels.AssistantChatViewModel _AssistantChatViewModel(
-        ViewModels.SessionViewModel? session, bool speakReplies = true, bool alwaysOn = false)
+        ViewModels.SessionViewModel? session,
+        bool speakReplies = true,
+        bool alwaysOn = false,
+        ViewModels.CockpitViewModel? cockpit = null,
+        string? unavailableReason = null)
     {
         var host = new _FakeAssistantSessionHost
         {
             Session = session,
-            Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
+            Activity = unavailableReason is null
+                ? Cockpit.Core.Assistant.AssistantActivity.Ready
+                : Cockpit.Core.Assistant.AssistantActivity.Unavailable,
+            UnavailableReason = unavailableReason,
         };
 
         // AC-662: the same Indicator the coordinator feeds the real window, so the header's always-on switch
@@ -2043,7 +2180,148 @@ internal static class Screenshotter
         };
 
         return new ViewModels.AssistantChatViewModel(
-            host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
+            host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator,
+            cockpit: cockpit);
+    }
+
+    // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
+    // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
+    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false)
+    {
+        var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+        conversation.ActiveProfileLabel = "work";
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+
+        // AC-1303: the real registry with the real registration shape, because picking a session is what hands the
+        // assistant to the rail in this stand — without it the scene would draw a rail with nothing resolvable in it.
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(panels) { SimpleView = true };
+
+        // One chat view model for both hosts, the way `AssistantIndicatorCoordinator` holds one: it is also what
+        // puts itself on `cockpit.AssistantChat`, so building it inside a factory would leave the rail without its
+        // root until that factory happened to run.
+        var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit,
+            unavailableReason: assistantOff ? "The assistant is switched off. Turn it on in Options → Assistant." : null);
+
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId,
+            "Assistant",
+            Material.Icons.MaterialIconKind.Creation,
+            () =>
+            {
+                chat.IsDocked = true;
+                chat.IsSimpleViewHost = false;
+                return new AssistantChatView { DataContext = chat };
+            }));
+
+        // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
+        // drawing the relation rather than everything that happens to be alive.
+        var picked = _RailSession("kind→staging", "personal", "CLAUDE", startedByTheAssistant: true,
+            statusline: "kind→staging gelijktrekken: Traefik + configuratie…");
+        cockpit.Sessions.Add(picked);
+        cockpit.Sessions.Add(_RailSession("AC-1302 de boomrail", "default", "CLAUDE", startedByTheAssistant: true));
+        cockpit.Sessions.Add(_RailSession("mijn eigen sessie", "personal", "CODEX", startedByTheAssistant: false));
+
+        // AC-1302: with a row picked, so the scene shows the rail's active mark and not only its resting state.
+        cockpit.SelectSimpleSessionCommand.Execute(picked);
+
+        cockpit.CreateSimpleViewChatView = () =>
+        {
+            chat.IsDocked = true;
+            chat.IsSimpleViewHost = true;
+            return new AssistantChatView { DataContext = chat };
+        };
+
+        return cockpit;
+    }
+
+    private static ViewModels.SessionViewModel _RailSession(
+        string title, string profile, string providerBadge, bool startedByTheAssistant, string statusline = "")
+    {
+        var session = new ViewModels.SessionViewModel
+        {
+            Title = title,
+            ActiveProfileLabel = profile,
+            ProviderBadge = providerBadge,
+            Statusline = statusline,
+        };
+        session.StartedByTheAssistant = startedByTheAssistant;
+        return session;
+    }
+
+    // AC-1305: two of the rail's own sessions waiting for consent while the column draws the assistant. Built out
+    // of the real properties rather than a placed control, with nothing picked in the rail — which is the state the
+    // notification is for, and clearing the pick is also what recomputes the list.
+    private static ViewModels.CockpitViewModel _SimpleStandAwaitingConsent()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
+        _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
+        _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
+        cockpit.SimpleSelectedSession = null;
+        return cockpit;
+    }
+
+    // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
+    // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
+    // Projects workspace renders from, which is the point: one source, two arrangements.
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false)
+    {
+        // Off means no session either: the host never starts one it is not allowed to.
+        var cockpit = _SimpleStand(withAssistant: !assistantOff, assistantOff);
+
+        // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
+        // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+        }
+
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        return cockpit;
+    }
+
+    private static ViewModels.SessionPanelViewModel _Named(ViewModels.CockpitViewModel cockpit, string title) =>
+        cockpit.Sessions.First(session => session.Title == title);
+
+    private static ViewModels.ConsentPromptViewModel _OpenConsent(string ask, string action, bool dangerous) =>
+        new(
+            new ConsentPrompt(
+                Guid.NewGuid(),
+                new ConsentRequest(
+                    ask,
+                    action,
+                    new ConsentSource("pane", PluginId: "cockpit-k8s", Label: "Kubernetes"),
+                    Scope: "cluster",
+                    Risk: dangerous ? ConsentRisk.Dangerous : ConsentRisk.LowRisk),
+                CanRemember: false),
+            new _NoConsentBroker());
+
+    // A broker that answers nothing, for the scene above: a render never presses a button, and a real one wants an
+    // audit log and a host behind it. Its events have no backing field for the same reason — nobody raises them.
+    private sealed class _NoConsentBroker : IConsentBroker
+    {
+        public event EventHandler<ConsentPrompt>? PromptOpened
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<Guid>? PromptClosed
+        {
+            add { }
+            remove { }
+        }
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("A scene draws a request that is already open; it never opens one.");
+
+        public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
+        {
+        }
     }
 
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`

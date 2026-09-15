@@ -48,7 +48,7 @@ public class WhiteboardControlTests
         var swatches = _OpenColourFlyoutSwatches(control);
 
         Assert.All(swatches, swatch => Assert.NotEqual("#2563EB", swatch.Tag as string, StringComparer.OrdinalIgnoreCase));
-        Assert.DoesNotContain(WhiteboardObjectPainter.Palette, hex => string.Equals(hex, "#2563EB", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(WhiteboardPalette.Swatches, hex => string.Equals(hex, "#2563EB", StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<Button> _OpenColourFlyoutSwatches(WhiteboardControl control)

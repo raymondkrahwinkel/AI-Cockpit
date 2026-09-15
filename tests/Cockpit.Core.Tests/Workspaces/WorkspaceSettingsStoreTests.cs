@@ -4,11 +4,7 @@ using Cockpit.Infrastructure.Workspaces;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
-/// <summary>
-/// <see cref="WorkspaceSettingsStore"/> against a real config file: the round trip, that it leaves sibling
-/// sections alone, and what it does with a file that disagrees with itself. The recovery cases matter more
-/// than the happy path — a malformed <c>workspaces</c> section must not cost the operator their cockpit.
-/// </summary>
+// The recovery cases matter more than the happy path: a malformed workspaces section must not cost the operator their cockpit.
 public class WorkspaceSettingsStoreTests : IDisposable
 {
     private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"cockpit-workspaces-{Guid.NewGuid():n}.json");
@@ -45,11 +41,16 @@ public class WorkspaceSettingsStoreTests : IDisposable
         });
         var saved = WorkspaceSettings.Default.WithWorkspace(dashboard);
 
+        // AC-1306: and the sidebar tree's folded nodes, or every start begins at the bottom of your own tree.
+        var folded = saved.Workspaces.First(workspace => workspace.Type == WorkspaceType.Sessions).Id;
+        saved = saved.WithSidebarCollapsed(folded, collapsed: true);
+
         await store.SaveAsync(saved);
         var loaded = await store.LoadAsync();
 
         Assert.Equal(3, System.Linq.Enumerable.Count(loaded.Workspaces));
         Assert.Equal(dashboard.Id, loaded.ActiveWorkspaceId);
+        Assert.Equal([folded], loaded.CollapsedSidebarWorkspaceIds);
         var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
         Assert.Equal("Monitoring", reloaded.Name);
         Assert.Equal(3, reloaded.Layout.Columns);

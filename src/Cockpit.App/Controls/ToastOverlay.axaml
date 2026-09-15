@@ -23,7 +23,7 @@
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ToastViewModel">
                 <Border Width="320" Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}"
-                        Background="{StaticResource CockpitPanelBgBrush}" BorderThickness="1"
+                        Background="{DynamicResource CockpitPanelBgBrush}" BorderThickness="1"
                         BorderBrush="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
                     <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                         <materialIcons:MaterialIcon Grid.Row="0" Grid.Column="0" Kind="{Binding Glyph}" Width="14" Height="14"
@@ -31,7 +31,7 @@
                                    Margin="0,0,8,0" VerticalAlignment="Top"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"/>
                         <Button Grid.Row="0" Grid.Column="2" Classes="Subtle" Padding="4,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding CloseCommand}" ToolTip.Tip="Dismiss">
                             <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
                         </Button>

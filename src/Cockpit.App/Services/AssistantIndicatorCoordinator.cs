@@ -101,13 +101,21 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // the property (not just the swap) because the stand also arrives later, from the layout restore.
         _cockpit.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(CockpitViewModel.AssistantDocked))
+            // AC-1303: the Simple stand docks the assistant by picking a session rather than by the operator
+            // setting the dock stand, so that is a second way the rail comes to need this tab.
+            if (e.PropertyName is nameof(CockpitViewModel.AssistantDocked)
+                or nameof(CockpitViewModel.SimpleStandDocksTheAssistant))
             {
                 _ApplyDockRegistration();
             }
         };
 
         _ApplyDockRegistration();
+
+        // AC-1301: the Simple stand builds its conversation column from this, the same way the rail builds its
+        // panel from `DockPanelRegistration.CreateView` — a factory rather than a binding, because what stands
+        // there is one view model with one live view and this is what decides which host holds it.
+        _cockpit.CreateSimpleViewChatView = _CreateSimpleViewChatView;
 
         // The chip owns the one-time cost explanation (criterion 18); this only tracks whether the operator
         // has been given it and persists that, so it doesn't return on next launch (criterion 18).
@@ -251,7 +259,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             return;
         }
 
-        if (_cockpit.AssistantDocked)
+        if (_cockpit.AssistantDocked || _cockpit.SimpleStandDocksTheAssistant)
         {
             panels.Register(new DockPanelRegistration(
                 DockPanelId,
@@ -284,6 +292,22 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         var chat = _EnsureChatViewModel();
         chat.IsDocked = true;
+        chat.IsSimpleViewHost = false;
+        _chatWindow?.Close();
+
+        return new AssistantChatView { DataContext = chat };
+    }
+
+    // AC-1301: the Simple stand's conversation column, a third host beside the floating window and the dock
+    // rail. Like the dock it takes the standing conversation over rather than copying it; unlike the dock it is
+    // the only host that stand has, which is what `IsSimpleViewHost` tells the header.
+    private Control _CreateSimpleViewChatView()
+    {
+        _logger.LogInformation("Assistant chat moving to the simple view's conversation column.");
+
+        var chat = _EnsureChatViewModel();
+        chat.IsDocked = true;
+        chat.IsSimpleViewHost = true;
         _chatWindow?.Close();
 
         return new AssistantChatView { DataContext = chat };
@@ -337,6 +361,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         if (_chatViewModel is { } chat)
         {
             chat.IsDocked = docked;
+
+            // Both hosts this method reaches are outside the Simple stand, so whatever asked for one has
+            // already taken the conversation out of that column.
+            chat.IsSimpleViewHost = false;
         }
 
         if (docked)
@@ -372,6 +400,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // The header's Dock/Undock button: the other host, whichever this is.
     private async Task _ToggleDockAsync()
     {
+        // AC-1303: in the Simple stand the dock is a role and not a setting, so this button means "give the main
+        // column back" rather than "pop out into a window". It lands in the same state as picking the assistant's
+        // own row in the rail, which is the other way back — one state, reached two ways (criterion 4(a)).
+        if (_cockpit.SimpleStandDocksTheAssistant)
+        {
+            _cockpit.SimpleSelectedSession = _cockpit.AssistantRootSession;
+            return;
+        }
+
         if (_chatViewModel is { } chat)
         {
             await _ShowInAsync(!chat.IsDocked).ConfigureAwait(true);

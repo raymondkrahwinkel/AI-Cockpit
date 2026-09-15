@@ -39,8 +39,8 @@ internal sealed class NodeDialog : Border
 
     public NodeDialog()
     {
-        // A scrim, so the canvas behind is visibly out of play while a step is open.
-        Background = new SolidColorBrush(Color.Parse("#B0000000"));
+        // The host's scrim, so the canvas behind is visibly out of play while a step is open.
+        Background = _Brush("CockpitScrimBrush", "#b30f1116");
         IsVisible = false;
 
         _title = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 15 };

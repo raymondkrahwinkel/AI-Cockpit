@@ -302,6 +302,7 @@ public partial class App : Application
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window.
         _mainWindow.Show();
+        FollowTheme(cockpitViewModel);
         _SetUpTrayIcon();
 
         // Same routes as the sidebar's Options and About (AC-1299); no-op off macOS, where nothing exports this menu.
@@ -331,7 +332,7 @@ public partial class App : Application
         _ = assistantHost.ApplySettingsAsync();
 
         // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
-        // cannot take it as a constructor argument. Options → Voice needs it for the one thing only a living
+        // cannot take it as a constructor argument. Options → Assistant needs it for the one thing only a living
         // assistant can do — restart onto a permission mode it was not launched with.
         cockpitViewModel.AssistantHost = assistantHost;
 
@@ -360,6 +361,9 @@ public partial class App : Application
         // Held on the view model as well as resolved: every session panel is handed the capture its composer
         // button runs from here, the same way the open-mic coordinator is exposed for the sidebar toggle.
         cockpitViewModel.Screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
+
+        // Resolved for its constructor like the others above (AC-492); held so the palette can open the note too.
+        cockpitViewModel.QuickNotes = Program.Services.GetRequiredService<QuickNoteCoordinator>();
 
         // Fire-and-forget (#34, AC-220): arms every desktop-wide key the operator switched on, as one
         // registration. A no-op when none of them is, so the portal/keyboard-hook is only ever touched for an
@@ -752,6 +756,33 @@ public partial class App : Application
         // Posted, not called: with nothing to tear down this returns inside the ShutdownRequested handler that just
         // cancelled, and re-entering the lifetime's shutdown from there is asking for it.
         Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
+    }
+
+    // AC-860: one subscription, taken when the main window is up — every window reads the app-wide variant set here,
+    // so one per TopLevel would be the same work seven times over (`TopLevel.PlatformSettings` is not public in 12.1
+    // anyway). The stand stays on the view model and is saved from there. `platform` is a seam for headless tests.
+    internal void FollowTheme(CockpitViewModel cockpit, IPlatformSettings? platform = null)
+    {
+        platform ??= PlatformSettings;
+        var selector = new Theming.ThemeSelector(
+            cockpit.ThemeMode,
+            platform?.GetColorValues().ThemeVariant ?? PlatformThemeVariant.Dark,
+            variant => RequestedThemeVariant = variant);
+
+        selector.SetMode(cockpit.ThemeMode);
+        cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.ThemeMode))
+            {
+                selector.SetMode(cockpit.ThemeMode);
+            }
+        };
+        if (platform is not null)
+        {
+            // Fired by the OS; nothing here says on which thread, and the variant is a UI property.
+            platform.ColorValuesChanged += (_, values) =>
+                Dispatcher.UIThread.Post(() => selector.SetSystem(values.ThemeVariant));
+        }
     }
 
     // Keep the tray icon visible so support is obvious; only the setting changes close into hide (#33).

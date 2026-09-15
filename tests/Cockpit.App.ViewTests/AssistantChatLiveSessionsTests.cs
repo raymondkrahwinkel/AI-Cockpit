@@ -1,3 +1,4 @@
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
@@ -6,12 +7,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-776: the session-status pill's source data — <see cref="AssistantChatViewModel.LiveSessions"/>,
-/// <see cref="AssistantChatViewModel.HasLiveSessions"/> and <see cref="AssistantChatViewModel.DeskNameByPaneId"/> —
-/// built off the same live <c>CockpitViewModel</c> the sidebar itself reads, with the same filter
-/// <c>AssistantReadGateway._ListSessions</c> applies (live agent sessions only, never the assistant itself).
-/// </summary>
+// AC-776: built off the live CockpitViewModel the sidebar reads, with the filter AssistantReadGateway._ListSessions applies.
 [Collection("avalonia")]
 public sealed class AssistantChatLiveSessionsTests
 {
@@ -36,9 +32,10 @@ public sealed class AssistantChatLiveSessionsTests
         return cockpit;
     }
 
-    private static SessionViewModel _Session(string paneId, string title, bool showPluginHeaderItems = true)
+    private static SessionViewModel _Session(
+        string paneId, string title, bool showPluginHeaderItems = true, bool startedByTheAssistant = false)
     {
-        var session = new SessionViewModel { Title = title };
+        var session = new SessionViewModel { Title = title, StartedByTheAssistant = startedByTheAssistant };
         session.AdoptPaneId(paneId);
         session.ShowPluginHeaderItems = showPluginHeaderItems;
         return session;
@@ -78,7 +75,6 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.False(vm.HasLiveSessions);
     });
 
-    /// <summary>An unassigned session (no WorkspaceId of its own) falls back to the first Sessions workspace, "Sessions" by default.</summary>
     [Fact]
     public void DeskNameByPaneId_ResolvesAnUnassignedSessionToTheFirstWorkspace() => HeadlessAvalonia.Run(() =>
     {
@@ -90,8 +86,46 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.Equal("Sessions", vm.DeskNameByPaneId["s1"]);
     });
 
-    /// <summary>AC-774's own lesson, back in this window: the subscription this view model holds on the live
-    /// session list must come off on close, or every reopened chat window chains another handler onto it.</summary>
+    // AC-1300: the two sessions match on everything the old "lives and is visible" rule saw; only who started them differs.
+    [Fact]
+    public void SessionsStartedByTheAssistant_HoldsOnlyThoseTheAssistantStarted() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        cockpit.Sessions.Add(_Session("spawned", "AC-774", startedByTheAssistant: true));
+        cockpit.Sessions.Add(_Session("operator-opened", "AC-774"));
+
+        var vm = _Vm(cockpit);
+
+        Assert.Equal(["spawned", "operator-opened"], vm.LiveSessions.Select(session => session.PaneId));
+        Assert.Equal(["spawned"], vm.SessionsStartedByTheAssistant.Select(session => session.PaneId));
+    });
+
+    // AC-1300 criterion 2: the relation lives on the session, so a chat window built fresh over the same cockpit still finds it.
+    [Fact]
+    public void SessionsStartedByTheAssistant_SurvivesAFreshChatWindowAndDropsAClosedSession() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        var session = _Session("spawned", "AC-774", startedByTheAssistant: true);
+        cockpit.Sessions.Add(session);
+
+        _Vm(cockpit).Dispose();
+        var reopened = _Vm(cockpit);
+        Assert.Equal(["spawned"], reopened.SessionsStartedByTheAssistant.Select(live => live.PaneId));
+
+        cockpit.Sessions.Remove(session);
+        Assert.Empty(reopened.SessionsStartedByTheAssistant);
+    });
+
+    // AC-1300 criterion 4: asserted on the resolver — the collection drops the assistant a step earlier and would pass either way.
+    [Fact]
+    public void AssistantSessionOrigin_NeverPutsTheAssistantUnderItself()
+    {
+        var assistant = new SessionViewModel { BelongsToNoWorkspace = true, StartedByTheAssistant = true };
+
+        Assert.False(AssistantSessionOrigin.Resolve(assistant));
+    }
+
+    // AC-774 again: the live-session subscription must come off on close, or every reopened chat window chains another handler.
     [Fact]
     public void Dispose_StopsFollowingTheCockpitsSessionList() => HeadlessAvalonia.Run(() =>
     {

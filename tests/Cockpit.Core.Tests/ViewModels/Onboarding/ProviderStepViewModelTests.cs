@@ -6,13 +6,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels.Onboarding;
 
-/// <summary>
-/// The first-run wizard's provider step (AC-510[b]): offline is its own honest state (criterion 3), the store's
-/// category axis is what filters the catalogue down to providers (criterion 5), and installing goes through the
-/// batch provisioning call so a mixed result shows as "half succeeded" rather than one opaque failure
-/// (criterion 2). <see cref="ProviderPickerRowViewModelTests"/> covers the per-row rendering of each outcome;
-/// this covers the step wiring them together.
-/// </summary>
+// AC-510[b]: installing goes through the batch call so a mixed result reads "half succeeded", not one opaque failure.
 public class ProviderStepViewModelTests : IDisposable
 {
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-provider-step-tests", Guid.NewGuid().ToString("N"));
@@ -83,13 +77,7 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Contains("LM Studio", vm.LocalProvidersText, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The doc comment on <see cref="ProviderStepViewModel.LoadAsync"/> claims the latest call always wins over
-    /// an older one still in flight — this is what makes that literally true rather than merely usually true. The
-    /// constructor itself fires the first (fire-and-forget) run; it is made the stale, slow one here, and a second
-    /// explicit call finishes first — the slow run's own delayed continuation, once released, must not then
-    /// overwrite what the second one already wrote.
-    /// </summary>
+    // Makes LoadAsync's "latest call wins" literally true: the constructor's slow first run, released late, must not overwrite it.
     [Fact]
     public async Task LoadAsync_ASecondCallWhileTheFirstIsStillInFlight_WinsOverTheStaleOne()
     {
@@ -163,6 +151,25 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Equal(ProviderDetectionState.NotApplicable, vm.Providers[0].Detection);
     }
 
+    // AC-510[b] criterion 1: installed stands apart from on-offer, and each group keeps the catalogue's own order.
+    [Fact]
+    public void TheStepOffersWhatWasFoundApartFromTheRest_EachInCatalogueOrder()
+    {
+        // Detection is handed in rather than probed, the same way the Screenshotter stages this step: a test that
+        // writes an executable onto PATH asserts the host's file rules, not the step's, and gets a different
+        // answer per operating system.
+        var vm = new ProviderStepViewModel();
+        vm.Providers.Add(_SelectableRow("gemini-provider"));
+        vm.Providers.Add(_SelectableRow("cli-agent-provider", ProviderDetectionState.NotFound));
+        vm.Providers.Add(_SelectableRow("claude-provider", ProviderDetectionState.Found));
+        vm.Providers.Add(_SelectableRow("kimi-provider", ProviderDetectionState.Found));
+
+        Assert.True(vm.HasFoundProviders);
+        Assert.True(vm.HasOtherProviders);
+        Assert.Equal(["claude-provider", "kimi-provider"], vm.FoundProviders.Select(row => row.Row.Id));
+        Assert.Equal(["gemini-provider", "cli-agent-provider"], vm.OtherProviders.Select(row => row.Row.Id));
+    }
+
     // --- Criterion 2, "half succeeded": one plugin failing in the batch is isolated, and the summary names it
     // rather than reading as one opaque failure. --------------------------------------------------------------------
 
@@ -229,7 +236,8 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.False(vm.CanInstallSelected);
     }
 
-    private static ProviderPickerRowViewModel _SelectableRow(string id)
+    private static ProviderPickerRowViewModel _SelectableRow(
+        string id, ProviderDetectionState detection = ProviderDetectionState.NotApplicable)
     {
         var entry = new PluginStoreEntry(
             id, id, "d", "Cockpit", "1.0.0",
@@ -237,6 +245,6 @@ public class ProviderStepViewModelTests : IDisposable
             Category: PluginStoreEntry.ProviderCategory);
         var row = new Cockpit.App.ViewModels.StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://example.com/index.json"), installedVersion: null);
 
-        return new ProviderPickerRowViewModel(row, ProviderDetectionState.NotApplicable);
+        return new ProviderPickerRowViewModel(row, detection);
     }
 }

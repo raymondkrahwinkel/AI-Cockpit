@@ -15,4 +15,13 @@ public static class AgentStatusSystemPrompt
         "reading, writing, running tests — since only you know when that has happened. Clear it when the work " +
         "is done. CI reports arrive when a check fails or a pull request becomes mergeable; a running check sends " +
         "no message, so silence is not a green result.";
+
+    // AC-490: appended after `Default` only for a session started from a project job. Without a standing ask the
+    // summary field stays empty and the job card promises something nobody delivers.
+    public const string JobRun =
+        "This session was started for one of the project's own jobs. Report what you have done with the work, in " +
+        "the operator's own terms, with the cockpit-session report_job_progress tool — \"14 of 22 invoices read, 3 " +
+        "need a human\", not what the process did. Do it as the work moves and once more before you stop; each call " +
+        "replaces the last. The cockpit shows it next to the job as your account of the work, and nothing else " +
+        "records what happened to it.";
 }

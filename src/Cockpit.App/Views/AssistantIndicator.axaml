@@ -69,7 +69,7 @@
                      sidebar narrows is a permission you stop noticing. -->
                 <materialIcons:MaterialIcon Classes="assistantIndicatorBypassMark" Kind="ShieldOffOutline"
                                             IsVisible="{Binding IsConsentBypassActive}"
-                                            ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Voice."/>
+                                            ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Assistant."/>
             </Panel>
         </Button>
 
@@ -132,7 +132,7 @@
                         <!-- The same mark as the rail above — see there for why it is a sibling of the ring. -->
                         <materialIcons:MaterialIcon Classes="assistantIndicatorBypassMark" Kind="ShieldOffOutline"
                                                     IsVisible="{Binding IsConsentBypassActive}"
-                                                    ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Voice."/>
+                                                    ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Assistant."/>
                     </Panel>
                     <!-- Wrapping, not trimming. The sidebar this lives in is about 170px wide, and the longest
                          label ("Listening continuously") does not fit on one line there — trimmed, it read

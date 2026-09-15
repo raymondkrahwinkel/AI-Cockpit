@@ -13,7 +13,7 @@
             <Button Command="{Binding ToggleCommand}" Classes="Subtle" Padding="8,6"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                     CornerRadius="{StaticResource CockpitControlRadius}"
-                    Background="{StaticResource CockpitSecondaryBgBrush}">
+                    Background="{DynamicResource CockpitSecondaryBgBrush}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
                              Margin="0,0,8,0"
@@ -21,7 +21,7 @@
                     <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="12.5"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                     <TextBlock Grid.Column="2" Text="{Binding AgeText}" FontSize="11.5" VerticalAlignment="Center"
-                               Margin="8,0,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Margin="8,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </Grid>
             </Button>
 
@@ -30,14 +30,14 @@
                  richer per-task activity than kind + description, so this shows what exists rather than
                  inventing a feed the contract does not have (AC-531 #7). -->
             <Border IsVisible="{Binding IsSelected}" Margin="0,3,0,0" Padding="9,7"
-                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource CockpitControlRadius}">
                 <StackPanel Spacing="3">
                     <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding Description}" FontSize="11.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
         </StackPanel>

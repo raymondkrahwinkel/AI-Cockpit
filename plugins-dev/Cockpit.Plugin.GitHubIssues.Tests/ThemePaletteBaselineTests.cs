@@ -1,7 +1,5 @@
 using System.Reflection;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
 
@@ -24,12 +22,14 @@ public class ThemePaletteBaselineTests
     private static string BaselineDirectory =>
         Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubIssues.Tests", "Baselines");
 
-    [Fact]
-    public void TheDialog_PaintsNothingItsBaselineDoesNotAccountFor() => HeadlessAvalonia.Run(() =>
+    [Theory]
+    [InlineData("Dark")]
+    [InlineData("Light")]
+    public void TheDialog_PaintsNothingItsBaselineDoesNotAccountFor(string variant) => HeadlessAvalonia.Run(() =>
     {
-        var painted = _Painted();
+        var painted = ThemeVariants.Under(variant, _Painted);
 
-        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, Scene), painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, Scene, variant), painted);
     });
 
     // The other direction (AC-414): the check above names the one scene this plugin has, so a baseline left over
@@ -45,8 +45,7 @@ public class ThemePaletteBaselineTests
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun() => HeadlessAvalonia.Run(() =>
     {
-        var primary = (Color)(Application.Current?.FindResource("CockpitTextPrimaryColor")
-            ?? throw new InvalidOperationException("The theme has no CockpitTextPrimaryColor."));
+        var primary = ThemeTokens.Colour("CockpitTextPrimaryColor");
 
         var painted = _Painted();
 

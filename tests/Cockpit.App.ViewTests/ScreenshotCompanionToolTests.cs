@@ -5,6 +5,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
@@ -15,13 +16,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-239: the screenshot capture (AC-220) as the companion window's second first-party resident, through the
-/// same host AC-238 built for the assistant indicator. What a click does with the picker is
-/// <c>ScreenshotCoordinatorTests</c>' (Cockpit.Core.Tests); this only proves the button is really wired to it —
-/// including the one thing the companion window cannot get away with that the composer can: a disabled button
-/// still has to be there, not hidden, or disabled and missing look the same to the operator.
-/// </summary>
+// AC-239: the button must stay present when disabled — to the operator, disabled and missing look the same here.
 [Collection("avalonia")]
 public sealed class ScreenshotCompanionToolTests
 {
@@ -106,6 +101,7 @@ public sealed class ScreenshotCompanionToolTests
             Substitute.For<IVoiceSettingsStore>(),
             Substitute.For<IScreenshotSettingsStore>(),
             Substitute.For<IAssistantSettingsStore>(),
+            Substitute.For<IQuickNoteSettingsStore>(),
             Substitute.For<IHotkeyExclusivityGuard>(),
             Substitute.For<IToastService>(),
             NullLogger<GlobalHotkeyCoordinator>.Instance);

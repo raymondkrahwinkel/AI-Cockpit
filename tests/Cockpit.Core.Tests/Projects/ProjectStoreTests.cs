@@ -4,10 +4,6 @@ using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
 
-/// <summary>
-/// Persistence of the <c>projects</c> section against a real temporary config file — the store is pointed at it
-/// through its internal test constructor, so no real config directory is touched.
-/// </summary>
 public class ProjectStoreTests : IDisposable
 {
     private readonly string _tempDir;
@@ -85,12 +81,7 @@ public class ProjectStoreTests : IDisposable
         Assert.True(Assert.Single(loaded.Projects).McpOverlay.IsEmpty);
     }
 
-    /// <summary>
-    /// A credential in an information row must reach the config under the field name the secret rule recognises
-    /// (AC-318) — that name is the whole mechanism by which it gets encrypted and scrubbed from backups. Written as a
-    /// file assertion because the encryption itself lives above this store: what this owns is putting the value in the
-    /// field that routes it there, and never in the readable one.
-    /// </summary>
+    // AC-318: the field name is the whole mechanism by which a credential is encrypted and scrubbed, so this asserts on the file.
     [Fact]
     public async Task SaveAsync_ASecretInformationRow_GoesToTheFieldNameTheSecretRuleRecognises()
     {
@@ -116,7 +107,7 @@ public class ProjectStoreTests : IDisposable
         Assert.False(rows[1].IsSecret);
     }
 
-    /// <summary>Most projects keep no information of their own; their entry should not gain an empty array for it.</summary>
+    // Most projects keep no information of their own; their entry should not gain an empty array for it.
     [Fact]
     public async Task SaveAsync_ProjectWithoutInformation_WritesNoSectionForIt()
     {
@@ -126,10 +117,6 @@ public class ProjectStoreTests : IDisposable
         Assert.DoesNotContain("AdditionalInfo", written);
     }
 
-    /// <summary>
-    /// A hand-edited information row can be half-written, and the deserializer will hand a null straight through to a
-    /// property the domain declares non-nullable. Loading has to survive that with the project intact.
-    /// </summary>
     [Fact]
     public async Task LoadAsync_InformationRowWithNulls_LoadsTheProjectAndDropsTheRow()
     {
@@ -190,7 +177,6 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal("android", reloaded.SourceDirectories[1].Label);
     }
 
-    /// <summary>A section written by hand, or by a newer build, should cost the operator the bad entry rather than the whole list.</summary>
     [Fact]
     public async Task LoadAsync_EntryWithoutAName_IsDropped()
     {
@@ -256,7 +242,7 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal(["Werk"], loaded.CategoryOrder);
     }
 
-    /// <summary>Most projects carry no category; their own entry should not gain an empty field for it (CategoryOrder itself is always written, empty or not — that part is expected).</summary>
+    // Most projects carry no category, so their entry gains no empty field; CategoryOrder itself is always written.
     [Fact]
     public async Task SaveAsync_ProjectWithoutCategory_WritesNoCategoryFieldOnTheProjectEntry()
     {
@@ -266,7 +252,7 @@ public class ProjectStoreTests : IDisposable
         Assert.DoesNotContain("\"Category\":", written);
     }
 
-    /// <summary>The store owns one section: writing projects must not clobber a sibling the same file carries.</summary>
+    // The store owns one section: writing projects must not clobber a sibling the same file carries.
     [Fact]
     public async Task SaveAsync_LeavesOtherSectionsUntouched()
     {
@@ -276,6 +262,62 @@ public class ProjectStoreTests : IDisposable
 
         var written = await File.ReadAllTextAsync(_configFilePath);
         Assert.Contains("personal", written);
+    }
+
+    // AC-493 criterion 1: absence stays absence — a default would turn every job already on disk into a recurring one unannounced.
+    [Fact]
+    public async Task AJobWithoutARecurrence_KeepsNone_AndAJobWithOneKeepsIt()
+    {
+        var store = new ProjectStore(_configFilePath);
+        var plain = Project.Create("Invoices") with
+        {
+            Jobs = [new ProjectJob("Process this month's invoices", "changes nothing · reports only")],
+        };
+
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(plain));
+
+        // A job that does not come round writes no recurrence at all, which is what leaves a config this version
+        // wrote identical in shape to every one already on disk.
+        Assert.DoesNotContain("Recurrence", await File.ReadAllTextAsync(_configFilePath), StringComparison.Ordinal);
+        var reloaded = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+        Assert.Equal("Process this month's invoices", reloaded.Prompt);
+        Assert.Null(reloaded.Recurrence);
+
+        // And the other direction, so a rule that never reached the disk cannot pass unnoticed.
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(
+            plain with { Jobs = [plain.Jobs[0] with { Recurrence = new JobRecurrence(2, DayOfWeek.Monday) }] }));
+
+        Assert.Equal(
+            new JobRecurrence(2, DayOfWeek.Monday),
+            Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Recurrence);
+    }
+
+    // AC-490 criterion 1: the id is on disk from the load that minted it, so no run points at an id a later load would replace.
+    [Fact]
+    public async Task AJobWrittenWithoutAnId_GetsOneOnLoadThatIsOnDiskAtOnce_AndKeepsItThroughARewrite()
+    {
+        // A config as AC-491 wrote it: a job with a prompt and a blast radius, and no id anywhere.
+        await File.WriteAllTextAsync(_configFilePath, """
+            { "Projects": [ { "Id": "p1", "Name": "Invoices", "Jobs": [
+                { "Prompt": "Process this month's invoices", "BlastRadius": "changes nothing · reports only" } ] } ] }
+            """);
+        var store = new ProjectStore(_configFilePath);
+
+        var loaded = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+
+        // The id the load minted is already in the file — not waiting for a later save that might never come.
+        Assert.False(string.IsNullOrWhiteSpace(loaded.Id));
+        Assert.Contains(loaded.Id, await File.ReadAllTextAsync(_configFilePath), StringComparison.Ordinal);
+        Assert.Equal(loaded.Id, Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Id);
+
+        // Rewording the prompt is an edit to the job, not a new job: its runs stay its runs.
+        var project = Assert.Single((await store.LoadAsync()).Projects);
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(
+            project with { Jobs = [loaded with { Prompt = "Process the invoices and flag anything odd" }] }));
+
+        var rewritten = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+        Assert.Equal("Process the invoices and flag anything odd", rewritten.Prompt);
+        Assert.Equal(loaded.Id, rewritten.Id);
     }
 
     public void Dispose()

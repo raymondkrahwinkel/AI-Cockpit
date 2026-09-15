@@ -6,17 +6,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests.Onboarding;
 
-/// <summary>
-/// The work-kind step's own behaviour (AC-511): a work kind ticks boxes and nothing else, a generic (untagged)
-/// plugin ticks for whichever kind is chosen, every tick stays the operator's, providers do not appear here at
-/// all, only the explicit confirmation installs anything, a half-failed batch reports both halves, and an index
-/// published before the audience field still drives a working step.
-/// </summary>
-/// <remarks>
-/// The catalogue always arrives through the real <see cref="PluginStoreIndex.TryParse"/>: a substitute handing back
-/// a hand-built <c>PluginStoreEntry</c> would prove the view model reads a shape nothing on disk has to produce,
-/// which is the one thing these tests are not allowed to assume.
-/// </remarks>
+// AC-511: the catalogue goes through the real PluginStoreIndex.TryParse; a hand-built entry proves a shape no disk file has.
 [Collection("avalonia")]
 public class WorkKindStepViewModelTests : IDisposable
 {
@@ -40,7 +30,7 @@ public class WorkKindStepViewModelTests : IDisposable
     }
     """;
 
-    /// <summary>An index as published before AC-511 added the field — no <c>audience</c> anywhere (criterion 5).</summary>
+    // An index as published before AC-511 added the field — no audience anywhere (criterion 5).
     private const string IndexBeforeAudienceExisted = """
     {
       "name": "Example Store",
@@ -89,6 +79,7 @@ public class WorkKindStepViewModelTests : IDisposable
     {
         var viewModel = _ViewModel();
         await viewModel.LoadAsync();
+        Assert.Null(viewModel.SelectedWorkKind);
 
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
 
@@ -111,10 +102,7 @@ public class WorkKindStepViewModelTests : IDisposable
         Assert.Equal(new[] { "github-issues" }, _sentToInstall.Select(request => request.Id));
     }
 
-    /// <summary>
-    /// The mechanism ("a new selection replaces the old ticks") does not depend on a second real chip existing —
-    /// today's set has only "Developer" (criterion 6) — so this proves it with a work kind built on the spot.
-    /// </summary>
+    // Today's set has only "Developer" (criterion 6), so the replace-the-old-ticks rule is proven with a kind built on the spot.
     [Fact]
     public async Task ChoosingADifferentWorkKind_ReplacesTheFirstsTicks_RatherThanAddingToThem()
     {
@@ -128,10 +116,7 @@ public class WorkKindStepViewModelTests : IDisposable
         Assert.Empty(_Ticked(viewModel));
     }
 
-    /// <summary>
-    /// The pre-tick is a suggestion, not a decision already taken: leaving the step — the shell's Skip, or Next
-    /// onto the next page — never reaches the confirm command, so a loaded, ticked list installs nothing.
-    /// </summary>
+    // The pre-tick is a suggestion, not a decision: leaving the step by Skip or Next never reaches the confirm command.
     [Fact]
     public async Task LeavingTheStepWithoutConfirming_InstallsNothing()
     {
@@ -166,10 +151,6 @@ public class WorkKindStepViewModelTests : IDisposable
         await _registrations.DidNotReceive().SaveAsync("pull-requests", Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// Criterion 5: an index from before the field exists still drives the step. The chooser has nothing to
-    /// suggest, so it offers nothing, and the list is the operator's to tick.
-    /// </summary>
     [Fact]
     public async Task AnIndexWithoutTheAudienceField_LeavesTheStepWorking_WithNothingSuggested()
     {
@@ -182,10 +163,7 @@ public class WorkKindStepViewModelTests : IDisposable
         Assert.DoesNotContain(viewModel.Plugins, row => row.IsSelected);
     }
 
-    /// <summary>
-    /// Providers are chosen in the previous wizard step (AC-510[b], AC-511 criterion 6's answer) — showing one
-    /// here too would be a second, redundant chance to pick it.
-    /// </summary>
+    // Providers are chosen in the previous wizard step (AC-510[b]); offering one here too would be a second, redundant pick.
     [Fact]
     public async Task LoadAsync_ExcludesProviderPlugins()
     {
@@ -196,11 +174,7 @@ public class WorkKindStepViewModelTests : IDisposable
         Assert.DoesNotContain(viewModel.Plugins, row => row.Name == "Claude");
     }
 
-    /// <summary>
-    /// Criterion 2, read off the file rather than argued: after the batch, <c>cockpit.json</c> holds enabled
-    /// plugins and no trace of the work kind that suggested them. A stored role is what decision 2 of 2026-07-21
-    /// forbids — a work kind pre-ticks boxes, it is not something the app later reasons about.
-    /// </summary>
+    // Criterion 2: cockpit.json keeps no trace of the work kind — a stored role is what decision 2 of 2026-07-21 forbids.
     [Fact]
     public async Task AfterTheBatch_TheConfigFileNamesNoWorkKindOrAudience()
     {

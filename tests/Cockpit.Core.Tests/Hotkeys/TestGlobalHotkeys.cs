@@ -5,7 +5,9 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.QuickNotes;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Screenshots;
@@ -13,11 +15,7 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Tests.Hotkeys;
 
-/// <summary>
-/// Builds a <see cref="GlobalHotkeyCoordinator"/> over a fake OS service and stubbed settings stores — the
-/// arrangement every test of a hotkey-driven feature needs, since the coordinator is now what a feature
-/// subscribes to rather than the service itself.
-/// </summary>
+// The arrangement every hotkey-driven feature test needs, since a feature subscribes to the coordinator, not the service.
 internal static class TestGlobalHotkeys
 {
     public static GlobalHotkeyCoordinator Coordinator(
@@ -28,7 +26,8 @@ internal static class TestGlobalHotkeys
         IHotkeyExclusivityGuard? guard = null,
         IToastService? toasts = null,
         TimeSpan? retryInterval = null,
-        AssistantSettings? assistant = null)
+        AssistantSettings? assistant = null,
+        QuickNoteSettings? quickNotes = null)
     {
         var voiceStore = Substitute.For<IVoiceSettingsStore>();
         voiceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(voice ?? new VoiceSettings());
@@ -41,18 +40,21 @@ internal static class TestGlobalHotkeys
         var assistantStore = Substitute.For<IAssistantSettingsStore>();
         assistantStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(assistant ?? new AssistantSettings());
 
+        var quickNoteStore = Substitute.For<IQuickNoteSettingsStore>();
+        quickNoteStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(quickNotes ?? new QuickNoteSettings());
+
         return new GlobalHotkeyCoordinator(
             hotkeys,
             voiceStore,
             screenshotStore,
             assistantStore,
+            quickNoteStore,
             guard ?? AlwaysAvailable(),
             toasts ?? Substitute.For<IToastService>(),
             logger ?? NullLogger<GlobalHotkeyCoordinator>.Instance,
             retryInterval);
     }
 
-    /// <summary>A guard that grants every claim — the ordinary case, where no other cockpit instance is competing for a key.</summary>
     public static IHotkeyExclusivityGuard AlwaysAvailable()
     {
         var guard = Substitute.For<IHotkeyExclusivityGuard>();
@@ -60,6 +62,5 @@ internal static class TestGlobalHotkeys
         return guard;
     }
 
-    /// <summary>Voice settings with the desktop-wide hold switched on — the state in which push-to-talk contributes a binding.</summary>
     public static VoiceSettings GlobalPushToTalkOn => new() { IsEnabled = true, GlobalPushToTalk = true };
 }

@@ -83,6 +83,9 @@ internal sealed class CockpitConfigFile
     // Screenshot capture settings (AC-220) — the desktop-wide key and whether it is armed; owned by the screenshot-settings store.
     public ScreenshotSettingsEntry? Screenshots { get; set; }
 
+    // The quick-note key (AC-492) — the desktop-wide key and whether it is armed; owned by the quick-note-settings store.
+    public QuickNoteSettingsEntry? QuickNotes { get; set; }
+
     // Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.
     public TerminalSettingsEntry? Terminal { get; set; }
 

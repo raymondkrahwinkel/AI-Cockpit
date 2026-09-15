@@ -3,12 +3,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
-/// <summary>
-/// The four fields AC-410 added to <see cref="WorkspacePaneEntry"/> (Title, NameIsChosen, SessionKind, ProjectId):
-/// their round trip through <see cref="WorkspacePaneEntry.FromDomain"/>/<see cref="WorkspacePaneEntry.ToDomain"/>,
-/// and that an unrecognised <c>SessionKind</c> string degrades to <see cref="PaneSessionKind.Sdk"/> the same way an
-/// unrecognised <c>Kind</c> already degrades to <see cref="PaneKind.AiSession"/> — never a throw.
-/// </summary>
+// AC-410: an unrecognised SessionKind degrades to Sdk the way an unrecognised Kind degrades to AiSession — never a throw.
 public class WorkspacePaneEntryAiSessionTests
 {
     [Fact]
@@ -22,6 +17,7 @@ public class WorkspacePaneEntryAiSessionTests
             NameIsChosen = true,
             SessionKind = PaneSessionKind.Tty,
             ProjectId = "proj-1",
+            StartedByTheAssistant = true,
         };
 
         var restored = WorkspacePaneEntry.FromDomain(pane).ToDomain();
@@ -30,6 +26,9 @@ public class WorkspacePaneEntryAiSessionTests
         Assert.Equal(pane.NameIsChosen, restored.NameIsChosen);
         Assert.Equal(pane.SessionKind, restored.SessionKind);
         Assert.Equal(pane.ProjectId, restored.ProjectId);
+        // AC-1300: mapped by hand in both directions like the rest, so a field that is never wired up here is a
+        // relation that silently empties on the next restart.
+        Assert.Equal(pane.StartedByTheAssistant, restored.StartedByTheAssistant);
     }
 
     [Fact]

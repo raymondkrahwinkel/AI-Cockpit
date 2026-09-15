@@ -131,8 +131,8 @@ public static class DependencyInjection
     }
 
     // Global push-to-talk (#34) is registered by platform here rather than via the Scrutor marker scan, which
-    // would bind whichever implementation it saw last. Windows uses a SharpHook keyboard hook. Linux splits on
-    // session type: Wayland needs the XDG GlobalShortcuts portal, X11 uses the same hook as Windows.
+    // would bind whichever implementation it saw last. Windows and X11 use a SharpHook keyboard hook, Wayland the
+    // XDG GlobalShortcuts portal, macOS Carbon's RegisterEventHotKey (AC-492: no Accessibility permission needed).
     private static void AddGlobalHotkey(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -149,6 +149,10 @@ public static class DependencyInjection
             {
                 services.AddSingleton<IGlobalHotkeyService, SharpHookGlobalHotkeyService>();
             }
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            services.AddSingleton<IGlobalHotkeyService, CarbonGlobalHotkeyService>();
         }
         else
         {

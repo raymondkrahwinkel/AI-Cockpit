@@ -329,6 +329,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isSelected;
 
+    // AC-1302: the same for the Simple stand's rail, which keeps a selection of its own (AC-1301). A second flag
+    // rather than a shared one: the two stands may point at different sessions, and one flag would make the rail
+    // mark whatever the panels grid has open. Set by `CockpitViewModel`, like `IsSelected`.
+    [ObservableProperty]
+    private bool _isSelectedInSimpleStand;
+
     // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
     // selected in single-pane mode (#24 / Zoom).
     [ObservableProperty]
@@ -420,13 +426,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _abandonedProcessCount;
 
+    // AC-1306: above this much resident memory the measure line speaks; below it a session is doing what a session
+    // does and the figure is noise. 512 MB — a resting agent process sits well under it, a build or a test host over.
+    internal const long QuietProcessMemoryBytes = 512L * 1024 * 1024;
+
     // AC-1096: the processes behind the status, on the row the status is already on — an idle session with a test
     // host still resident reads exactly like a finished one without this number. Empty when there is none.
     public string ProcessActivityLabel
     {
         get
         {
-            if (ProcessCount == 0)
+            // AC-1306: it says nothing at all unless there is something to say. A session holding a normal amount
+            // of memory and nothing left behind gets no line rather than an empty one, and the row is shorter for
+            // it — which is the whole point at a sidebar 222 px wide with a workspace tree in it now.
+            if (ProcessCount == 0 || (AbandonedProcessCount == 0 && ProcessMemoryBytes < QuietProcessMemoryBytes))
             {
                 return string.Empty;
             }
@@ -1335,6 +1348,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // True only for the voice assistant — the third session kind, which is neither a pane on a desk nor a headless task
     // with an owner pane (AC-543).
     public bool BelongsToNoWorkspace { get; internal set; }
+
+    // AC-1300: whether the assistant started this session, mirroring `WorkspacePane.StartedByTheAssistant` so a
+    // restored pane comes back with the relation intact. Read through `AssistantSessionOrigin.Resolve`, never
+    // directly — that is where the assistant's own exception lives.
+    public bool StartedByTheAssistant { get; internal set; }
 
     // Mirrors `Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice`: when true a finished transcript is submitted right after injection (see `OnVoiceSubmitRequested`) instead of waiting for a manual send.
     [ObservableProperty]

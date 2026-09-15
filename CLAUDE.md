@@ -23,7 +23,7 @@ Zie AC-885.
 Wil je zien hoe een scherm er echt uitziet, render het dan:
 
 ```
-dotnet run --project src/Cockpit.App -- --screenshot <pad>.png --scene <naam> [--size 1100x760]
+dotnet run --project src/Cockpit.App -- --screenshot <pad>.png --scene <naam> [--size 1100x760] [--theme Light|Dark]
 ```
 
 Dit raakt niets van de operator aan: geen focus, geen cursor, geen venster, en ook zijn state-directory

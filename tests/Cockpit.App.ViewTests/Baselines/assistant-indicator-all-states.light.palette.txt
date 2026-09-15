@@ -1,0 +1,32 @@
+# What this screen paints: every colour, named after the theme token holding that value, or
+# off-palette when no token does — plus every corner radius. A screen may paint fewer of these
+# than are listed (a scroll bar exists only when its content overflows); it may not paint one
+# that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
+
+#120E7490  CockpitStatusBusyChipTintColor
+#142B7546  CockpitStatusDoneChipTintColor
+#14A35F02  CockpitStatusWaitingChipTintColor
+#1F0E7490  CockpitStatusBusyRingTintColor
+#1F2B7546  CockpitStatusDoneRingTintColor
+#1FA35F02  CockpitStatusWaitingRingTintColor
+#242563EB  CockpitAccentRingTintColor
+#292563EB  CockpitAccentSelectionColor
+#FF000000  off-palette
+#FF0E7490  CockpitStatusBusyColor
+#FF161920  CockpitTextPrimaryColor
+#FF2563EB  CockpitAccentColor
+#FF2B7546  CockpitStatusDoneColor
+#FF5A616D  CockpitTextSecondaryColor
+#FF7C8391  CockpitTextFaintColor
+#FFA35F02  CockpitStatusWaitingColor
+#FFC62F2F  CockpitStatusErrorColor
+#FFD5DAE3  CockpitHairlineColor
+#FFDDE2EB  CockpitSecondaryBgColor
+#FFEDEFF5  CockpitInsetBgColor
+#FFFFFFFF  CockpitPanelBgColor, CockpitTextOnAccentColor, CockpitTextOnStatusColor
+radius  0,0,0,0
+radius  13,13,13,13
+radius  20,20,20,20
+radius  3,3,3,3
+radius  4,4,4,4
+radius  9,9,9,9

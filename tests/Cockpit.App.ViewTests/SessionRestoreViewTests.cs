@@ -25,18 +25,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-410 step 5 end-to-end: a cockpit that starts with one saved AI-session pane in <c>cockpit.json</c> shows it
-/// after <see cref="CockpitViewModel.RestoreSessionPanesAsync"/> — without ever starting the session it describes.
-/// "Started" here means the panel's own <c>Status</c>, which only a launch call
-/// (<c>StartConfiguredAsync</c>/<c>LaunchConfigured</c>) changes from its "Not started." default.
-/// </summary>
-/// <remarks>
-/// Tagged <c>[Collection("avalonia")]</c> only for <see cref="ReopenAndSendResume_OnARestoredKnownPane_StartsItWithTheSavedConversationId"/>
-/// — the one test here whose path (<c>ScheduledResumeCoordinator.StartAsync</c>) touches
-/// <c>Dispatcher.UIThread</c>, which hangs forever without the headless platform this collection's fixture sets up
-/// (<see cref="HeadlessAvalonia"/>). Every other test in this class builds view-models only and does not need it.
-/// </remarks>
+// [Collection("avalonia")] for one test only: ScheduledResumeCoordinator.StartAsync hangs without the headless platform.
 [Collection("avalonia")]
 public class SessionRestoreViewTests
 {
@@ -79,6 +68,30 @@ public class SessionRestoreViewTests
         // that ever sets LaunchResult or a process id, and the restore path never calls it.
         Assert.Null(restored.LaunchResult);
         Assert.Null(restored.ProcessId);
+    }
+
+    // AC-1300 criterion 2(a): the pane record carries the relation across a restart; AssistantSessionOrigin.Resolve reads it.
+    [Fact]
+    public async Task RestoreSessionPanesAsync_APaneTheAssistantStarted_ComesBackInTheRelation()
+    {
+        var spawned = new WorkspacePane("spawned-pane", PaneKind.AiSession) { ProfileId = "work", StartedByTheAssistant = true };
+        var opened = new WorkspacePane("operator-pane", PaneKind.AiSession) { ProfileId = "work" };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(spawned).WithPane(opened);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+
+        var vm = NewVm(workspaceStore, stateStore);
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+
+        Assert.Equal(
+            ["spawned-pane"],
+            vm.Sessions.Where(AssistantSessionOrigin.Resolve).Select(session => session.PaneId));
     }
 
     // AC-514: a name that changes after the pane already exists — a plugin/agent suggestion, or an operator's
@@ -203,12 +216,7 @@ public class SessionRestoreViewTests
         Assert.Single(vm.Sessions);
     }
 
-    /// <summary>
-    /// The restore-offer banner (AC-410 design decision 5): the same properties drive both <c>SessionView</c> and
-    /// <c>TtyView</c>'s banner bindings (<c>HasRestoreOffer</c>/<c>CanResumeConversation</c>), so restoring one pane
-    /// of each kind against a <see cref="SessionConversationIdState.Known"/> state exercises both views' binding
-    /// surface identically. "Resume conversation" must show for both.
-    /// </summary>
+    // AC-410 decision 5: SessionView and TtyView bind the same banner properties, so one restored pane of each kind covers both.
     [Fact]
     public async Task RestoreSessionPanesAsync_KnownConversation_OffersResumeOnBothSdkAndTtyPanes()
     {
@@ -245,22 +253,7 @@ public class SessionRestoreViewTests
         }
     }
 
-    /// <summary>
-    /// AC-513: the seam between <see cref="RestoreSessionPanesAsync"/> and <see cref="SessionStateRecorder"/> —
-    /// found on review after the recorder's own unit tests (which never exercise <c>RestoreSessionPanesAsync</c>)
-    /// and the recorder's throwaway harness (which never calls <c>Seed</c>) both stayed green while this path
-    /// still broke. Uses a real <see cref="SessionStateStore"/> made genuinely unreadable (<c>chmod 0200</c>, the
-    /// sharpest real case) and a real <see cref="SessionStateRecorder"/> wired into a real
-    /// <see cref="CockpitViewModel"/> — a substitute for either would not reproduce this, since the bug is in how
-    /// the two classes hand a load result to each other, not in either class alone.
-    /// <para>
-    /// Sequence: restore runs while the file cannot be read (must not latch the recorder onto a blank cache); a
-    /// write while it is still unreadable must not corrupt the file either (criterion 2, already covered
-    /// elsewhere, exercised here for completeness); then, once the file is readable again, a write must still
-    /// find the saved id — proving the restore's failed <c>Seed</c> left the write path free to self-heal instead
-    /// of a bad seed permanently blinding it.
-    /// </para>
-    /// </summary>
+    // AC-513: the bug sat between the two classes, so no substitute for either reproduces it and their own tests stayed green.
     [Fact]
     public async Task RestoreSessionPanesAsync_UnreadableStateFile_DoesNotBlindTheRecorderToTheSavedConversationId()
     {
@@ -322,7 +315,6 @@ public class SessionRestoreViewTests
         }
     }
 
-    /// <summary>An <see cref="SessionConversationIdState.Unsupported"/> provider hides "Resume conversation" on both pane kinds.</summary>
     [Fact]
     public async Task RestoreSessionPanesAsync_UnsupportedProvider_HidesResumeOnBothSdkAndTtyPanes()
     {
@@ -357,12 +349,7 @@ public class SessionRestoreViewTests
         }
     }
 
-    /// <summary>
-    /// AC-410's documented pitfall: <c>WorktreeBranch</c> must be set from the worktree registry at materialization
-    /// time (inside <c>RestoreSessionPanesAsync</c>), not left for the start path — the restore path runs with
-    /// <c>IsolateInWorktree: false</c>, so <c>_ResolveIsolatedWorkingDirectoryAsync</c> never gets a chance to
-    /// resolve it. Asserted before any start happens.
-    /// </summary>
+    // AC-410's pitfall: restore runs with IsolateInWorktree false, so WorktreeBranch is set at materialization, not on start.
     [Fact]
     public async Task RestoreSessionPanesAsync_MatchingWorktreeRecord_SetsWorktreeBranchBeforeAnyStart()
     {
@@ -393,7 +380,6 @@ public class SessionRestoreViewTests
         Assert.Null(restored.ProcessId);
     }
 
-    /// <summary>"Start fresh" starts the restored pane with <c>SessionResume.New</c>, whatever the plan knew about an earlier conversation.</summary>
     [Fact]
     public async Task StartFresh_OnARestoredPane_StartsWithSessionResumeNew()
     {
@@ -412,11 +398,7 @@ public class SessionRestoreViewTests
         Assert.False(restored.HasRestoreOffer, "the banner disappears once the start actually lands");
     }
 
-    /// <summary>
-    /// AC-1080: the provider picking its own conversation back up says nothing about the window, which comes up
-    /// empty — the restore leaves the operator looking at a blank pane that is nonetheless mid-conversation. So a
-    /// resume repaints from the log Cockpit itself keeps (AC-1090), the route the assistant already took alone.
-    /// </summary>
+    // AC-1080: the provider's own resume leaves the pane blank, so a resume repaints from the log Cockpit keeps (AC-1090).
     [Fact]
     public async Task ResumeConversation_OnARestoredPane_RepaintsWhatCockpitRecorded()
     {
@@ -439,11 +421,7 @@ public class SessionRestoreViewTests
         }
     }
 
-    /// <summary>
-    /// The other half: "Start fresh" is a new conversation, so it must not leave the old one in the log for the
-    /// next resume to repaint. Rolled aside rather than dropped, and by the same store every pane shares — the
-    /// assistant included — so the number of generations kept cannot differ per kind of session.
-    /// </summary>
+    // "Start fresh" rolls the old log aside via the store every pane shares, so the generations kept cannot differ per kind.
     [Fact]
     public async Task StartFresh_OnARestoredPane_RollsTheRecordedConversationAside()
     {
@@ -468,12 +446,7 @@ public class SessionRestoreViewTests
         }
     }
 
-    /// <summary>
-    /// A log that is there but unreadable must not repaint as nothing: the session starts either way, so silence
-    /// leaves the operator facing an empty window that reads as "this pane has no history" (AC-513's distinction,
-    /// one level down). The row saying so is the only thing between that and the silent failures this epic keeps
-    /// producing.
-    /// </summary>
+    // An unreadable log must not repaint as nothing: the session starts anyway, and silence reads as "no history" (AC-513).
     [Fact]
     public async Task ResumeConversation_WhenTheRecordedLogCannotBeRead_SaysSoInsteadOfShowingNothing()
     {
@@ -523,7 +496,6 @@ public class SessionRestoreViewTests
         await worktrees.Received(1).ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>());
     }
 
-    /// <summary>"Resume conversation" starts the restored pane with the conversation id the saved state recorded.</summary>
     [Fact]
     public async Task ResumeConversation_OnARestoredPane_StartsWithTheSavedConversationId()
     {
@@ -538,14 +510,7 @@ public class SessionRestoreViewTests
         Assert.False(restored.HasRestoreOffer);
     }
 
-    /// <summary>
-    /// AC-290 end-to-end: a scheduled resume due after a restart finds its pane only offering a restore (no runtime
-    /// yet, so <c>CanTakeAPrompt</c> is false), and reopens it through
-    /// <see cref="ScheduledResumeCoordinator.ReopenAndSend"/> exactly the way "Resume conversation" would — same
-    /// conversation id, same profile. <c>ResolveSession</c> (wired by <see cref="CockpitViewModel.StartScheduledResumesAsync"/>,
-    /// same as production) does find the pane; it is <c>CanTakeAPrompt</c> being false on a pane that was only just
-    /// restored — never started — that refuses the direct send and forces the reopen path.
-    /// </summary>
+    // AC-290: ResolveSession finds the pane; CanTakeAPrompt being false on a pane only restored is what forces the reopen path.
     [Fact]
     public Task ReopenAndSendResume_OnARestoredKnownPane_StartsItWithTheSavedConversationId() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -566,12 +531,7 @@ public class SessionRestoreViewTests
         Assert.False(restored.HasRestoreOffer, "the banner disappears once the reopen lands, same as an operator-accepted resume");
     });
 
-    /// <summary>
-    /// AC-290's guard: a restored pane whose conversation cannot be resumed (wrong provider, worktree gone, no
-    /// state at all) must never be started just because a scheduled resume came due. As above, <c>ResolveSession</c>
-    /// finds the pane fine — it is <c>CanTakeAPrompt</c> being false (never started) that forces the reopen
-    /// attempt, which is what is under test here.
-    /// </summary>
+    // AC-290's guard: a restored pane that cannot be resumed must never be started just because a scheduled resume came due.
     [Fact]
     public Task ReopenAndSendResume_WhenTheConversationCannotBeResumed_NeverStartsTheSession() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -620,14 +580,7 @@ public class SessionRestoreViewTests
         Assert.True(restored.HasRestoreOffer, "the offer is left standing — nothing was started to clear it");
     });
 
-    /// <summary>
-    /// AC-290's other boundary: a TTY pane's <c>PromptSink</c> is wired asynchronously by the view once its pty has
-    /// actually come up, well after a launch call already returns and the restore offer already clears — so a
-    /// silent reopen-and-send could start the pty, destroy the offer, and still have nothing to send into. Until
-    /// that can be waited on properly, the reopen path skips TTY panes outright: the resume falls back to the
-    /// ordinary undelivered report, and — unlike the SDK case above — the offer is left standing rather than
-    /// consumed by an attempt that could not finish.
-    /// </summary>
+    // AC-290: a TTY pane's PromptSink is wired only once its pty is up, so the reopen path skips TTY panes and keeps the offer.
     [Fact]
     public Task ReopenAndSendResume_OnARestoredTtyPane_IsSkipped_TheOfferStaysStanding() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -645,13 +598,7 @@ public class SessionRestoreViewTests
         Assert.True(restored.CanResumeConversation, "the offer is untouched, not degraded by a failed attempt");
     });
 
-    /// <summary>
-    /// AC-410's biggest risk, per the design doc: <c>TtyViewModel.OnProcessExited</c> used to close the pane
-    /// unconditionally, so a resume that fails fast — <c>claude --resume &lt;expired-id&gt;</c> printing an error
-    /// and exiting immediately — deleted the very pane record it was trying to bring back, in the same run that
-    /// just restored it. Within the degrade window this must not happen: the offer comes back instead, with the
-    /// last visible output as the reason, and "Start fresh" one click away.
-    /// </summary>
+    // AC-410's biggest risk: OnProcessExited closed the pane unconditionally, so a resume that failed fast deleted its own record.
     [Fact]
     public async Task TtyResumeThatExitsImmediately_DoesNotClosePane_ButOffersItBackWithTheReason()
     {
@@ -672,7 +619,7 @@ public class SessionRestoreViewTests
         Assert.Contains("No conversation found with session ID", restored.RestoreDegradedReason);
     }
 
-    /// <summary>Once a launch actually got the TUI on screen, an exit afterwards is the operator closing claude, not a resume failing before it started — the ordinary close path applies again.</summary>
+    // Once the TUI was on screen, a later exit is the operator closing claude, not a resume failing — the ordinary close applies.
     [Fact]
     public async Task TtyResumeThatLaunchesSuccessfully_ClosesNormallyOnALaterExit()
     {
@@ -715,11 +662,6 @@ public class SessionRestoreViewTests
         return (vm, restored);
     }
 
-    /// <summary>
-    /// Shared setup for the two start-on-accept tests: one restored, SDK-kind pane whose plan is
-    /// <see cref="SessionRestoreAvailability.Known"/> with conversation id "conv-1", wired to a fake
-    /// <see cref="ISessionDriver"/> so the actual <c>StartAsync</c> call (and the resume it carries) can be observed.
-    /// </summary>
     private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored, ISessionDriver Driver)> _RestoreOneKnownPaneAsync(
         IWorktreeManager? worktreeManager = null,
         ISessionTranscriptStore? transcriptStore = null)
@@ -759,12 +701,7 @@ public class SessionRestoreViewTests
         return (vm, restored, driver);
     }
 
-    /// <summary>
-    /// AC-410: the close-workspace confirmation used to count every session in <see cref="Workspace.Panes"/> as
-    /// something the close "will be stopped" — true once, when a session on a desk always had a runtime. A
-    /// restored pane still showing its offer has none, so folding it into that count makes the sentence false. The
-    /// two are named apart instead.
-    /// </summary>
+    // AC-410: a restored pane still showing its offer has no runtime, so counting it as "will be stopped" made the sentence false.
     [Fact]
     public async Task CloseWorkspaceWithConfirmationAsync_MixOfStartedAndUnstartedPanes_NamesThemSeparately()
     {
@@ -812,11 +749,7 @@ public class SessionRestoreViewTests
         Assert.Contains("1 restored session that never started", confirmationMessage);
     }
 
-    /// <summary>
-    /// AC-410: <c>CockpitViewModel.DisposeAsync</c> disposes every session in <see cref="CockpitViewModel.Sessions"/>
-    /// on shutdown, including a restored one that was never started — no runtime, no pty. Documented in the design
-    /// as "probably null-safe, not verified"; this is that verification, for both pane kinds.
-    /// </summary>
+    // AC-410: the design called disposing a never-started restored pane "probably null-safe, not verified"; this verifies it.
     [Fact]
     public async Task DisposeAsync_WithARestoredNeverStartedPane_DoesNotThrow()
     {

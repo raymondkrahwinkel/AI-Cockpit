@@ -56,14 +56,15 @@ it keeps a one-person project alive.
 ## Looking at a screen
 
 ```
-dotnet run --project src/Cockpit.App -- --screenshot <path>.png --scene <name> [--size 1100x760]
+dotnet run --project src/Cockpit.App -- --screenshot <path>.png --scene <name> [--size 1100x760] [--theme Light|Dark]
 ```
 
 Renders one screen headless and writes it as a PNG. Without `--scene` you get the main window; with one
 you get that scene — the named, staged states in `Screenshotter`, which is also what the view tests and the
 theme baseline build from, so a scene worth rendering is a scene something already asserts on. An unknown
 name fails and lists the ones it knows. `--snapshot <path>` additionally dumps the laid-out visual tree as
-text, and `--snapshot-target <x:Name>` scopes that dump to one control's subtree.
+text, and `--snapshot-target <x:Name>` scopes that dump to one control's subtree. `--theme` renders the other
+variant of the palette; without it you get the app's own default (dark).
 
 The run either writes the image and prints the full path it wrote, or exits non-zero saying why. It cannot
 succeed silently, and a render that has not finished in two minutes gives up rather than hanging.

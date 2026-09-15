@@ -14,7 +14,7 @@
         Title="{Binding HeaderText}"
         Width="480" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:NewSessionDialogViewModel/>
@@ -24,8 +24,8 @@
 
         <!-- Footer: login status of the chosen profile on the left, Cancel/Start on the right. Start
              is disabled unless the profile is logged in (CanStart), so it never launches into a failure. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <!-- AC-428 looked at this band and left it alone. It has the shape AC-427 named — a bound label in a
                  StackPanel with a button — but LoginStatusLabel is "logged in" or "not logged in" and nothing
                  else, so no data can reach the failure. Restructuring it moved Manage profiles 127px to sit
@@ -37,10 +37,10 @@
                              Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                     <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
                                IsVisible="{Binding HasLoginConcept}"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <Button Content="Manage profiles" Classes="Subtle" FontSize="12" VerticalAlignment="Center"
                             Command="{Binding ManageProfilesCommand}"
-                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                            Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
@@ -71,7 +71,7 @@
                          hint carries its own top margin rather than leaning on the stack's spacing, so a hidden one
                          takes up nothing at all. -->
                     <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1">
                         <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
                                   HorizontalAlignment="Stretch" PlaceholderText="No project">
@@ -83,7 +83,7 @@
                         </ComboBox>
                         <TextBlock Text="{Binding SelectedProjectDescription}" FontSize="11" TextWrapping="Wrap"
                                    Margin="0,3,0,0"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding SelectedProjectDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
                 </Grid>
@@ -92,7 +92,7 @@
                      the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
                 <Grid ColumnDefinitions="72,*">
                     <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1">
                         <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                                   HorizontalAlignment="Stretch">
@@ -103,7 +103,7 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
                         <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
-                                   FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   FontSize="11" Margin="0,3,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- AC-713: replaces the old text-only hint ("run 'claude /login' in a terminal…") — this
                              is the concrete pain point the ticket confirmed visually: without an in-app flow the
@@ -111,7 +111,7 @@
                         <StackPanel Spacing="6" Margin="0,2,0,0" IsVisible="{Binding ShowLoginHint}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Not logged in for this profile." FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}"
                                         IsVisible="{Binding CanStartLogin}"/>
                             </StackPanel>
@@ -127,7 +127,7 @@
                 <!-- Session name is provider-independent, so it is always shown. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
                     <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <TextBox Grid.Column="1" Text="{Binding SessionName}"
                              PlaceholderText="Optional — defaults to the profile name"/>
                 </Grid>
@@ -138,7 +138,7 @@
                      not an edit. Hidden entirely when nothing pre-filled a prompt. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding HasInitialPrompt}">
                     <TextBlock Grid.Column="0" Text="Prompt" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <TextBox Grid.Column="1" Text="{Binding InitialPrompt, Mode=OneWay}" IsReadOnly="True"
                              AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="132"
                              ToolTip.Tip="The first prompt this session is given once it starts — read it before you start."/>
@@ -149,7 +149,7 @@
                      folders (favorites first). Blank keeps the global default. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Top">
                     <TextBlock Grid.Column="0" Text="Folder" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1" Spacing="4">
                         <Grid ColumnDefinitions="*,Auto,Auto">
                             <TextBox Grid.Column="0" Text="{Binding WorkingDirectory}"
@@ -157,7 +157,7 @@
                             <Button Grid.Column="1" Margin="4,0,0,0"
                                     Command="{Binding ToggleWorkingDirectoryFavoriteCommand}"
                                     IsEnabled="{Binding CanFavoriteWorkingDirectory}"
-                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    Foreground="{DynamicResource CockpitAccentBrush}"
                                     ToolTip.Tip="Pin this folder as a favorite">
                                 <materialIcons:MaterialIcon Kind="{Binding FavoriteToggleGlyph}" Width="14" Height="14"/>
                             </Button>
@@ -179,14 +179,14 @@
                                     <Panel>
                                         <!-- Ruler between the favorites (above) and the recents (below). -->
                                         <Border Height="1" Margin="0,4" VerticalAlignment="Center"
-                                                Background="{StaticResource CockpitHairlineBrush}"
+                                                Background="{DynamicResource CockpitHairlineBrush}"
                                                 IsVisible="{Binding IsSeparator}"/>
                                         <!-- A folder or the clone action, with a ✕ to forget a remembered folder. -->
                                         <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsSeparator}">
                                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                                 <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
                                                 <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
-                                                                            Foreground="{StaticResource CockpitAccentBrush}"
+                                                                            Foreground="{DynamicResource CockpitAccentBrush}"
                                                                             IsVisible="{Binding IsCloneAction}"/>
                                                 <TextBlock Text="{Binding Path}" VerticalAlignment="Center"/>
                                             </StackPanel>
@@ -195,7 +195,7 @@
                                                  never filled by the same click). Hidden for the clone action. -->
                                             <Button Grid.Column="1" Classes="Subtle" Padding="4,0" Margin="8,0,0,0"
                                                     VerticalAlignment="Center" IsVisible="{Binding IsRemovable}"
-                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                     Command="{Binding $parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).RemoveRememberedPathCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="Forget this folder">
@@ -217,7 +217,7 @@
                                       ToolTip.ShowOnDisabled="True"
                                       ToolTip.Tip="Run this session in its own git worktree on a new branch, so it never shares a working tree with another session on the same repository."/>
                             <TextBlock Text="{Binding WorktreeStatusText}" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -228,7 +228,7 @@
                      the wrong CLI (or none) is the dead-control shape this guards against (#45 fase B2). -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding HasTtyProvider}">
                     <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                         <Button Content="SDK" Classes.Accent="{Binding IsSdk}" Command="{Binding SelectSdkCommand}"
                                 ToolTip.Tip="Headless stream-json rendered as the chat UI, with live mode/model/effort switching"/>
@@ -242,12 +242,12 @@
                      for it. The running session's header can still switch it live. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding IsSdk}">
                     <TextBlock Grid.Column="0" Text="View" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1" Spacing="3">
                         <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
                                   DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                         <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     </StackPanel>
                 </Grid>
 
@@ -256,7 +256,7 @@
                      conversation history to resume from, so the row is hidden rather than offered and ignored. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding ShowResumeOptions}">
                     <TextBlock Grid.Column="0" Text="Start" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Grid.Column="1" Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Button Content="New" Classes.Accent="{Binding IsStartingFresh}"
@@ -285,14 +285,14 @@
 
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
                     <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <ComboBox Grid.Column="1" ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
                               DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                 </Grid>
 
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
                     <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <AutoCompleteBox Grid.Column="1" ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding SelectedClaudeModel}"
                                      FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
                                      HorizontalAlignment="Stretch"/>
@@ -300,7 +300,7 @@
 
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
                     <TextBlock Grid.Column="0" Text="Effort" VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                               DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                 </Grid>
@@ -312,7 +312,7 @@
                      vocabulary, not Claude's. -->
                 <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowPluginTtyOptions}">
                     <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}" Grid.IsSharedSizeScope="True">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
@@ -327,7 +327,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
                                               SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                               DisplayMemberBinding="{Binding Label}"
@@ -346,7 +346,7 @@
                      chosen for a plugin profile that declared them. Same generic option row (reused view model). -->
                 <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowSdkLaunchOptions}">
                     <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}" Grid.IsSharedSizeScope="True">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
@@ -359,7 +359,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
                                               SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                               DisplayMemberBinding="{Binding Label}"
@@ -378,7 +378,7 @@
                      selected project asks for none this machine lacks (AC-248). -->
                 <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowsMcpSection}">
                     <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <controls:McpServerChecklist Grid.Column="1"
                                                  Servers="{Binding McpServers}"
                                                  UnavailableServers="{Binding UnavailableMcpServerNames}"
@@ -391,20 +391,20 @@
                      non-blocking inline-hint style as the login hint below; Start stays enabled either way. -->
                 <TextBlock Text="{Binding McpAuthorizationHintText}"
                            FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                           Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                            IsVisible="{Binding ShowMcpAuthorizationHint}"/>
 
                 <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
                      owns live switching itself, unlike the SDK per-session dropdowns. -->
                 <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."
                            FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                            IsVisible="{Binding ShowTtyStartHint}"/>
 
                 <!-- SDK hint: short reassurance that these stay live-switchable, mirroring the TTY note above. -->
                 <TextBlock Text="These stay live-switchable during the session via the per-session dropdowns."
                            FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                            IsVisible="{Binding ShowSdkStartHint}"/>
 
                 <!-- AC-1066: a profile whose provider declares no permission modes of its own (no picker above,
@@ -412,7 +412,7 @@
                      say what that means before Start, since nothing else on this dialog does. -->
                 <TextBlock Text="{Binding ToolPermissionSummaryText}"
                            FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                            IsVisible="{Binding ShowToolPermissionSummary}"/>
 
             </StackPanel>

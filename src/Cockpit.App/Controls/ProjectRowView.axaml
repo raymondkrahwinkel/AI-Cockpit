@@ -22,7 +22,7 @@
                                        VerticalAlignment="Center"
                                        LogoPath="{Binding Project.LogoPath}"
                                        ProjectName="{Binding Project.Name}"
-                                       WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
+                                       WellBackground="{DynamicResource CockpitSecondaryBgBrush}"/>
 
             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                 <!-- A Grid, not a horizontal StackPanel, for the same reason the row below it is (AC-892): the name
@@ -40,7 +40,7 @@
                         <!-- AC-894: DepotSyncWatcher found a checksum that moved since this project was last checked
                              — a nudge to look, never an automatic overwrite of an unsaved local edit. -->
                         <materialIcons:MaterialIcon Kind="CloudSync" Width="14" Height="14" VerticalAlignment="Center"
-                                                     Foreground="{StaticResource CockpitAccentBrush}"
+                                                     Foreground="{DynamicResource CockpitAccentBrush}"
                                                      IsVisible="{Binding HasRemoteChanges}"
                                                      ToolTip.Tip="Changed on Depot since it was last checked here"/>
                     </StackPanel>
@@ -54,15 +54,15 @@
                 <Grid ColumnDefinitions="*,Auto,Auto">
                     <TextBlock Grid.Column="0" Text="{Binding Project.Description}" FontSize="11"
                                TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Grid.Column="1" Text=" · " FontSize="11"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                IsVisible="{Binding Project.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Grid.Column="2"
                                Text="{Binding Project.LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
                                FontSize="11"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </Grid>
             </StackPanel>
 

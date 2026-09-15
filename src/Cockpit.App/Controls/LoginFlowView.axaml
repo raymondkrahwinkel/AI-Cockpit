@@ -15,7 +15,7 @@
                 IsVisible="{Binding HasLink}"
                 ToolTip.Tip="Opens in your browser."/>
         <TextBlock Text="Opened in your browser." FontSize="11"
-                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                    IsVisible="{Binding LinkOpened}"/>
         <WrapPanel IsVisible="{Binding AwaitsInput}">
             <TextBox Text="{Binding CodeInput}" Width="220" FontSize="11" Padding="6,4"
@@ -25,12 +25,12 @@
                     Command="{Binding SubmitCommand}"/>
         </WrapPanel>
         <TextBlock Text="Waiting for the sign-in to finish…" FontSize="11"
-                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                    IsVisible="{Binding IsSubmitting}"/>
-        <TextBlock Text="Signed in." FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+        <TextBlock Text="Signed in." FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                    IsVisible="{Binding Succeeded}"/>
         <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="11.5"
-                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                    IsVisible="{Binding HasError}"/>
     </StackPanel>
 </UserControl>

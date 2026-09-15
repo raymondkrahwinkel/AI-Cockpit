@@ -23,7 +23,7 @@ internal sealed class WhiteboardSnapshotVisual : Control
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        context.FillRectangle(WhiteboardPalette.Paper, new Rect(Bounds.Size));
 
         using var _ = context.PushTransform(_contentTransform);
         foreach (var item in _document.Objects)

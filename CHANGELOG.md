@@ -32,6 +32,57 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
+  panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
+  switching to Panels or remembering a shortcut.
+- added: the cockpit now has a light theme beside the dark one, and a **Theme** choice in Options → Appearance to
+  pick between them: **System** follows whatever your desktop is set to and changes with it, **Light** and **Dark**
+  hold where you put them. Every screen, every dialog and the drawing tools — diagrams, whiteboard, wireframes,
+  Mermaid — are painted from the same named colours in both, so nothing is legible in one and washed out in the
+  other. What the window's own title bar and border do is still up to your desktop: that is the operating system's
+  to paint, not Cockpit's, so on a light desktop the frame stays light even with **Dark** chosen.
+- added: a project's jobs can now repeat — pick a week of the month and a weekday, and the job says when it last
+  came round. A reminder only reminds: nothing starts on its own, and a reminder you were closed for is still
+  there when you open up, showing the date it was actually due rather than today's.
+- added: a job now keeps a history of its runs, so a job you started last week is still the same job with the same
+  runs after you reword its prompt, and the agent's own progress note is kept beside the run and labelled as the
+  agent's claim rather than as something Cockpit checked.
+- added: a **Quick note** key — a desktop-wide hotkey (F7 by default, off until you switch it on under
+  Options → Shortcuts) that opens a small note window over whatever you are doing, so a thought lands in a
+  project's memory without Cockpit coming to the front and without a session starting. The window asks which
+  project, most recently opened first, and only offers projects whose memory can actually take a note (a Depot
+  project; a plain folder cannot yet). **Save** writes the note and starts nothing; **Save and start** is a
+  separate button that also opens a session on that project with the note in its composer, unsent. A save that
+  fails — Depot unreachable, or a sign-in needed — keeps your note in the window and says why. The same window is
+  reachable as **Quick note** in the command palette. The desktop-wide keys work on Windows and Linux; on macOS
+  the code to register them (screenshot, push-to-talk, quick note) without Accessibility permission is in this
+  release but has not been tried on a Mac yet, so until it has, count on the command palette there.
+- added: in the Simple stand, a session asking for your consent while you are looking at another conversation now
+  says so, in a notification in the bottom-right corner. It names the session and the action it wants to take, and
+  it offers two things: **Go there**, which makes that session the conversation you are looking at, where the
+  Approve/Deny card is waiting; and **Ignore**, which only takes the notification off the screen. Ignoring answers
+  nothing — the request stays open until you approve or deny it, so a command is never refused on your behalf
+  without anyone having said no. Two sessions asking at the same time give you two notifications, stacked, and
+  answering one leaves the other standing. A session already filling the conversation column raises no
+  notification: its question is on the screen you are already looking at.
+
+- added: the cockpit now has a second stand of the same window. **Simple** shows one conversation — the
+  assistant's — filling the window beside the left column; **Panels** is the cockpit as it has always been, with
+  the sidebar, the workspace strip, the sessions grid, the dock rail and the status bar all still there. Nothing
+  was taken out of the panels stand to make room for the other one. A Simple/Panels switch sits low in the left
+  column in both stands and changes what is on screen right now; which stand the cockpit *opens* in is a setting
+  of its own, in Options → Appearance, and it stays on Panels unless you say otherwise. The stand is remembered
+  for the machine, not per project, so switching project never changes the shape of the window. Each stand keeps
+  its own selection, so switching there and back returns you to what you were looking at in that one.
+
+- added: the Simple stand's left column now shows the sessions as a tree: the assistant at the top, and under it,
+  indented, the sessions the assistant itself started. What each row says is what the sidebar already says of a
+  session — the status dot in its status colour, the name, the provider, the profile, the status, and the line the
+  agent set about what it is working on, which is left out entirely when the agent has nothing to report. Clicking
+  a row picks that session. Only sessions the assistant started hang under it: one you opened yourself is still
+  yours and stays out of that branch, even while it is running on the same workspace. With no assistant session
+  there is no root to hang anything under, and the column lists the sessions flat instead.
+
 - added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
   the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving
   whatever you had already typed where it was. Drop several at once and they arrive space-separated, with any
@@ -387,6 +438,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the first-run question "What kind of work is this for?" now reads as a choice. The four kinds sit in one
+  framed track as buttons — the same control as the Simple/Panels switch — instead of a row of labels that gave no
+  sign they could be clicked, and a line above the list says what your pick did to it: which plugins were suggested,
+  or that nothing is suggested for that kind yet so the ticks are yours to make. Each plugin now leads with what it
+  does; what it may do, where it comes from and its checksum fold away per row rather than crowding the line, and
+  the note that plugins run outside the sandbox is stated once instead of on every row.
+- changed: the first-run provider list is now in two groups — **Found on this machine** first, then **Available to
+  add** — so what you already have is not buried among what you do not.
+- changed: the Simple stand no longer asks "which project" before you can type. The conversation column holds
+  the assistant from the first moment — before it has started, and with it switched off, where it says so — and
+  the project cards and starting points stand inside that conversation as an offer while nothing has been said,
+  or when `+ New session` asks for them. The screen that stood in front of the conversation is gone; nothing on
+  it was lost except the "Talk to your assistant" row, which the conversation itself replaces.
 - changed: a session whose latest turn crashed is no longer indistinguishable from one that finished
   cleanly. Its status now reads as its own state instead of folding into "done" — which used to also mean a
   session could announce "session finished" after a turn that actually errored, as long as an earlier turn in
@@ -470,6 +534,23 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a table in a reply — in a session pane or the assistant chat — was drawn at its full natural width
+  and ran off the right edge of the pane with no way to reach the cut-off columns. It now fits the pane: the
+  wider columns wrap their text, a column holding only a number or a short code name keeps its width, and a
+  table that already fit looks exactly as it did.
+- fixed: closing the cockpit could occasionally end in a hard crash instead of a normal exit when something
+  went wrong on the UI thread during the last moments of shutdown. The cockpit now closes normally and
+  writes what went wrong to `cockpit.log`, so the actual cause is visible instead of hidden behind the crash.
+- fixed: the "assistant is switched off" and "no profile" notices sent you to Options → Voice, a page the
+  switch left when the Assistant page was added. They now name Options → Assistant, and on the Simple stand's
+  start screen the notice carries an "Open Options" button that lands on that page. While the assistant is
+  off, the box says what to do first instead of inviting a message, the screenshot button — which had nothing
+  to take the image and did nothing when pressed — stays out of the way until a session exists, and the
+  "some consent cards are skipped" line in the assistant's header is worded for the operator and opens the same
+  page.
+- fixed: a message typed into the assistant while it was switched off, had no profile, or had just failed to
+  start was cleared from the box before the assistant answered that it could not take it — the words were gone
+  with no notice. They now stay in the box when nothing was sent.
 - fixed: an agent-chat session no longer reads "Idle" or "Done" through a turn its assistant started on its own —
   a message that arrived just as the previous turn ended, or a finished background task waking it up. The sidebar,
   `list_sessions` and the busy-to-idle watch now see such a turn as working from its first output, so a test run

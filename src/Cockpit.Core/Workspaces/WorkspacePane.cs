@@ -37,4 +37,9 @@ public sealed record WorkspacePane(string Id, PaneKind Kind)
 
     // For `PaneKind.AiSession`: the project this session works on (AC-410), or null for one belonging to none. Mirrors `NewSessionResult.ProjectId`.
     public string? ProjectId { get; init; }
+
+    // For `PaneKind.AiSession`: whether the cockpit's own assistant started this session rather than the operator
+    // (AC-1300). Kept here because a pane record's lifetime is exactly the relation's: it survives a restart of the
+    // assistant — and of the whole cockpit — and is removed with the pane when the session closes.
+    public bool StartedByTheAssistant { get; init; }
 }
