@@ -199,20 +199,13 @@ sealed class Program
                     _OpenWindows(), Cockpit.App.Diagnostics.LayoutLoopReport.RecordPathFor(logPath), logger);
             }
 
-            if (logger is not null)
-            {
-                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
-            }
-            else
-            {
-                Console.Error.WriteLine($"Unhandled UI-thread exception caught by the global net; the cockpit stays up.\n{exceptionEvent.Exception}");
-            }
+            logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
 
             if (Cockpit.App.Diagnostics.RenderClockRecovery.ShouldRecover(
                     exceptionEvent.Exception, uptime.Elapsed - lastRenderClockRecovery))
             {
                 lastRenderClockRecovery = uptime.Elapsed;
-                logger?.LogWarning("renderclock restart requested after a cut-off layout pass (AC-1104).");
+                logger.LogWarning("renderclock restart requested after a cut-off layout pass (AC-1104).");
                 _RequestRenderClockRestart();
             }
 
