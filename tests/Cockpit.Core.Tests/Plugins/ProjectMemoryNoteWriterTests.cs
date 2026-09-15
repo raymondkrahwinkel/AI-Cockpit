@@ -4,10 +4,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-/// <summary>
-/// The host's write side of the memory-source contract (AC-492): a note goes only to a source that says it can
-/// take one, and only ever as one appended block — the caller is told beforehand, not by trying.
-/// </summary>
+// AC-492: a note goes only to a source that says it can take one, and only as one appended block — told before, not by trying.
 public class ProjectMemoryNoteWriterTests
 {
     private static ProjectMemoryNoteWriter _Writer(params ProjectMemorySourceRegistration[] sources)

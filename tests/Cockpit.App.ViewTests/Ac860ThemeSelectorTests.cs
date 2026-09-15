@@ -9,10 +9,6 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-860, the switch: three stands into one variant, and the app wiring that carries a chosen stand and a system
-/// flip all the way to the variant the application actually requests.
-/// </summary>
 [Collection("avalonia")]
 public class Ac860ThemeSelectorTests
 {

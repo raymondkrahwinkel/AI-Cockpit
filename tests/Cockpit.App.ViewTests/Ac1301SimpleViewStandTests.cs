@@ -20,10 +20,6 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1301: the Simple stand — the setting that decides which stand the cockpit opens in, the in-view
-/// switch that deliberately does not touch it, and the selection each stand keeps of its own.
-/// </summary>
 [Collection("avalonia")]
 public class Ac1301SimpleViewStandTests
 {

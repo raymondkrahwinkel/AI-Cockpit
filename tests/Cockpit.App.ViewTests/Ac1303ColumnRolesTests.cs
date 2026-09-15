@@ -9,11 +9,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1303: which of the two sessions takes the Simple stand's main column. Picking an agent puts that agent in
-/// the middle and the assistant in the dock beside it — the way round that round 6 of the prototype had reversed,
-/// where a working panel stood next to a working conversation with the wrong one of the two in the middle.
-/// </summary>
+// AC-1303: the picked agent takes the middle and the assistant the dock — prototype round 6 had it the other way round.
 [Collection("avalonia")]
 public sealed class Ac1303ColumnRolesTests
 {

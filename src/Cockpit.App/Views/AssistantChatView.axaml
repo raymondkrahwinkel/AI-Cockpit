@@ -243,7 +243,7 @@
                     <!-- No restart button here, deliberately. It was here first, on the reasoning that a restart is
                          a handling and this window carries handlings — which argues that it *may* stand here, not
                          that it belongs. It belongs beside the setting that needs it: the permission mode in
-                         Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
+                         Options → Assistant Profile, where the sentence "this applies at the next start"
                          and the start that answers it are one thing instead of two windows apart. -->
                     <!-- AC-953: the one button that differs per host — Dock into the right-hand rail, or Undock
                          back out to this floating window. One flag on the view model instead of a second copy of
@@ -1019,8 +1019,6 @@
              operator did not approve this action" for an action they were never shown. Same control the session
              panes use, so it looks and behaves identically, over this window instead of over a pane. -->
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
-        <!-- Rounded hairline frame: a SIBLING overlay (no child), never the PARENT of the transcript subtree (see the
-             root-Grid note above). Hit-transparent so it never eats a click; drawn on top at the window edge. -->
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
                 IsHitTestVisible="False"/>
         </Grid>

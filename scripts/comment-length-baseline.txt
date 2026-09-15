@@ -79,7 +79,7 @@ inline	plugins-dev/Cockpit.Plugin.GeminiProvider.Tests/OpenAiCompatPluginSession
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider/GeminiProviderPlugin.cs	1
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider/OpenAiCompatConfig.cs	1
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider/OpenAiCompatPluginSessionDriverFactory.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubActions/CiStatusHeaderControl.cs	2
+inline	plugins-dev/Cockpit.Plugin.GitHubActions/CiStatusHeaderControl.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubActions/CiWorkflowRunClient.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubActions/GitHubActionsPlugin.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/DialogTestApp.cs	1
@@ -430,7 +430,7 @@ inline	tests/Cockpit.App.ViewTests/TtyInjectedTextPasteTests.cs	2
 inline	tests/Cockpit.App.ViewTests/WindowAutomationSuppressionTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
-inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	2
+inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	1
 inline	tests/Cockpit.Core.Tests/Agents/AgentInboxTurnNoticeTests.cs	1
 inline	tests/Cockpit.Core.Tests/Assistant/AssistantConsentBypassPolicyTests.cs	1
 inline	tests/Cockpit.Core.Tests/Claude/OpenAiCompatSessionDriverTests.cs	1
@@ -445,7 +445,7 @@ inline	tests/Cockpit.Core.Tests/Delegation/DelegationGuardTests.cs	3
 inline	tests/Cockpit.Core.Tests/Delegation/DelegationWorktreeCleanupTests.cs	3
 inline	tests/Cockpit.Core.Tests/Delegation/LiveSessionRegistryDependencyInjectionTests.cs	1
 inline	tests/Cockpit.Core.Tests/Markdown/MarkdownParserTests.cs	1
-inline	tests/Cockpit.Core.Tests/Mcp/CockpitInternalMcpProviderTests.cs	3
+inline	tests/Cockpit.Core.Tests/Mcp/CockpitInternalMcpProviderTests.cs	2
 inline	tests/Cockpit.Core.Tests/Mcp/InProcessOAuthMcpServer.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpAgentHeadersTests.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpAuthMiddlewareTests.cs	2
@@ -567,7 +567,6 @@ summary	plugins-dev/Cockpit.Plugin.LocalCi/Execution/IStreamingCliRunner.cs	1
 summary	tests/Cockpit.App.ViewTests/Ac129ReflowTests.cs	1
 summary	tests/Cockpit.App.ViewTests/AgentLineInspectorDialogTests.cs	1
 summary	tests/Cockpit.App.ViewTests/AssistantAgentAddressTests.cs	1
-summary	tests/Cockpit.App.ViewTests/AssistantAgentGatewayTests.cs	2
 summary	tests/Cockpit.App.ViewTests/AssistantReadTtyTranscriptTests.cs	1
 summary	tests/Cockpit.App.ViewTests/AssistantSessionHostTests.cs	1
 summary	tests/Cockpit.App.ViewTests/CloseSessionWorktreeReleaseTests.cs	1
@@ -602,12 +601,10 @@ summary	tests/Cockpit.App.ViewTests/ScreenLockCoordinatorTests.cs	1
 summary	tests/Cockpit.App.ViewTests/ScreenshotLabelTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SecurityOptionsViewTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionActivityTickerTests.cs	1
-summary	tests/Cockpit.App.ViewTests/SessionContextMenuTargetViewTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionHeaderMcpHoverTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionInputBandTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionOutstandingWorkStatusTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionReadingLevelPickerStyleTests.cs	1
-summary	tests/Cockpit.App.ViewTests/SessionRestoreViewTests.cs	3
 summary	tests/Cockpit.App.ViewTests/SessionRestoreWorktreeReconcileTests.cs	1
 summary	tests/Cockpit.App.ViewTests/ShortcutFocusTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SurfaceWindowsTests.cs	1
@@ -690,13 +687,11 @@ summary	tests/Cockpit.Core.Tests/Sessions/TtyLauncherTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtySessionProviderResolverTests.cs	1
 summary	tests/Cockpit.Core.Tests/Shortcuts/ShortcutSettingsStoreZoomMigrationTests.cs	1
 summary	tests/Cockpit.Core.Tests/Shortcuts/ZoomShortcutTests.cs	1
-summary	tests/Cockpit.Core.Tests/Styles/ThemeHexColorGuardTests.cs	2
 summary	tests/Cockpit.Core.Tests/Toasts/ToastHostViewModelTests.cs	1
 summary	tests/Cockpit.Core.Tests/Updates/BuildChannelTests.cs	1
 summary	tests/Cockpit.Core.Tests/Updates/UpdateChannelChoiceTests.cs	1
 summary	tests/Cockpit.Core.Tests/Updates/VelopackBootstrapTests.cs	1
 summary	tests/Cockpit.Core.Tests/Updates/VelopackUpdateServiceTests.cs	1
-summary	tests/Cockpit.Core.Tests/ViewModels/AssistantChatViewModelTests.cs	1
 summary	tests/Cockpit.Core.Tests/ViewModels/CockpitViewModelDependencyCycleTests.cs	1
 summary	tests/Cockpit.Core.Tests/ViewModels/ManageProfilesDialogViewModelTests.cs	1
 summary	tests/Cockpit.Core.Tests/ViewModels/NewSessionResultInstructionsTests.cs	1

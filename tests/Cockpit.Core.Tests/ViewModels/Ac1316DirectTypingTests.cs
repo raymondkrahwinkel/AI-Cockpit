@@ -6,12 +6,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-1316: the Simple stand's column is the assistant's conversation from the first moment, with the start offer
-/// (AC-1304) as that conversation's empty state — typing needs no project picked first. The gate that stood in
-/// front of it was a circle: the column showed the chat view once the session existed, and the session started
-/// once a host showed the chat view.
-/// </summary>
+// AC-1316: the old gate was a circle — the column showed the chat once a session existed, which started once a host showed it.
 public class Ac1316DirectTypingTests
 {
     // The column holds the assistant before its session exists — that is the circle broken. With an agent

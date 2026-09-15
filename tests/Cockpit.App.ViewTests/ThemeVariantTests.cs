@@ -5,12 +5,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The rules the light variant was derived by (AC-860), each held in both variants so the derivation stays a rule
-/// and not a taste: a tint is an alpha echo of its base, the surface ladder reorders rather than mirrors, ink clears
-/// the AA floor on the fill it is for, and the two places light is a style rule rather than a value really do
-/// resolve differently. The baselines say what each screen paints; this says why those values are the ones.
-/// </summary>
+// AC-860: each rule is held in both variants so the light derivation stays a rule, not a taste — the baselines only say what.
 [Collection("avalonia")]
 public class ThemeVariantTests
 {

@@ -8,10 +8,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// The projects manager (AC-161). It owns the persisting the editor deliberately does not, so what it writes
-/// after each add/edit/remove is the whole feature's source of truth.
-/// </summary>
+// AC-161: the manager owns the persisting the editor deliberately does not, so what it writes is the feature's source of truth.
 public class ProjectsViewModelTests
 {
     private static (ProjectsViewModel ViewModel, IProjectStore Store, ISessionDialogService Dialogs) Build(
@@ -206,11 +203,7 @@ public class ProjectsViewModelTests
         await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// AC-488 criteria 2 and 3. Both in one test because they are one claim seen from two sides: a starting point
-    /// asks the folder and nothing else (criterion 3), and what that leaves behind is a project like any other
-    /// (criterion 2) — asserting them apart would mean staging the same click twice.
-    /// </summary>
+    // AC-488 criteria 2 and 3 in one test: one claim seen from two sides; asserting them apart would stage the same click twice.
     [Fact]
     public async Task UseStartingPoint_AsksOnlyForTheFolder_AndLeavesAPlainProjectBehind()
     {
@@ -316,7 +309,7 @@ public class ProjectsViewModelTests
         Assert.True(viewModel.RemoveProjectCommand.CanExecute(null));
     }
 
-    /// <summary>Reloading must not silently move the operator's selection to a different project.</summary>
+    // Reloading must not silently move the operator's selection to a different project.
     [Fact]
     public async Task LoadAsync_KeepsTheSelectionWhenTheProjectIsStillThere()
     {
@@ -446,11 +439,6 @@ public class ProjectsViewModelTests
         Assert.Equal(["One"], healthyGroup.Projects.Select(project => project.Name));
     }
 
-    /// <summary>
-    /// Adversarial: a source that throws instead of reporting a failure through <see cref="SharedProjectListResult.Failed"/>
-    /// as its own contract asks (a bug in a third-party plugin, say) must still degrade to a named failure rather
-    /// than crashing the whole workspace load.
-    /// </summary>
     [Fact]
     public async Task LoadSharedProjectsAsync_ASourceThatThrows_DegradesToAFailedGroup()
     {
@@ -664,13 +652,7 @@ public class ProjectsViewModelTests
         Assert.Empty(uncategorized.Cards);
     }
 
-    /// <summary>
-    /// Reproduces the ordering hazard directly: <c>_PersistAsync</c> assigns the settings it was handed, not the
-    /// normalized settings <c>IProjectStore.SaveAsync</c> actually wrote — a category typed for the very first time
-    /// on this save has no <c>CategoryOrder</c> entry yet in the in-memory <c>_settings</c>. The group must still
-    /// show (reading a locally normalized view rather than trusting <c>_settings.CategoryOrder</c> verbatim) —
-    /// otherwise the project would render in neither the new category's group nor "Uncategorized".
-    /// </summary>
+    // _PersistAsync keeps the settings it was handed, not the store's normalized copy, so a new category has no CategoryOrder yet.
     [Fact]
     public async Task ProjectCategoryGroups_ANewlyTypedCategory_ShowsImmediatelyEvenBeforeCategoryOrderCatchesUp()
     {
@@ -867,7 +849,7 @@ public class ProjectsViewModelTests
         Assert.False(claim[HostProjectField.Logo]!.IsEditable);
     }
 
-    /// <summary>Meet table edge case: editing the last project in a category out of it removes that category's group entirely — it does not linger as an empty one the way "Uncategorized" does.</summary>
+    // Meet-table edge case: the last project leaving a category removes its group, unlike "Uncategorized", which lingers empty.
     [Fact]
     public async Task ProjectCategoryGroups_TheLastProjectInACategory_EditedToDropIt_RemovesTheGroup()
     {
@@ -884,7 +866,6 @@ public class ProjectsViewModelTests
         Assert.Null(uncategorized.CategoryName);
     }
 
-    /// <summary>Meet table edge case: a shared project with no category sits beside a categorized local one — same "Uncategorized" group, badges independent of category.</summary>
     [Fact]
     public async Task ProjectCategoryGroups_ASharedProjectWithoutACategory_SitsInUncategorized_NextToACategorizedLocalOne()
     {

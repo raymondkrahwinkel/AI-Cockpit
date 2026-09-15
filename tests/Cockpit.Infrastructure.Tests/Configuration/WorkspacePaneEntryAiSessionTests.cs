@@ -3,12 +3,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
-/// <summary>
-/// The four fields AC-410 added to <see cref="WorkspacePaneEntry"/> (Title, NameIsChosen, SessionKind, ProjectId):
-/// their round trip through <see cref="WorkspacePaneEntry.FromDomain"/>/<see cref="WorkspacePaneEntry.ToDomain"/>,
-/// and that an unrecognised <c>SessionKind</c> string degrades to <see cref="PaneSessionKind.Sdk"/> the same way an
-/// unrecognised <c>Kind</c> already degrades to <see cref="PaneKind.AiSession"/> — never a throw.
-/// </summary>
+// AC-410: an unrecognised SessionKind degrades to Sdk the way an unrecognised Kind degrades to AiSession — never a throw.
 public class WorkspacePaneEntryAiSessionTests
 {
     [Fact]

@@ -1,50 +1,17 @@
 namespace Cockpit.TestSupport;
 
-/// <summary>
-/// Holds what a screen paints against the file that records it. Shared by the host's view tests and by each plugin
-/// test project that can render, because the rule and the way it is re-recorded have to be the same everywhere —
-/// there is one of these, not one per caller.
-/// </summary>
+// Shared by the host's view tests and every rendering plugin test project, so rule and re-record are the same everywhere.
 public static class ThemePaletteBaseline
 {
     private const string RewriteVariable = "COCKPIT_UPDATE_THEME_BASELINES";
 
-    /// <summary>The tail every baseline file's name ends in — what <see cref="VerifyNoOrphans"/> enumerates by.</summary>
     private const string BaselineSuffix = ".palette.txt";
 
-    /// <summary>
-    /// Where a scene's baseline lives, one file per theme variant (AC-860). Callers go through this rather than
-    /// spelling the file name themselves, because the name is read back apart by <see cref="VerifyNoOrphans"/> and
-    /// a second copy of the format is a second thing to keep in step. When they were separate, changing the suffix
-    /// here left every caller writing the old name and the orphan check enumerating nothing — which is not an
-    /// error, it is an empty list, so the check went green with real orphans sitting in the directory.
-    /// </summary>
+    // One spelling of the file name: a second copy once left VerifyNoOrphans enumerating nothing, so it went green on real orphans.
     public static string PathFor(string baselineDirectory, string scene, string variant) =>
         Path.Combine(baselineDirectory, $"{scene}.{variant.ToLowerInvariant()}{BaselineSuffix}");
 
-    /// <summary>
-    /// Fails when a screen paints a colour or a radius its baseline does not list.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>One direction only, and this is the load-bearing decision.</b> It asks whether anything new appeared, not
-    /// whether everything is still there. The set of controls a screen renders is not the same on every machine —
-    /// a scroll bar exists only when its content overflows, and overflow is decided by text measurement, which this
-    /// repo leaves to the operating system's fonts. CI proved it rather than theory: on Linux the Manage-stores
-    /// dialog fits, so its scroll bar and the grey Fluent thumb never render, and the Debug tab came back one
-    /// Fluent chrome colour short. Both would fail an equality check for having painted *less*, which is not a
-    /// regression and not something anyone can act on.
-    /// </para>
-    /// <para>
-    /// What that costs: a colour going missing is not caught. What it keeps is the question the baseline exists to
-    /// answer — has this screen started painting something no theme token accounts for — and that one survives,
-    /// because a token whose value moves arrives here as a value the file has never seen.
-    /// </para>
-    /// <para>
-    /// Re-recording merges rather than replaces, for the same reason: a run on one machine cannot see the entries
-    /// another machine's run produced, and writing the file whole would drop them.
-    /// </para>
-    /// </remarks>
+    // One direction only: overflow, and so a scroll bar, depends on OS fonts, so painting less on one machine is not a regression.
     public static void Verify(string baselinePath, string painted)
     {
         var recorded = File.Exists(baselinePath) ? _Entries(File.ReadAllText(baselinePath)) : null;
@@ -76,15 +43,7 @@ public static class ThemePaletteBaseline
         }
     }
 
-    /// <summary>
-    /// Fails when a directory holds a baseline no scene asks for any more (AC-414).
-    /// </summary>
-    /// <remarks>
-    /// The per-scene check above can only look at scenes that still exist, so it goes green on a file whose scene
-    /// was renamed or deleted — the file simply stops being read, and a baseline nothing is held to is a file that
-    /// says a screen is covered when nothing has looked at it since. It is silent by construction: removing a scene
-    /// makes the suite *smaller*, which reads as a passing run.
-    /// </remarks>
+    // AC-414: the per-scene check goes green on a file whose scene was renamed or deleted — a smaller suite reads as a passing run.
     public static void VerifyNoOrphans(string baselineDirectory, IEnumerable<string> scenes)
     {
         var expected = new HashSet<string>(
@@ -135,12 +94,6 @@ public static class ThemePaletteBaseline
         File.WriteAllLines(baselinePath, [.. header, .. merged.Order(StringComparer.Ordinal)]);
     }
 
-    /// <summary>
-    /// The lines that carry a claim. Blank lines and comments are there for whoever reads the file and say nothing
-    /// about what was painted, so they take no part in the comparison. A comment is a hash <em>followed by a
-    /// space</em>: a colour is written <c>#AARRGGBB</c> with none, and reading the two the same way would drop
-    /// every colour in the file.
-    /// </summary>
     private static HashSet<string> _Entries(string report) =>
         [.. report
             .Split('\n')

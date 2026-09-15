@@ -8,10 +8,6 @@ using Cockpit.Infrastructure.SessionBehavior;
 
 namespace Cockpit.Core.Tests.Layout;
 
-/// <summary>
-/// Load/save round-trip for the layout section of <c>cockpit.json</c>, plus the invariant that saving
-/// it leaves the sibling sections (notifications, session behaviour) intact.
-/// </summary>
 public class LayoutSettingsStoreTests : IDisposable
 {
     private readonly string _tempDir;

@@ -4,11 +4,7 @@ using Cockpit.Infrastructure.Workspaces;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
-/// <summary>
-/// <see cref="WorkspaceSettingsStore"/> against a real config file: the round trip, that it leaves sibling
-/// sections alone, and what it does with a file that disagrees with itself. The recovery cases matter more
-/// than the happy path — a malformed <c>workspaces</c> section must not cost the operator their cockpit.
-/// </summary>
+// The recovery cases matter more than the happy path: a malformed workspaces section must not cost the operator their cockpit.
 public class WorkspaceSettingsStoreTests : IDisposable
 {
     private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"cockpit-workspaces-{Guid.NewGuid():n}.json");

@@ -25,11 +25,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1304: the Simple stand's start screen — "which project do you want to work on". What it must not become is
-/// a second projects list beside the one the panels stand already has, which is why the second test here holds the
-/// rendered cards against the very objects the overview draws rather than against their contents.
-/// </summary>
+// AC-1304: the cards are held against the objects the overview draws, so this cannot become a second projects list.
 [Collection("avalonia")]
 public sealed class Ac1304StartScreenTests
 {

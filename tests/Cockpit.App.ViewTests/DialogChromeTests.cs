@@ -11,11 +11,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The window shell every dialog wears (AC-335). Two things had drifted: two dialogs never got the cockpit's own
-/// title bar and showed the OS one instead, and nine drew their name a second time inside their content — so the
-/// same word appeared twice, at two sizes, one above the other. These measure the real windows.
-/// </summary>
+// AC-335: two dialogs showed the OS title bar and nine drew their own name twice, so these measure the real windows.
 [Collection("avalonia")]
 public class DialogChromeTests
 {

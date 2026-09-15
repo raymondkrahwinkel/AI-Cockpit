@@ -8,11 +8,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.QuickNotes;
 
-/// <summary>
-/// The quick note (AC-492): a note into a project's memory without a session. One counter-proof per acceptance
-/// criterion — which projects are offered, that Save starts nothing, that a failed write loses nothing (not even
-/// across the window closing), and that "save and start" is the only thing that starts.
-/// </summary>
+// AC-492: one counter-proof per acceptance criterion; "save and start" is the only thing that starts a session.
 public class QuickNoteTests
 {
     private static readonly Project Recent = new("recent", "Recent") { MemoryRef = "depot:recent", LastOpenedAt = DateTimeOffset.Now.AddHours(-1) };
@@ -57,7 +53,7 @@ public class QuickNoteTests
         Assert.Equal(string.Empty, note.Note);
     }
 
-    /// <summary>The one hard rule: a write that does not land leaves the note in the box and says why, never starts a session on it, and survives Escape — the next window opens on the same text.</summary>
+    // The one hard rule: a failed write keeps the note in the box, says why, starts nothing and survives Escape to the next window.
     [Theory]
     [InlineData(ProjectMemoryAppendOutcome.Failed, false, "Depot is unreachable")]
     [InlineData(ProjectMemoryAppendOutcome.AuthorizationRequired, false, "sign-in")]

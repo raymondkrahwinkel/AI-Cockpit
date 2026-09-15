@@ -12,14 +12,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// Exercises <see cref="AssistantChatViewModel"/> against fakes of <see cref="IAssistantSessionHost"/> — the pop-out
-/// window's own peephole contract, see that interface's remarks for why it exists — rather than the real
-/// <c>AssistantSessionHost</c>, which needs a live <c>CockpitViewModel</c> to construct. Covers AC-543's three
-/// hard requirements for this window: criterion 7 (closing never ends the assistant's session; reopening shows
-/// what stood), criterion 8 (typing needs no STT/voice dependency at all), and criterion 9 (read-aloud off
-/// interrupts whatever is already playing, not just the next reply).
-/// </summary>
+// Runs against fakes of IAssistantSessionHost, since the real AssistantSessionHost needs a live CockpitViewModel to construct.
 public class AssistantChatViewModelTests
 {
     private static IAssistantSessionHost FakeHost(SessionViewModel? session = null, AssistantActivity activity = AssistantActivity.Ready)
@@ -33,16 +26,7 @@ public class AssistantChatViewModelTests
         return host;
     }
 
-    /// <summary>
-    /// This window never restarts the assistant — not on any path it has. The restart lives beside the setting
-    /// that needs it (Options → Voice → Assistant Profile), because "this applies at the next start" is only
-    /// useful next to the thing that provides one.
-    /// </summary>
-    /// <remarks>
-    /// Written against the host rather than against the absence of a command, so it keeps holding if a future
-    /// header control grows one: whatever this window offers, it must not be the thing that ends the conversation
-    /// it is showing.
-    /// </remarks>
+    // Written against the host, not the absence of a command, so it still holds if a future header control grows one.
     [Fact]
     public async Task TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas()
     {
@@ -75,7 +59,7 @@ public class AssistantChatViewModelTests
         return source;
     }
 
-    /// <summary>AC-740: the live session's own working directory wins over the Assistant Profile's default — the operator linked it on purpose by starting a session there.</summary>
+    // AC-740: the live session's working directory wins over the profile default — the operator linked it on purpose.
     [Fact]
     public void MentionPicker_UsesTheSessionsOwnWorkingDirectory_OverTheProfileDefault()
     {
@@ -90,7 +74,7 @@ public class AssistantChatViewModelTests
         Assert.Equal("/session-repo", requestedDirectory());
     }
 
-    /// <summary>AC-740 addendum: before the assistant's own session exists (nothing typed yet), the picker falls back to the Assistant Profile's own default working directory.</summary>
+    // AC-740 addendum: before the assistant's own session exists, the picker falls back to the Assistant Profile's default.
     [Fact]
     public void MentionPicker_FallsBackToTheProfileDefault_BeforeASessionExists()
     {
@@ -104,12 +88,7 @@ public class AssistantChatViewModelTests
         Assert.Equal("/profile-default", requestedDirectory());
     }
 
-    /// <summary>
-    /// AC-740 addendum: neither source known yet — the picker stays shut rather than falling back to the Cockpit
-    /// process's own cwd. NSubstitute's own default for an unstubbed <c>string?</c> member is <c>""</c>, not
-    /// null (found by this test — a bare <see cref="FakeHost"/> would have passed for the wrong reason), so
-    /// "unknown" is stubbed explicitly here rather than left implicit.
-    /// </summary>
+    // NSubstitute hands "" for an unstubbed string?, so "unknown" is stubbed explicitly — a bare FakeHost passed wrongly.
     [Fact]
     public void MentionPicker_WithNeitherASessionNorAProfileDefault_StaysClosed()
     {
@@ -130,13 +109,7 @@ public class AssistantChatViewModelTests
         return store;
     }
 
-    /// <summary>
-    /// AC-575 criterion 5: the "some of these were never shown to you" mark has to be true while the window is open,
-    /// not only at the moment it opened. The window is ownerless and kept between openings, so Options is reachable
-    /// without it closing — and it only ever read the flag in <see cref="AssistantChatViewModel.EnsureOpenedAsync"/>,
-    /// once per window lifetime. Turning the bypass on while the window sat there left it saying the opposite, in
-    /// the state the operator is in most.
-    /// </summary>
+    // AC-575 criterion 5: the window stays between openings and read the flag once (EnsureOpenedAsync), so a bypass left it stale.
     [Fact]
     public async Task ABypassSwitchedOnWhileTheWindowIsOpen_ReachesTheHeaderOnTheSaveSignal()
     {
@@ -161,11 +134,7 @@ public class AssistantChatViewModelTests
         Assert.True(vm.ConsentBypassActive);
     }
 
-    /// <summary>
-    /// AC-671: the composer's placeholder used to hardcode "F10" regardless of what the operator rebound push-to-talk
-    /// to. Covers the configured case and the empty-settings fallback in one theory, same read points as
-    /// <see cref="AssistantChatViewModel.AlwaysOnTop"/>.
-    /// </summary>
+    // AC-671: the placeholder used to hardcode "F10" regardless of what the operator rebound push-to-talk to.
     [Theory]
     [InlineData("F11", "F11")]
     [InlineData("", "F10")]
@@ -470,10 +439,7 @@ public class AssistantChatViewModelTests
         await session.DisposeAsync();
     }
 
-    /// <summary>
-    /// A live assistant session over a fake driver — the same shape <c>SessionViewModelTests.StartedVm</c> builds,
-    /// needed here because the permission machinery only runs against a started runtime.
-    /// </summary>
+    // The shape SessionViewModelTests.StartedVm builds, needed because the permission machinery only runs on a started runtime.
     private static async Task<(SessionViewModel Session, ISessionDriver Driver)> _StartedSessionAsync()
     {
         var driver = Substitute.For<ISessionDriver>();

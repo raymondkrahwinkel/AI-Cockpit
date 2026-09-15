@@ -332,7 +332,7 @@ public partial class App : Application
         _ = assistantHost.ApplySettingsAsync();
 
         // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
-        // cannot take it as a constructor argument. Options → Voice needs it for the one thing only a living
+        // cannot take it as a constructor argument. Options → Assistant needs it for the one thing only a living
         // assistant can do — restart onto a permission mode it was not launched with.
         cockpitViewModel.AssistantHost = assistantHost;
 

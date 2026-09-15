@@ -4,13 +4,7 @@ using Avalonia.Media;
 
 namespace Cockpit.TestSupport;
 
-/// <summary>
-/// A colour token as the running application resolves it, in the variant it is actually in. Since the colours
-/// live once per variant in <c>ResourceDictionary.ThemeDictionaries</c> (AC-860), a lookup that names no variant
-/// — <c>FindResource(key)</c>, <c>TryFindResource(key, out _)</c> — does not look inside them and comes back
-/// unset in <em>both</em> variants (measured on Avalonia 12.1.1). Brushes and geometry sit outside and still
-/// resolve either way; a colour has to come through here or through an explicit <c>ActualThemeVariant</c>.
-/// </summary>
+// AC-860: a lookup naming no variant does not look inside ThemeDictionaries and comes back unset in both (Avalonia 12.1.1).
 public static class ThemeTokens
 {
     public static Color Colour(string key)

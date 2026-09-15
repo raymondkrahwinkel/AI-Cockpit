@@ -21,30 +21,11 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1305: the Simple stand shows one conversation, so a session asking for consent from outside that column
-/// has to say so itself. The notification names the session and takes you there; it never answers for you.
-/// </summary>
-/// <remarks>
-/// Criterion 3 (the session carries the hand whether or not a notification was shown, and loses it the moment the
-/// consent is answered from anywhere) needs nothing here: it rests on <c>SessionPanelViewModel.PendingConsent</c>,
-/// which lives on the session and not on any notification, and
-/// <c>AssistantConsentRoutingTests.AfterTheFirstConsentIsAnswered_TheNextOneIsShown_RatherThanSilentlyDenied</c>
-/// already pins that a prompt closed through the broker clears it on the pane it was shown on.
-/// </remarks>
+// AC-1305: criterion 3 needs no test here — PendingConsent lives on the session, and AssistantConsentRoutingTests pins it.
 [Collection("avalonia")]
 public class Ac1305SimpleConsentAlertTests
 {
-    /// <summary>
-    /// Criterion 1, both halves. The assistant is what this stand's column draws, so its own request needs no
-    /// notification — the question is on the screen already. Any other session's does, by name.
-    /// </summary>
-    /// <remarks>
-    /// The toast assertions are the second half of the same rule. <c>_OnConsentPromptOpened</c> raises the panels
-    /// stand's own "Consent needed" toast, and that overlay is declared outside <c>PanelsRoot</c>, so without the
-    /// suppression the Simple stand would show two notifications for one request — one of them offering a Review
-    /// button that moves a selection this stand does not use, and timing out after five seconds.
-    /// </remarks>
+    // The panels stand's consent toast is declared outside PanelsRoot; unsuppressed, one request would show two notifications.
     [Fact]
     public void TheSessionOutOfViewIsNamed_AndTheOneInViewRaisesNothingAtAll()
     {
@@ -76,11 +57,6 @@ public class Ac1305SimpleConsentAlertTests
         Assert.Empty(cockpit.Toasts);
     }
 
-    /// <summary>
-    /// Criterion 2(b), and the failure this whole ticket is watched for: an <c>Ignore</c> that lands as a refusal
-    /// is a command nobody refused, and there is no screen in the cockpit on which that is visible. Ignoring takes
-    /// the notification away and does nothing else — the consent stays open, waiting for a real answer.
-    /// </summary>
     [Fact]
     public void IgnoreTakesTheNotificationAwayAndLeavesTheConsentStandingOpen()
     {
@@ -96,15 +72,7 @@ public class Ac1305SimpleConsentAlertTests
         broker.DidNotReceive().Respond(prompt.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     }
 
-    /// <summary>
-    /// Criterion 2(a): <c>Go there</c> picks the asking session and answers nothing on the way.
-    /// </summary>
-    /// <remarks>
-    /// AC-1303 coupled the conversation column to that pick, so the notification now goes down with it — the card
-    /// is on screen, and naming a session you are already looking at is noise rather than a safety net. Until then
-    /// this asserted the opposite, deliberately: taking it down while the column still drew the assistant would
-    /// have left the card nowhere at all. The consent itself is still untouched, which is the rest of 2(a).
-    /// </remarks>
+    // AC-1303 moved the conversation column with the pick, so the notification goes down with it: a visible session needs no name.
     [Fact]
     public void GoThereChoosesTheAskingSession_TakesItsNotificationDown_AndLeavesItsQuestionUnanswered()
     {
@@ -120,10 +88,6 @@ public class Ac1305SimpleConsentAlertTests
         broker.DidNotReceive().Respond(prompt.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     }
 
-    /// <summary>
-    /// Criterion 4, which the prototype never drew: two sessions asking at once are both on screen, and answering
-    /// one leaves the other standing. A single notification slot would lose one of the two silently.
-    /// </summary>
     [Fact]
     public void TwoSessionsAskingAtOnceAreBothShown_AndAnsweringOneLeavesTheOther()
     {

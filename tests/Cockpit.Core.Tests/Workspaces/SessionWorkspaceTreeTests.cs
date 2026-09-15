@@ -3,17 +3,7 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
-/// <summary>
-/// AC-1306: the panels sidebar's session list is a workspace tree — <see cref="CockpitViewModel.SessionWorkspaceGroups"/>.
-/// It groups <em>where a session stands</em>: a workspace tab and the sessions placed on it. It is not AC-1302's
-/// rail in the Simple stand, which groups <em>who drives what</em>.
-/// </summary>
-/// <remarks>
-/// The flat list this replaces was filtered to the tab now showing, on the stated ground that the sidebar must
-/// never offer a session the grid is hiding. The tree breaks that filter on purpose, so it has to pay the same
-/// debt the other way round: picking a row on another tab walks to that tab first. That pair is one decision and
-/// is tested as one — either half alone leaves the sidebar broken in a different way.
-/// </remarks>
+// AC-1306: the tree drops the current-tab filter, so a pick on another tab walks there first — one decision, tested as one.
 public class SessionWorkspaceTreeTests
 {
     [Fact]

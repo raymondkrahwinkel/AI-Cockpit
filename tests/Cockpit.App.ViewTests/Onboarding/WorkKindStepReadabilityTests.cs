@@ -7,17 +7,10 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewTests.Onboarding;
 
-/// <summary>
-/// What a first-time operator sees on the work-kind step (AC-1316, under AC-511): the kinds are choices and not a
-/// sentence, a row leads with what the plugin does, and the grant, origin and checksum are folded but never hidden
-/// (AC-489's rule). The standing terms are said once, where the Install button is.
-/// </summary>
+// AC-1316 under AC-511: grant, origin and checksum are folded but never hidden (AC-489); the standing terms are said once.
 [Collection("avalonia")]
 public class WorkKindStepReadabilityTests
 {
-    /// <summary>
-    /// A segment is a model-backed choice: the clicked button changes the selection, and exactly one button reflects it.
-    /// </summary>
     [Fact]
     public void TheKinds_AreSegmentsInOneGroup_AndChoosingOneDrivesTheModelAndTheCaption() => HeadlessAvalonia.Run(() =>
     {
@@ -54,11 +47,7 @@ public class WorkKindStepReadabilityTests
         }
     });
 
-    /// <summary>
-    /// The row leads with the store's description; the grant, origin and checksum sit behind the fold on every row —
-    /// in the tree and one click away, not shown until asked. A row that dropped them would pass a test that only
-    /// checked they are not visible, which is why both halves are asserted.
-    /// </summary>
+    // Both halves are asserted: a row that dropped the fold entirely would pass a test that only checked it is not visible.
     [Fact]
     public void ARow_LeadsWithTheDescription_AndFoldsTheTechnicalLinesWithoutHidingThem() => HeadlessAvalonia.Run(() =>
     {
@@ -90,10 +79,7 @@ public class WorkKindStepReadabilityTests
         }
     });
 
-    /// <summary>
-    /// The sandbox warning is important and stays; said four times under each other it turns into noise people look
-    /// past. Once, next to Install, and not again on the rows until a fold is opened.
-    /// </summary>
+    // The sandbox warning stays, but said four times under each other it turns into noise, so it is said once, next to Install.
     [Fact]
     public void TheSandboxWarning_IsVisibleExactlyOnce_UntilAFoldIsOpened() => HeadlessAvalonia.Run(() =>
     {

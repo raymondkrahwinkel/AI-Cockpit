@@ -3,19 +3,11 @@ using Cockpit.App.Controls;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-488 criterion 1: a cockpit with no projects shows the starting-point gallery rather than saying it has none.
-/// Rendered through the screenshot harness's own scenes rather than a view model assembled here, so the claim is
-/// made against the markup an operator sees and not against a tree only this test knows how to build.
-/// </summary>
+// AC-488: rendered through the screenshot harness's own scenes, so the claim holds against the markup an operator sees.
 [Collection("avalonia")]
 public sealed class Ac488StartingPointsTests
 {
-    /// <summary>
-    /// Both directions in one test, because the claim is a swap and not a presence: a gallery that shows whenever
-    /// the workspace is open would pass the first half on its own while burying the projects it is meant to
-    /// replace. The two surfaces are asserted the same way for the same reason — one gallery, two empty screens.
-    /// </summary>
+    // Both directions in one test — the claim is a swap, and an always-on gallery would pass the first half on its own.
     [Theory]
     [InlineData("projects-workspace-empty", "projects-workspace-cards")]
     [InlineData("simple-view-start-screen-empty", "simple-view-start-screen")]

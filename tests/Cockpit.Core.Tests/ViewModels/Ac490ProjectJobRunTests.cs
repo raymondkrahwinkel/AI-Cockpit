@@ -24,11 +24,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-490 criterion 2: a session started from a job is recorded as a run of that job, against the project and the
-/// job id — and only once the save carrying that id has succeeded, so no run can point at an id the next load would
-/// not know. A plain project session is not a run: without a job there is no unit of work to attribute it to.
-/// </summary>
+// AC-490 criterion 2: recorded only once the save carrying the job id succeeded, so no run points at an id the next load lacks.
 public class Ac490ProjectJobRunTests
 {
     [Fact]
@@ -147,11 +143,7 @@ public class Ac490ProjectJobRunTests
         },
     };
 
-    /// <summary>
-    /// AC-490: a pane keeps its id across a restore, so the trail can hold a second start under the same pane.
-    /// One start stays one run and two stay two — the same fold, and a report belongs to the start it followed,
-    /// never to the oldest one in the pane.
-    /// </summary>
+    // AC-490: a pane keeps its id across a restore, so the trail can hold a second start under the same pane.
     [Theory]
     [MemberData(nameof(Trails))]
     public void EachStartOpensItsOwnRun_AndAReportBelongsToTheStartItFollowed(

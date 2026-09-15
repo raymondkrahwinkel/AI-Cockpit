@@ -3,12 +3,7 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-490 criterion 4, on top of AC-493's rule: the job's line says only what the system knows. With a run it adds
-/// when that run was started — the one thing the host saw — and passes the agent's summary on labelled as the
-/// agent's. Without a run the line is exactly what AC-493 drew: no "never ran", because nothing was recorded before
-/// the trail existed, and no "done", because the host cannot see an end.
-/// </summary>
+// AC-490 criterion 4: no "never ran", since nothing was recorded before the trail; no "done", since the host sees no end.
 public class ProjectJobChoiceRunLineTests
 {
     [Fact]

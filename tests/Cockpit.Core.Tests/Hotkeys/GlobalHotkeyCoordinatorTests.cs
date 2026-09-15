@@ -18,12 +18,6 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Tests.Hotkeys;
 
-/// <summary>
-/// <see cref="GlobalHotkeyCoordinator"/> is the single point where the cockpit's desktop-wide keys are armed
-/// (#34, AC-220): it reads what each feature wants and registers exactly that set. These are the arming rules
-/// — which keys go to the OS, what happens when the settings cannot be read, and that a switched-off feature
-/// contributes nothing.
-/// </summary>
 public class GlobalHotkeyCoordinatorTests
 {
     [Fact]
@@ -39,11 +33,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.False(coordinator.IsArmed(GlobalHotkeys.Screenshot));
     }
 
-    /// <summary>
-    /// A key the operator switched on and the desktop refused says so (AC-332). It used to read exactly like a
-    /// key nobody had asked for — an empty line, no error — and the shortcut simply did nothing when pressed,
-    /// which is the silence this whole reporting path exists to prevent.
-    /// </summary>
+    // AC-332: a refused key used to read exactly like one nobody asked for — an empty line, no error — and silently did nothing.
     [Fact]
     public async Task AKeyThatWasAskedForAndCouldNotBeArmed_SaysSoRatherThanNothing()
     {
@@ -64,7 +54,7 @@ public class GlobalHotkeyCoordinatorTests
     private static string _Describe(GlobalHotkeyCoordinator coordinator, string hotkeyId) =>
         coordinator.DescribeTrigger(hotkeyId, "unbound", "unsupported", "could not be armed");
 
-    /// <summary>Voice switched on but the desktop-wide hold switched off is not a binding: the per-view local key covers it.</summary>
+    // Voice switched on but the desktop-wide hold switched off is not a binding: the per-view local key covers it.
     [Fact]
     public async Task VoiceOnButGlobalPushToTalkOff_RegistersNoPushToTalkKey()
     {
@@ -76,7 +66,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Empty(service.LastBindings);
     }
 
-    /// <summary>With voice off only dictation drops out: the screenshot and quick-note keys are typed features (AC-492 criterion 5).</summary>
+    // With voice off only dictation drops out: the screenshot and quick-note keys are typed features (AC-492 criterion 5).
     [Theory]
     [InlineData(true, new[] { "cockpit_push_to_talk=F9", "cockpit_screenshot=F8", "cockpit_quick_note=F7" })]
     [InlineData(false, new[] { "cockpit_screenshot=F8", "cockpit_quick_note=F7" })]
@@ -102,11 +92,6 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Equal(1, service.StartCallCount);
     }
 
-    /// <summary>
-    /// The key was read once, at startup, and nothing re-armed: changing it in Options saved the new key and left
-    /// the hook listening for the old one for the rest of the session, with nothing anywhere saying so. Raymond:
-    /// "we kunnen de keybind niet aanpassen" — you could type it; it simply did nothing.
-    /// </summary>
     [Fact]
     public async Task ApplyingAgain_ReArmsRatherThanLeavingTheOldKey()
     {
@@ -123,12 +108,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Equal(1, service.PressedSubscriberCount);
     }
 
-    /// <summary>
-    /// Its callers discard the task (app startup, a settings save), so a throw here used to land on a task nobody
-    /// observes and take the hotkey with it. On 2026-07-15 that happened for real: reading the voice settings hit
-    /// <c>cockpit.json</c> while the plugin layer was writing it, and F9 was dead for the whole session with not
-    /// one line in the log. It still cannot arm — but it has to say so.
-    /// </summary>
+    // Callers discard the task, so a throw here once killed F9 for a whole session with not one line in the log (2026-07-15).
     [Fact]
     public async Task WhenTheSettingsCannotBeRead_LogsIt_RatherThanDyingOnATaskNobodyObserves()
     {
@@ -154,11 +134,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
     }
 
-    /// <summary>
-    /// A re-arm that fails must not leave the previous set standing. Saving a changed key goes through here, and
-    /// on the failure path nothing is registered with the desktop any more — so a stale armed set would have the
-    /// settings screen reporting a trigger for a key that no longer fires, which is worse than saying nothing.
-    /// </summary>
+    // A failed re-arm must not leave the old set standing, or the settings screen reports a key that no longer fires.
     [Fact]
     public async Task AFailedReArmAfterASuccessfulOne_LeavesNothingCountingAsArmed()
     {
@@ -199,10 +175,6 @@ public class GlobalHotkeyCoordinatorTests
         Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
     }
 
-    /// <summary>
-    /// Two features on one key: both backends have to pick one, so the operator is told rather than left with a
-    /// feature that quietly stopped working the moment they typed the key.
-    /// </summary>
     [Fact]
     public async Task TwoFeaturesOnTheSameKey_AreReportedAsAClash()
     {
@@ -219,7 +191,6 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
-    /// <summary>Every press carries the id of the key that fired, so a feature can tell its own from another's.</summary>
     [Fact]
     public async Task APress_IsForwardedWithTheIdOfTheKeyThatFired()
     {
@@ -234,13 +205,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Equal(new[] { GlobalHotkeys.Screenshot }, pressed);
     }
 
-    /// <summary>
-    /// AC-71: neither hotkey backend can tell a hidden truth — that a compositor bound the key to a different,
-    /// already-running cockpit, or that a keyboard hook installed while another instance's hook is doing the
-    /// same. <see cref="IHotkeyExclusivityGuard"/> refusing the claim is the one signal that survives both
-    /// backends reporting success. A key another instance already holds must not be armed, and must not read as
-    /// "the operator never switched it on" — it is reported, once, rather than silently doing nothing.
-    /// </summary>
+    // AC-71: both backends report success when another instance holds the key; the exclusivity guard is the one signal left.
     [Fact]
     public async Task AKeyAnotherInstanceAlreadyHolds_IsNotArmed_AndReportsTheConflictOnce()
     {
@@ -259,10 +224,7 @@ public class GlobalHotkeyCoordinatorTests
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("another cockpit instance")), ToastSeverity.Warning);
     }
 
-    /// <summary>
-    /// The holder disappearing (the other cockpit instance closing) must not need a restart to notice — the
-    /// whole reason AC-71 exists: a conflict that resolves itself has to be picked back up on its own.
-    /// </summary>
+    // AC-71 exists for this: a conflict that resolves itself — the other instance closing — is picked back up without a restart.
     [Fact]
     public async Task WhenTheOtherInstanceReleasesTheKey_ARetryArmsItWithoutBeingAskedAgain()
     {
@@ -284,7 +246,7 @@ public class GlobalHotkeyCoordinatorTests
         Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the retry timer claimed it once it came free");
     }
 
-    /// <summary>A retry that is still conflicted must not nag the operator again with the same news.</summary>
+    // A retry that is still conflicted must not nag the operator again with the same news.
     [Fact]
     public async Task AConflictThatHasNotResolvedYet_DoesNotToastTwice()
     {
@@ -304,7 +266,6 @@ public class GlobalHotkeyCoordinatorTests
         toasts.Received(1).Show(Arg.Any<string>(), ToastSeverity.Warning);
     }
 
-    /// <summary>Switching the feature off must release the claim rather than holding a key nobody wants any more.</summary>
     [Fact]
     public async Task SwitchingTheFeatureOff_ReleasesItsClaim()
     {
@@ -332,11 +293,7 @@ public class GlobalHotkeyCoordinatorTests
         claim.Received(1).Dispose();
     }
 
-    /// <summary>
-    /// AC-1202: <c>Dispose()</c> used to wait on the gate with no bound at all — measured (AC-1199) at up to
-    /// 4.9s when <c>ApplyAsync</c> held it that long. Reaches into the real gate rather than racing a stubbed
-    /// <c>ApplyAsync</c>, since a fake's timing proves nothing about the field this bounds.
-    /// </summary>
+    // AC-1202: Dispose() waited on the gate unbounded — 4.9s measured (AC-1199) — so this reaches into the real gate, not a stub.
     [Fact]
     public void Dispose_GivesUpOnAHeldGateRatherThanBlockingForever()
     {
@@ -355,10 +312,6 @@ public class GlobalHotkeyCoordinatorTests
             $"Dispose() blocked for {elapsed.Elapsed} instead of giving up on its grace");
     }
 
-    /// <summary>
-    /// The assistant switched off — a fresh install's state, and what every test here wants: it contributes no
-    /// binding, so each case still asserts over exactly the keys it was written about.
-    /// </summary>
     private static IAssistantSettingsStore _AssistantOff()
     {
         var store = Substitute.For<IAssistantSettingsStore>();

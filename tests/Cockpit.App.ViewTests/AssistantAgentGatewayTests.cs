@@ -29,33 +29,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The host-side spawn service (AC-545): <see cref="AssistantAgentGateway"/> over a real
-/// <see cref="CockpitViewModel"/>, which is the only thing that can answer whether a spawn actually lands on the
-/// desk it was told to and leaves the operator where they were.
-/// </summary>
-/// <remarks>
-/// <b>Why this file lives in the view tests.</b> It used to sit in <c>Cockpit.Core.Tests</c>, which stands up no
-/// Avalonia application and therefore has no dispatcher anyone pumps. Every call here goes through the gateway's
-/// UI-thread marshalling, and with no dispatcher that step has two outcomes, decided by nothing more than which
-/// thread happened to touch <c>Dispatcher.UIThread</c> first: on that thread the marshalling is skipped inline and
-/// the test proves nothing about it, on any other it queues onto a loop nobody runs and the whole test host hangs.
-/// A test that is green for the first reason is worse than no test, and the second cost an eighteen-minute CI job
-/// that never printed a summary. Here the collection fixture owns a real UI thread with a running main loop, so the
-/// marshalling is the real thing: set-up runs on that thread, and the gateway is awaited from the test thread —
-/// which is the branch production actually takes.
-/// <para>
-/// <b>What these tests are for.</b> Not the scoping rule — that is <see cref="SpawnTarget"/>'s two doors and is
-/// decided before this class is reached. What is pinned here is the duller half the gateway does own: that a
-/// request it cannot carry out comes back as a <em>reason</em> rather than an exception, that every one of those
-/// refusals reaches the trail (a gate that only logs what it let through cannot show it working), and that a
-/// refusal leaves nothing behind — the next call is served normally.
-/// </para>
-/// <para>
-/// <b>Why the audit log is a real recorder and not a substitute.</b> Every assertion here about a refusal is an
-/// assertion about what was <em>written</em>, so the fake keeps the entries rather than a call count.
-/// </para>
-/// </remarks>
+// AC-545: lives in the view tests for the real dispatcher — without one the marshalling is skipped inline or hangs the host.
 [Collection("avalonia")]
 public class AssistantAgentGatewayTests
 {
@@ -117,11 +91,6 @@ public class AssistantAgentGatewayTests
         Assert.Empty(local.Options);
     }
 
-    /// <summary>
-    /// Every workspace type there is, taken from <see cref="WorkspaceType"/> itself rather than from a list
-    /// written out here — the type is deliberately an open set (a plugin registers its own), so a hand-written
-    /// list would pin the two the author happened to think of and stay green when a third arrived.
-    /// </summary>
     public static TheoryData<string> EveryWorkspaceTypeThatCannotHostASession()
     {
         var data = new TheoryData<string>();
@@ -475,14 +444,6 @@ public class AssistantAgentGatewayTests
 
     // ── AC-587: open_url's own door onto ExternalLink ──────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Criterion 4: a non-web scheme is refused through <c>ExternalLink.TryParseWebAddress</c> — the same guard
-    /// every other web address in <c>Cockpit.App</c> is held to — and never through
-    /// <c>ExternalLink.TryOpenWithSystemApp</c>, which opens a filesystem path with a program rather than a page.
-    /// A value this refuses starts nothing, so this stays safe to run in CI unlike the accepted case (which would
-    /// start a real browser on the machine running the test — the same reason <c>ExternalLinkTests</c> never
-    /// exercises that branch either).
-    /// </summary>
     [Theory]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
     [InlineData("javascript:alert(1)")]
@@ -772,20 +733,7 @@ public class AssistantAgentGatewayTests
             cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id)));
     }
 
-    /// <summary>
-    /// Only a sessions desk. Every other type is refused outright and stays exactly where it was.
-    /// </summary>
-    /// <remarks>
-    /// The occupancy check counts sessions, and a desk of another type has none — so a dashboard holding a full
-    /// screen of widgets read as empty and was closed on the spot, taking a layout nobody was shown and nothing can
-    /// rebuild. Warning about it was not the fix: a consent card shows one line of text and cannot enumerate what a
-    /// close would destroy, so the tool is narrower than the ✕ instead of pretending to be the same act.
-    /// <para>
-    /// Driven off <see cref="WorkspaceType"/> itself, like the spawn refusal above and for the same reason: the set
-    /// is open, and a hand-written list of "dashboard and projects" would stay green on the day a plugin desk
-    /// arrives. A second desk is present only so the last-desk rule is not what refuses.
-    /// </para>
-    /// </remarks>
+    // A dashboard full of widgets holds no sessions, so it once read as empty and was closed on the spot — hence narrower than ✕.
     [Theory]
     [MemberData(nameof(EveryWorkspaceTypeThatCannotHostASession))]
     public async Task RemovingADeskThatIsNotASessionsDesk_IsRefused_AndTheDeskIsStillThere(string workspaceTypeId)
@@ -802,12 +750,7 @@ public class AssistantAgentGatewayTests
             () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == other.Id));
     }
 
-    /// <summary>
-    /// And the reason says which kind of desk it is, in the type's own id — the same string
-    /// <c>list_workspaces</c> hands back, so what the assistant was told a desk is and why it will not close it
-    /// cannot disagree. Asserted on a dashboard because the projects overview is refused one rule earlier, by its
-    /// own more specific sentence.
-    /// </summary>
+    // Asserted on a dashboard: the projects overview is refused one rule earlier, by its own more specific sentence.
     [Fact]
     public async Task TheRefusalForANonSessionsDesk_NamesTheTypeTheRosterReportedForIt()
     {
@@ -1031,14 +974,7 @@ public class AssistantAgentGatewayTests
 
     // --- AC-1018: ask_structured_question's card actually rendering, not just the tool call succeeding ---------
 
-    /// <summary>
-    /// AC-955 built <c>ask_structured_question</c> and verified it only with a headless screenshot scene that
-    /// hand-builds a <c>Kind = ToolUse</c> fixture — never the gateway's own construction path. Live, the card
-    /// never appeared: only the plain question text did (AC-1018). This drives the exact production method an MCP
-    /// call reaches, through a real Avalonia dispatcher, onto a real <see cref="SessionViewModel"/> — the same
-    /// object <c>AssistantChatViewModel</c> binds its transcript from — and checks the same two properties
-    /// <c>TranscriptRowView.axaml</c> actually gates the card on, not just that a row landed on <c>Transcript</c>.
-    /// </summary>
+    // AC-1018: AC-955 verified the card only with a hand-built fixture, never the gateway's own path — and live it never appeared.
     [Fact]
     public async Task AskStructuredQuestion_PutsARow_ThatRendersAsTheCard_NotAsPlainText()
     {
@@ -1085,12 +1021,7 @@ public class AssistantAgentGatewayTests
 
     // --- The graph under test -------------------------------------------------------------------------------
 
-    /// <summary>
-    /// Every workspace type the source itself knows about, read off <see cref="WorkspaceType"/>'s own static
-    /// members, plus one plugin-registered type — because that type is a record struct over a string and not an
-    /// enum precisely so the set stays open, and a rule about "types that cannot host a session" has to hold for
-    /// the ones no test author has seen.
-    /// </summary>
+    // WorkspaceType is open on purpose (a record struct over a string), so the rule must hold for types no test author has seen.
     private static IReadOnlyList<WorkspaceType> _AllKnownWorkspaceTypes() =>
     [
         .. typeof(WorkspaceType)
@@ -1108,10 +1039,6 @@ public class AssistantAgentGatewayTests
     private static WorkspaceSettings _Settings(params Workspace[] workspaces) =>
         new() { Workspaces = workspaces, ActiveWorkspaceId = workspaces[0].Id };
 
-    /// <summary>
-    /// Built on the UI thread by every caller: <c>CockpitViewModel</c> and its collections belong to the thread
-    /// the headless platform owns, and the gateway marshals onto that same thread when it is called.
-    /// </summary>
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail) _Gateway(
         WorkspaceSettings settings,
         CockpitViewModel? host = null,
@@ -1145,10 +1072,6 @@ public class AssistantAgentGatewayTests
             trail);
     }
 
-    /// <summary>
-    /// The gateway over a given set of profiles and provider registry — <see cref="AssistantAgentGateway.ListProfilesAsync"/>
-    /// reads only those two and never the desks, so this skips the workspace settings the spawn tests need.
-    /// </summary>
     private static AssistantAgentGateway _GatewayOverProfiles(
         IPluginProviderRegistry pluginProviders, params SessionProfile[] known)
     {
@@ -1202,11 +1125,6 @@ public class AssistantAgentGatewayTests
             new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { DeclaredOptions = declaredOptions },
             _ => throw new NotSupportedException("Nothing here opens the profile editor."));
 
-    /// <summary>
-    /// A host with no session factories behind it — the parameterless constructor's graph, which is the one
-    /// state in which a launch declines and returns nothing. Its three sample panels are cleared: they are
-    /// design-time furniture and would be counted as running sessions.
-    /// </summary>
     private static CockpitViewModel _CockpitWithoutSessionMachinery()
     {
         var cockpit = new CockpitViewModel();
@@ -1214,10 +1132,6 @@ public class AssistantAgentGatewayTests
         return cockpit;
     }
 
-    /// <summary>
-    /// The same minimal host graph <c>CockpitViewModelTests</c> builds: real session collections and a real
-    /// <c>WorkspacesViewModel</c> (no store, so nothing persists), which is all the gateway reads.
-    /// </summary>
     private static CockpitViewModel _Cockpit()
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
@@ -1248,10 +1162,6 @@ public class AssistantAgentGatewayTests
             terminalSettingsStore);
     }
 
-    /// <summary>
-    /// The spawn trail, kept in a list. Every refusal assertion here is an assertion about what was written, so
-    /// the fake holds the entries themselves rather than counting calls.
-    /// </summary>
     private sealed class RecordingSpawnTrail : IAssistantSpawnAuditLog
     {
         public List<AssistantSpawnAuditEntry> Entries { get; } = [];

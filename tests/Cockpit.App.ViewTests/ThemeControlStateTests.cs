@@ -13,18 +13,7 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The control states AC-336 took over from the Fluent theme. Each of these is a colour a control resolves at
-/// runtime out of a template, which is exactly the kind of thing reading the markup cannot tell you: the theme sets
-/// a property, the template may or may not use it, and a state nobody claimed quietly keeps Fluent's own palette.
-/// Two of these shipped wrong for months for that reason — a selected row went light grey the moment it was
-/// clicked, and a disabled dropdown came out lighter than the editable fields around it.
-/// </summary>
-/// <remarks>
-/// Run once per theme variant (AC-860) through the two nested classes at the bottom: every assertion here reads
-/// the live token, so the same body proves the light palette reaches the same template slots. A class per variant
-/// rather than a theory parameter on each of forty methods — the variant is the fixture, not the case.
-/// </remarks>
+// AC-336: a template may ignore a theme property and keep Fluent's palette — two of these states shipped wrong for months.
 [Collection("avalonia")]
 public abstract class ThemeControlStateTests(string variant)
 {
@@ -764,13 +753,12 @@ public abstract class ThemeControlStateTests(string variant)
         Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(onIcon.Foreground));
     });
 
-    /// <summary>The colour a brush paints, and a readable failure when it is not a plain colour at all.</summary>
+    // The colour a brush paints, and a readable failure when it is not a plain colour at all.
     private static Color _ColourOf(IBrush? brush) =>
         brush is ISolidColorBrush solid
             ? solid.Color
             : throw new InvalidOperationException($"expected a plain colour, got {brush?.ToString() ?? "nothing"}");
 
-    /// <summary>A scroll viewer whose content overflows both ways, so both bars and the corner between them exist.</summary>
     private static ScrollViewer _Scrolled()
     {
         var content = new StackPanel();
@@ -787,7 +775,6 @@ public abstract class ThemeControlStateTests(string variant)
         };
     }
 
-    /// <summary>A named element anywhere below the control — a scroll bar's parts sit in a template of their own.</summary>
     private static T _Named<T>(Control control, string name) where T : StyledElement =>
         control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
@@ -818,7 +805,6 @@ public abstract class ThemeControlStateTests(string variant)
     private static T _Part<T>(Control control, string name) where T : Control =>
         control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
-    /// <summary>Perceived lightness — enough to say which of two surfaces sits in front of the other.</summary>
     private static double _Brightness(Color colour) =>
         (0.299 * colour.R) + (0.587 * colour.G) + (0.114 * colour.B);
 

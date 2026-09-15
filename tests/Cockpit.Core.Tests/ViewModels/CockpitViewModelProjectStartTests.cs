@@ -27,11 +27,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// Starting a session from a project (AC-164): the sidebar's ▶ and its context menu. The quick start itself is
-/// <see cref="ProjectQuickStart"/>'s; what is exercised here is that the cockpit launches what it composes and
-/// asks the operator when it composes nothing.
-/// </summary>
+// AC-164: the quick start itself is ProjectQuickStart's; here the cockpit launches what it composes and asks when it has none.
 public class CockpitViewModelProjectStartTests
 {
     [Fact]
@@ -242,11 +238,7 @@ public class CockpitViewModelProjectStartTests
         await dialogs.DidNotReceive().ShowOptionsDialogAsync(Arg.Any<CockpitViewModel>());
     }
 
-    /// <summary>
-    /// AC-493 criterion 2: a recurring job is a reminder, not a trigger. However long its rule says it has been
-    /// since it last came round, opening the cockpit starts nothing — the operator presses the button, or nothing
-    /// happens. This is the whole of Raymond's own correction on the ticket, in one assertion.
-    /// </summary>
+    // AC-493 criterion 2: a recurring job is a reminder, not a trigger — opening the cockpit starts nothing (Raymond's correction).
     [Fact]
     public async Task ProjectsWhoseRecurringJobsLastCameRoundLongAgo_StartNothingOnTheirOwn()
     {

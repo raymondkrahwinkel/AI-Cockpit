@@ -9,11 +9,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1302: the Simple stand's rail — the assistant as the root session, the sessions it started under it.
-/// The failure this guards against looks right: a rail fed from <c>LiveSessions</c> is full, reacts, and is
-/// wrong, because it hangs sessions under an assistant that never started them.
-/// </summary>
+// AC-1302: a rail fed from LiveSessions looks right and is wrong — it hangs sessions under an assistant that never began them.
 [Collection("avalonia")]
 public sealed class Ac1302SimpleRailTests
 {

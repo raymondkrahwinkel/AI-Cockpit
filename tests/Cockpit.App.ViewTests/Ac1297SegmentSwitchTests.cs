@@ -26,13 +26,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1297: the segmented switches — Simple/Panels and the Projects layout — show the selection the view model
-/// holds, and nothing else. Measured against the whole <see cref="CockpitView"/> on purpose: the switch sits in it
-/// twice (one per stand), and the regression this guards against (e5e7b027) was invisible on a switch hosted alone
-/// — two RadioButton groups of the same name blanked each other across the visible and the hidden copy, so the
-/// stand you entered in showed no selection at all.
-/// </summary>
+// AC-1297: measured on the whole CockpitView — hosted alone, the same-named RadioButton groups never blanked each other.
 [Collection("avalonia")]
 public sealed class Ac1297SegmentSwitchTests
 {

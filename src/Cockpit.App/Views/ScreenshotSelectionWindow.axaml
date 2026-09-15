@@ -291,9 +291,6 @@
             </StackPanel>
 
             <Rectangle Width="1" Height="18" Fill="{DynamicResource CockpitHairlineBrush}" VerticalAlignment="Center" />
-
-            <!-- The weights are drawn rather than named: "thin" and "thick" are the same length in words and
-                 nothing at all in pixels, and what is being chosen is a line. -->
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
               <Button Name="WeightThin" Classes="swatch" Click="_OnWeightThin">
                 <Rectangle Width="18" Height="1.5" Fill="{DynamicResource CockpitTextPrimaryBrush}" VerticalAlignment="Center" />

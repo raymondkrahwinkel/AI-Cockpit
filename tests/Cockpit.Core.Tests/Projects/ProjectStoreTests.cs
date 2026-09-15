@@ -4,10 +4,6 @@ using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
 
-/// <summary>
-/// Persistence of the <c>projects</c> section against a real temporary config file — the store is pointed at it
-/// through its internal test constructor, so no real config directory is touched.
-/// </summary>
 public class ProjectStoreTests : IDisposable
 {
     private readonly string _tempDir;
@@ -85,12 +81,7 @@ public class ProjectStoreTests : IDisposable
         Assert.True(Assert.Single(loaded.Projects).McpOverlay.IsEmpty);
     }
 
-    /// <summary>
-    /// A credential in an information row must reach the config under the field name the secret rule recognises
-    /// (AC-318) — that name is the whole mechanism by which it gets encrypted and scrubbed from backups. Written as a
-    /// file assertion because the encryption itself lives above this store: what this owns is putting the value in the
-    /// field that routes it there, and never in the readable one.
-    /// </summary>
+    // AC-318: the field name is the whole mechanism by which a credential is encrypted and scrubbed, so this asserts on the file.
     [Fact]
     public async Task SaveAsync_ASecretInformationRow_GoesToTheFieldNameTheSecretRuleRecognises()
     {
@@ -116,7 +107,7 @@ public class ProjectStoreTests : IDisposable
         Assert.False(rows[1].IsSecret);
     }
 
-    /// <summary>Most projects keep no information of their own; their entry should not gain an empty array for it.</summary>
+    // Most projects keep no information of their own; their entry should not gain an empty array for it.
     [Fact]
     public async Task SaveAsync_ProjectWithoutInformation_WritesNoSectionForIt()
     {
@@ -126,10 +117,6 @@ public class ProjectStoreTests : IDisposable
         Assert.DoesNotContain("AdditionalInfo", written);
     }
 
-    /// <summary>
-    /// A hand-edited information row can be half-written, and the deserializer will hand a null straight through to a
-    /// property the domain declares non-nullable. Loading has to survive that with the project intact.
-    /// </summary>
     [Fact]
     public async Task LoadAsync_InformationRowWithNulls_LoadsTheProjectAndDropsTheRow()
     {
@@ -190,7 +177,6 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal("android", reloaded.SourceDirectories[1].Label);
     }
 
-    /// <summary>A section written by hand, or by a newer build, should cost the operator the bad entry rather than the whole list.</summary>
     [Fact]
     public async Task LoadAsync_EntryWithoutAName_IsDropped()
     {
@@ -256,7 +242,7 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal(["Werk"], loaded.CategoryOrder);
     }
 
-    /// <summary>Most projects carry no category; their own entry should not gain an empty field for it (CategoryOrder itself is always written, empty or not — that part is expected).</summary>
+    // Most projects carry no category, so their entry gains no empty field; CategoryOrder itself is always written.
     [Fact]
     public async Task SaveAsync_ProjectWithoutCategory_WritesNoCategoryFieldOnTheProjectEntry()
     {
@@ -266,7 +252,7 @@ public class ProjectStoreTests : IDisposable
         Assert.DoesNotContain("\"Category\":", written);
     }
 
-    /// <summary>The store owns one section: writing projects must not clobber a sibling the same file carries.</summary>
+    // The store owns one section: writing projects must not clobber a sibling the same file carries.
     [Fact]
     public async Task SaveAsync_LeavesOtherSectionsUntouched()
     {
@@ -278,10 +264,7 @@ public class ProjectStoreTests : IDisposable
         Assert.Contains("personal", written);
     }
 
-    /// <summary>
-    /// AC-493 criterion 1: a job written before recurrence existed loads as the job it was. Absence must stay
-    /// absence — giving it a default would turn every job already on disk into a recurring one without saying so.
-    /// </summary>
+    // AC-493 criterion 1: absence stays absence — a default would turn every job already on disk into a recurring one unannounced.
     [Fact]
     public async Task AJobWithoutARecurrence_KeepsNone_AndAJobWithOneKeepsIt()
     {
@@ -309,11 +292,7 @@ public class ProjectStoreTests : IDisposable
             Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Recurrence);
     }
 
-    /// <summary>
-    /// AC-490 criterion 1: a job is the same job after its prompt is rewritten, and a job written before ids existed
-    /// has its id on disk from the very load that minted it — so nothing can record a run against an id the next
-    /// load would replace. A prompt hash, or an id minted on load and left in memory, fails this.
-    /// </summary>
+    // AC-490 criterion 1: the id is on disk from the load that minted it, so no run points at an id a later load would replace.
     [Fact]
     public async Task AJobWrittenWithoutAnId_GetsOneOnLoadThatIsOnDiskAtOnce_AndKeepsItThroughARewrite()
     {

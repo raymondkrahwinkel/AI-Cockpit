@@ -7,11 +7,7 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-491: the work a project offers, on its card and in its editor. Measured against the real markup for the
-/// reason <see cref="ProjectDialogResourceRowTests"/> already gives — the promise here is that someone who cannot
-/// write a prompt sees the job and its blast radius, which a view-model-only test cannot tell you.
-/// </summary>
+// AC-491: measured on the real markup — the promise is that someone who cannot write a prompt sees a job and its blast radius.
 [Collection("avalonia")]
 public class ProjectJobTests
 {
@@ -71,10 +67,7 @@ public class ProjectJobTests
         Assert.Contains("Start", texts);
     });
 
-    /// <summary>
-    /// AC-493 criterion 3: a recurring job's card says when it last came round, read from the rule rather than
-    /// from the day the cockpit opened — the failure this catches looks entirely ordinary on screen.
-    /// </summary>
+    // AC-493 criterion 3: read from the rule, not the day the cockpit opened — that failure looks entirely ordinary on screen.
     [Fact]
     public void ARecurringJob_ShowsItsRuleAndWhenItLastCameRound() => HeadlessAvalonia.Run(() =>
     {

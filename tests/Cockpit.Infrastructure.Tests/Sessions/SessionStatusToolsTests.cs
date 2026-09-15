@@ -11,11 +11,7 @@ using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
-/// <summary>
-/// AC-128: set_status keys on the transport-verified pane, not the agent-declared <c>session</c>, so an agent cannot
-/// spoof or clear another session's statusline by naming its id (confused deputy) — the AC-89 pattern the terminal
-/// tools already hold.
-/// </summary>
+// AC-128: set_status keys on the transport-verified pane, not the agent-named session, so no agent can spoof another's status.
 public class SessionStatusToolsTests
 {
     private static ISessionLabelSink _Labels()
@@ -67,11 +63,7 @@ public class SessionStatusToolsTests
             inbox ?? Substitute.For<IAgentMessageInbox>(),
             jobHistory);
 
-    /// <summary>
-    /// AC-490 criterion 3: the summary is the agent's claim, kept against the caller's own run and nowhere else. A
-    /// session that was not started from a job is refused rather than written to a run it does not have — and the
-    /// verified pane decides which run that is, never the id the agent names (the AC-128 rule set_status holds).
-    /// </summary>
+    // AC-490 criterion 3: the verified pane decides which run gets the summary, never the id the agent names (the AC-128 rule).
     [Fact]
     public async Task ReportJobProgress_RecordsTheAgentsClaimAgainstTheCallersRun_AndRefusesASessionWithoutOne()
     {

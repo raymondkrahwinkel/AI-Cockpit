@@ -6,13 +6,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels.Onboarding;
 
-/// <summary>
-/// The first-run wizard's provider step (AC-510[b]): offline is its own honest state (criterion 3), the store's
-/// category axis is what filters the catalogue down to providers (criterion 5), and installing goes through the
-/// batch provisioning call so a mixed result shows as "half succeeded" rather than one opaque failure
-/// (criterion 2). <see cref="ProviderPickerRowViewModelTests"/> covers the per-row rendering of each outcome;
-/// this covers the step wiring them together.
-/// </summary>
+// AC-510[b]: installing goes through the batch call so a mixed result reads "half succeeded", not one opaque failure.
 public class ProviderStepViewModelTests : IDisposable
 {
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-provider-step-tests", Guid.NewGuid().ToString("N"));
@@ -83,13 +77,7 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Contains("LM Studio", vm.LocalProvidersText, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The doc comment on <see cref="ProviderStepViewModel.LoadAsync"/> claims the latest call always wins over
-    /// an older one still in flight — this is what makes that literally true rather than merely usually true. The
-    /// constructor itself fires the first (fire-and-forget) run; it is made the stale, slow one here, and a second
-    /// explicit call finishes first — the slow run's own delayed continuation, once released, must not then
-    /// overwrite what the second one already wrote.
-    /// </summary>
+    // Makes LoadAsync's "latest call wins" literally true: the constructor's slow first run, released late, must not overwrite it.
     [Fact]
     public async Task LoadAsync_ASecondCallWhileTheFirstIsStillInFlight_WinsOverTheStaleOne()
     {
@@ -163,10 +151,7 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Equal(ProviderDetectionState.NotApplicable, vm.Providers[0].Detection);
     }
 
-    /// <summary>
-    /// AC-510[b] criterion 1, as the step draws it: what is already on the machine stands apart from what is only
-    /// on offer, and each group keeps the catalogue's own order.
-    /// </summary>
+    // AC-510[b] criterion 1: installed stands apart from on-offer, and each group keeps the catalogue's own order.
     [Fact]
     public void TheStepOffersWhatWasFoundApartFromTheRest_EachInCatalogueOrder()
     {

@@ -7,12 +7,7 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-776: the session-status pill's source data — <see cref="AssistantChatViewModel.LiveSessions"/>,
-/// <see cref="AssistantChatViewModel.HasLiveSessions"/> and <see cref="AssistantChatViewModel.DeskNameByPaneId"/> —
-/// built off the same live <c>CockpitViewModel</c> the sidebar itself reads, with the same filter
-/// <c>AssistantReadGateway._ListSessions</c> applies (live agent sessions only, never the assistant itself).
-/// </summary>
+// AC-776: built off the live CockpitViewModel the sidebar reads, with the filter AssistantReadGateway._ListSessions applies.
 [Collection("avalonia")]
 public sealed class AssistantChatLiveSessionsTests
 {
@@ -80,7 +75,6 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.False(vm.HasLiveSessions);
     });
 
-    /// <summary>An unassigned session (no WorkspaceId of its own) falls back to the first Sessions workspace, "Sessions" by default.</summary>
     [Fact]
     public void DeskNameByPaneId_ResolvesAnUnassignedSessionToTheFirstWorkspace() => HeadlessAvalonia.Run(() =>
     {
@@ -92,10 +86,7 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.Equal("Sessions", vm.DeskNameByPaneId["s1"]);
     });
 
-    /// <summary>AC-1300 criterion 1 and criterion 3(b): the two sessions are alike in everything the old
-    /// "it lives and it is visible" rule could see — same desk, same profile, live at the same moment — and are
-    /// told apart only by who started them. <c>LiveSessions</c> still holds both, so the badges and the
-    /// <c>⋯</c> list lose nothing; the relation holds strictly fewer, and on a different ground.</summary>
+    // AC-1300: the two sessions match on everything the old "lives and is visible" rule saw; only who started them differs.
     [Fact]
     public void SessionsStartedByTheAssistant_HoldsOnlyThoseTheAssistantStarted() => HeadlessAvalonia.Run(() =>
     {
@@ -109,10 +100,7 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.Equal(["spawned"], vm.SessionsStartedByTheAssistant.Select(session => session.PaneId));
     });
 
-    /// <summary>AC-1300 criterion 2: the relation lives on the session, not on the assistant, so a chat window
-    /// built fresh over the same cockpit — the assistant closed and started again — still finds it; and it needs
-    /// no cleanup step, because a closed session takes it along. The other half of (a), a whole-cockpit restart,
-    /// is <c>SessionRestoreViewTests.RestoreSessionPanesAsync_APaneTheAssistantStarted_ComesBackInTheRelation</c>.</summary>
+    // AC-1300 criterion 2: the relation lives on the session, so a chat window built fresh over the same cockpit still finds it.
     [Fact]
     public void SessionsStartedByTheAssistant_SurvivesAFreshChatWindowAndDropsAClosedSession() => HeadlessAvalonia.Run(() =>
     {
@@ -128,9 +116,7 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.Empty(reopened.SessionsStartedByTheAssistant);
     });
 
-    /// <summary>AC-1300 criterion 4: the same exception <see cref="SessionWorkspacePlacement.Resolve"/> makes —
-    /// asserted on the resolver itself rather than on the collection, which drops the assistant a step earlier by
-    /// pane id and so would pass either way.</summary>
+    // AC-1300 criterion 4: asserted on the resolver — the collection drops the assistant a step earlier and would pass either way.
     [Fact]
     public void AssistantSessionOrigin_NeverPutsTheAssistantUnderItself()
     {
@@ -139,8 +125,7 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.False(AssistantSessionOrigin.Resolve(assistant));
     }
 
-    /// <summary>AC-774's own lesson, back in this window: the subscription this view model holds on the live
-    /// session list must come off on close, or every reopened chat window chains another handler onto it.</summary>
+    // AC-774 again: the live-session subscription must come off on close, or every reopened chat window chains another handler.
     [Fact]
     public void Dispose_StopsFollowingTheCockpitsSessionList() => HeadlessAvalonia.Run(() =>
     {

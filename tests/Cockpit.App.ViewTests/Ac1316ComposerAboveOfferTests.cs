@@ -7,11 +7,7 @@ using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-1316: in the Simple stand's start screen the composer stands at the head of the offer — a wide field above
-/// the cards — and drops back to the foot of the column once there is a conversation. One composer with two
-/// hosts, measured on the full CockpitView the way the operator meets it.
-/// </summary>
+// AC-1316: one composer with two hosts, measured on the full CockpitView the way the operator meets it.
 [Collection("avalonia")]
 public class Ac1316ComposerAboveOfferTests
 {

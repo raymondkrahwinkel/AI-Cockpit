@@ -26,7 +26,7 @@ public interface ISessionDialogService
     Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees);
 
     /// <summary>
-    /// Shows the assistant's own profile editor (Options → Voice) — its own dialog, since that record is not a
+    /// Shows the assistant's own profile editor (Options → Assistant) — its own dialog, since that record is not a
     /// session profile. <paramref name="assistant"/> backs the restart button; a parameter, not injected, for the
     /// same reason as <see cref="ShowWorktreesDialogAsync"/>. Null just offers no restart.
     /// </summary>

@@ -24,16 +24,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
-/// <summary>
-/// AC-1304 criterion 3: what a job on the start screen does. It is the same quick start the card's own Start
-/// already used (AC-164), carrying the prompt — and the promise printed above the cards, that nothing is sent
-/// until Send is pressed, is what the text sitting unsent in the box is.
-/// </summary>
-/// <remarks>
-/// <c>StartProjectJobCommand</c>, the Projects workspace's own answer for a job, keeps the dialog it has offered
-/// since AC-491 and is unchanged — <c>CockpitViewModelProjectStartTests</c> still holds it to that. Which of the
-/// two a surface wants is the surface's to say (<c>ProjectCardView.JobCommand</c>).
-/// </remarks>
+// AC-1304 criterion 3: the same quick start the card's Start uses (AC-164); StartProjectJobCommand keeps its AC-491 dialog.
 public class Ac1304StartScreenJobTests
 {
     [Fact]

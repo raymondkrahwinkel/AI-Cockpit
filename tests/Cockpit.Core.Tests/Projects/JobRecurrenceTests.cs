@@ -2,11 +2,7 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
 
-/// <summary>
-/// AC-493 criterion 3: when a recurring job last came round. The date is read from the rule and never from the
-/// day the cockpit happened to open, which is the whole of the criterion — a monthly task whose date quietly
-/// moves up to today is a period nobody knows was skipped, and it looks perfectly ordinary on screen.
-/// </summary>
+// AC-493 criterion 3: read from the rule, never the day the cockpit opened — a date moved to today hides a skipped period.
 public class JobRecurrenceTests
 {
     [Fact]

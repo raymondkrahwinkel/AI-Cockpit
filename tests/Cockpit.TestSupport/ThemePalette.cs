@@ -9,44 +9,11 @@ using Avalonia.VisualTree;
 
 namespace Cockpit.TestSupport;
 
-/// <summary>
-/// What a rendered window actually paints: every colour it puts on screen, named after the theme token that
-/// carries that value, plus every corner radius it draws.
-/// </summary>
-/// <remarks>
-/// <para>
-/// This is the other half of <c>ThemeHexColorGuardTests</c>, which reads the source and says of itself that it is
-/// "a tripwire, not a proof". A colour that never appears as a hex literal walks straight past a source lint, and
-/// AC-337 found four shapes of exactly that at once: a fallback beside a lookup still holding the old orange, a
-/// literal that named no token at all, a lookup on a token that has never existed, and named framework colours
-/// (<c>Brushes.Coral</c>). Reading the rendered tree names nothing, so all four arrive here the same way — as a
-/// colour on screen that no token accounts for.
-/// </para>
-/// <para>
-/// <b>No bounds and no text, deliberately.</b> Those are layout, and layout is measured from glyphs — reliable
-/// only as far as every machine shapes text the same way. Colour and corner radius do not depend on it.
-/// </para>
-/// <para>
-/// <b>No counts, deliberately.</b> A tally moves the moment a row is added, so a baseline carrying one would
-/// redden on edits that changed no colour at all — and a baseline that cries wolf is one people learn to
-/// overwrite unread.
-/// </para>
-/// <para>
-/// <b>What it cannot see, and these are not small.</b> A control that paints in <c>Render(DrawingContext)</c>
-/// puts nothing on a property, so <c>LimitBar</c>, <c>MicLevelMeter</c> and <c>DashboardGridLines</c> are
-/// invisible here, as is a <c>DrawingBrush</c> — one property holding a whole nested drawing — which is how the
-/// workflow canvas's <c>DotGrid</c> is painted. Those four are covered instead by assertions that render them and
-/// read the colour back out of the frame (<c>RenderedInkTests</c>, <c>DotGridRenderTests</c>, AC-413); this walker
-/// still does not reach them, so a colour they paint has to be pinned there rather than here. Also unreachable and
-/// pinned nowhere: an <c>Image</c>; a gradient, having no single colour to record; and a list item virtualisation
-/// has not materialised. A colour reached only by those routes can change without moving a line in any baseline.
-/// </para>
-/// </remarks>
+// The other half of ThemeHexColorGuardTests: a hex-less colour slips past a source lint, and AC-337 found four shapes of one.
 public static partial class ThemePalette
 {
     private const string OffPalette = "off-palette";
 
-    /// <summary>The palette of a shown window, as the text a baseline is compared against.</summary>
     public static string Describe(Visual root)
     {
         var colours = new HashSet<Color>();
@@ -74,12 +41,7 @@ public static partial class ThemePalette
         return report.ToString();
     }
 
-    /// <summary>
-    /// Walks what is drawn. It stops at a hidden or fully transparent branch, because neither puts anything on
-    /// screen and the surface has a one-pixel invisible text box that would otherwise contribute a colour to every
-    /// selection baseline. It deliberately does not stop at zero-sized nodes: a size comes out of measurement, and
-    /// leaving a colour out because a row happened to collapse is the kind of difference nobody can act on.
-    /// </summary>
+    // Stops at hidden or transparent branches, not at zero size: an invisible one-pixel text box would otherwise tint each baseline.
     private static void _Collect(Visual visual, HashSet<Color> colours, HashSet<CornerRadius> radii)
     {
         if (!visual.IsVisible || visual.Opacity <= 0)
@@ -126,10 +88,7 @@ public static partial class ThemePalette
         }
     }
 
-    /// <summary>
-    /// A brush's colour, when it has one. Fully transparent is skipped rather than recorded: it is how this app
-    /// spells "no fill", and every such brush would otherwise arrive as the same meaningless entry.
-    /// </summary>
+    // Fully transparent is skipped: it is how this app spells "no fill", and every such brush would arrive as one meaningless row.
     private static void _Add(HashSet<Color> colours, IBrush? brush)
     {
         if (brush is ISolidColorBrush solid && solid.Color.A > 0)
@@ -138,13 +97,6 @@ public static partial class ThemePalette
         }
     }
 
-    /// <summary>
-    /// Every colour token, keyed by the value it resolves to. The names come from <c>Theme.axaml</c> but the
-    /// values come from the running application, so what a report calls a colour is what the app actually handed
-    /// out — and a key the app cannot resolve fails here rather than quietly leaving colours unnamed. Several
-    /// names can share one value (<c>CockpitTextOnStatusColor</c> and <c>CockpitWindowBgColor</c> are the same
-    /// near-black today, on purpose and for different reasons), so a value carries all of them.
-    /// </summary>
     private static IReadOnlyDictionary<Color, string> _TokensByColour()
     {
         var application = Application.Current
@@ -178,7 +130,6 @@ public static partial class ThemePalette
         return ColourToken().Matches(File.ReadAllText(theme)).Select(match => match.Groups["key"].Value);
     }
 
-    /// <summary>Always eight digits, so the ordering a report is written in is the ordering of the text.</summary>
     public static string Hex(Color colour) => $"#{colour.A:X2}{colour.R:X2}{colour.G:X2}{colour.B:X2}";
 
     [GeneratedRegex("""<Color\s+x:Key="(?<key>[^"]+)"\s*>""")]

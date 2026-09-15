@@ -18,21 +18,11 @@ using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// AC-557: dictating into an SDK session produced nothing and said nothing. Two routes reach the same hold — the
-/// in-window <c>F9</c> handlers on <see cref="SessionView"/>/<see cref="TtyView"/> and the desktop-wide
-/// <see cref="VoicePushToTalkCoordinator"/> — and the failures of both were written to a status property with no
-/// binding anywhere. These are the view-level halves: that the two routes agree on which session gets the words,
-/// and that a failure actually reaches the screen.
-/// </summary>
+// AC-557: dictating into an SDK session produced nothing and said nothing — failures went to a status property bound nowhere.
 [Collection("avalonia")]
 public class VoiceDictationSurfaceTests
 {
-    /// <summary>
-    /// Criterion 4. Two sessions open, one of them selected and shown: the words land in that one whichever route
-    /// carried the key. Asserted against a second session precisely because "the right one" is only a claim when
-    /// there is a wrong one to land in.
-    /// </summary>
+    // Asserted against a second session, because "the right one" is only a claim when there is a wrong one to land in.
     [Fact]
     public void BothRoutes_PutTheWordsInTheSelectedSessionsComposer() => HeadlessAvalonia.Run(() =>
     {
@@ -66,12 +56,7 @@ public class VoiceDictationSurfaceTests
         Assert.Empty(other.InputText);
     });
 
-    /// <summary>
-    /// Criterion 5, the in-window half: a release also arrives for a press that never opened a microphone — voice
-    /// off for this session — and ending a hold that never began throws inside the transcriber. The handler simply
-    /// does not call it. (The desktop-wide half is <c>VoicePushToTalkCoordinatorTests</c>'s, which returns on its
-    /// own "nothing was recorded" flag.)
-    /// </summary>
+    // Criterion 5: the release for a press that opened no microphone must not end a hold — ending one that never began throws.
     [Fact]
     public void AReleaseThatNoPressStarted_NeverReachesTheTranscriber() => HeadlessAvalonia.Run(() =>
     {
@@ -91,11 +76,7 @@ public class VoiceDictationSurfaceTests
         transcriber.DidNotReceive().EndHoldAsync(Arg.Any<CancellationToken>());
     });
 
-    /// <summary>
-    /// Criterion 2: the explanation reaches an actual screen. Asserted on the rendered pill rather than on the
-    /// view model, because that is the step this ticket found missing — the old status property was set on every
-    /// one of these paths and had no binding anywhere in the app.
-    /// </summary>
+    // Criterion 2: asserted on the rendered pill, since the old status property was set on every path and bound nowhere.
     [Fact]
     public void AFailedDictation_IsRenderedOnThePill() => HeadlessAvalonia.Run(() =>
     {
