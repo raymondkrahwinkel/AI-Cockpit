@@ -68,14 +68,18 @@ internal sealed class NodeSessionsClient(
                     _Text(row, "paneId"),
                     _Text(row, "name"),
                     _Text(row, "profile"),
-                    _Text(row, "statusline")))],
+                    _Text(row, "statusline"),
+                    _Text(row, "status"),
+                    _Bool(row, "needsYou"),
+                    _Bool(row, "hasOutstandingWork")))],
                 [.. _Array(profiles, "profiles").Select(row => new NodeScopedProfileSummary(
                     _Text(row, "label"),
                     // An unknown provider name is not a reason to drop a profile the operator is allowed to run:
                     // this side may be the older build of the two, and the label is what the grant is keyed on.
                     Enum.TryParse<SessionProvider>(_Text(row, "provider"), out var provider) ? provider : default,
                     _Text(row, "purpose") is { Length: > 0 } purpose ? purpose : null))],
-                [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))]);
+                [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))],
+                DiscoveryId: _Text(sessions, "discoveryId"));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -314,6 +318,9 @@ internal sealed class NodeSessionsClient(
             && array.ValueKind == JsonValueKind.Array
                 ? array.EnumerateArray()
                 : [];
+
+    private static bool _Bool(JsonElement row, string property) =>
+        row.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
 
     private static string _Text(JsonElement row, string property) =>
         row.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

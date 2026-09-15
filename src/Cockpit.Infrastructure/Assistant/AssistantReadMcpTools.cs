@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Agents;
@@ -14,9 +16,24 @@ namespace Cockpit.Infrastructure.Assistant;
 // The `cockpit-assistant` MCP tools (AC-544): the voice assistant's read path over every session in every
 // workspace. Reading only. Its own server rather than more tools on `cockpit-agents`, since that server derives
 // the caller's desk from the pane and the assistant sits on none. Gated by an `Internal` mount (AC-204) and a per-tool check that the verified pane is `AssistantIdentity.PaneId`.
-internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDelegationService delegation)
+internal sealed class AssistantReadMcpTools(
+    IAssistantReadGateway gateway,
+    IDelegationService delegation,
+    INodeSessionsClient nodes,
+    NodeDiscoveryId self)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    // AC-1320: what a paired node gets to answer inside one list_sessions call. Its own, shorter limit than
+    // `NodeSessionsClient`'s 10s, because the assistant calls this tool dozens of times an hour and a laptop that
+    // went to the office is the ordinary case, not the exception. The local list never waits on a node.
+    internal static readonly TimeSpan NodeBudget = TimeSpan.FromSeconds(2);
+
+    // How long a node that did not answer is taken at its word before it is asked again, so the calls in between
+    // cost nothing. The first read that succeeds clears it; there is no poller behind this, only the last attempt.
+    internal static readonly TimeSpan UnreachableMemory = TimeSpan.FromMinutes(1);
+
+    private readonly ConcurrentDictionary<string, _Unreachable> _unreachable = new(StringComparer.Ordinal);
 
     // What a caller that is not the assistant is told. One sentence, and no detail about what it would have got:
     // the refusal is the whole answer, and there is nothing here for an ordinary session to learn from.
@@ -24,7 +41,7 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "list_sessions", ReadOnly = true)]
-    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), its statusline (whatever that session last set for itself with cockpit-session__set_status), its status — Idle, Busy, WorkingBackground, Done, Failed or NeedsAttention — needsYou, ready and hasOutstandingWork. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". NEEDSYOU IS THE ONE TO VOLUNTEER: it means that session is stopped on a permission nobody has answered, so it is not working and will not start again until the operator clicks — it is exactly status == NeedsAttention, never a second opinion computed some other way. If any session has it, say so out loud and name it, even when the question was about something else — a stalled session reads exactly like a finished one from a statusline, and nobody goes looking for a question they were never told about. FAILED MEANS THE LAST TURN CRASHED: not \"stopped\", not \"finished\" — the agent's own turn ended in an error, and unlike NeedsAttention there is no pending question, so mention it but don't expect an answer to unblock it. Status and statusline answer different things: the statusline is what a session chose to write down, the status is whether it is doing anything at all. READY IS A THIRD THING AGAIN: status Idle covers both a session that never came up and one that finished cleanly and is sitting there able to take a prompt — ready is what tells those two apart, true only for the second one. HASOUTSTANDINGWORK IS A FOURTH THING, AND IT CAN BE TRUE UNDER ANY STATUS: a session can stop talking (Idle or Done) while something of its own — a backgrounded shell such as a build or a test run — is still going, because that work deliberately does not hold the status (a never-ending dev server would pin the session on \"working\" forever). A session reading Idle with hasOutstandingWork true is not finished; say so rather than reporting it as done. THE PROCESS FIGURES ARE WHAT THE STATUS CANNOT SAY EITHER: status comes from the agent's own event stream, so it reports that the agent stopped talking, never that the test run it started stopped running. processCount, cpuPercent and memoryBytes cover that session's process and everything it has spawned; an Idle session holding hundreds of megabytes has left something running and reads as finished without you saying so. abandonedProcessCount is the sharper one — those are processes of that session whose parent is gone, so nothing will ever collect them; if it is above zero, volunteer it and name the session. cpuPercent is also how a session that is WAITING differs from one that is COMPUTING: Busy at nearly zero percent is stuck on something, not working. All four are zero for a session with no local process, such as one served over HTTP — that is 'not measurable here', never 'idle'. IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. There is also one whole class of worker this list cannot see at all — a delegated task (delegate_task) runs without a pane and therefore without a statusline, so it never appears here however busy it is. Report the difference rather than turning an absence of evidence into an answer.")]
+    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), its statusline (whatever that session last set for itself with cockpit-session__set_status), its status — Idle, Busy, WorkingBackground, Done, Failed or NeedsAttention — needsYou, ready and hasOutstandingWork. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". NEEDSYOU IS THE ONE TO VOLUNTEER: it means that session is stopped on a permission nobody has answered, so it is not working and will not start again until the operator clicks — it is exactly status == NeedsAttention, never a second opinion computed some other way. If any session has it, say so out loud and name it, even when the question was about something else — a stalled session reads exactly like a finished one from a statusline, and nobody goes looking for a question they were never told about. FAILED MEANS THE LAST TURN CRASHED: not \"stopped\", not \"finished\" — the agent's own turn ended in an error, and unlike NeedsAttention there is no pending question, so mention it but don't expect an answer to unblock it. Status and statusline answer different things: the statusline is what a session chose to write down, the status is whether it is doing anything at all. READY IS A THIRD THING AGAIN: status Idle covers both a session that never came up and one that finished cleanly and is sitting there able to take a prompt — ready is what tells those two apart, true only for the second one. HASOUTSTANDINGWORK IS A FOURTH THING, AND IT CAN BE TRUE UNDER ANY STATUS: a session can stop talking (Idle or Done) while something of its own — a backgrounded shell such as a build or a test run — is still going, because that work deliberately does not hold the status (a never-ending dev server would pin the session on \"working\" forever). A session reading Idle with hasOutstandingWork true is not finished; say so rather than reporting it as done. THE PROCESS FIGURES ARE WHAT THE STATUS CANNOT SAY EITHER: status comes from the agent's own event stream, so it reports that the agent stopped talking, never that the test run it started stopped running. processCount, cpuPercent and memoryBytes cover that session's process and everything it has spawned; an Idle session holding hundreds of megabytes has left something running and reads as finished without you saying so. abandonedProcessCount is the sharper one — those are processes of that session whose parent is gone, so nothing will ever collect them; if it is above zero, volunteer it and name the session. cpuPercent is also how a session that is WAITING differs from one that is COMPUTING: Busy at nearly zero percent is stuck on something, not working. All four are zero for a session with no local process, such as one served over HTTP — that is 'not measurable here', never 'idle'. IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. There is also one whole class of worker this list cannot see at all — a delegated task (delegate_task) runs without a pane and therefore without a statusline, so it never appears here however busy it is. Report the difference rather than turning an absence of evidence into an answer. THE LIST SPANS EVERY PAIRED NODE AS WELL AS THIS MACHINE (AC-1320): every row carries machine — its name, its discoveryId (the stable id of that machine, which two machines never share) and local, true only for a session on this cockpit. A PANE ID ALONE IS NO LONGER A UNIQUE REFERENCE: two machines can hold a session under the same pane id and the same name, so always say which machine a session is on. A node session's paneId is written as \"<node> · <paneId>\" and is READ-ONLY FROM HERE — stop_agent, send_prompt, send_message, watch_session, rename_session and read_transcript refuse it, naming the node, and do nothing; controlling a node is not available yet. A node row has no workspace, no ready and no process figures: those are not measurable across machines, and they are absent rather than zero. nodes lists every paired node and whether it answered: reachable false with error and unreachableSince means the node is off, asleep or away, NOT that nothing runs there — a node that does not answer is asked again after a minute at the earliest, so unreachableSince can be older than this call. You only see the sessions a node's operator allowed this cockpit to see, so never report a node as idle: say what you can see.")]
     public async Task<string> ListSessionsAsync()
     {
         try
@@ -34,36 +51,72 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
                 return refusal;
             }
 
-            var sessions = await gateway.ListSessionsAsync().ConfigureAwait(false);
-            return _Serialize(new
+            // The local read and every node read go out together; the local list never waits on a node.
+            var localRead = gateway.ListSessionsAsync();
+            var nodeReads = await _ReadNodesAsync().ConfigureAwait(false);
+            var sessions = await localRead.ConfigureAwait(false);
+
+            var here = new { name = Environment.MachineName, discoveryId = self.Value, local = true };
+            var localRows = sessions.Select(session => new
             {
-                ok = true,
-                count = sessions.Count,
-                sessions = sessions.Select(session => new
+                paneId = session.PaneId,
+                name = session.Name,
+                profile = session.Profile,
+                workspaceId = session.WorkspaceId,
+                workspaceName = session.WorkspaceName,
+                statusline = session.Statusline,
+                // Said in the row rather than left for the reader to infer from an empty string. An empty
+                // statusline and a session working quietly look identical from here, and the field that says so
+                // is cheaper than the mistake it prevents.
+                hasStatusline = session.Statusline.Length > 0,
+                status = session.Status,
+                needsYou = session.NeedsYou,
+                // Idle covers both "never came up" and "finished a turn" — status alone cannot tell them apart,
+                // ready is the field that does.
+                ready = session.Ready,
+                // AC-1309: something of this session's own is still running even though status does not say
+                // so — a backgrounded shell, deliberately not status-pinning (AC-276).
+                hasOutstandingWork = session.HasOutstandingWork,
+                // AC-1096: what that session's processes are still doing, which its status cannot say.
+                processCount = session.ProcessCount,
+                cpuPercent = Math.Round(session.CpuPercent, 1),
+                memoryBytes = session.MemoryBytes,
+                abandonedProcessCount = session.AbandonedProcessCount,
+                machine = here,
+            });
+
+            // AC-1320: a node's rows, under the node's own address shape. Deliberately fewer fields than a local
+            // row — a desk, readiness and process figures are not measurable across machines, and absent is
+            // honest where zero would read as idle.
+            var nodeRows = nodeReads
+                .Where(read => read.Snapshot is not null)
+                .SelectMany(read => read.Snapshot!.Sessions.Select(session => new
                 {
-                    paneId = session.PaneId,
+                    paneId = NodeSessionAddress.For(read.Name, session.PaneId),
                     name = session.Name,
                     profile = session.Profile,
-                    workspaceId = session.WorkspaceId,
-                    workspaceName = session.WorkspaceName,
                     statusline = session.Statusline,
-                    // Said in the row rather than left for the reader to infer from an empty string. An empty
-                    // statusline and a session working quietly look identical from here, and the field that says so
-                    // is cheaper than the mistake it prevents.
                     hasStatusline = session.Statusline.Length > 0,
                     status = session.Status,
                     needsYou = session.NeedsYou,
-                    // Idle covers both "never came up" and "finished a turn" — status alone cannot tell them apart,
-                    // ready is the field that does.
-                    ready = session.Ready,
-                    // AC-1309: something of this session's own is still running even though status does not say
-                    // so — a backgrounded shell, deliberately not status-pinning (AC-276).
                     hasOutstandingWork = session.HasOutstandingWork,
-                    // AC-1096: what that session's processes are still doing, which its status cannot say.
-                    processCount = session.ProcessCount,
-                    cpuPercent = Math.Round(session.CpuPercent, 1),
-                    memoryBytes = session.MemoryBytes,
-                    abandonedProcessCount = session.AbandonedProcessCount,
+                    machine = new { name = read.Name, discoveryId = read.Snapshot.DiscoveryId, local = false },
+                }));
+
+            var rows = localRows.Cast<object>().Concat(nodeRows).ToList();
+            return _Serialize(new
+            {
+                ok = true,
+                count = rows.Count,
+                sessions = rows,
+                nodes = nodeReads.Select(read => new
+                {
+                    name = read.Name,
+                    discoveryId = read.Snapshot?.DiscoveryId ?? "",
+                    reachable = read.Snapshot is not null,
+                    sessionCount = read.Snapshot?.Sessions.Count,
+                    error = read.Unreachable?.Error,
+                    unreachableSince = read.Unreachable?.Since,
                 }),
             });
         }
@@ -74,6 +127,49 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
             return _Serialize(new { ok = false, error = exception.Message });
         }
     }
+
+    private async Task<_NodeRead[]> _ReadNodesAsync()
+    {
+        var names = await nodes.ListNodesAsync().ConfigureAwait(false);
+        return await Task.WhenAll(names.Select(_ReadNodeAsync)).ConfigureAwait(false);
+    }
+
+    // One node under `NodeBudget`, or what the last attempt inside `UnreachableMemory` already said. `Since` is
+    // the first failed attempt in this run, not the latest — the node has been away at least that long.
+    private async Task<_NodeRead> _ReadNodeAsync(string name)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_unreachable.TryGetValue(name, out var remembered) && now - remembered.LastTried < UnreachableMemory)
+        {
+            return new _NodeRead(name, null, remembered);
+        }
+
+        NodeSessionsSnapshot snapshot;
+        try
+        {
+            using var budget = new CancellationTokenSource(NodeBudget);
+            snapshot = await nodes.ReadAsync(name, budget.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            snapshot = new NodeSessionsSnapshot(name, [], [], [], $"{name} did not answer within {NodeBudget.TotalSeconds:0}s.");
+        }
+
+        if (snapshot.Error is { Length: > 0 } error)
+        {
+            var since = _unreachable.TryGetValue(name, out var earlier) ? earlier.Since : now;
+            var state = new _Unreachable(since, now, error);
+            _unreachable[name] = state;
+            return new _NodeRead(name, null, state);
+        }
+
+        _unreachable.TryRemove(name, out _);
+        return new _NodeRead(name, snapshot, null);
+    }
+
+    private sealed record _Unreachable(DateTimeOffset Since, DateTimeOffset LastTried, string Error);
+
+    private sealed record _NodeRead(string Name, NodeSessionsSnapshot? Snapshot, _Unreachable? Unreachable);
 
     // How much of a transcript one `read_transcript` hands over when the caller does not say. Thirty rows because
     // a row is not a turn (roughly the last few turns), which is the span a spoken question usually wants — the
@@ -220,6 +316,11 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
             }
 
             var transcript = await gateway.ReadTranscriptAsync(paneId, Math.Clamp(count, 1, MaxEntryCount))

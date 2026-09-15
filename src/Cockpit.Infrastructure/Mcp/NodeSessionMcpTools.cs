@@ -15,7 +15,8 @@ internal sealed class NodeSessionMcpTools(
     IAssistantReadGateway read,
     IAssistantAgentGateway gateway,
     INodePairingBroker pairing,
-    ISessionProfileStore profiles)
+    ISessionProfileStore profiles,
+    NodeDiscoveryId discoveryId)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -39,6 +40,9 @@ internal sealed class NodeSessionMcpTools(
             {
                 ok = true,
                 node = Environment.MachineName,
+                // AC-1320: the origin the controller's assistant stamps on every row it lists from here — a name
+                // can be shared by two machines, this id cannot.
+                discoveryId = discoveryId.Value,
                 sessions = (await _VisibleSessionsAsync().ConfigureAwait(false)).Select(session => new
                 {
                     paneId = session.PaneId,

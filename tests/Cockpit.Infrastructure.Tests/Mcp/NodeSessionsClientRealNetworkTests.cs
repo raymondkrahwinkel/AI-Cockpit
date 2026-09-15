@@ -265,6 +265,7 @@ public sealed class NodeSessionsClientRealNetworkTests
         builder.Services.AddSingleton<IAssistantAgentGateway>(new NodeSessionMcpToolsTests.RecordingAgentGateway());
         builder.Services.AddSingleton<INodePairingBroker>(pairing);
         builder.Services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
+        builder.Services.AddSingleton(new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")));
         builder.Services.AddMcpServer().WithHttpTransport().WithTools<NodeSessionMcpTools>();
         builder.WebHost.ConfigureKestrel(options =>
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value)));

@@ -44,15 +44,27 @@ public interface INodeSessionsClient
 // One node, as the controller last read it. A non-null `Error` means nothing else here is current.
 // AC-796, criterion 2: `Error` carries the distinction between "connection down" and "node looks stopped"
 // where classifiable (see `NodeSessionsClient.Classify`); no separate typed field for it.
+
+// AC-1320: `DiscoveryId` is the node's own stable machine id as it reports it — empty from a node build that
+// predates the field, in which case the name is all the origin there is.
 public sealed record NodeSessionsSnapshot(
     string NodeName,
     IReadOnlyList<NodeSessionRow> Sessions,
     IReadOnlyList<NodeScopedProfileSummary> Profiles,
     IReadOnlyList<NodeProjectRow> Projects,
-    string? Error = null);
+    string? Error = null,
+    string DiscoveryId = "");
 
-// One session running on a node. The pane id is that machine's, never this one's.
-public sealed record NodeSessionRow(string PaneId, string Name, string Profile, string Statusline);
+// One session running on a node. The pane id is that machine's, never this one's. Status, NeedsYou and
+// HasOutstandingWork mean what they mean on the assistant's own list_sessions (AC-1320).
+public sealed record NodeSessionRow(
+    string PaneId,
+    string Name,
+    string Profile,
+    string Statusline,
+    string Status = "",
+    bool NeedsYou = false,
+    bool HasOutstandingWork = false);
 
 // One project a node's operator has allowed this controller to start work on.
 public sealed record NodeProjectRow(string Id, string Name);

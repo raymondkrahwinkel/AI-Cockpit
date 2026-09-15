@@ -38,7 +38,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     private readonly StubPairing _pairing = new();
 
     private NodeSessionMcpTools _Tools() =>
-        new(_read, _gateway, _pairing, new StubProfileStore());
+        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")));
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 

@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
@@ -33,7 +34,8 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     private readonly IDelegationService _delegation = Substitute.For<IDelegationService>();
 
-    private AssistantReadMcpTools _Tools() => new(_gateway, _delegation);
+    private AssistantReadMcpTools _Tools() =>
+        new(_gateway, _delegation, Substitute.For<INodeSessionsClient>(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")));
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -112,10 +114,12 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         var actualKeys = ((JsonObject)result["sessions"]!.AsArray()[0]!).Select(field => field.Key).ToHashSet();
 
         // Every record property, camelCased the way System.Text.Json's default naming would — plus hasStatusline,
-        // the one field that is derived (an empty-string check) rather than a property of the row itself.
+        // the one field that is derived (an empty-string check) rather than a property of the row itself, and
+        // machine, the origin AC-1320 stamps on every row rather than carrying in the row.
         var expectedKeys = typeof(AssistantSessionRow).GetProperties()
             .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
             .Append("hasStatusline")
+            .Append("machine")
             .ToHashSet();
 
         Assert.Equal(expectedKeys, actualKeys);

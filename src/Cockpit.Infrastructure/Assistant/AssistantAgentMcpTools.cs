@@ -112,6 +112,11 @@ internal sealed class AssistantAgentMcpTools(
                 return refusal;
             }
 
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
+            }
+
             var result = await gateway.StopAsync(paneId).ConfigureAwait(false);
             return result.Ok
                 ? _Serialize(new { ok = true, paneId = result.PaneId, name = result.SessionName })
@@ -134,6 +139,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
             }
 
             var result = await gateway.RenameSessionAsync(paneId, name).ConfigureAwait(false);
@@ -271,6 +281,11 @@ internal sealed class AssistantAgentMcpTools(
                 return refusal;
             }
 
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
+            }
+
             // Bounded and stripped of terminal control sequences before the operator is shown anything, so the card
             // and the inbox carry the same bytes. Showing the raw argument and delivering the cleaned one would make
             // the card a description of the message rather than the message.
@@ -334,6 +349,11 @@ internal sealed class AssistantAgentMcpTools(
                 return refusal;
             }
 
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
+            }
+
             if (string.IsNullOrWhiteSpace(prompt))
             {
                 return _Serialize(new { ok = false, error = "A turn needs something to say; that prompt was empty." });
@@ -385,6 +405,11 @@ internal sealed class AssistantAgentMcpTools(
                 return refusal;
             }
 
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
+            }
+
             var result = await gateway.WatchSessionAsync(paneId, events, afterMinutes, pattern).ConfigureAwait(false);
             return result.Ok
                 ? _Serialize(new { ok = true, paneId, name = result.Name, watching = events })
@@ -406,6 +431,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.Refusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
             }
 
             var wasWatching = await gateway.UnwatchSessionAsync(paneId).ConfigureAwait(false);
