@@ -377,6 +377,9 @@ internal static class Screenshotter
         // Rendered rather than only asserted on the parser, because "a link is there" and "it reads as a link, and the
         // one next to it is a different link" are separate claims and only the second is visible (AC-558).
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        // AC-1316: a four-column reply table wider than the pane — the shape that used to run off the right edge —
+        // with a one-character column beside a long prose one, so the squeeze can be seen landing on the right one.
+        ["session-table"] = (width, height) => new Window { Width = width, Height = height, Content = _TableTranscript() },
         // AC-745: the user's own message bubble now carries the same hover copy action the assistant reply
         // already had — focused via the Hovers table below, since the row keeps it at opacity 0 until then.
         ["session-user-row-copy"] = (width, height) => new Window { Width = width, Height = height, Content = _UserRowCopySession() },
@@ -1534,6 +1537,31 @@ internal static class Screenshotter
                    Notes are in the *[release page](https://github.com/raymondkrahwinkel/AI-Cockpit/releases)*
                    (https://github.com/raymondkrahwinkel/AI-Cockpit/wiki), and `curl https://api.github.com/rate_limit`
                    stays plain text.
+                   """,
+        });
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    private static SessionView _TableTranscript()
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+
+        viewModel.Apply(new AssistantTextDelta
+        {
+            SessionId = "s1",
+            BlockIndex = 0,
+            Text = """
+                   Here is what each guard checks and where it runs:
+
+                   | # | Guard | What it checks | Where it runs |
+                   |---|---|---|---|
+                   | 1 | `xmldoc-scope.py` | Every public member of a shipped assembly carries an XML doc comment that names its scope | CI on every pull request, and locally before a push |
+                   | 2 | `comment-length.py` | No comment line runs past the column the repository agreed on | CI on every pull request |
+                   | 3 | `duplicate-bodies.py` | Two tests never share a body byte for byte, so a copied test cannot pass on its twin's behalf | CI only |
+                   | 4 | `classify.test.sh` | The change classifier tells a docs-only change from a code change | Nightly |
+
+                   The rest of the reply wraps as prose does.
                    """,
         });
 

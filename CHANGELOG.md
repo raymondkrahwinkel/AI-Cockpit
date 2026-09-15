@@ -534,6 +534,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a table in a reply — in a session pane or the assistant chat — was drawn at its full natural width
+  and ran off the right edge of the pane with no way to reach the cut-off columns. It now fits the pane: the
+  wider columns wrap their text, a column holding only a number or a short code name keeps its width, and a
+  table that already fit looks exactly as it did.
 - fixed: closing the cockpit could occasionally end in a hard crash instead of a normal exit when something
   went wrong on the UI thread during the last moments of shutdown. The cockpit now closes normally and
   writes what went wrong to `cockpit.log`, so the actual cause is visible instead of hidden behind the crash.
