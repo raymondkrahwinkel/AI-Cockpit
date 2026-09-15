@@ -59,6 +59,16 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _mcpServers = mcpServers;
         _memory = memory;
         _logger = logger;
+
+        // AC-1321: a controller appearing or going away is re-read through the same path a settings save takes,
+        // so the takeover is one more reason on the existing off state and not a second one.
+        _cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.ActiveController))
+            {
+                _ = ApplySettingsAsync();
+            }
+        };
     }
 
     // The living assistant instance, or null while it has not been woken yet. The one reference there is.
@@ -219,6 +229,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            // AC-1321: no new turn while a controller holds the line — before the live-instance shortcut, since a
+            // running conversation is allowed to finish its turn but not to take another.
+            if (_cockpit.ActiveController is { } controller)
+            {
+                _SetUnavailable(TakeoverReason(controller));
+                return null;
+            }
+
             if (!replaceALiveInstance && Session is { } live && _IsAlive(live))
             {
                 return live;
@@ -309,12 +327,25 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         if (settings.IsEnabled)
         {
+            if (_cockpit.ActiveController is { } controller)
+            {
+                _SetUnavailable(TakeoverReason(controller));
+                return;
+            }
+
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
-            // the first hold or click is still what wakes it.
+            // the first hold or click is still what wakes it. A live session that was stood down for a controller
+            // (AC-1321) comes back to what it is doing rather than to Ready.
             if (Session is null)
             {
                 Activity = AssistantActivity.Ready;
                 UnavailableReason = null;
+            }
+            else if (Activity == AssistantActivity.Unavailable)
+            {
+                Activity = AssistantActivity.Ready;
+                UnavailableReason = null;
+                _SyncActivityWithSession(Session);
             }
 
             return;
@@ -811,6 +842,12 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         return !string.Equals(mode, SessionOptionCatalog.BypassPermissionModeValue, StringComparison.Ordinal);
     }
+
+    // AC-1321: what the screen says while a controller holds the line. Local clock, short — it is read by someone
+    // sitting at this machine. Shared with the chat view model so a scene without this host says the same thing.
+    internal static string TakeoverReason(ActiveController controller) =>
+        $"Controlled by {controller.Name} since {controller.SinceUtc.ToLocalTime():HH:mm}. "
+        + "Your assistant here comes back by itself when that connection drops.";
 
     private void _SetUnavailable(string reason)
     {

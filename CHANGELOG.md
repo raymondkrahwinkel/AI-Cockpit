@@ -34,6 +34,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: the assistant's session list now also shows what is running on every paired node, with the machine
   named on every row, and says when a node cannot be reached instead of leaving it out (AC-1320).
+- added: while a paired controller is connected, this cockpit's own assistant stands down and the assistant
+  screen says which machine has taken over and since when; it comes back by itself within a minute of the
+  controller going away (AC-1321).
 - added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
   panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
   switching to Panels or remembering a shortcut.

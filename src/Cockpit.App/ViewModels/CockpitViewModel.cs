@@ -596,6 +596,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void DismissPendingApprovals() => HasPendingApprovals = false;
 
+    // AC-1321: mirrors the presence onto `ActiveController`, on the UI thread. Internal so a test can hand a scene's
+    // cockpit a presence of its own — the same wiring the DI graph uses, not a copy of it.
+    internal void WatchController(INodeControllerPresence presence)
+    {
+        ActiveController = presence.Current;
+        presence.Changed += (_, _) => _OnUiThread(() => ActiveController = presence.Current);
+    }
+
     // AC-1291: reads the broker rather than tracking it, the same way the Nodes page does — an offer that expired
     // while nobody looked reads as gone here for exactly the reason the claim would refuse it.
     internal void RefreshIncomingPairing()
@@ -958,6 +966,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private bool _simpleStartScreenRequested;
+
+    // AC-1321: the paired controller holding the line to this node right now, or null while it is on its own —
+    // mirrored here from `INodeControllerPresence` so the assistant host and its screen read one UI-thread value.
+    // Settable so a scene can stage the takeover without a controller on the network.
+    [ObservableProperty]
+    private ActiveController? _activeController;
 
     // The setting behind that seed, persisted in the `layout` section of `cockpit.json` and edited in
     // Options -> Appearance. One stand for the whole cockpit: it is not held per project, and switching project
@@ -3101,7 +3115,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SessionMcpMounts? sessionMcpMounts = null,
         // AC-490: where a session started from a project job is recorded as a run of it. Absent in the design-time
         // and unit-test graph, where starting a job records nothing.
-        IProjectJobHistory? projectJobHistory = null)
+        IProjectJobHistory? projectJobHistory = null,
+        // AC-1321: whether a paired controller holds the line to this node. Absent in the design-time/unit-test
+        // graph, where the local assistant is simply never stood down for one.
+        INodeControllerPresence? controllerPresence = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3198,6 +3215,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
         _projectJobHistory = projectJobHistory;
+
+        if (controllerPresence is not null)
+        {
+            WatchController(controllerPresence);
+        }
 
         // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
         // ProjectCardView serve both the Projects workspace and the Manage-projects window.

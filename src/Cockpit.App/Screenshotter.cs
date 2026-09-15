@@ -348,6 +348,9 @@ internal static class Screenshotter
         // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
         // composer that says what to do first rather than inviting a message that cannot go anywhere.
         ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
+        // AC-1321: the node while a paired controller holds the line — the takeover notice where the off notice
+        // stands, and no button, since nothing here ends it.
+        ["simple-view-start-screen-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, controlled: true) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2268,10 +2271,14 @@ internal static class Screenshotter
     // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
     // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
     // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false)
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false)
     {
         // Off means no session either: the host never starts one it is not allowed to.
         var cockpit = _SimpleStand(withAssistant: !assistantOff, assistantOff);
+        if (controlled)
+        {
+            cockpit.ActiveController = new ActiveController("LAPTOP", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero));
+        }
 
         // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
         // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.
