@@ -19,4 +19,9 @@ public static class AssistantIdentity
     // placing sessions. Internal like `McpServerName`, guarded by the same per-tool `PaneId` check, and
     // separate so the read server's promise that nothing on it changes anything stays true.
     public const string ActMcpServerName = "cockpit-assistant-agents";
+
+    // AC-1322: the inbox key a node's `notify cockpit-assistant` lands in while a paired controller holds the
+    // line — the controller's assistant collects it on its next poll (`read_node_inbox`). Not a pane: nothing on
+    // this machine answers to it, and when the controller drops away what waits here folds into `PaneId`.
+    public const string ControllerInboxPaneId = "cockpit-assistant@controller";
 }

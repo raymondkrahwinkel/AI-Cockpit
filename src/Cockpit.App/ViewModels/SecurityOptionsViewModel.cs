@@ -15,6 +15,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
@@ -40,7 +41,10 @@ public sealed partial class SecurityOptionsViewModel(
     IProjectStore? projectStore = null,
     // AC-795: the other direction — the sessions on the nodes *this* cockpit is the controller of. Absent in the
     // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
-    INodeSessionsClient? nodeSessions = null) : ObservableObject
+    INodeSessionsClient? nodeSessions = null,
+    // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
+    // design-time/unit-test graph like the client above.
+    NodeInboxRelay? nodeInboxRelay = null) : ObservableObject
 {
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
@@ -399,7 +403,7 @@ public sealed partial class SecurityOptionsViewModel(
 
             foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
             {
-                var card = new NodeSessionsViewModel(nodeSessions, node);
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay);
                 PairedNodes.Add(card);
                 card.StartPolling();
 

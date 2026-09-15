@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -16,9 +18,14 @@ internal sealed class NodeSessionMcpTools(
     IAssistantAgentGateway gateway,
     INodePairingBroker pairing,
     ISessionProfileStore profiles,
-    NodeDiscoveryId discoveryId)
+    NodeDiscoveryId discoveryId,
+    IAgentMessageInbox inbox)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    // AC-1322: the most one poll hands over — the same bound `read_inbox` puts on a local read, for the same
+    // reason: the recipient's context is the recipient's to spend.
+    internal const int MaxMessagesPerRead = 25;
 
     // What a caller that did not come in over the node listener is told. One sentence and no detail, the same
     // posture `AssistantAgentMcpTools` takes: a local session learns that this is not for it, and nothing else.
@@ -121,6 +128,50 @@ internal sealed class NodeSessionMcpTools(
         catch (Exception exception)
         {
             return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "read_node_inbox", ReadOnly = false, Destructive = false)]
+    [Description("Collects the messages agents on this node sent to their assistant while you were its controller — those reach you, not the assistant here. Pass the id of the last message you already hold as afterMessageId: everything up to and including it is dropped on the node, and what follows comes back, oldest first. Leave it out to read from the start. A read that fails on your side drops nothing here, so the next one with the same id gets the same messages again — that is how nothing is lost and nothing is doubled. At most 25 per call; `remaining` says how many still wait. The sender's pane id is this machine's, not yours, and you cannot reply to it with notify yet.")]
+    public Task<string> ReadNodeInboxAsync(
+        [Description("The id of the last message you already collected from this node, or null to read from the start. The node drops everything up to and including it before answering.")] string? afterMessageId = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheController() is { } refusal)
+            {
+                return Task.FromResult(refusal);
+            }
+
+            // A look, not a take: what was already held stays until the cursor says it arrived. Taking it in flight
+            // and returning it is the peek the inbox interface does not offer directly.
+            var held = inbox.TakeForDelivery(AssistantIdentity.ControllerInboxPaneId, MaxMessagesPerRead);
+            var acknowledged = afterMessageId is null
+                ? -1
+                : held.Messages.ToList().FindIndex(message => string.Equals(message.Id, afterMessageId, StringComparison.Ordinal));
+            var ids = held.Messages.Select(message => message.Id).ToList();
+            inbox.ConfirmDelivered(AssistantIdentity.ControllerInboxPaneId, ids[..(acknowledged + 1)]);
+            inbox.ReturnUndelivered(AssistantIdentity.ControllerInboxPaneId, ids[(acknowledged + 1)..]);
+
+            return Task.FromResult(_Serialize(new
+            {
+                ok = true,
+                node = Environment.MachineName,
+                discoveryId = discoveryId.Value,
+                messages = held.Messages.Skip(acknowledged + 1).Select(message => new
+                {
+                    id = message.Id,
+                    fromPaneId = message.FromPaneId,
+                    kind = message.Kind,
+                    body = message.Body,
+                    sentAtUtc = message.SentAtUtc,
+                }),
+                remaining = held.Remaining,
+            }));
+        }
+        catch (Exception exception)
+        {
+            return Task.FromResult(_Serialize(new { ok = false, error = exception.Message }));
         }
     }
 

@@ -1,5 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Assistant;
 
 namespace Cockpit.Infrastructure.Agents;
 
@@ -12,12 +14,61 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     // duplicate scan. Past the cap the sender is told, rather than the oldest message being silently dropped.
     internal const int MaxWaitingPerPane = 500;
 
+    // AC-1322: what a message carries once it falls back from the controller's queue to the local assistant.
+    internal const string FellBackFromController =
+        "[Was meant for the controller of this machine, which dropped away before collecting it.] ";
+
     private readonly object _lock = new();
     private readonly Dictionary<string, List<AgentMessage>> _inboxes = new(StringComparer.Ordinal);
 
     // AC-1013: messages taken for an unreported turn (AC-394). Separate dict rather than a flag on the message,
     // because the two states allow different next actions and a flag would need every reader to remember to skip it.
     private readonly Dictionary<string, List<AgentMessage>> _inFlight = new(StringComparer.Ordinal);
+
+    // AC-1322: the controller's queue lives in this store under `AssistantIdentity.ControllerInboxPaneId`; when the
+    // controller drops away, whatever it had not collected folds into the local assistant's inbox. Subscribed
+    // here rather than in a watcher because the move has to happen under `_lock`, in-flight included.
+    public AgentMessageInbox(INodeControllerPresence? presence = null)
+    {
+        if (presence is not null)
+        {
+            presence.Changed += (_, _) =>
+            {
+                if (presence.Current is null)
+                {
+                    _FoldControllerQueueIntoLocal();
+                }
+            };
+        }
+    }
+
+    private void _FoldControllerQueueIntoLocal()
+    {
+        lock (_lock)
+        {
+            _inboxes.Remove(AssistantIdentity.ControllerInboxPaneId, out var waiting);
+            _inFlight.Remove(AssistantIdentity.ControllerInboxPaneId, out var inFlight);
+            var folding = (inFlight ?? []).Concat(waiting ?? []).ToList();
+            if (folding.Count == 0)
+            {
+                return;
+            }
+
+            if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var local))
+            {
+                local = [];
+                _inboxes[AssistantIdentity.PaneId] = local;
+            }
+
+            // Past the cap rather than dropped: these were accepted once already, and a message nobody can be told
+            // about is worse than a queue one batch over its bound.
+            local.AddRange(folding.Select(message => message with
+            {
+                ToPaneId = AssistantIdentity.PaneId,
+                Body = FellBackFromController + message.Body,
+            }));
+        }
+    }
 
     public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body)
     {

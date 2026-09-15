@@ -473,6 +473,9 @@ public class SecurityOptionsViewModelTests
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeInboxBatch(nodeName, []));
     }
 
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient

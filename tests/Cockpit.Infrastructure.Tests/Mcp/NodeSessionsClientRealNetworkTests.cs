@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
@@ -266,6 +268,7 @@ public sealed class NodeSessionsClientRealNetworkTests
         builder.Services.AddSingleton<INodePairingBroker>(pairing);
         builder.Services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
         builder.Services.AddSingleton(new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")));
+        builder.Services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
         builder.Services.AddMcpServer().WithHttpTransport().WithTools<NodeSessionMcpTools>();
         builder.WebHost.ConfigureKestrel(options =>
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value)));

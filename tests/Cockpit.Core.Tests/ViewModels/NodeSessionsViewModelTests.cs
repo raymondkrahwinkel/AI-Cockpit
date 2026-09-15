@@ -1,7 +1,10 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -159,6 +162,35 @@ public class NodeSessionsViewModelTests
         Assert.Equal("This node's operator has not allowed the profile 'Laptop Sonnet'.", card.Status);
     }
 
+    [Fact]
+    public async Task Refresh_CollectsWhatAgentsOnTheNodeSentTheirAssistant_WithOrigin_ExactlyOnce()
+    {
+        // AC-1322 criteria 1 and 2 at the controller's end. The read fails once before it answers — the node
+        // then drops nothing, so the next poll gets the message; after that it is acknowledged and never comes
+        // again. The assistant drains its inbox in between, so a second delivery could not hide behind dedup.
+        var client = new FakeNodeSessions
+        {
+            Snapshot = new NodeSessionsSnapshot("laptop", [SweepOnTheNode], [], []),
+            FailNextInboxRead = true,
+        };
+        client.Queued.Add(new NodeInboxMessage("m1", "node-pane-b", "done", "AC-795 tests are green.", DateTimeOffset.UtcNow));
+        var inbox = new AgentMessageInbox();
+        var card = new NodeSessionsViewModel(client, "laptop", new NodeInboxRelay(client, inbox));
+
+        await card.RefreshAsync();
+        Assert.Null(inbox.PeekOldest(AssistantIdentity.PaneId));
+
+        await card.RefreshAsync();
+        var delivered = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+        Assert.Equal("laptop · node-pane-b", delivered.FromPaneId);
+        Assert.Equal("done", delivered.Kind);
+        Assert.Equal("[From node laptop (disc-laptop), session laptop · node-pane-b. Replying to that address with notify is not possible yet.] AC-795 tests are green.", delivered.Body);
+
+        await card.RefreshAsync();
+        Assert.Null(inbox.PeekOldest(AssistantIdentity.PaneId));
+        Assert.Empty(client.Queued);
+    }
+
     private sealed class FakeNodeSessions : INodeSessionsClient
     {
         public required NodeSessionsSnapshot Snapshot { get; set; }
@@ -191,6 +223,25 @@ public class NodeSessionsViewModelTests
         {
             Stopped.Add((nodeName, paneId));
             return Task.FromResult<string?>(null);
+        }
+
+        // AC-1322: the node's queue for its controller, with the node's own rule — everything up to and including
+        // `afterMessageId` is dropped, the rest comes back — and a read that fails before answering drops nothing.
+        public List<NodeInboxMessage> Queued { get; } = [];
+
+        public bool FailNextInboxRead { get; set; }
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
+        {
+            if (FailNextInboxRead)
+            {
+                FailNextInboxRead = false;
+                return Task.FromResult(new NodeInboxBatch(nodeName, [], Error: "laptop did not answer within 2s."));
+            }
+
+            var acknowledged = Queued.FindIndex(message => message.Id == afterMessageId);
+            Queued.RemoveRange(0, acknowledged + 1);
+            return Task.FromResult(new NodeInboxBatch(nodeName, [.. Queued], DiscoveryId: "disc-laptop"));
         }
     }
 }

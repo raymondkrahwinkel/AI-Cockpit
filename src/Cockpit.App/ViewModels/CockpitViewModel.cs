@@ -66,6 +66,7 @@ using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
@@ -3118,7 +3119,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IProjectJobHistory? projectJobHistory = null,
         // AC-1321: whether a paired controller holds the line to this node. Absent in the design-time/unit-test
         // graph, where the local assistant is simply never stood down for one.
-        INodeControllerPresence? controllerPresence = null)
+        INodeControllerPresence? controllerPresence = null,
+        // AC-1322: collects, on the node cards' poll, what agents on a paired node sent their assistant. Absent in
+        // the design-time/unit-test graph, where the cards only list.
+        NodeInboxRelay? nodeInboxRelay = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3149,7 +3153,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeDiscoveryClient,
             sessionProfileStore,
             projectStore,
-            nodeSessionsClient);
+            nodeSessionsClient,
+            nodeInboxRelay);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with

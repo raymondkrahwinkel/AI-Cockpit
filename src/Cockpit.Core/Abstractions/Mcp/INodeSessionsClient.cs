@@ -39,7 +39,27 @@ public interface INodeSessionsClient
     /// stopped, or the reason it did not. The pane id belongs to that node and means nothing on this machine.
     /// </summary>
     Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1322: the messages agents on <paramref name="nodeName"/> addressed to their assistant while this cockpit
+    /// was its controller, oldest first. <paramref name="afterMessageId"/> is the last id this cockpit already
+    /// holds: the node drops everything up to and including it and returns what follows, so a poll that fails
+    /// leaves the node holding the same messages for the next one. Never throws for an unreachable node — see <see cref="NodeInboxBatch.Error"/>.
+    /// </summary>
+    Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default);
 }
+
+// AC-1322: one read of a node's queue for its controller. A non-null `Error` means nothing was read and the
+// caller's cursor must not move. `Remaining` is what the node still holds beyond this batch.
+public sealed record NodeInboxBatch(
+    string NodeName,
+    IReadOnlyList<NodeInboxMessage> Messages,
+    int Remaining = 0,
+    string? Error = null,
+    string DiscoveryId = "");
+
+// One message an agent on a node sent to `cockpit-assistant` there. `FromPaneId` is that machine's pane id.
+public sealed record NodeInboxMessage(string Id, string FromPaneId, string Kind, string Body, DateTimeOffset SentAtUtc);
 
 // One node, as the controller last read it. A non-null `Error` means nothing else here is current.
 // AC-796, criterion 2: `Error` carries the distinction between "connection down" and "node looks stopped"

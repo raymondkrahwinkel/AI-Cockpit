@@ -3,11 +3,14 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
 // Here the separation is structural rather than typographic (AC-795, AC-561, AC-796).
-public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, string nodeName) : ObservableObject, IDisposable
+// AC-1322: `inboxRelay` rides the same poll to collect what agents on the node sent their assistant; absent in the
+// design-time/unit-test graph, where the card only lists.
+public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, string nodeName, NodeInboxRelay? inboxRelay = null) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
     // it stays a handshake and three small calls rather than something the node's operator would notice.
@@ -97,6 +100,12 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
             SelectedProject = Projects.FirstOrDefault(project => string.Equals(project.Id, hadProject, StringComparison.Ordinal))
                 ?? Projects.FirstOrDefault();
             Status = Sessions.Count == 0 ? "Nothing is running on this node that you may see." : "";
+
+            // After the lists, and only once the node answered them: a node that is off costs one timeout, not two.
+            if (inboxRelay is not null)
+            {
+                await inboxRelay.PollAsync(NodeName).ConfigureAwait(true);
+            }
         }
         finally
         {

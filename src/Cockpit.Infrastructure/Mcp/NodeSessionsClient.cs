@@ -124,6 +124,44 @@ internal sealed class NodeSessionsClient(
     public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "stop_node_agent", new Dictionary<string, object?> { ["paneId"] = paneId }, cancellationToken);
 
+    public async Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "read_node_inbox",
+                afterMessageId is null ? null : new Dictionary<string, object?> { ["afterMessageId"] = afterMessageId },
+                cancellationToken).ConfigureAwait(false);
+
+            if (_ErrorIn(result) is { } refusal)
+            {
+                return new NodeInboxBatch(nodeName, [], Error: refusal);
+            }
+
+            return new NodeInboxBatch(
+                nodeName,
+                [.. _Array(result, "messages").Select(row => new NodeInboxMessage(
+                    _Text(row, "id"),
+                    _Text(row, "fromPaneId"),
+                    _Text(row, "kind"),
+                    _Text(row, "body"),
+                    row.TryGetProperty("sentAtUtc", out var sent) && sent.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))],
+                result.TryGetProperty("remaining", out var remaining) && remaining.TryGetInt32(out var count) ? count : 0,
+                DiscoveryId: _Text(result, "discoveryId"));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not read the assistant's mail on node {Node}.", nodeName);
+            return new NodeInboxBatch(nodeName, [], Error: Classify(nodeName, exception));
+        }
+    }
+
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —
     // did this happen — and only the text differs.
