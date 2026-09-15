@@ -47,7 +47,7 @@
             <TextBox Name="NoteBox" Text="{Binding Note}" AcceptsReturn="True" TextWrapping="Wrap"
                      MinHeight="110" MaxHeight="260" VerticalContentAlignment="Top"
                      PlaceholderText="What do you want to remember about this project?"
-                     IsEnabled="{Binding HasProjects}" KeyDown="OnNoteBoxKeyDown"/>
+                     IsEnabled="{Binding CanEdit}" KeyDown="OnNoteBoxKeyDown"/>
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11"
                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                        IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

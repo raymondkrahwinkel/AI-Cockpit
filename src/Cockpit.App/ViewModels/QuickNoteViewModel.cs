@@ -51,10 +51,14 @@ public sealed partial class QuickNoteViewModel : ObservableObject
     private string _message = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEdit))]
     private bool _isSaving;
 
+    // Locked while the write is in flight: what was handed to the writer is what lands, nothing typed after it.
+    public bool CanEdit => HasProjects && !IsSaving;
+
     // Raised once the note is in the project's memory (and, for "save and start", the session is on its way) — the
-    // window closes on it. Never raised on a failed write. `Note` is empty by then: what landed is no longer a draft.
+    // window closes on it. Never raised on a failed write or start. `Note` is empty by then: what landed is no draft.
     public event EventHandler? Saved;
 
     [RelayCommand]
@@ -77,10 +81,12 @@ public sealed partial class QuickNoteViewModel : ObservableObject
             return;
         }
 
+        // Read once: the write and the start get the same text.
+        var text = Note;
         IsSaving = true;
         try
         {
-            var result = await _writer.AppendAsync(project, Note, CancellationToken.None);
+            var result = await _writer.AppendAsync(project, text, CancellationToken.None);
             Message = result.Outcome switch
             {
                 ProjectMemoryAppendOutcome.Success => string.Empty,
@@ -94,12 +100,22 @@ public sealed partial class QuickNoteViewModel : ObservableObject
                 return;
             }
 
+            // Emptied before the start: a start that fails must not leave the landed note saveable a second time.
+            Note = string.Empty;
+
             if (start && _start is { } startSession)
             {
-                await startSession(project, Note);
+                try
+                {
+                    await startSession(project, text);
+                }
+                catch (Exception ex)
+                {
+                    Message = $"Saved into {project.Name}, but the session did not start: {ex.Message}";
+                    return;
+                }
             }
 
-            Note = string.Empty;
             Saved?.Invoke(this, EventArgs.Empty);
         }
         finally

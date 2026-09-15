@@ -80,6 +80,9 @@ public sealed class QuickNoteCoordinator : ISingletonService
 
     internal void UseStart(Func<Project, string, Task> start) => _start = start;
 
+    // The one window open right now, or null — what a test observes, the way `CompanionWindowPresenter.Window` is.
+    internal QuickNoteWindow? Window => _window;
+
     // The window's parting word: a saved note has already emptied itself, so only an unsaved one carries over.
     internal void KeepDraft(QuickNoteViewModel note) => _draft = note.Note;
 

@@ -41,5 +41,12 @@ public class ProjectJobChoiceRunLineTests
         var plainJob = job with { Recurrence = null };
         Assert.Equal("started 9 September", new ProjectJobChoice(project, plainJob) { Today = today, LastRun = silentRun }.RecurrenceLine);
         Assert.Null(new ProjectJobChoice(project, plainJob) { Today = today }.RecurrenceLine);
+
+        // Two projects carrying the same job id (a copied definition): each card shows only its own project's run.
+        var twin = Project.Create("Invoices (copy)") with { Jobs = [job] };
+        var twinRun = silentRun with { PaneId = "pane-2", ProjectId = twin.Id, StartedAt = startedAt.AddDays(1) };
+        var runs = new[] { twinRun, silentRun };
+        Assert.Same(silentRun, new ProjectCardViewModel(project, "● This machine", jobRuns: runs).Jobs.Single().LastRun);
+        Assert.Same(twinRun, new ProjectCardViewModel(twin, "● This machine", jobRuns: runs).Jobs.Single().LastRun);
     }
 }

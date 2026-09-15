@@ -302,7 +302,7 @@ public partial class App : Application
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window.
         _mainWindow.Show();
-        _FollowTheme(cockpitViewModel);
+        FollowTheme(cockpitViewModel);
         _SetUpTrayIcon();
 
         // Same routes as the sidebar's Options and About (AC-1299); no-op off macOS, where nothing exports this menu.
@@ -759,11 +759,11 @@ public partial class App : Application
     }
 
     // AC-860: one subscription, taken when the main window is up — every window reads the app-wide variant set here,
-    // so one per TopLevel would be the same work seven times over. `TopLevel.PlatformSettings` is not public in
-    // Avalonia 12.1; the application-level one is. The stand stays on the view model and is what gets saved.
-    private void _FollowTheme(CockpitViewModel cockpit)
+    // so one per TopLevel would be the same work seven times over (`TopLevel.PlatformSettings` is not public in 12.1
+    // anyway). The stand stays on the view model and is saved from there. `platform` is a seam for headless tests.
+    internal void FollowTheme(CockpitViewModel cockpit, IPlatformSettings? platform = null)
     {
-        var platform = PlatformSettings;
+        platform ??= PlatformSettings;
         var selector = new Theming.ThemeSelector(
             cockpit.ThemeMode,
             platform?.GetColorValues().ThemeVariant ?? PlatformThemeVariant.Dark,

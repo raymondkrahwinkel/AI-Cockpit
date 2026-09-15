@@ -54,8 +54,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   project; a plain folder cannot yet). **Save** writes the note and starts nothing; **Save and start** is a
   separate button that also opens a session on that project with the note in its composer, unsent. A save that
   fails — Depot unreachable, or a sign-in needed — keeps your note in the window and says why. The same window is
-  reachable as **Quick note** in the command palette. On macOS every desktop-wide key (screenshot, push-to-talk,
-  quick note) is now registered too, without needing Accessibility permission — not yet verified on a Mac.
+  reachable as **Quick note** in the command palette. The desktop-wide keys work on Windows and Linux; on macOS
+  the code to register them (screenshot, push-to-talk, quick note) without Accessibility permission is in this
+  release but has not been tried on a Mac yet, so until it has, count on the command palette there.
 - added: in the Simple stand, a session asking for your consent while you are looking at another conversation now
   says so, in a notification in the bottom-right corner. It names the session and the action it wants to take, and
   it offers two things: **Go there**, which makes that session the conversation you are looking at, where the

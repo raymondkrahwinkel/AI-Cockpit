@@ -35,6 +35,13 @@ public partial class QuickNoteWindow : Window
         };
     }
 
+    // Not while the write is in flight: the coordinator would keep as a draft the very text that is about to land.
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        e.Cancel = DataContext is QuickNoteViewModel { IsSaving: true };
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);

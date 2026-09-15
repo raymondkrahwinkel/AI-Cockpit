@@ -265,15 +265,3 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         }
     }
 }
-
-public sealed partial class WorkKindChoiceViewModel(PluginWorkKindOption option) : ObservableObject
-{
-    public PluginWorkKindOption Option { get; } = option;
-
-    public string Label => Option.Label;
-
-    public string Description => Option.Description;
-
-    [ObservableProperty]
-    private bool _isSelected;
-}

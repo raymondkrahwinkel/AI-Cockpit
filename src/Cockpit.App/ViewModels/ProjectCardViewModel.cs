@@ -32,7 +32,7 @@ public sealed partial class ProjectCardViewModel(
         {
             Today = today ?? DateOnly.FromDateTime(DateTime.Today),
             // AC-490: `jobRuns` is the trail newest first, so the first match is the job's latest start.
-            LastRun = jobRuns?.FirstOrDefault(run => run.JobId == job.Id),
+            LastRun = jobRuns?.FirstOrDefault(run => run.ProjectId == project.Id && run.JobId == job.Id),
         }),
     ];
 

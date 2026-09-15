@@ -35,14 +35,21 @@ public class QuickNoteTests
     [Fact]
     public async Task Save_WritesTheNote_StartsNothing_AndLeavesNoDraftBehind()
     {
-        var writer = new FakeNoteWriter("recent");
+        var writer = new FakeNoteWriter("recent") { Pending = new TaskCompletionSource() };
         var started = new List<Project>();
         var note = new QuickNoteViewModel([Recent], writer, (project, _) => { started.Add(project); return Task.CompletedTask; }) { Note = "call finance" };
         var saved = 0;
         note.Saved += (_, _) => saved++;
 
-        await note.SaveCommand.ExecuteAsync(null);
+        var save = note.SaveCommand.ExecuteAsync(null);
 
+        // While the write is in flight the box is locked, so nothing typed can diverge from what the writer holds.
+        Assert.True(note.IsSaving);
+        Assert.False(note.CanEdit);
+        writer.Pending.SetResult();
+        await save;
+
+        Assert.True(note.CanEdit);
         Assert.Equal([(Recent, "call finance")], writer.Appended);
         Assert.Empty(started);
         Assert.Equal(1, saved);
@@ -78,16 +85,32 @@ public class QuickNoteTests
         Assert.Equal("call finance", coordinator.CreateViewModel().Note);
     }
 
-    [Fact]
-    public async Task SaveAndStart_StartsOnce_OnlyAfterTheNoteLanded()
+    // A start that fails after the write landed is the one variant a note must survive without being written twice.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveAndStart_StartsOnce_OnlyAfterTheNoteLanded(bool startFails)
     {
         var writer = new FakeNoteWriter("recent");
         var startedAfterWrite = new List<bool>();
-        var note = new QuickNoteViewModel([Recent], writer, (_, _) => { startedAfterWrite.Add(writer.Appended.Count == 1); return Task.CompletedTask; }) { Note = "call finance" };
+        var note = new QuickNoteViewModel([Recent], writer, (_, text) =>
+        {
+            startedAfterWrite.Add(writer.Appended.Count == 1 && text == "call finance");
+            return startFails ? Task.FromException(new InvalidOperationException("no profile")) : Task.CompletedTask;
+        }) { Note = "call finance" };
+        var saved = 0;
+        note.Saved += (_, _) => saved++;
 
         await note.SaveAndStartCommand.ExecuteAsync(null);
 
+        Assert.Equal(string.Empty, note.Note);
+        Assert.Equal(startFails, note.Message.Contains("no profile"));
+        Assert.Equal(startFails ? 0 : 1, saved);
+
+        // A second click on what already landed writes nothing and starts nothing.
+        await note.SaveAndStartCommand.ExecuteAsync(null);
         Assert.Equal([true], startedAfterWrite);
+        Assert.Single(writer.Appended);
     }
 
     // A coordinator over a cockpit that holds exactly `projects`.
@@ -106,14 +129,18 @@ public class QuickNoteTests
     {
         public ProjectMemoryAppendResult Result { get; init; } = ProjectMemoryAppendResult.Success;
 
+        // Set to hold the write open until the test completes it; left null, the write lands at once.
+        public TaskCompletionSource? Pending { get; init; }
+
         public List<(Project Project, string Note)> Appended { get; } = [];
 
         public bool CanAppend(Project project) => writableProjectIds.Contains(project.Id);
 
-        public Task<ProjectMemoryAppendResult> AppendAsync(Project project, string note, CancellationToken cancellationToken)
+        public async Task<ProjectMemoryAppendResult> AppendAsync(Project project, string note, CancellationToken cancellationToken)
         {
             Appended.Add((project, note));
-            return Task.FromResult(Result);
+            await (Pending?.Task ?? Task.CompletedTask);
+            return Result;
         }
     }
 }
