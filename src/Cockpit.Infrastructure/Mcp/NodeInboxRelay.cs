@@ -54,5 +54,5 @@ public sealed class NodeInboxRelay(
     // has here — plus the one thing the assistant must not try, since replying to a node is not built yet.
     internal static string Origin(string nodeName, string discoveryId, string from) =>
         $"[From node {nodeName}" + (discoveryId is { Length: > 0 } ? $" ({discoveryId})" : "")
-        + $", session {from}. Replying to that address with notify is not possible yet.] ";
+        + $", session {from}. Reply with send_message to that address; notify does not reach it.] ";
 }

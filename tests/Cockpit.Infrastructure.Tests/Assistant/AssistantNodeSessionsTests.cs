@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 namespace Cockpit.Infrastructure.Tests.Assistant;
 
 // AC-1320: the assistant reads the sessions of a paired node through list_sessions, every row stamped with the
-// machine it runs on, and the tools that act on a pane refuse a node's session before touching anything.
+// machine it runs on. Acting on one of those rows is AC-1323 (AssistantNodeControlTests).
 public sealed class AssistantNodeSessionsTests(ITestOutputHelper output) : IDisposable
 {
     private const string Node = "LAPTOP";
@@ -105,20 +105,6 @@ public sealed class AssistantNodeSessionsTests(ITestOutputHelper output) : IDisp
         Assert.Equal(since, (DateTimeOffset)second["nodes"]![0]!["unreachableSince"]!);
         await _nodes.Received(1).ReadAsync(Node, Arg.Any<CancellationToken>());
         Assert.True(secondCall < TimeSpan.FromSeconds(1), $"second call took {secondCall}");
-    }
-
-    [Fact]
-    public async Task StopAgent_OnANodeSession_RefusesNamingTheNode_AndDoesNothing()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        var gateway = Substitute.For<IAssistantAgentGateway>();
-        var tools = new AssistantAgentMcpTools(gateway, Substitute.For<IAssistantMemory>());
-
-        var reply = _Json(await tools.StopAgentAsync($"{Node} · {SharedPaneId}"));
-
-        Assert.False((bool)reply["ok"]!);
-        Assert.Contains(Node, (string)reply["error"]!);
-        await gateway.DidNotReceiveWithAnyArgs().StopAsync(default!);
     }
 
     public void Dispose() => McpRequestContext.Set(null);

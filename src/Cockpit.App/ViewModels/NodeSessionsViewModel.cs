@@ -164,12 +164,12 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
         IsBusy = true;
         try
         {
-            refusal = await client.StartAsync(
+            refusal = (await client.StartAsync(
                 NodeName,
                 profile.Label,
                 SelectedProject?.Id,
                 NewSessionPrompt,
-                NewSessionName).ConfigureAwait(true);
+                NewSessionName).ConfigureAwait(true)).Error;
 
             if (refusal is null)
             {

@@ -184,7 +184,7 @@ public class NodeSessionsViewModelTests
         var delivered = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
         Assert.Equal("laptop · node-pane-b", delivered.FromPaneId);
         Assert.Equal("done", delivered.Kind);
-        Assert.Equal("[From node laptop (disc-laptop), session laptop · node-pane-b. Replying to that address with notify is not possible yet.] AC-795 tests are green.", delivered.Body);
+        Assert.Equal("[From node laptop (disc-laptop), session laptop · node-pane-b. Reply with send_message to that address; notify does not reach it.] AC-795 tests are green.", delivered.Body);
 
         await card.RefreshAsync();
         Assert.Null(inbox.PeekOldest(AssistantIdentity.PaneId));
@@ -207,7 +207,7 @@ public class NodeSessionsViewModelTests
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
 
-        public Task<string?> StartAsync(
+        public Task<NodeStartResult> StartAsync(
             string nodeName,
             string profileLabel,
             string? projectId = null,
@@ -216,7 +216,7 @@ public class NodeSessionsViewModelTests
             CancellationToken cancellationToken = default)
         {
             Started.Add((nodeName, profileLabel));
-            return Task.FromResult(Refusal);
+            return Task.FromResult(new NodeStartResult(Refusal));
         }
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default)
@@ -224,6 +224,18 @@ public class NodeSessionsViewModelTests
             Stopped.Add((nodeName, paneId));
             return Task.FromResult<string?>(null);
         }
+
+        public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeTranscriptRead(null));
 
         // AC-1322: the node's queue for its controller, with the node's own rule — everything up to and including
         // `afterMessageId` is dropped, the rest comes back — and a read that fails before answering drops nothing.

@@ -438,15 +438,22 @@ public sealed partial class SecurityOptionsViewModel(
         var pending = nodePairing?.Pending;
         HasIncomingPairing = pending is not null;
         IncomingPairingCode = pending?.Code ?? "";
+        // AC-1323: what is being consented to, said where the consent is given — a controller's assistant runs the
+        // sessions here, not merely sees them. The same profile/project scope bounds it, checked on every call.
         IncomingPairingCaption = pending is null
             ? ""
-            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} wants to pair. Confirm only if the code below is the one that cockpit is showing.";
+            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} wants to pair with this cockpit as its controller. "
+                + "While it is connected, its assistant is the assistant here: it sees, starts, stops and steers sessions on this machine and reads their transcripts — "
+                + "only under the profiles and projects you allow on this page, checked on every call. "
+                + "Confirm only if the code below is the one that cockpit is showing.";
 
         var pairing = nodePairing?.Pairing;
         IsPaired = pairing is not null;
         PairedControllerText = pairing is null
             ? ""
-            : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}.";
+            : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}. "
+                + "Its assistant can start and stop sessions here, hand them prompts and messages, rename them and read their transcripts — "
+                + "within the profiles and projects below, checked on every call.";
     }
 
     // AC-1292: "every profile, including ones made later" against "only the ones ticked below". The two kinds are

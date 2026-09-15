@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Assistant;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -132,7 +133,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "read_node_inbox", ReadOnly = false, Destructive = false)]
-    [Description("Collects the messages agents on this node sent to their assistant while you were its controller — those reach you, not the assistant here. Pass the id of the last message you already hold as afterMessageId: everything up to and including it is dropped on the node, and what follows comes back, oldest first. Leave it out to read from the start. A read that fails on your side drops nothing here, so the next one with the same id gets the same messages again — that is how nothing is lost and nothing is doubled. At most 25 per call; `remaining` says how many still wait. The sender's pane id is this machine's, not yours, and you cannot reply to it with notify yet.")]
+    [Description("Collects the messages agents on this node sent to their assistant while you were its controller — those reach you, not the assistant here. Pass the id of the last message you already hold as afterMessageId: everything up to and including it is dropped on the node, and what follows comes back, oldest first. Leave it out to read from the start. A read that fails on your side drops nothing here, so the next one with the same id gets the same messages again — that is how nothing is lost and nothing is doubled. At most 25 per call; `remaining` says how many still wait. The sender's pane id is this machine's, not yours: reply to it with send_node_message, not notify.")]
     public Task<string> ReadNodeInboxAsync(
         [Description("The id of the last message you already collected from this node, or null to read from the start. The node drops everything up to and including it before answering.")] string? afterMessageId = null)
     {
@@ -282,6 +283,143 @@ internal sealed class NodeSessionMcpTools(
         {
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    [McpServerTool(Name = "send_node_prompt", ReadOnly = false, Destructive = true)]
+    [Description("Hands a session on the node a turn: the text goes into that session and is SENT, so its agent starts on it straight away — what send_prompt does on your own machine. The pane id is the node's, from list_node_sessions; you can only reach what that list showed you, which is the work running under a profile you were allowed, and anything else is refused. Nobody on the node is asked first: the operator there gave you this authority when the two cockpits were paired, so read the prompt back to your own operator before you send it. `delivered` false means the session is still coming up and holds the turn — do not send it again.")]
+    public async Task<string> SendNodePromptAsync(
+        [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId,
+        [Description("The turn to submit, in the exact words that will be sent.")] string prompt)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SendPromptAsync(paneId, prompt).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, node = Environment.MachineName, paneId = result.PaneId, name = result.SessionName, result.Delivered })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "send_node_message", ReadOnly = false, Destructive = false)]
+    [Description("Leaves a message in the inbox of a session on the node, as this machine's assistant — while you control this node, that is you, so the agent's reply (notify cockpit-assistant) comes back to you through read_node_inbox. The pane id is the node's, from list_node_sessions; only a session that list showed you can be written to. This tells the agent something; it does not make it do anything — use send_node_prompt for that.")]
+    public async Task<string> SendNodeMessageAsync(
+        [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId,
+        [Description("A short label for what this is, at most 100 characters.")] string kind,
+        [Description("The message itself, at most 2000 characters.")] string body)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SendMessageAsync(paneId, kind, body).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new
+                {
+                    ok = true,
+                    node = Environment.MachineName,
+                    paneId = result.PaneId,
+                    name = result.SessionName,
+                    messageId = result.MessageId,
+                    result.Deduplicated,
+                    deliversAtTurnStart = result.DeliversAtTurnStart,
+                })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "rename_node_session", ReadOnly = false, Destructive = false)]
+    [Description("Renames a session on the node — the name its operator sees in the sidebar there. The pane id is the node's, from list_node_sessions; only a session that list showed you can be renamed.")]
+    public async Task<string> RenameNodeSessionAsync(
+        [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId,
+        [Description("What the session should be called.")] string name)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.RenameSessionAsync(paneId, name).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, node = Environment.MachineName, paneId, name = result.Name })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "read_node_transcript", ReadOnly = true)]
+    [Description("Reads the last rows of a session's transcript on the node, oldest first, in the same shape read_transcript gives you for your own sessions. The pane id is the node's, from list_node_sessions; only a session that list showed you can be read. `found` false means the node has no such session. Each row is cut to 2000 characters and marked truncated when it was; totalEntries says how long the whole transcript is.")]
+    public async Task<string> ReadNodeTranscriptAsync(
+        [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId,
+        [Description("How many of the most recent entries to return; capped at 100.")] int count = AssistantReadMcpTools.DefaultEntryCount)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            {
+                return refusal;
+            }
+
+            var transcript = await read.ReadTranscriptAsync(paneId, Math.Clamp(count, 1, AssistantReadMcpTools.MaxEntryCount)).ConfigureAwait(false);
+            if (transcript is null)
+            {
+                return _Serialize(new { ok = true, node = Environment.MachineName, found = false });
+            }
+
+            return _Serialize(new
+            {
+                ok = true,
+                node = Environment.MachineName,
+                found = true,
+                paneId = transcript.PaneId,
+                name = transcript.Name,
+                totalEntries = transcript.TotalEntries,
+                entries = transcript.Entries.Select(entry =>
+                {
+                    var (text, textTruncated) = AssistantReadMcpTools.Bounded(entry.Text);
+                    var (result, resultTruncated) = AssistantReadMcpTools.Bounded(entry.ToolResult);
+                    return new { kind = entry.Kind, text, toolResult = entry.ToolResult is null ? null : result, truncated = textTruncated || resultTruncated };
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    // AC-1323: the four controls share stop's bound — a session outside what listing showed is the node operator's
+    // own, whatever the controller wants to do with it.
+    private async Task<string?> _RefuseIfNotVisibleAsync(string paneId)
+    {
+        var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
+        return visible.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+            ? null
+            : _Serialize(new
+            {
+                ok = false,
+                error = $"There is no session '{paneId}' on this node that you may reach. Call list_node_sessions for the ones you can see; anything else there is running outside what this node's operator allowed you.",
+            });
     }
 
     // The sessions this controller may see, the same set it may stop — one method rather than a filter per call

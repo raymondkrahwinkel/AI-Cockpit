@@ -40,6 +40,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: while a paired controller is connected, a message an agent on this machine sends to its assistant
   reaches the controller's assistant instead, marked with which node and which session it came from; if the
   controller drops away first, the message lands with this machine's own assistant and says so (AC-1322).
+- added: the assistant now runs sessions on a paired node as it runs its own: it can start one there in a
+  project and profile the node's operator allowed, and stop, prompt, message, rename and read the transcript
+  of any session that node shows it, by the node address its session list already carries. A node that does not
+  answer comes back as an error naming the machine, and nothing on this machine is touched. Only watching a
+  session on a node is not possible — there is no event stream between two machines — and the refusal says
+  what does work instead (AC-1323).
 - added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
   panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
   switching to Panels or remembering a shortcut.
@@ -446,6 +452,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: pairing now says what it grants — that the other cockpit's assistant becomes the assistant here while
+  it is connected and can start, stop and steer sessions and read their transcripts — on the pairing request, on
+  the paired-controller card under Options → Nodes and on the banner in the main window. The choice of which
+  profiles and projects it may reach is the same as before and still bounds every call (AC-1323).
 - changed: the first-run question "What kind of work is this for?" now reads as a choice. The four kinds sit in one
   framed track as buttons — the same control as the Simple/Panels switch — instead of a row of labels that gave no
   sign they could be clicked, and a line above the list says what your pick did to it: which plugins were suggested,

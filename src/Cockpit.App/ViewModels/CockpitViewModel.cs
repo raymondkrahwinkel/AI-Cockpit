@@ -613,7 +613,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         HasIncomingPairing = pending is not null;
         IncomingPairingBanner = pending is null
             ? string.Empty
-            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} is asking to pair with this cockpit.";
+            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} is asking to pair with this cockpit and control the sessions on it.";
     }
 
     [RelayCommand]
@@ -2954,7 +2954,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
-    public SecurityOptionsViewModel Security { get; }
+    public SecurityOptionsViewModel Security { get; init; }
 
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.

@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -94,7 +95,7 @@ internal sealed class NodeSessionsClient(
         }
     }
 
-    public Task<string?> StartAsync(
+    public async Task<NodeStartResult> StartAsync(
         string nodeName,
         string profileLabel,
         string? projectId = null,
@@ -118,11 +119,84 @@ internal sealed class NodeSessionsClient(
             arguments["name"] = sessionName;
         }
 
-        return _ActAsync(nodeName, "start_node_agent", arguments, cancellationToken);
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(client, "start_node_agent", arguments, cancellationToken).ConfigureAwait(false);
+            return _ErrorIn(result) is { } refusal
+                ? new NodeStartResult(refusal)
+                : new NodeStartResult(
+                    null,
+                    _Text(result, "paneId"),
+                    _Text(result, "name"),
+                    _Text(result, "resolvedProfile"),
+                    result.TryGetProperty("promptDelivered", out var delivered) && delivered.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? delivered.GetBoolean()
+                        : null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not reach node {Node} to call start_node_agent.", nodeName);
+            return new NodeStartResult(Classify(nodeName, exception));
+        }
     }
 
     public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "stop_node_agent", new Dictionary<string, object?> { ["paneId"] = paneId }, cancellationToken);
+
+    public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "send_node_prompt", new Dictionary<string, object?> { ["paneId"] = paneId, ["prompt"] = prompt }, cancellationToken);
+
+    public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "send_node_message", new Dictionary<string, object?> { ["paneId"] = paneId, ["kind"] = kind, ["body"] = body }, cancellationToken);
+
+    public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "rename_node_session", new Dictionary<string, object?> { ["paneId"] = paneId, ["name"] = name }, cancellationToken);
+
+    public async Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "read_node_transcript",
+                new Dictionary<string, object?> { ["paneId"] = paneId, ["count"] = count },
+                cancellationToken).ConfigureAwait(false);
+
+            if (_ErrorIn(result) is { } refusal)
+            {
+                return new NodeTranscriptRead(null, refusal);
+            }
+
+            if (result.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.False)
+            {
+                return new NodeTranscriptRead(null);
+            }
+
+            return new NodeTranscriptRead(new AssistantTranscript(
+                paneId,
+                _Text(result, "name"),
+                result.TryGetProperty("totalEntries", out var total) && total.TryGetInt32(out var totalEntries) ? totalEntries : 0,
+                [.. _Array(result, "entries").Select(row => new AssistantTranscriptEntry(
+                    _Text(row, "kind"),
+                    _Text(row, "text"),
+                    row.TryGetProperty("toolResult", out var toolResult) && toolResult.ValueKind == JsonValueKind.String ? toolResult.GetString() : null))]));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not read a transcript on node {Node}.", nodeName);
+            return new NodeTranscriptRead(null, Classify(nodeName, exception));
+        }
+    }
 
     public async Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
     {

@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Abstractions.Mcp;
@@ -23,10 +24,10 @@ public interface INodeSessionsClient
 
     /// <summary>
     /// Starts a session on <paramref name="nodeName"/> under <paramref name="profileLabel"/>, optionally for one of
-    /// that node's allowed projects. Returns null when it started, or the node's own refusal — which is where the
-    /// scope grant (AC-794) is answered, so a refusal here is normal and worth showing verbatim.
+    /// that node's allowed projects. <see cref="NodeStartResult.Error"/> is null when it started, else the node's own
+    /// refusal — which is where the scope grant (AC-794) is answered, so a refusal here is normal and worth showing verbatim.
     /// </summary>
-    Task<string?> StartAsync(
+    Task<NodeStartResult> StartAsync(
         string nodeName,
         string profileLabel,
         string? projectId = null,
@@ -41,6 +42,31 @@ public interface INodeSessionsClient
     Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// AC-1323: hands the session with <paramref name="paneId"/> on <paramref name="nodeName"/> a turn — what
+    /// <c>send_prompt</c> does locally. Null when it went in, else the node's refusal or the reason it was not reached.
+    /// </summary>
+    Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1323: leaves a message in the inbox of the session with <paramref name="paneId"/> on <paramref name="nodeName"/>,
+    /// sent as that node's assistant. Null when delivered, else the refusal or the reason the node was not reached.
+    /// </summary>
+    Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1323: renames the session with <paramref name="paneId"/> on <paramref name="nodeName"/>. Null when renamed,
+    /// else the refusal or the reason the node was not reached.
+    /// </summary>
+    Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1323: the last <paramref name="count"/> transcript rows of the session with <paramref name="paneId"/> on
+    /// <paramref name="nodeName"/>, in the same shape the local read gateway returns them. Never throws for an
+    /// unreachable node — see <see cref="NodeTranscriptRead.Error"/>.
+    /// </summary>
+    Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// AC-1322: the messages agents on <paramref name="nodeName"/> addressed to their assistant while this cockpit
     /// was its controller, oldest first. <paramref name="afterMessageId"/> is the last id this cockpit already
     /// holds: the node drops everything up to and including it and returns what follows, so a poll that fails
@@ -48,6 +74,19 @@ public interface INodeSessionsClient
     /// </summary>
     Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default);
 }
+
+// AC-1323: what a start on a node came back with — the node's pane id (that machine's, never this one's) and the
+// profile that actually ran, or `Error`, in which case nothing else here is set.
+public sealed record NodeStartResult(
+    string? Error,
+    string PaneId = "",
+    string SessionName = "",
+    string ResolvedProfile = "",
+    bool? PromptDelivered = null);
+
+// AC-1323: one transcript read on a node. A non-null `Error` means nothing was read; `Transcript` null with no
+// error means the node knows no such session.
+public sealed record NodeTranscriptRead(AssistantTranscript? Transcript, string? Error = null);
 
 // AC-1322: one read of a node's queue for its controller. A non-null `Error` means nothing was read and the
 // caller's cursor must not move. `Remaining` is what the node still holds beyond this batch.

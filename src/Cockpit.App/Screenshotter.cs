@@ -212,6 +212,9 @@ internal static class Screenshotter
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
+        // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
+        // controller's assistant may do here render nowhere else.
+        ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.
@@ -1272,6 +1275,80 @@ internal static class Screenshotter
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
 
         return dialog;
+    }
+
+    private static OptionsDialog _OptionsNodesPaired()
+    {
+        var security = new SecurityOptionsViewModel(
+            new UnprotectedSecrets(),
+            nodePairing: new _FakePairingBroker(),
+            sessionProfileStore: new _FakeSessionProfileStore(),
+            projectStore: new _FakeProjectStore());
+        var cockpit = new ViewModels.CockpitViewModel { Security = security };
+        security.RefreshAsync().GetAwaiter().GetResult();
+        security.NodeEndpointEnabled = true;
+
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1000 };
+        dialog.SelectCategory("nodes");
+        return dialog;
+    }
+
+    private sealed class _FakeProjectStore : Cockpit.Core.Abstractions.Projects.IProjectStore
+    {
+        public Task<ProjectSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(ProjectSettings.Empty);
+
+        public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    // A node paired to "DESK" with a second cockpit asking — the two states the Nodes page describes control in.
+    private sealed class _FakePairingBroker : INodePairingBroker
+    {
+        public NodePairing? Pairing { get; } = new()
+        {
+            ControllerName = "DESK",
+            ControllerAddress = "192.168.1.5",
+            PairedAtUtc = new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero),
+            AllowAllProfiles = true,
+            AllowAllProjects = true,
+        };
+
+        public NodePairingPending? Pending { get; } = new()
+        {
+            PairingId = "pairing-1",
+            ControllerName = "LAPTOP",
+            ControllerAddress = "192.168.1.7",
+            Code = "482 913",
+            ExpiresAtUtc = DateTimeOffset.MaxValue,
+        };
+
+        public event EventHandler? Changed { add { } remove { } }
+
+        public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void Refuse(string pairingId)
+        {
+        }
+
+        public Task<NodePairingGrant> ClaimAsync(string pairingId, string claimToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task UnpairAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public bool IsProfileAllowed(string profileLabel) => true;
+
+        public bool IsProjectAllowed(string projectId) => true;
+
+        public Task SetScopeAsync(
+            IReadOnlyList<string> allowedProfileLabels,
+            IReadOnlyList<string> allowedProjectIds,
+            bool allowAllProfiles,
+            bool allowAllProjects,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.

@@ -72,7 +72,10 @@ public sealed class AssistantActMountRuleTests : IDisposable
         _Json(await (Task<string>)tool.Invoke(tools, [.. tool.GetParameters().Select(_Argument)])!);
 
     private static object? _Argument(ParameterInfo parameter) =>
-        parameter.ParameterType == typeof(string) ? Whatever
+        // AC-1323: `node` sends a start to another machine instead of the gateway this test counts; left blank,
+        // the start stays local. The refusal tests above still fill it, since they never get that far.
+        parameter.Name == "node" ? null
+            : parameter.ParameterType == typeof(string) ? Whatever
             : parameter.ParameterType == typeof(List<AskStructuredQuestionOptionArg>)
                 // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict
                 // argument on this server, `null` is not a valid filler for it, so it gets one of its own.
