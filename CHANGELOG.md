@@ -533,6 +533,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: closing the cockpit could occasionally end in a hard crash instead of a normal exit when something
+  went wrong on the UI thread during the last moments of shutdown. The cockpit now closes normally and
+  writes what went wrong to `cockpit.log`, so the actual cause is visible instead of hidden behind the crash.
 - fixed: the "assistant is switched off" and "no profile" notices sent you to Options → Voice, a page the
   switch left when the Assistant page was added. They now name Options → Assistant, and on the Simple stand's
   start screen the notice carries an "Open Options" button that lands on that page. While the assistant is

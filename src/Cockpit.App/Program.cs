@@ -189,7 +189,8 @@ sealed class Program
         var lastRenderClockRecovery = Cockpit.App.Diagnostics.RenderClockRecovery.NeverRecovered;
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
-            var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
+            // Not from the container: teardown disposes it while the dispatcher still drains, and the net must not throw.
+            var logger = loggerFactory.CreateLogger("Cockpit.App.UIThread");
 
             // AC-1236: read the tree before anything else, while it still carries what the cut pass left unfinished.
             if (Cockpit.App.Diagnostics.RenderClockRecovery.IsCutOff(exceptionEvent.Exception))
