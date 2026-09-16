@@ -2144,6 +2144,29 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-1324 criterion 3: needsYou (status NeedsAttention) holds exactly while a question is open — the
+    // controller's click, arriving by tool-use id, closes it and the status moves on; a second click on the same
+    // question finds nothing open and does nothing.
+    [Fact]
+    public async Task RespondToPermissionById_ClosesTheQuestion_AndTheStatusStopsSayingNeedsAttention()
+    {
+        var (vm, session) = await StartedVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
+
+        Assert.True(await vm.RespondToPermissionByIdAsync("t1", allow: true));
+
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+        Assert.False(entry.IsPendingPermission);
+        Assert.Equal("Allowed", entry.PermissionDecision);
+        Assert.NotEqual(SessionStatus.NeedsAttention, vm.SessionStatus);
+        await session.Received(1).RespondToPermissionAsync("t1", true, null, Arg.Any<CancellationToken>());
+
+        Assert.False(await vm.RespondToPermissionByIdAsync("t1", allow: true));
+        await session.Received(1).RespondToPermissionAsync("t1", true, null, Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public void Apply_TurnCompletedAfterPermissionRequest_PriorityGoesToNeedsAttention()
     {

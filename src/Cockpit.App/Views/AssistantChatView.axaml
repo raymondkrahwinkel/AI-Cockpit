@@ -53,6 +53,15 @@
         <Style Selector="Border#ComposerBorder.offer TextBox#InputBox.unavailable">
             <Setter Property="PlaceholderText" Value="Turn the assistant on first, or start on a project below."/>
         </Style>
+        <!-- AC-1321: stood down for a controller — nothing to turn on here. With a conversation on screen the box
+             carries the reason itself, the one place it can stand without covering the rows; under the offer the
+             notice already stands above it. -->
+        <Style Selector="TextBox#InputBox.unavailable.controlled">
+            <Setter Property="PlaceholderText" Value="{Binding UnavailableReason}"/>
+        </Style>
+        <Style Selector="Border#ComposerBorder.offer TextBox#InputBox.unavailable.controlled">
+            <Setter Property="PlaceholderText" Value="Waits for the controller to let go, or start on a project below."/>
+        </Style>
         <!-- The gallery's own heading repeats the "Or start on a project" line that stands above it here. -->
         <Style Selector="TextBlock#StartingPointsHeading">
             <Setter Property="IsVisible" Value="False"/>
@@ -745,6 +754,7 @@
                              unavailable (retyping is the retry after a failed start, AC-1316), so only the
                              invitation changes — the action to take, not a second copy of the reason. -->
                         <TextBox x:Name="InputBox" Text="{Binding InputText}" Classes.unavailable="{Binding IsUnavailable}"
+                                 Classes.controlled="{Binding IsControlled}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
@@ -827,13 +837,15 @@
 
             <Grid>
                 <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
-                     empty transcript that looks like nothing was ever said. -->
+                     empty transcript that looks like nothing was ever said. Not over a conversation that is still
+                     on screen (AC-1321's takeover keeps it): the composer's placeholder says it there. -->
                 <StackPanel MaxWidth="280" Spacing="8"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                     <StackPanel.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
                             <Binding Path="IsUnavailable"/>
                             <Binding Path="!ShowsStartOffer"/>
+                            <Binding Path="!HasMessages"/>
                         </MultiBinding>
                     </StackPanel.IsVisible>
                     <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="24" Height="24"
@@ -894,7 +906,7 @@
                                        VerticalAlignment="Center" MaxWidth="560"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             <Button x:Name="OpenAssistantOptionsButton" Content="Open Options" Classes="Compact"
-                                    VerticalAlignment="Center"
+                                    VerticalAlignment="Center" IsVisible="{Binding !IsControlled}"
                                     Command="{Binding Cockpit.OpenAssistantOptionsCommand}"
                                     ToolTip.Tip="Options → Assistant: the switch, the profile and what it may do"/>
                         </StackPanel>

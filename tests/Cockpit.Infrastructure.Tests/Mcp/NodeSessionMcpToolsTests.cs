@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 using ModelContextProtocol.Server;
 
@@ -38,7 +39,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     private readonly StubPairing _pairing = new();
 
     private NodeSessionMcpTools _Tools() =>
-        new(_read, _gateway, _pairing, new StubProfileStore());
+        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 

@@ -1508,7 +1508,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public override bool DeliversInboxAtTurnStart => _turnInboxDelivery is not null;
 
     // Use `IsSessionReady` because a driver that never started can leave a runtime accepting sends into nothing.
-    public override bool CanTakeAPrompt => IsSessionReady;
+    // AC-1321: a held pane is not a candidate for a wake either, so the gateway refuses it instead of the funnel.
+    public override bool CanTakeAPrompt => IsSessionReady && TurnsHeldBecause is null;
+
+    // AC-1321: why no new turn may start on this pane, else null — set by the assistant host while a paired
+    // controller holds the line. Read at the one funnel every turn goes through, so no starter can miss it; the
+    // running turn finishes, and what was queued behind it waits here until the hold lifts.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanTakeAPrompt))]
+    private string? _turnsHeldBecause;
+
+    partial void OnTurnsHeldBecauseChanged(string? value)
+    {
+        if (value is null && !IsBusy)
+        {
+            _TryDispatchNextQueued();
+        }
+    }
 
     // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
     // rather than throw — the picker itself stays closed whenever WorkingDirectory is null (see its own guard),
@@ -1924,7 +1940,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // a real turn like any other (`_StartTurnAsync`), and the turn-completed event clears it the same way.
     public async Task<bool> CompactContextAsync()
     {
-        if (_runtime is not { IsRunning: true } || !Capabilities.SupportsContextCompaction)
+        if (_runtime is not { IsRunning: true } || TurnsHeldBecause is not null || !Capabilities.SupportsContextCompaction)
         {
             return false;
         }
@@ -2275,6 +2291,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IReadOnlyList<Core.Sessions.ImageAttachment>? images,
         Action<AgentInboxTurnNotice>? note = null)
     {
+        if (TurnsHeldBecause is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
+
         // Only a runtime that is actually running can carry a turn, and "did not throw" is not enough to tell.
         var waiting = runtime.IsRunning ? _turnInboxDelivery?.TakeForTurn(PaneId) : null;
 
@@ -2356,7 +2377,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the status settles immediately. No-op when the queue is empty.
     private void _TryDispatchNextQueued()
     {
-        if (QueuedMessages.Count == 0)
+        if (QueuedMessages.Count == 0 || TurnsHeldBecause is not null)
         {
             return;
         }
@@ -2454,34 +2475,98 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
     {
+        // AC-1324: a node's question drawn here — the same row, but the click goes over the line, not to a runtime.
+        if (entry.NodePermission is { } onNode)
+        {
+            await _AnswerOnNodeAsync(entry, onNode, allow);
+            return;
+        }
+
         if (_runtime is null || entry.ToolUseId is null)
         {
             return;
         }
 
-        entry.PermissionDecision = answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
+        _MarkDecided(entry, answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied");
+        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
+    }
+
+    // AC-1324: three outcomes, each told on the row itself. Answered there: closed with the machine named. No
+    // longer open there (answered on the node, or the session gone): closed, nothing done. Line failed: the row
+    // reopens with the reason, so the buttons work again once the node is back.
+    private static async Task _AnswerOnNodeAsync(TranscriptEntryViewModel entry, NodePermissionOrigin onNode, bool allow)
+    {
+        // Closed before the line is called, like the local path (`_MarkDecided` before the runtime): the call takes
+        // up to the client's budget, and a second click in that window would be a second answer over the line.
+        if (!entry.IsPendingPermission)
+        {
+            return;
+        }
+
+        entry.IsPendingPermission = false;
+        entry.PermissionDecision = $"Answering on {onNode.Node}…";
+
+        var reply = await onNode.Answer(allow);
+        if (reply.Error is { } error)
+        {
+            entry.PermissionDecision = $"Not answered — {error}";
+            entry.IsPendingPermission = true;
+            return;
+        }
+
+        entry.PermissionDecision = reply.Answered
+            ? $"{(allow ? "Allowed" : "Denied")} on {onNode.Node}"
+            : $"Already answered on {onNode.Node}";
+    }
+
+    // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
+    // open here — answered already, or never asked — and then nothing is done.
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow)
+    {
+        if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
+        {
+            return false;
+        }
+
+        await RespondToPermissionAsync(entry, allow);
+        return true;
+    }
+
+    // AC-1324: every consent row waiting on a click, top-level and nested alike — the rows a controller draws for
+    // this session. A question row (AskUserQuestion) wants an answer, not a click, so it is not among them.
+    internal IEnumerable<TranscriptEntryViewModel> PendingToolPermissionRows() => _PendingRows().Where(row => !row.HasQuestionPrompts);
+
+    private IEnumerable<TranscriptEntryViewModel> _PendingRows() =>
+        Transcript.Concat(Transcript.SelectMany(row => row.SubAgentRowsForDisplay)).Where(row => row.IsPendingPermission);
+
+    private void _MarkDecided(TranscriptEntryViewModel entry, string decision)
+    {
+        entry.PermissionDecision = decision;
         entry.IsPendingPermission = false;
         // AC-532: the operator's decision may be what the composer's activity band was showing "waiting for
         // permission" for — re-raise so it reverts to the normal running text (or goes quiet, if this was the
         // call's only reason to still be shown).
         _RaiseActiveToolActivityChanged();
-        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
+
+        // AC-1324: `needsYou` means "stopped on a question nobody answered", and this was the last one — the
+        // session runs on from here, so it stops flagging itself the moment the click lands, not at the next message.
+        if (_needsAttention && !_PendingRows().Any())
+        {
+            _needsAttention = false;
+            _RecomputeStatus();
+        }
     }
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (_runtime is null || entry.ToolUseId is null || entry.ToolName is null)
+        if (_runtime is null || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
         {
             return;
         }
 
-        entry.PermissionDecision = scope == PermissionRuleScope.Wildcard
+        _MarkDecided(entry, scope == PermissionRuleScope.Wildcard
             ? $"Always allowed ({entry.ToolName}:*)"
-            : $"Always allowed (exact: {entry.ToolName})";
-        entry.IsPendingPermission = false;
-        // AC-532: see RespondToPermissionAsync above — this decision can end the composer's "waiting for
-        // permission" text too.
-        _RaiseActiveToolActivityChanged();
+            : $"Always allowed (exact: {entry.ToolName})");
 
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
@@ -3212,7 +3297,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         // A runtime whose driver never came up is still held by the pane, and it accepts a send and hands back a
         // completed task with nothing having gone anywhere.
-        if (_runtime is not { IsRunning: true } runtime)
+        if (_runtime is not { IsRunning: true } runtime || !CanTakeAPrompt)
         {
             return false;
         }

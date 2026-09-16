@@ -2034,9 +2034,9 @@
                                     <Button Content="Unpair" HorizontalAlignment="Left" Command="{Binding Security.UnpairNodeCommand}"/>
 
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                        <TextBlock Text="What this controller may use here" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="What this controller may see and control here" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Both take effect immediately, without unpairing."/>
+                                            ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Reach means see and control: a session under a profile you have not ticked is invisible to the controller and cannot be stopped or steered from there, and a project you have not ticked is refused when it tries to start work on it. Both take effect immediately, without unpairing."/>
                                     </StackPanel>
                                     <TextBlock Text="Profiles" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                     <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding Security.AllowAllProfiles}"/>

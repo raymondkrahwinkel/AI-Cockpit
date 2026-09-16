@@ -462,17 +462,35 @@ public class SecurityOptionsViewModelTests
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], []));
 
-        public Task<string?> StartAsync(
+        public Task<NodeStartResult> StartAsync(
             string nodeName,
             string profileLabel,
             string? projectId = null,
             string? prompt = null,
             string? sessionName = null,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<string?>(null);
+            Task.FromResult(new NodeStartResult(null));
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
+
+        public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeTranscriptRead(null));
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeInboxBatch(nodeName, []));
+
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodePermissionAnswer(false));
     }
 
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient

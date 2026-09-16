@@ -212,6 +212,9 @@ internal static class Screenshotter
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
+        // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
+        // controller's assistant may do here render nowhere else.
+        ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.
@@ -339,6 +342,9 @@ internal static class Screenshotter
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
+
+        // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
+        ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
         // question only stands there while no conversation does, which every other Simple scene has.
         ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
@@ -348,6 +354,9 @@ internal static class Screenshotter
         // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
         // composer that says what to do first rather than inviting a message that cannot go anywhere.
         ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
+        // AC-1321: the node while a paired controller holds the line — the takeover notice where the off notice
+        // stands, and no button, since nothing here ends it.
+        ["simple-view-start-screen-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, controlled: true) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -1269,6 +1278,80 @@ internal static class Screenshotter
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
 
         return dialog;
+    }
+
+    private static OptionsDialog _OptionsNodesPaired()
+    {
+        var security = new SecurityOptionsViewModel(
+            new UnprotectedSecrets(),
+            nodePairing: new _FakePairingBroker(),
+            sessionProfileStore: new _FakeSessionProfileStore(),
+            projectStore: new _FakeProjectStore());
+        var cockpit = new ViewModels.CockpitViewModel { Security = security };
+        security.RefreshAsync().GetAwaiter().GetResult();
+        security.NodeEndpointEnabled = true;
+
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1000 };
+        dialog.SelectCategory("nodes");
+        return dialog;
+    }
+
+    private sealed class _FakeProjectStore : Cockpit.Core.Abstractions.Projects.IProjectStore
+    {
+        public Task<ProjectSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(ProjectSettings.Empty);
+
+        public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    // A node paired to "DESK" with a second cockpit asking — the two states the Nodes page describes control in.
+    private sealed class _FakePairingBroker : INodePairingBroker
+    {
+        public NodePairing? Pairing { get; } = new()
+        {
+            ControllerName = "DESK",
+            ControllerAddress = "192.168.1.5",
+            PairedAtUtc = new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero),
+            AllowAllProfiles = true,
+            AllowAllProjects = true,
+        };
+
+        public NodePairingPending? Pending { get; } = new()
+        {
+            PairingId = "pairing-1",
+            ControllerName = "LAPTOP",
+            ControllerAddress = "192.168.1.7",
+            Code = "482 913",
+            ExpiresAtUtc = DateTimeOffset.MaxValue,
+        };
+
+        public event EventHandler? Changed { add { } remove { } }
+
+        public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void Refuse(string pairingId)
+        {
+        }
+
+        public Task<NodePairingGrant> ClaimAsync(string pairingId, string claimToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task UnpairAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public bool IsProfileAllowed(string profileLabel) => true;
+
+        public bool IsProjectAllowed(string projectId) => true;
+
+        public Task SetScopeAsync(
+            IReadOnlyList<string> allowedProfileLabels,
+            IReadOnlyList<string> allowedProjectIds,
+            bool allowAllProfiles,
+            bool allowAllProjects,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.
@@ -2265,13 +2348,31 @@ internal static class Screenshotter
         return cockpit;
     }
 
+    // AC-1324: the row a controller draws for a question on a paired node — built by the same factory the poll
+    // uses, so the scene cannot show a row the poll would not. Answered in the scene by nobody; a render never clicks.
+    private static ViewModels.CockpitViewModel _SimpleStandNodePermission()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.AssistantChat!.Session!.Transcript.Add(Services.NodePermissionRelay.Row(
+            "LAPTOP",
+            new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
+            new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
+            _ => Task.FromResult(new NodePermissionAnswer(true))));
+        cockpit.SimpleSelectedSession = null;
+        return cockpit;
+    }
+
     // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
     // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
     // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false)
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false)
     {
         // Off means no session either: the host never starts one it is not allowed to.
         var cockpit = _SimpleStand(withAssistant: !assistantOff, assistantOff);
+        if (controlled)
+        {
+            cockpit.ActiveController = new ActiveController("LAPTOP", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero));
+        }
 
         // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
         // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.

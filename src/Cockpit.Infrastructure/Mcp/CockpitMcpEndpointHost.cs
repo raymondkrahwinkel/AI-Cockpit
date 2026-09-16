@@ -304,7 +304,16 @@ internal sealed class CockpitMcpEndpointHost
     private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled, bool nodeOnly)
     {
         var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await NodeScopeGrantedAsync().ConfigureAwait(false);
-        return McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
+        var allowed = McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
+
+        // AC-1321: an authorized controller call is what "holding the line" means — noted here, at the one door
+        // every such call passes, and only once it is through it: a pairing with no scope controls nothing.
+        if (allowed && nodeScopeGranted && _services.GetService<NodeControllerPresence>() is { } presence)
+        {
+            presence.Seen(_services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");
+        }
+
+        return allowed;
     }
 
     // AC-794: an empty scope reaches no endpoint. Resolved from the service provider rather than injected — the

@@ -1325,6 +1325,14 @@ internal sealed class AssistantAgentGateway(
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>
         auditLog.RecordAsync(entry, cancellationToken);
 
+    // AC-1324: the controller operator's click on a row this cockpit is stopped on — the same path as a click in
+    // the pane itself. Not the assistant's own session: nobody answers that one but its operator, here.
+    public Task<bool> RespondToPermissionAsync(string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() =>
+            !string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal) && cockpit.FindSession(paneId) is SessionViewModel session
+                ? session.RespondToPermissionByIdAsync(toolUseId, allow)
+                : Task.FromResult(false));
+
     // Runs `work` on the UI thread — inline when already there, so a test on the UI thread pays for
     // no redundant dispatch. Capped from a request thread, and abandoned past the cap (AC-1138).
     private static Task<T> _OnUiThreadAsync<T>(Func<Task<T>> work) => UiThreadCall.RunAsync(work);

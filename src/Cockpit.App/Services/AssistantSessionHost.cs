@@ -59,6 +59,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _mcpServers = mcpServers;
         _memory = memory;
         _logger = logger;
+
+        // AC-1321: a controller appearing or going away is re-read through the same path a settings save takes,
+        // so the takeover is one more reason on the existing off state and not a second one.
+        _cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.ActiveController))
+            {
+                _ApplyTurnHold();
+                _ = ApplySettingsAsync();
+            }
+        };
     }
 
     // The living assistant instance, or null while it has not been woken yet. The one reference there is.
@@ -219,6 +230,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            // AC-1321: no new turn while a controller holds the line — before the live-instance shortcut, since a
+            // running conversation is allowed to finish its turn but not to take another.
+            if (_cockpit.ActiveController is { } controller)
+            {
+                _SetUnavailable(TakeoverReason(controller));
+                return null;
+            }
+
             if (!replaceALiveInstance && Session is { } live && _IsAlive(live))
             {
                 return live;
@@ -309,12 +328,25 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         if (settings.IsEnabled)
         {
+            if (_cockpit.ActiveController is { } controller)
+            {
+                _SetUnavailable(TakeoverReason(controller));
+                return;
+            }
+
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
-            // the first hold or click is still what wakes it.
+            // the first hold or click is still what wakes it. A live session that was stood down for a controller
+            // (AC-1321) comes back to what it is doing rather than to Ready.
             if (Session is null)
             {
                 Activity = AssistantActivity.Ready;
                 UnavailableReason = null;
+            }
+            else if (Activity == AssistantActivity.Unavailable)
+            {
+                Activity = AssistantActivity.Ready;
+                UnavailableReason = null;
+                _SyncActivityWithSession(Session);
             }
 
             return;
@@ -550,7 +582,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _ = ClearConversationAsync();
     }
 
-    partial void OnSessionChanged(SessionViewModel? value) => _pendingConversationClear = false;
+    partial void OnSessionChanged(SessionViewModel? value)
+    {
+        _pendingConversationClear = false;
+        // A session that arrives while a controller already holds the line takes the hold with it — the start began
+        // before the controller was seen, and nothing else would revisit it.
+        _ApplyTurnHold();
+    }
 
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
     // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
@@ -578,7 +616,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             return;
         }
 
-        if (!ShouldHandOver(
+        // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
+        if (!session.CanTakeAPrompt || !ShouldHandOver(
                 session.ContextUsedPercent,
                 session.IsBusy,
                 session.HasPendingPermission || session.PendingConsent is not null))
@@ -810,6 +849,23 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 : SessionOptionCatalog.DefaultPermissionMode.Value;
 
         return !string.Equals(mode, SessionOptionCatalog.BypassPermissionModeValue, StringComparison.Ordinal);
+    }
+
+    // AC-1321: what the screen says while a controller holds the line. Local clock, short — it is read by someone
+    // sitting at this machine. Shared with the chat view model so a scene without this host says the same thing.
+    internal static string TakeoverReason(ActiveController controller) =>
+        $"Controlled by {controller.Name} since {controller.SinceUtc.ToLocalTime():HH:mm}. "
+        + "Your assistant here comes back by itself when that connection drops.";
+
+    // AC-1321: the takeover reaches the live session as a hold on its turn funnel, not only as the chip's state —
+    // `_StartOrReplaceAsync` guards a start, but an inbox wake or the send-queue starts a turn on a session that is
+    // already running, and those go through the session, not through this host. Synchronous on purpose.
+    private void _ApplyTurnHold()
+    {
+        if (Session is { } live)
+        {
+            live.TurnsHeldBecause = _cockpit.ActiveController is { } controller ? TakeoverReason(controller) : null;
+        }
     }
 
     private void _SetUnavailable(string reason)

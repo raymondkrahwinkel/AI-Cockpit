@@ -32,6 +32,24 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: when a session on a paired node stops on an Allow/Deny question, that question now appears in the
+  controller's assistant conversation as the same row it would show locally, with the machine named on it,
+  and clicking Allow or Deny there answers it on the node; a question already answered on the node says so
+  instead of doing anything twice (AC-1324).
+- added: the assistant's session list now also shows what is running on every paired node, with the machine
+  named on every row, and says when a node cannot be reached instead of leaving it out (AC-1320).
+- added: while a paired controller is connected, this cockpit's own assistant stands down and the assistant
+  screen says which machine has taken over and since when; it comes back by itself within a minute of the
+  controller going away (AC-1321).
+- added: while a paired controller is connected, a message an agent on this machine sends to its assistant
+  reaches the controller's assistant instead, marked with which node and which session it came from; if the
+  controller drops away first, the message lands with this machine's own assistant and says so (AC-1322).
+- added: the assistant now runs sessions on a paired node as it runs its own: it can start one there in a
+  project and profile the node's operator allowed, and stop, prompt, message, rename and read the transcript
+  of any session that node shows it, by the node address its session list already carries. A node that does not
+  answer comes back as an error naming the machine, and nothing on this machine is touched. Only watching a
+  session on a node is not possible — there is no event stream between two machines — and the refusal says
+  what does work instead (AC-1323).
 - added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
   panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
   switching to Panels or remembering a shortcut.
@@ -438,6 +456,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: pairing now says what it grants — that the other cockpit's assistant becomes the assistant here while
+  it is connected and can start, stop and steer sessions and read their transcripts — on the pairing request, on
+  the paired-controller card under Options → Nodes and on the banner in the main window. The choice of which
+  profiles and projects it may reach is the same as before and still bounds every call (AC-1323).
 - changed: the first-run question "What kind of work is this for?" now reads as a choice. The four kinds sit in one
   framed track as buttons — the same control as the Simple/Panels switch — instead of a row of labels that gave no
   sign they could be clicked, and a line above the list says what your pick did to it: which plugins were suggested,
@@ -534,6 +556,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session no longer keeps flagging "needs attention" in the sidebar and to the assistant after its
+  last open Allow/Deny question has been answered; it drops the moment the click lands rather than at the
+  next message (AC-1324).
 - fixed: a table in a reply — in a session pane or the assistant chat — was drawn at its full natural width
   and ran off the right edge of the pane with no way to reach the cut-off columns. It now fits the pane: the
   wider columns wrap their text, a column holding only a number or a short code name keeps its width, and a

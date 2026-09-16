@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -68,14 +69,23 @@ internal sealed class NodeSessionsClient(
                     _Text(row, "paneId"),
                     _Text(row, "name"),
                     _Text(row, "profile"),
-                    _Text(row, "statusline")))],
+                    _Text(row, "statusline"),
+                    _Text(row, "status"),
+                    _Bool(row, "needsYou"),
+                    _Bool(row, "hasOutstandingWork"),
+                    [.. _Array(row, "pendingPermissions").Select(permission => new NodePendingPermission(
+                        _Text(permission, "toolUseId"),
+                        _Text(permission, "tool"),
+                        _Text(permission, "input"),
+                        permission.TryGetProperty("sinceUtc", out var since) && since.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))]))],
                 [.. _Array(profiles, "profiles").Select(row => new NodeScopedProfileSummary(
                     _Text(row, "label"),
                     // An unknown provider name is not a reason to drop a profile the operator is allowed to run:
                     // this side may be the older build of the two, and the label is what the grant is keyed on.
                     Enum.TryParse<SessionProvider>(_Text(row, "provider"), out var provider) ? provider : default,
                     _Text(row, "purpose") is { Length: > 0 } purpose ? purpose : null))],
-                [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))]);
+                [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))],
+                DiscoveryId: _Text(sessions, "discoveryId"));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -90,7 +100,7 @@ internal sealed class NodeSessionsClient(
         }
     }
 
-    public Task<string?> StartAsync(
+    public async Task<NodeStartResult> StartAsync(
         string nodeName,
         string profileLabel,
         string? projectId = null,
@@ -114,11 +124,148 @@ internal sealed class NodeSessionsClient(
             arguments["name"] = sessionName;
         }
 
-        return _ActAsync(nodeName, "start_node_agent", arguments, cancellationToken);
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(client, "start_node_agent", arguments, cancellationToken).ConfigureAwait(false);
+            return _ErrorIn(result) is { } refusal
+                ? new NodeStartResult(refusal)
+                : new NodeStartResult(
+                    null,
+                    _Text(result, "paneId"),
+                    _Text(result, "name"),
+                    _Text(result, "resolvedProfile"),
+                    result.TryGetProperty("promptDelivered", out var delivered) && delivered.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? delivered.GetBoolean()
+                        : null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not reach node {Node} to call start_node_agent.", nodeName);
+            return new NodeStartResult(Classify(nodeName, exception));
+        }
     }
 
     public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "stop_node_agent", new Dictionary<string, object?> { ["paneId"] = paneId }, cancellationToken);
+
+    public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "send_node_prompt", new Dictionary<string, object?> { ["paneId"] = paneId, ["prompt"] = prompt }, cancellationToken);
+
+    public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "send_node_message", new Dictionary<string, object?> { ["paneId"] = paneId, ["kind"] = kind, ["body"] = body }, cancellationToken);
+
+    public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "rename_node_session", new Dictionary<string, object?> { ["paneId"] = paneId, ["name"] = name }, cancellationToken);
+
+    public async Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "read_node_transcript",
+                new Dictionary<string, object?> { ["paneId"] = paneId, ["count"] = count },
+                cancellationToken).ConfigureAwait(false);
+
+            if (_ErrorIn(result) is { } refusal)
+            {
+                return new NodeTranscriptRead(null, refusal);
+            }
+
+            if (result.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.False)
+            {
+                return new NodeTranscriptRead(null);
+            }
+
+            return new NodeTranscriptRead(new AssistantTranscript(
+                paneId,
+                _Text(result, "name"),
+                result.TryGetProperty("totalEntries", out var total) && total.TryGetInt32(out var totalEntries) ? totalEntries : 0,
+                [.. _Array(result, "entries").Select(row => new AssistantTranscriptEntry(
+                    _Text(row, "kind"),
+                    _Text(row, "text"),
+                    row.TryGetProperty("toolResult", out var toolResult) && toolResult.ValueKind == JsonValueKind.String ? toolResult.GetString() : null))]));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not read a transcript on node {Node}.", nodeName);
+            return new NodeTranscriptRead(null, Classify(nodeName, exception));
+        }
+    }
+
+    public async Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "read_node_inbox",
+                afterMessageId is null ? null : new Dictionary<string, object?> { ["afterMessageId"] = afterMessageId },
+                cancellationToken).ConfigureAwait(false);
+
+            if (_ErrorIn(result) is { } refusal)
+            {
+                return new NodeInboxBatch(nodeName, [], Error: refusal);
+            }
+
+            return new NodeInboxBatch(
+                nodeName,
+                [.. _Array(result, "messages").Select(row => new NodeInboxMessage(
+                    _Text(row, "id"),
+                    _Text(row, "fromPaneId"),
+                    _Text(row, "kind"),
+                    _Text(row, "body"),
+                    row.TryGetProperty("sentAtUtc", out var sent) && sent.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))],
+                result.TryGetProperty("remaining", out var remaining) && remaining.TryGetInt32(out var count) ? count : 0,
+                DiscoveryId: _Text(result, "discoveryId"));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not read the assistant's mail on node {Node}.", nodeName);
+            return new NodeInboxBatch(nodeName, [], Error: Classify(nodeName, exception));
+        }
+    }
+
+    public async Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(
+                client,
+                "answer_node_permission",
+                new Dictionary<string, object?> { ["paneId"] = paneId, ["toolUseId"] = toolUseId, ["allow"] = allow },
+                cancellationToken).ConfigureAwait(false);
+
+            return _ErrorIn(result) is { } refusal
+                ? new NodePermissionAnswer(false, refusal)
+                : new NodePermissionAnswer(_Bool(result, "answered"));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not reach node {Node} to answer a permission.", nodeName);
+            return new NodePermissionAnswer(false, Classify(nodeName, exception));
+        }
+    }
 
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —
@@ -314,6 +461,9 @@ internal sealed class NodeSessionsClient(
             && array.ValueKind == JsonValueKind.Array
                 ? array.EnumerateArray()
                 : [];
+
+    private static bool _Bool(JsonElement row, string property) =>
+        row.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
 
     private static string _Text(JsonElement row, string property) =>
         row.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

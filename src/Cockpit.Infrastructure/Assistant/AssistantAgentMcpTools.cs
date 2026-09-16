@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Agents;
@@ -17,7 +18,9 @@ namespace Cockpit.Infrastructure.Assistant;
 internal sealed class AssistantAgentMcpTools(
     IAssistantAgentGateway gateway,
     IAssistantMemory memory,
-    IConsentBroker? consent = null)
+    IConsentBroker? consent = null,
+    // AC-1323: the line to a paired node, for a pane id written as "<node> · <paneId>" or a start with `node`.
+    INodeSessionsClient? nodes = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -41,9 +44,9 @@ internal sealed class AssistantAgentMcpTools(
         + " become one, so never offer to take their approval by voice.";
 
     [McpServerTool(Name = "start_agent", ReadOnly = false, Destructive = false)]
-    [Description("Starts an AI session on a workspace and leaves it running there as an ordinary pane — the same kind of pane the operator's own New-session dialog makes, with its own transcript and its own approvals. YOU MUST NAME THE WORKSPACE. You sit on no desk yourself, so there is nothing for the cockpit to infer one from; call list_workspaces to turn the desk the operator named into an id, and ask them which one if what they said matches nothing there. IF THEY NAMED NO DESK IN THIS INSTRUCTION, DO NOT CARRY ONE OVER FROM EARLIER IN THE CONVERSATION: they may well have moved on since. The desk they are looking at right now is the one list_workspaces reports as isActive, and that is what \"here\" means — use it, and say which desk you used. NAME THE PROFILE, UNLESS projectId ALREADY SUPPLIES ONE: the profile picks the provider and the model, so starting something on a large model because no smaller one was named is a bill nobody agreed to — that is still true with projectId, it just means the project's own default now stands in for a label you did not have to type. If the operator did not say which and projectId names no default either, call list_profiles: when exactly one fits what they asked for, take it and say so, and otherwise ask, naming only the ones that fit. Whichever way a profile was arrived at, READ resolvedProfile BACK OFF THE RESULT AND SAY WHICH ONE RAN — never assume, because a project's default can change out from under a call that named none. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: this call raises an Allow/Deny row in the cockpit's chat window showing the profile, the desk and the folder, and nothing starts until it is clicked. The call itself waits that out, so what comes back is the answer and never a question still open; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: if this comes back with ok false, read the reason out in a sentence and carry on with whatever you are still allowed to do, rather than treating it as the end of the conversation. IF YOU GAVE A prompt, CHECK promptDelivered — true means it went in as a submitted turn; false means the pane exists but the hosted CLI was not yet reading input, so the brief is being held and will go out on its own the moment it can, exactly once. Do not call this again to retry it and do not send the same brief through send_prompt while it is false — that would be a second turn, not a longer one. null means no prompt was given. WHAT THIS CANNOT DO: a delegated task (delegate_task) has no pane, so it is not something this tool can start, is not in any list, and cannot be stopped here. If you are asked about that kind of work, say it is invisible from where you are standing instead of reporting an absence as a fact.")]
+    [Description("Starts an AI session on a workspace and leaves it running there as an ordinary pane — the same kind of pane the operator's own New-session dialog makes, with its own transcript and its own approvals. ON A PAIRED NODE TOO (AC-1323): give `node` the machine's name as list_sessions reports it under nodes, and the session starts THERE, on that machine's account and budget — say which machine before you do it. On a node: profile is required and must be one that node's nodes[].profiles lists, projectId must be one of its nodes[].projects, and workspaceId, workingDirectory, kind, options and isolate are refused rather than sent — the node picks the desk itself and runs the profile as its operator configured it. A project or profile the node's operator has not allowed is refused by the node, with the reason; nothing starts. The result's paneId is then the node address (\"<node> · <paneId>\"), which stop_agent, send_prompt, send_message, rename_session and read_transcript all take. LOCALLY, YOU MUST NAME THE WORKSPACE. You sit on no desk yourself, so there is nothing for the cockpit to infer one from; call list_workspaces to turn the desk the operator named into an id, and ask them which one if what they said matches nothing there. IF THEY NAMED NO DESK IN THIS INSTRUCTION, DO NOT CARRY ONE OVER FROM EARLIER IN THE CONVERSATION: they may well have moved on since. The desk they are looking at right now is the one list_workspaces reports as isActive, and that is what \"here\" means — use it, and say which desk you used. NAME THE PROFILE, UNLESS projectId ALREADY SUPPLIES ONE: the profile picks the provider and the model, so starting something on a large model because no smaller one was named is a bill nobody agreed to — that is still true with projectId, it just means the project's own default now stands in for a label you did not have to type. If the operator did not say which and projectId names no default either, call list_profiles: when exactly one fits what they asked for, take it and say so, and otherwise ask, naming only the ones that fit. Whichever way a profile was arrived at, READ resolvedProfile BACK OFF THE RESULT AND SAY WHICH ONE RAN — never assume, because a project's default can change out from under a call that named none. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: this call raises an Allow/Deny row in the cockpit's chat window showing the profile, the desk and the folder, and nothing starts until it is clicked. The call itself waits that out, so what comes back is the answer and never a question still open; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: if this comes back with ok false, read the reason out in a sentence and carry on with whatever you are still allowed to do, rather than treating it as the end of the conversation. IF YOU GAVE A prompt, CHECK promptDelivered — true means it went in as a submitted turn; false means the pane exists but the hosted CLI was not yet reading input, so the brief is being held and will go out on its own the moment it can, exactly once. Do not call this again to retry it and do not send the same brief through send_prompt while it is false — that would be a second turn, not a longer one. null means no prompt was given. WHAT THIS CANNOT DO: a delegated task (delegate_task) has no pane, so it is not something this tool can start, is not in any list, and cannot be stopped here. If you are asked about that kind of work, say it is invisible from where you are standing instead of reporting an absence as a fact.")]
     public async Task<string> StartAgentAsync(
-        [Description("The id of the workspace the session is to appear on — the desk, not its tab label. Required, and never guessed: get it from list_workspaces, which shows every desk including the empty ones, or from list_sessions, where each session reports the desk it sits on. If neither turns up the desk the operator meant, ask them which one rather than picking a plausible id.")] string workspaceId,
+        [Description("The id of the workspace the session is to appear on — the desk, not its tab label. Required for a start on this machine, and never guessed: get it from list_workspaces, which shows every desk including the empty ones, or from list_sessions, where each session reports the desk it sits on. If neither turns up the desk the operator meant, ask them which one rather than picking a plausible id. Leave it out when `node` is given: a node picks its own desk, and naming one is refused.")] string? workspaceId = null,
         [Description("The profile to run under, by its label exactly as the cockpit knows it. Required unless projectId names a project with its own default profile — leave it out then and that default is used, and read resolvedProfile off the result to see which one. Naming one here always wins over a project's default. This is what decides provider, model and therefore cost — an unknown label is refused rather than quietly swapped for a default, because the default might be the expensive one.")] string? profile = null,
         [Description("The project this session works on, by its id from list_projects. Given, this is the one call that applies everything that project carries — its own working directory, its default profile when none was named, its worktree isolation setting, its behaviour prompt, its memory/resources and its MCP selection — instead of you reading cockpit.json's project record yourself and retyping pieces of it into workingDirectory/prompt. Left out, the folder start_agent lands in still gets matched to a project automatically when it happens to be one of its folders (unchanged, AC-682); this argument is only for making that match explicit and reliable rather than a guess from the folder. An id that names no project is refused, never silently ignored.")] string? projectId = null,
         [Description("The first message to hand the session once it is up, in the words the work should be described in. Left out, the session comes up waiting for someone to type in it. Write it as a brief for an agent that cannot hear the conversation you are having — it gets this text and nothing else. IF YOU WANT TO HEAR BACK, ASK FOR IT HERE AND GIVE YOUR ADDRESS: you are on every desk's roster as the pane id `cockpit-assistant`, so tell the agent to notify that id when it is done, blocked, or about to touch something another session is holding. A message sent there reaches you on your next turn or your next tool call, with nobody having to pass it on — without asking, the only news you get is what you go looking for.")] string? prompt = null,
@@ -51,13 +54,24 @@ internal sealed class AssistantAgentMcpTools(
         [Description("What to call the pane, so the operator can find it in the sidebar. Left out, the profile and the clock name it. A name that says what the work is (\"AC-545 tests\") is worth far more than one that says what it runs on.")] string? name = null,
         [Description("Which route to start on: \"tty\" for the provider's own terminal, \"sdk\" for the chat/SDK session. LEAVE THIS OUT unless the operator actually said which — the profile is already set to one and that is nearly always the right answer. It is here for exactly one request: \"the same profile, but as an SDK session\", which is a thing they can pick in the New-session dialog too. It is not a way to start work by another route: everything you can start goes through this tool, appears as a pane, and is written down.")] string? kind = null,
         [Description("Provider options to start this one session with, as key/value — \"that profile, but at low effort\". LEAVE IT OUT unless the operator asked for something the profile is not set to; the profile's own values are the right answer nearly every time. ONLY THE KEYS YOU NAME CHANGE: everything else stays exactly what the profile says, so this never resets anything you did not mention. USE THE PROVIDER'S OWN KEYS, WHICH list_profiles SHOWS YOU under `Options` for that profile — a key that provider does not declare is refused with a reason, and so is a value it does not take. PERMISSION-MODE IS NEVER YOURS TO SET, and neither is Codex's `sandbox` or its approval-policy: what a session is allowed to do to the machine is whatever the profile was deliberately configured with, and naming either here is refused outright, not asked about. If a session needs to run differently in that respect, the answer is a different profile.")] Dictionary<string, string>? options = null,
-        [Description("Whether this session runs in its own git worktree rather than the operator's real checkout. LEAVE THIS OUT — omitted, it inherits whatever the folder's project is set to (or runs unisolated when there is none or it is not set), which is the right answer nearly every time. true asks to isolate even where the project does not. false IS REFUSED, ALWAYS: asking to run unisolated where isolation would otherwise apply is not something you get to decide — it would put the session in the operator's own working tree, and that choice is theirs, made on the project, not yours to make per spawn.")] bool? isolate = null)
+        [Description("Whether this session runs in its own git worktree rather than the operator's real checkout. LEAVE THIS OUT — omitted, it inherits whatever the folder's project is set to (or runs unisolated when there is none or it is not set), which is the right answer nearly every time. true asks to isolate even where the project does not. false IS REFUSED, ALWAYS: asking to run unisolated where isolation would otherwise apply is not something you get to decide — it would put the session in the operator's own working tree, and that choice is theirs, made on the project, not yours to make per spawn.")] bool? isolate = null,
+        [Description("The paired node to start on, by its name exactly as list_sessions reports it under nodes. Leave it out to start on this machine. Given, only profile, projectId, prompt and name travel: the node's operator allowed those profiles and projects and nothing else crosses the line.")] string? node = null)
     {
         try
         {
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (node is { Length: > 0 })
+            {
+                return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate).ConfigureAwait(false);
+            }
+
+            if (string.IsNullOrWhiteSpace(workspaceId))
+            {
+                return _Serialize(new { ok = false, error = "A start on this machine needs the workspace named: give workspaceId from list_workspaces, or give node to start on a paired node instead. Nothing was started." });
             }
 
             var result = await gateway.SpawnAsync(new AgentSpawnRequest(
@@ -100,8 +114,57 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    // AC-1323: a start on a node carries what the node's grant is over and nothing else — the same four fields
+    // `start_node_agent` takes. Everything local is refused rather than dropped, so the caller never learns the
+    // wrong lesson from a session that came up without the folder or the options it asked for.
+    private async Task<string> _StartOnNodeAsync(
+        string node, string? workspaceId, string? profile, string? projectId, string? prompt,
+        string? workingDirectory, string? name, string? kind, Dictionary<string, string>? options, bool? isolate)
+    {
+        if (nodes is null)
+        {
+            return _Serialize(new { ok = false, error = NodeSessionAddress.NoClient });
+        }
+
+        var notOnANode = new (bool Given, string Name)[]
+        {
+            (!string.IsNullOrWhiteSpace(workspaceId), "workspaceId"),
+            (!string.IsNullOrWhiteSpace(workingDirectory), "workingDirectory"),
+            (!string.IsNullOrWhiteSpace(kind), "kind"),
+            (options is { Count: > 0 }, "options"),
+            (isolate is not null, "isolate"),
+        }.Where(argument => argument.Given).Select(argument => argument.Name).ToList();
+        if (notOnANode.Count > 0)
+        {
+            return _Serialize(new
+            {
+                ok = false,
+                error = $"A start on node '{node}' takes only profile, projectId, prompt and name; {string.Join(", ", notOnANode)} mean nothing on another machine and were refused rather than dropped. Nothing was started.",
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return _Serialize(new { ok = false, error = $"A start on node '{node}' needs the profile named: one of the profiles list_sessions reports for that node. Nothing was started." });
+        }
+
+        var started = await nodes.StartAsync(node, profile, projectId, prompt, name).ConfigureAwait(false);
+        return started.Error is { } refusal
+            ? _Serialize(new { ok = false, error = $"On {node}: {refusal}", machine = new { name = node, local = false } })
+            : _Serialize(new
+            {
+                ok = true,
+                paneId = NodeSessionAddress.For(node, started.PaneId),
+                name = started.SessionName,
+                projectId,
+                resolvedProfile = started.ResolvedProfile,
+                promptDelivered = started.PromptDelivered,
+                machine = new { name = node, local = false },
+            });
+    }
+
     [McpServerTool(Name = "stop_agent", ReadOnly = false, Destructive = true)]
-    [Description("Closes a running AI session, named by its pane id — on any desk, not just one. Take the pane id from list_sessions; there is no lookup by name here, because two sessions can carry the same one and stopping the wrong session loses work that was in progress. LIKE STARTING, THIS BY DEFAULT NEEDS THE OPERATOR'S CLICK: an Allow/Deny row appears in the chat window naming what is about to be closed, and nothing happens until it is answered — by the call, which returns with the outcome and not with a question." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that is already gone, one that is a plain terminal rather than an agent, one that runs inside a workspace's own surface rather than as a pane, or your own session, which you do not get to end mid-sentence — so read the reason out and carry on. WHAT THIS CANNOT DO: a delegated task (delegate_task) runs without a pane, so it cannot be stopped here and never appears in any list you can see. Say so rather than reporting that there was nothing to stop.")]
+    [Description("Closes a running AI session, named by its pane id — on any desk, not just one, and on a paired node when the pane id is a node address (\"<node> · <paneId>\", as list_sessions writes it): the stop then happens on that machine, nobody there is asked, and a session outside what its operator allowed you is refused by the node. Take the pane id from list_sessions; there is no lookup by name here, because two sessions can carry the same one and stopping the wrong session loses work that was in progress. LIKE STARTING, THIS BY DEFAULT NEEDS THE OPERATOR'S CLICK: an Allow/Deny row appears in the chat window naming what is about to be closed, and nothing happens until it is answered — by the call, which returns with the outcome and not with a question." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that is already gone, one that is a plain terminal rather than an agent, one that runs inside a workspace's own surface rather than as a pane, or your own session, which you do not get to end mid-sentence — so read the reason out and carry on. WHAT THIS CANNOT DO: a delegated task (delegate_task) runs without a pane, so it cannot be stopped here and never appears in any list you can see. Say so rather than reporting that there was nothing to stop.")]
     public async Task<string> StopAgentAsync(
         [Description("The pane id of the session to close, exactly as list_sessions reports it. Read it back to the operator before you ask for it, together with the session's name — a pane id is not something anyone can check by ear once it is gone.")] string paneId)
     {
@@ -110,6 +173,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.Split(paneId) is { } on)
+            {
+                return await _OnNodeAsync(on, paneId, client => client.StopAsync(on.NodeName, on.PaneId)).ConfigureAwait(false);
             }
 
             var result = await gateway.StopAsync(paneId).ConfigureAwait(false);
@@ -124,7 +192,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "rename_session", ReadOnly = false, Destructive = false)]
-    [Description("Renames a running session — the name in its header and in the sidebar, which is the one thing the operator finds it back by. TAKE THE PANE ID FROM list_sessions AND NEVER RENAME BY NAME: two sessions can carry the same one, and renaming the wrong session relabels work somebody is in the middle of. Read the pane id back together with the session's current name before you ask, because a pane id cannot be checked by ear. THE NAME YOU SET IS THE OPERATOR'S OWN: nothing overwrites it afterwards — not a ticket a plugin links to that session later, not a restart — so use the words they said rather than a tidier version of them. LIKE EVERYTHING ON THIS SERVER IT BY DEFAULT NEEDS THEIR CLICK: an Allow/Deny row appears in the cockpit's chat window, and nothing changes until it is answered — which the call waits for on your behalf." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that has since closed, one that runs inside a workspace's own surface rather than as a pane, my own session, or an empty name — so read the reason out in a sentence and carry on. WHAT THIS CANNOT DO: it does not rename the desk the session sits on (that is rename_workspace), and a delegated task (delegate_task) has no pane, so it cannot be renamed here and is in no list you can see.")]
+    [Description("Renames a running session — the name in its header and in the sidebar, which is the one thing the operator finds it back by. On a paired node too, when the pane id is a node address (\"<node> · <paneId>\"): the name then changes on that machine's sidebar. TAKE THE PANE ID FROM list_sessions AND NEVER RENAME BY NAME: two sessions can carry the same one, and renaming the wrong session relabels work somebody is in the middle of. Read the pane id back together with the session's current name before you ask, because a pane id cannot be checked by ear. THE NAME YOU SET IS THE OPERATOR'S OWN: nothing overwrites it afterwards — not a ticket a plugin links to that session later, not a restart — so use the words they said rather than a tidier version of them. LIKE EVERYTHING ON THIS SERVER IT BY DEFAULT NEEDS THEIR CLICK: an Allow/Deny row appears in the cockpit's chat window, and nothing changes until it is answered — which the call waits for on your behalf." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that has since closed, one that runs inside a workspace's own surface rather than as a pane, my own session, or an empty name — so read the reason out in a sentence and carry on. WHAT THIS CANNOT DO: it does not rename the desk the session sits on (that is rename_workspace), and a delegated task (delegate_task) has no pane, so it cannot be renamed here and is in no list you can see.")]
     public async Task<string> RenameSessionAsync(
         [Description("The pane id of the session to rename, exactly as list_sessions reports it. Never a name and never a guess.")] string paneId,
         [Description("What the session should be called, in the operator's own words. A name that says what the work is (\"AC-592 tests\") is worth far more than one that says what it runs on.")] string name)
@@ -134,6 +202,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.Split(paneId) is { } on)
+            {
+                return await _OnNodeAsync(on, paneId, client => client.RenameAsync(on.NodeName, on.PaneId, name), new { name }).ConfigureAwait(false);
             }
 
             var result = await gateway.RenameSessionAsync(paneId, name).ConfigureAwait(false);
@@ -258,7 +331,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "send_message", ReadOnly = false, Destructive = false)]
-    [Description("Leaves a message in a running agent session's inbox — the same inbox the agents on a desk use to talk to each other, so the recipient reads yours exactly as it reads theirs. This TELLS an agent something; it does not make it do anything. The recipient decides what to do with what you wrote, and anything that needs the operator's approval still needs it — so use this for what an agent would want to know (\"the operator changed their mind about the branch\", \"another session is about to touch that worktree\"), and use send_prompt when the operator actually wants work started. Address it with a pane id from list_sessions, never by name: two sessions can be called the same thing. BY DEFAULT IT NEEDS THE OPERATOR'S CLICK: an Allow/Deny row appears in the chat window showing your message word for word and which session gets it, and nothing is delivered until it is answered — the call waits for that answer and hands you the outcome, so never treat a spoken \"yes\" as the approval." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that has closed, a terminal pane with no agent on it, your own session, or a recipient whose inbox is full — so read the reason out and carry on. The reply says whether the message will reach the recipient on its own with its next turn (deliversAtTurnStart) or only when that session next calls read_inbox; when it is false, do not tell the operator the agent has been told, because it has not been yet. Sending the identical message twice while the first is still unread adds nothing and comes back deduplicated. WHAT THIS CANNOT DO: it cannot reach your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and nobody reading it), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also does not interrupt: nothing is woken, nobody is pulled off what they are doing, and delivery is at the recipient's next turn at the earliest. If the operator needs something to happen now, this is the wrong tool and you should say so.")]
+    [Description("Leaves a message in a running agent session's inbox — the same inbox the agents on a desk use to talk to each other, so the recipient reads yours exactly as it reads theirs. This TELLS an agent something; it does not make it do anything. The recipient decides what to do with what you wrote, and anything that needs the operator's approval still needs it — so use this for what an agent would want to know (\"the operator changed their mind about the branch\", \"another session is about to touch that worktree\"), and use send_prompt when the operator actually wants work started. Address it with a pane id from list_sessions, never by name: two sessions can be called the same thing. A NODE ADDRESS WORKS (\"<node> · <paneId>\"): the message lands in that session's inbox on the node, sent as that machine's assistant — which, while you control it, is you — so its reply through notify comes back to your own inbox with the node's name on it; this is how you answer a message read_inbox shows you from a node. BY DEFAULT IT NEEDS THE OPERATOR'S CLICK: an Allow/Deny row appears in the chat window showing your message word for word and which session gets it, and nothing is delivered until it is answered — the call waits for that answer and hands you the outcome, so never treat a spoken \"yes\" as the approval." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL — a pane that has closed, a terminal pane with no agent on it, your own session, or a recipient whose inbox is full — so read the reason out and carry on. The reply says whether the message will reach the recipient on its own with its next turn (deliversAtTurnStart) or only when that session next calls read_inbox; when it is false, do not tell the operator the agent has been told, because it has not been yet. Sending the identical message twice while the first is still unread adds nothing and comes back deduplicated. WHAT THIS CANNOT DO: it cannot reach your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and nobody reading it), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also does not interrupt: nothing is woken, nobody is pulled off what they are doing, and delivery is at the recipient's next turn at the earliest. If the operator needs something to happen now, this is the wrong tool and you should say so.")]
     public async Task<string> SendMessageAsync(
         [Description("The pane id of the agent session to write to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear.")] string paneId,
         [Description("A short label for what this is, at most 100 characters, e.g. 'heads-up', 'question', 'handover'. The recipient sees it as your label, not as anything the cockpit vouches for.")] string kind,
@@ -293,6 +366,11 @@ internal sealed class AssistantAgentMcpTools(
                 return _Serialize(new { ok = false, error = approval.Error });
             }
 
+            if (NodeSessionAddress.Split(addressee) is { } on)
+            {
+                return await _OnNodeAsync(on, addressee, client => client.SendMessageAsync(on.NodeName, on.PaneId, label, text), new { sanitized = strippedKind || strippedBody, approval = approval.Label }).ConfigureAwait(false);
+            }
+
             var result = await gateway.SendMessageAsync(addressee, label, text).ConfigureAwait(false);
             return result.Ok
                 ? _Serialize(new
@@ -322,7 +400,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "send_prompt", ReadOnly = false, Destructive = true)]
-    [Description("Hands a running agent session a turn: the text goes into that session and is SENT, so the agent starts working on it straight away. This is not a message — it is you typing into someone else's session on the operator's behalf, and whatever the session is allowed to do, it will now do without being asked again. Use it when the operator wants work started or steered in a session that is already open (\"tell the release worker to run the tests\"); use send_message when they only want an agent told something. Address it with a pane id from list_sessions, never by name. BY DEFAULT IT NEEDS THE OPERATOR'S CLICK, AND NEVER REMEMBERS ONE: an Allow/Deny row appears in the chat window showing the prompt word for word and which session receives it, it is never remembered even when it does appear, and nothing is sent until it is answered — the call waits for that answer, so a result in your hands is a decision already made; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " Read the prompt back to the operator before you ask, in the words you are about to send: they are approving those words, and the row is where they will check them. A REFUSAL IS NORMAL — a pane that has closed, a terminal pane, your own session, or the operator simply saying no — so read the reason out and carry on. The reply's delivered field says whether the turn went in on the spot or is being held because the session is still coming up; while it is false the agent has not started, so do not report that it has. DO NOT SEND IT AGAIN WHILE IT IS BEING HELD: a session coming up holds exactly one turn, the one it was given first, and a second call is refused rather than replacing it — so a held turn is not lost and needs nothing from you but patience. Wait, or tell the operator it is still starting. WHAT THIS CANNOT DO: it cannot hand a turn to your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and no agent on the other end), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also cannot take a turn back: once the row is clicked the words are in that session's own transcript and its agent is acting on them.")]
+    [Description("Hands a running agent session a turn: the text goes into that session and is SENT, so the agent starts working on it straight away. This is not a message — it is you typing into someone else's session on the operator's behalf, and whatever the session is allowed to do, it will now do without being asked again. Use it when the operator wants work started or steered in a session that is already open (\"tell the release worker to run the tests\"); use send_message when they only want an agent told something. Address it with a pane id from list_sessions, never by name. A NODE ADDRESS WORKS (\"<node> · <paneId>\"): the turn then goes into that session on the node, where nobody is asked — the operator there gave you that when the cockpits were paired — and a session outside what they allowed you is refused by the node. BY DEFAULT IT NEEDS THE OPERATOR'S CLICK, AND NEVER REMEMBERS ONE: an Allow/Deny row appears in the chat window showing the prompt word for word and which session receives it, it is never remembered even when it does appear, and nothing is sent until it is answered — the call waits for that answer, so a result in your hands is a decision already made; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " Read the prompt back to the operator before you ask, in the words you are about to send: they are approving those words, and the row is where they will check them. A REFUSAL IS NORMAL — a pane that has closed, a terminal pane, your own session, or the operator simply saying no — so read the reason out and carry on. The reply's delivered field says whether the turn went in on the spot or is being held because the session is still coming up; while it is false the agent has not started, so do not report that it has. DO NOT SEND IT AGAIN WHILE IT IS BEING HELD: a session coming up holds exactly one turn, the one it was given first, and a second call is refused rather than replacing it — so a held turn is not lost and needs nothing from you but patience. Wait, or tell the operator it is still starting. WHAT THIS CANNOT DO: it cannot hand a turn to your own session, cannot reach a pane that is not an agent session (a plain terminal has a pane id and no agent on the other end), and cannot reach a delegated task (delegate_task), which runs with no pane and is invisible from where you are standing — say that rather than reporting an absence as a fact. It also cannot take a turn back: once the row is clicked the words are in that session's own transcript and its agent is acting on them.")]
     public async Task<string> SendPromptAsync(
         [Description("The pane id of the agent session to hand the turn to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear, and the wrong one starts work in the wrong place.")] string paneId,
         [Description("The turn to submit, in the exact words that will be sent — the operator reads this verbatim on the approval row and is agreeing to these words, not to your description of them.")] string prompt)
@@ -350,6 +428,11 @@ internal sealed class AssistantAgentMcpTools(
                 return _Serialize(new { ok = false, error = approval.Error });
             }
 
+            if (NodeSessionAddress.Split(paneId) is { } on)
+            {
+                return await _OnNodeAsync(on, paneId, client => client.SendPromptAsync(on.NodeName, on.PaneId, prompt), new { approval = approval.Label }).ConfigureAwait(false);
+            }
+
             var result = await gateway.SendPromptAsync(paneId, prompt).ConfigureAwait(false);
             return result.Ok
                 ? _Serialize(new
@@ -371,7 +454,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "watch_session", ReadOnly = false, Destructive = false)]
-    [Description("Asks the cockpit to tell you when something happens in another session, so you stop calling list_sessions to find out. Arm it right after start_agent and then leave the session alone: the cockpit watches it for you and puts a message in your inbox when one of the events below happens, which reaches you on your next turn or your next tool result. Nothing is watched until you say so, and a watch costs nothing while nothing happens. THE FIVE EVENTS, and what each is actually for: `busy-to-idle` = it stopped working — finished, crashed, or a question waiting for an answer — and the transcript lines the message carries are how you tell those apart, so read them before reporting either; the message also says when something of the session's own (a backgrounded shell) is still running, which means it is not actually finished. `needs-attention` = it is stopped on a permission nobody has clicked; this is the one an agent can never tell you itself, because it cannot call a tool while it waits — a crashed turn is not this, it has no pending question, and is reported through `busy-to-idle` instead. `gone` = the pane disappeared without ever having reported finishing or asking — the fell-over-quietly case — and the watch is dropped with it. `stuck` = it has written nothing for a while; counted in transcript rows and never in status, so it is the one that still fires when the status field itself is wrong. `pattern` = a line matching your regular expression appeared, reported every time a fresh one does. EVERY MESSAGE CARRIES THE LAST FEW TRANSCRIPT LINES, so you rarely need read_transcript afterwards — say what the session actually said, not that it 'changed state'. This starts nothing and changes nothing, so it needs no approval and nothing appears on the operator's screen. A REFUSAL IS NORMAL: a pane id that resolves to nothing, `stuck` or `pattern` on a terminal-route session (it keeps no transcript here), a pattern that is not a valid regular expression, or an event name that is not one of the five. Read the reason and carry on. Arming a pane again replaces what was armed on it, rather than adding a second watch.")]
+    [Description("Asks the cockpit to tell you when something happens in another session, so you stop calling list_sessions to find out. Arm it right after start_agent and then leave the session alone: the cockpit watches it for you and puts a message in your inbox when one of the events below happens, which reaches you on your next turn or your next tool result. Nothing is watched until you say so, and a watch costs nothing while nothing happens. THE FIVE EVENTS, and what each is actually for: `busy-to-idle` = it stopped working — finished, crashed, or a question waiting for an answer — and the transcript lines the message carries are how you tell those apart, so read them before reporting either; the message also says when something of the session's own (a backgrounded shell) is still running, which means it is not actually finished. `needs-attention` = it is stopped on a permission nobody has clicked; this is the one an agent can never tell you itself, because it cannot call a tool while it waits — a crashed turn is not this, it has no pending question, and is reported through `busy-to-idle` instead. `gone` = the pane disappeared without ever having reported finishing or asking — the fell-over-quietly case — and the watch is dropped with it. `stuck` = it has written nothing for a while; counted in transcript rows and never in status, so it is the one that still fires when the status field itself is wrong. `pattern` = a line matching your regular expression appeared, reported every time a fresh one does. EVERY MESSAGE CARRIES THE LAST FEW TRANSCRIPT LINES, so you rarely need read_transcript afterwards — say what the session actually said, not that it 'changed state'. This starts nothing and changes nothing, so it needs no approval and nothing appears on the operator's screen. A REFUSAL IS NORMAL: a pane id that resolves to nothing, `stuck` or `pattern` on a terminal-route session (it keeps no transcript here), a pattern that is not a valid regular expression, or an event name that is not one of the five. Read the reason and carry on. Arming a pane again replaces what was armed on it, rather than adding a second watch. WHAT THIS CANNOT DO: watch a session on a paired node (a \"<node> · <paneId>\" address) — there is no event stream between two machines, so it refuses and says what does work there: read_transcript, or a prompt that asks the session to notify cockpit-assistant when it is done.")]
     public async Task<string> WatchSessionAsync(
         [Description("The pane id of the session to watch, exactly as list_sessions or start_agent reports it. Never a name — two sessions can be called the same thing.")] string paneId,
         [Description("Which of the five to watch for, one or more of: busy-to-idle, needs-attention, gone, stuck, pattern. Arming what you actually want to hear about is the whole point — a watch on all five for a session you only want the end of is noise you will have to read.")] string[] events,
@@ -383,6 +466,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.WatchRefusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
             }
 
             var result = await gateway.WatchSessionAsync(paneId, events, afterMinutes, pattern).ConfigureAwait(false);
@@ -406,6 +494,11 @@ internal sealed class AssistantAgentMcpTools(
             if (_RefuseIfNotTheAssistant() is { } refusal)
             {
                 return refusal;
+            }
+
+            if (NodeSessionAddress.WatchRefusal(paneId) is { } onNode)
+            {
+                return _Serialize(new { ok = false, error = onNode });
             }
 
             var wasWatching = await gateway.UnwatchSessionAsync(paneId).ConfigureAwait(false);
@@ -1067,6 +1160,22 @@ internal sealed class AssistantAgentMcpTools(
         {
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    // AC-1323: one act on a node session, answered the way the local act would be — ok with the address and the
+    // machine, or the node's own refusal / the reason it was not reached, prefixed with the machine so the sentence
+    // the assistant speaks next says where it failed. `details` is what the local reply would also have carried.
+    private async Task<string> _OnNodeAsync((string NodeName, string PaneId) on, string address, Func<INodeSessionsClient, Task<string?>> act, object? details = null)
+    {
+        if (nodes is null)
+        {
+            return _Serialize(new { ok = false, error = NodeSessionAddress.NoClient });
+        }
+
+        var machine = new { name = on.NodeName, local = false };
+        return await act(nodes).ConfigureAwait(false) is { } error
+            ? _Serialize(new { ok = false, error = $"On {on.NodeName}: {error}", machine })
+            : _Serialize(new { ok = true, paneId = address, machine, details });
     }
 
     // Returns the whole decision, never just whether it was approved (AC-759), so a caller can tell a click from

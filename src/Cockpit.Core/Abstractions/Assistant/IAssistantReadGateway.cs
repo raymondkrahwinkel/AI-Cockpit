@@ -33,7 +33,21 @@ public interface IAssistantReadGateway
     /// own load already has.
     /// </summary>
     Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync();
+
+    /// <summary>
+    /// AC-1324: every Allow/Deny question a session is stopped on right now, across every workspace — the rows a
+    /// controller draws on its own screen. Only consent questions: a clarifying question (AskUserQuestion) wants
+    /// an answer, not a click, and a TTY session has no turn the host can see into.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented so the test doubles of this interface that never stop on a permission stay as they are.
+    /// </remarks>
+    Task<IReadOnlyList<AssistantPendingPermission>> ListPendingPermissionsAsync() =>
+        Task.FromResult<IReadOnlyList<AssistantPendingPermission>>([]);
 }
+
+// AC-1324: one open Allow/Deny question, as a controller is shown it. SinceUtc is when the row appeared.
+public sealed record AssistantPendingPermission(string PaneId, string ToolUseId, string ToolName, string InputJson, DateTimeOffset SinceUtc);
 
 // AC-1013: One project as the assistant is shown it. Links (AC-884) may be comma-separated per key
 // (e.g. `"EWB, AT, EJ"`) — match every one, not just the first — turning "pick up AC-555" into a project lookup

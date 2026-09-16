@@ -284,10 +284,17 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     public bool HasMessages => Session?.HasTranscript ?? false;
 
     // True while the assistant cannot be reached at all (criterion 1: feature off, no profile, or a failed start) —
-    // paired with `UnavailableReason` so the window says why instead of just sitting empty.
-    public bool IsUnavailable => _host.Activity == AssistantActivity.Unavailable;
+    // paired with `UnavailableReason` so the window says why instead of just sitting empty. AC-1321: a controller
+    // holding the line is read off the cockpit as well as the host, so a scene without the real host says it too.
+    public bool IsUnavailable => _host.Activity == AssistantActivity.Unavailable || _cockpit?.ActiveController is not null;
 
-    public string? UnavailableReason => _host.UnavailableReason;
+    public string? UnavailableReason => _cockpit?.ActiveController is { } controller
+        ? AssistantSessionHost.TakeoverReason(controller)
+        : _host.UnavailableReason;
+
+    // AC-1321: stood down for a controller. The one unavailable reason Options cannot fix, so the notice offers no
+    // button and the box says what it is waiting on.
+    public bool IsControlled => _cockpit?.ActiveController is not null;
 
     // An image with no words is a message too (AC-630) — the same rule `SessionViewModel.CanSend` applies, or a
     // pasted image would sit in the strip with no way to send it. Read live off the session on each CanExecute, so
@@ -337,6 +344,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (e.PropertyName is null or nameof(CockpitViewModel.SimpleStandShowsTheStartScreen))
         {
             OnPropertyChanged(nameof(ShowsStartOffer));
+        }
+
+        if (e.PropertyName is null or nameof(CockpitViewModel.ActiveController))
+        {
+            OnPropertyChanged(nameof(IsUnavailable));
+            OnPropertyChanged(nameof(UnavailableReason));
+            OnPropertyChanged(nameof(IsControlled));
         }
     }
 
@@ -468,9 +482,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         // typed into an unstarted assistant is exactly what starts it (criterion 1).
         await _host.SendAsync(text);
 
-        // AC-1316: the host comes back unavailable (switched off, no profile, a failed start) without having sent
-        // anything, so the words go back where they were typed instead of vanishing with no notice.
-        if (IsUnavailable && Session is null && InputText.Length == 0)
+        // AC-1316: the host comes back unavailable (switched off, no profile, a failed start — or, AC-1321, stood
+        // down for a controller with the conversation still on screen) without having sent anything, so the words
+        // go back where they were typed instead of vanishing with no notice.
+        if (IsUnavailable && InputText.Length == 0)
         {
             InputText = text;
         }
