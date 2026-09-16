@@ -38,11 +38,11 @@ public sealed class ResourceMonitor : ISingletonService
         var cores = Environment.ProcessorCount;
 
         var sessions = new List<SessionResourceUsage>(measuredSessions.Count);
-        foreach (var (paneId, title, processId) in measuredSessions)
+        foreach (var (paneId, title, processId, rootIsShell) in measuredSessions)
         {
             // AC-1096: membership rather than the ppid walk, so a process the session left behind keeps counting
             // after whatever launched it died and the walk can no longer reach it.
-            var processes = _membership.Measure(rows, processId);
+            var processes = _membership.Measure(rows, processId, rootIsShell);
             var measured = _Weigh(processId, processes.Usage, elapsed, cores);
 
             // AC-1060: read on the tick that already has the pid, since the meter that matters here is the one
@@ -55,7 +55,8 @@ public sealed class ResourceMonitor : ISingletonService
                 _pressureAvg10(processId),
                 processes.Count,
                 processes.AbandonedCount,
-                processes.SpawnedCount));
+                processes.SpawnedCount,
+                processes.OutstandingCount));
         }
 
         _sampledAt = now;
@@ -122,9 +123,9 @@ public sealed record ResourceUsage(
     public static readonly ResourceUsage None = new(0, 0, [], [], CockpitParts.None);
 }
 
-// One session's share, measured across everything it has spawned. `PressureAvg10` is the share of the last ten
-// seconds its cgroup stalled on memory (AC-1060) — null off Linux and without a cgroup. `AbandonedProcessCount` is
-// how many no longer hang off it by parent link (AC-1096); `SpawnedProcessCount` drops its own root (AC-1310).
+// One session's share, measured across everything it has spawned. `PressureAvg10` is its cgroup's memory stall share
+// over ten seconds (AC-1060), null off Linux. `AbandonedProcessCount` no longer hang off it by parent link (AC-1096);
+// `SpawnedProcessCount` drops its own root (AC-1310); `OutstandingProcessCount` run under a shell it started (AC-1331).
 public sealed record SessionResourceUsage(
     string PaneId,
     string Title,
@@ -133,4 +134,5 @@ public sealed record SessionResourceUsage(
     double? PressureAvg10 = null,
     int ProcessCount = 0,
     int AbandonedProcessCount = 0,
-    int SpawnedProcessCount = 0);
+    int SpawnedProcessCount = 0,
+    int OutstandingProcessCount = 0);

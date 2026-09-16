@@ -23,6 +23,9 @@ public class SessionOutstandingWorkStatusTests
     private static BackgroundTasksChanged Outstanding(params BackgroundTask[] tasks) =>
         new() { SessionId = "s1", Tasks = tasks };
 
+    private static BackgroundTasksChanged _Ledger(bool shell) =>
+        shell ? Outstanding(new BackgroundTask("b1", BackgroundTaskKind.Shell, "sleep 120")) : Outstanding();
+
     private static TurnCompleted Turn() =>
         new() { SessionId = "s1", Subtype = "success", Result = "done", IsError = false };
 
@@ -79,6 +82,28 @@ public class SessionOutstandingWorkStatusTests
 
         Assert.Equal(expected, session.SessionStatus);
         Assert.True(session.HasOutstandingBackgroundShells, "the shell is still tracked, it just does not hold the status");
+    });
+
+    // AC-1331: the process tree is a second source beside the ledger, not a replacement — Codex never sends the ledger,
+    // and Claude's ledger never sees a shell under an MCP server. Two samples to raise, so a shell caught once (the
+    // statusline hook) cannot fire a second "finished" toast on its way back down.
+    [Theory]
+    [InlineData(true, 0, 0, true)]
+    [InlineData(false, 1, 1, true)]
+    [InlineData(true, 1, 1, true)]
+    [InlineData(false, 0, 1, false)]
+    public void OutstandingWork_IsTheLedgerOrTheProcessTree_AndTheTreeNeedsTwoSamples(bool ledgerShell, int firstSample, int secondSample, bool expected) => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        session.IsBusy = true;
+        session.Apply(_Ledger(ledgerShell));
+        session.Apply(Turn());
+
+        session.OnProcessesSampled(0, firstSample);
+        session.OnProcessesSampled(0, secondSample);
+
+        Assert.Equal(expected, session.HasOutstandingBackgroundShells);
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
     });
 
     [Fact]
