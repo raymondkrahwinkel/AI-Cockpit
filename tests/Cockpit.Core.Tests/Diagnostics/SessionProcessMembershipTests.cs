@@ -40,15 +40,15 @@ public class SessionProcessMembershipTests
         Assert.Equal(50, ProcessTree.Sum(afterItExited, 100).WorkingSetBytes);
     }
 
-    // AC-1331: the tree measured on 2026-09-16 — a Codex session's `ctx_execute` test run hung under its MCP
-    // server (`node → codex → bun → zsh → dotnet`) and was reported as nothing at all. Root 100 is the Windows
-    // `.cmd` shim, 110 an agent at rest with only MCP servers under it, 200 a terminal pane's own shell.
+    // AC-1331: the tree measured on 2026-09-16 — a Codex `ctx_execute` test run under its MCP server (`node → codex →
+    // bun → zsh → dotnet`) reported as nothing. Root 100 is the Windows `.cmd` shim, 110 an agent at rest with only
+    // MCP servers under it, 200 a terminal pane's own shell with a macOS-style `-bash` login shell beside its build.
     [Theory]
     [InlineData(101, false, 2)]
     [InlineData(110, false, 0)]
     [InlineData(100, false, 2)]
-    [InlineData(200, true, 1)]
-    [InlineData(200, false, 0)]
+    [InlineData(200, true, 2)]
+    [InlineData(200, false, 1)]
     public void OutstandingCount_CountsWhatRunsUnderAShellTheSessionStarted_AndNeverTheRootItself(int root, bool rootIsShell, int expected)
     {
         ProcessRow[] rows =
@@ -65,6 +65,7 @@ public class SessionProcessMembershipTests
             new(111, 110, TimeSpan.Zero, 0, "bun"),
             new(200, 1, TimeSpan.Zero, 0, "-zsh"),
             new(201, 200, TimeSpan.Zero, 0, "dotnet"),
+            new(202, 200, TimeSpan.Zero, 0, "-bash"),
         ];
 
         var snapshot = ProcessTree.Snapshot(rows);

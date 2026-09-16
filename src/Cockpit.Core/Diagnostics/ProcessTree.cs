@@ -122,14 +122,14 @@ public sealed class ProcessTableSnapshot
         return outstanding;
     }
 
-    // `ps` on macOS reports a login shell as `-zsh` and may carry the path; Windows reports `cmd.exe`.
+    // `ps` on macOS reports a login shell as `-zsh` and may carry the path; Windows reports `cmd.exe`. Matched as a
+    // span so the trim does not allocate on every sample.
     private static bool _IsShell(string name) =>
-        ShellNames.Contains(Path.GetFileName(name).TrimStart('-'));
+        ShellNames.Contains(Path.GetFileName(name.AsSpan()).TrimStart('-'));
 
-    private static readonly HashSet<string> ShellNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "sh", "bash", "zsh", "dash", "fish", "ksh", "cmd.exe", "powershell.exe", "pwsh.exe",
-    };
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> ShellNames =
+        new HashSet<string>(["sh", "bash", "zsh", "dash", "fish", "ksh", "cmd.exe", "powershell.exe", "pwsh.exe"], StringComparer.OrdinalIgnoreCase)
+            .GetAlternateLookup<ReadOnlySpan<char>>();
 
     // AC-1096: weighs an explicit set rather than a tree, for a membership the parent chain can no longer describe.
     public ResourceSample SumOf(IReadOnlyCollection<int> processIds)
