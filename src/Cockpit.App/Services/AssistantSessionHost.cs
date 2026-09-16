@@ -66,6 +66,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             if (e.PropertyName == nameof(CockpitViewModel.ActiveController))
             {
+                _ApplyTurnHold();
                 _ = ApplySettingsAsync();
             }
         };
@@ -74,6 +75,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // The living assistant instance, or null while it has not been woken yet. The one reference there is.
     [ObservableProperty]
     private SessionViewModel? _session;
+
+    // A session that arrives while a controller already holds the line takes the hold with it — the start began
+    // before the controller was seen, and nothing else would revisit it.
+    partial void OnSessionChanged(SessionViewModel? value) => _ApplyTurnHold();
 
     // What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.
     [ObservableProperty]
@@ -609,7 +614,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             return;
         }
 
-        if (!ShouldHandOver(
+        // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
+        if (!session.CanTakeAPrompt || !ShouldHandOver(
                 session.ContextUsedPercent,
                 session.IsBusy,
                 session.HasPendingPermission || session.PendingConsent is not null))
@@ -848,6 +854,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     internal static string TakeoverReason(ActiveController controller) =>
         $"Controlled by {controller.Name} since {controller.SinceUtc.ToLocalTime():HH:mm}. "
         + "Your assistant here comes back by itself when that connection drops.";
+
+    // AC-1321: the takeover reaches the live session as a hold on its turn funnel, not only as the chip's state —
+    // `_StartOrReplaceAsync` guards a start, but an inbox wake or the send-queue starts a turn on a session that is
+    // already running, and those go through the session, not through this host. Synchronous on purpose.
+    private void _ApplyTurnHold()
+    {
+        if (Session is { } live)
+        {
+            live.TurnsHeldBecause = _cockpit.ActiveController is { } controller ? TakeoverReason(controller) : null;
+        }
+    }
 
     private void _SetUnavailable(string reason)
     {

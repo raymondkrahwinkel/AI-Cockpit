@@ -1508,7 +1508,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public override bool DeliversInboxAtTurnStart => _turnInboxDelivery is not null;
 
     // Use `IsSessionReady` because a driver that never started can leave a runtime accepting sends into nothing.
-    public override bool CanTakeAPrompt => IsSessionReady;
+    // AC-1321: a held pane is not a candidate for a wake either, so the gateway refuses it instead of the funnel.
+    public override bool CanTakeAPrompt => IsSessionReady && TurnsHeldBecause is null;
+
+    // AC-1321: why no new turn may start on this pane, else null — set by the assistant host while a paired
+    // controller holds the line. Read at the one funnel every turn goes through, so no starter can miss it; the
+    // running turn finishes, and what was queued behind it waits here until the hold lifts.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanTakeAPrompt))]
+    private string? _turnsHeldBecause;
+
+    partial void OnTurnsHeldBecauseChanged(string? value)
+    {
+        if (value is null && !IsBusy)
+        {
+            _TryDispatchNextQueued();
+        }
+    }
 
     // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
     // rather than throw — the picker itself stays closed whenever WorkingDirectory is null (see its own guard),
@@ -1924,7 +1940,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // a real turn like any other (`_StartTurnAsync`), and the turn-completed event clears it the same way.
     public async Task<bool> CompactContextAsync()
     {
-        if (_runtime is not { IsRunning: true } || !Capabilities.SupportsContextCompaction)
+        if (_runtime is not { IsRunning: true } || TurnsHeldBecause is not null || !Capabilities.SupportsContextCompaction)
         {
             return false;
         }
@@ -2275,6 +2291,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IReadOnlyList<Core.Sessions.ImageAttachment>? images,
         Action<AgentInboxTurnNotice>? note = null)
     {
+        if (TurnsHeldBecause is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
+
         // Only a runtime that is actually running can carry a turn, and "did not throw" is not enough to tell.
         var waiting = runtime.IsRunning ? _turnInboxDelivery?.TakeForTurn(PaneId) : null;
 
@@ -2356,7 +2377,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the status settles immediately. No-op when the queue is empty.
     private void _TryDispatchNextQueued()
     {
-        if (QueuedMessages.Count == 0)
+        if (QueuedMessages.Count == 0 || TurnsHeldBecause is not null)
         {
             return;
         }
@@ -3266,7 +3287,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         // A runtime whose driver never came up is still held by the pane, and it accepts a send and hands back a
         // completed task with nothing having gone anywhere.
-        if (_runtime is not { IsRunning: true } runtime)
+        if (_runtime is not { IsRunning: true } runtime || !CanTakeAPrompt)
         {
             return false;
         }

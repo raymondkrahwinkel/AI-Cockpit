@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Services;
@@ -10,6 +11,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -23,9 +25,12 @@ public class Ac1321TakeoverStateTests
     private static readonly DateTimeOffset Noon = new(2026, 9, 15, 12, 0, 0, TimeSpan.Zero);
 
     // Criterion 1: the notice names the machine and offers no button, and a local turn does not start; without a
-    // controller the same node behaves as it did.
-    [Fact]
-    public async Task WithAnActiveController_TheNoticeNamesTheMachine_AndNoLocalTurnStarts() => await HeadlessAvalonia.RunAsync(async () =>
+    // controller the same node behaves as it did. One row per turn starter: the operator's send with no session yet
+    // (refused at the start), and an inbox wake on a session that is already live (refused at the pane).
+    [Theory]
+    [MemberData(nameof(TurnStarters))]
+    public async Task WithAnActiveController_TheNoticeNamesTheMachine_AndNoLocalTurnStarts(
+        string starter, Func<AssistantSessionHost, ISessionDriver, Task> startATurn) => await HeadlessAvalonia.RunAsync(async () =>
     {
         var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
         try
@@ -34,6 +39,8 @@ public class Ac1321TakeoverStateTests
             var presence = new NodeControllerPresence(new FakeTimeProvider(Noon));
             cockpit.WatchController(presence);
             var host = _Host(cockpit);
+            var driver = Substitute.For<ISessionDriver>();
+            driver.Events.Returns(_OpenEvents());
             await host.ApplySettingsAsync();
             window.UpdateLayout();
 
@@ -50,16 +57,33 @@ public class Ac1321TakeoverStateTests
             Assert.Contains(notice.GetVisualAncestors(), a => a is ScrollViewer { Name: "StartOffer" });
             Assert.False(_Named<Button>(window, "OpenAssistantOptionsButton").IsEffectivelyVisible, "nothing here ends a takeover, so no button");
 
-            await host.SendAsync("hello");
-            Assert.Null(host.Session);
+            await startATurn(host, driver);
+            Assert.False(host.Session is { IsBusy: true }, $"{starter} started a turn under a controller");
+            await driver.DidNotReceive().SendUserMessageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
             Assert.Equal(AssistantActivity.Unavailable, host.Activity);
             Assert.Contains("LAPTOP", host.UnavailableReason);
+            await (host.Session?.DisposeAsync() ?? ValueTask.CompletedTask);
         }
         finally
         {
             window.Close();
         }
     });
+
+    public static TheoryData<string, Func<AssistantSessionHost, ISessionDriver, Task>> TurnStarters => new()
+    {
+        { "send with no session", async (host, _) => { await host.SendAsync("hello"); Assert.Null(host.Session); } },
+        // The wake the gateway would send: it asks CanTakeAPrompt first and then SendPromptAsync — both must refuse,
+        // and the driver behind the live session must see nothing.
+        { "inbox wake on a live session", async (host, driver) =>
+            {
+                var live = await _LiveSession(driver);
+                host.Session = live;
+                Assert.False(live.CanTakeAPrompt);
+                Assert.False(await live.SendPromptAsync("[wake]"));
+            }
+        },
+    };
 
     // Criterion 2: the controller falls silent, and within the window the assistant is back and the notice gone —
     // on the clock, not on a wait, and not one poll early.
@@ -162,6 +186,26 @@ public class Ac1321TakeoverStateTests
             cockpit, settings, profiles, sessionState,
             new SessionStateRecorder(sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             catalog, Substitute.For<IAssistantMemory>(), NullLogger<AssistantSessionHost>.Instance);
+    }
+
+    // A pane with a running driver behind it, the way the host would have minted one before the controller came.
+    private static async Task<SessionViewModel> _LiveSession(ISessionDriver driver)
+    {
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var session = new SessionViewModel(new SessionManager(factory));
+        await session.StartConfiguredAsync(
+            new SessionProfile("assistant-local", new ClaudeConfig("/tmp/claude")),
+            SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        Assert.True(session.IsSessionReady);
+        return session;
+    }
+
+    // Open until the runtime cancels it, so the driver counts as running (a live driver's stream ends with its process).
+    private static async IAsyncEnumerable<SessionEvent> _OpenEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        yield break;
     }
 
     // A settable clock whose timers fire when it is advanced past them — the fall-back is otherwise a minute's wait.
