@@ -19,7 +19,8 @@ internal sealed class AgentsMcpTools(
     IAgentNotifyAuditLog notifyAudit,
     IAgentResourceClaims claims,
     IAgentLineBudget budget,
-    INodeControllerPresence? presence = null)
+    INodeControllerPresence? presence = null,
+    INodePairingBroker? pairing = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -193,9 +194,13 @@ internal sealed class AgentsMcpTools(
                     "A session cannot notify itself. notify is for reaching another agent on your desk.", urgent).ConfigureAwait(false);
             }
 
-            // AC-1322: while a controller holds the line, the assistant this machine has is the controller's —
-            // whether or not a local one is on the desk — so its mail is queued for that cockpit's next poll.
-            var controller = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal) ? presence?.Current : null;
+            // AC-1322: while a controller holds the line, the assistant this machine has is the controller's, so its
+            // mail is queued for that cockpit's next poll — but only from a profile the pairing grant covers (the scope
+            // send_node_message answers to): a session the controller may not reach must not reach it, so it stays local.
+            var controller = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal)
+                && pairing?.IsProfileAllowed(_ProfileOf(snapshot, caller) ?? string.Empty) == true
+                ? presence?.Current
+                : null;
 
             // The workspace boundary, enforced here at send time on the host's own answer to "who is on this
             // caller's desk" (AC-391's gateway) — never on anything the agent supplied. A pane on another desk is
@@ -612,6 +617,9 @@ internal sealed class AgentsMcpTools(
     // waiting on an answer here to tell, and a neighbour's name is worth reporting shortened rather than not at all.
     private static string _ForRoster(string? text) =>
         BoundedText.Trim(AgentMessageContent.Normalize(text, out _), MaxRosterTextLength);
+
+    private static string? _ProfileOf(WorkspaceAgentSnapshot snapshot, string paneId) =>
+        snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal))?.Profile;
 
     private static bool _IsOnTheDesk(WorkspaceAgentSnapshot snapshot, string paneId) =>
         snapshot.Panes.Any(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal));

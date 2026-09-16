@@ -15,7 +15,8 @@ namespace Cockpit.Infrastructure.Tests.Agents;
 /// <summary>
 /// AC-1322 at the node's end: a <c>notify cockpit-assistant</c> while a controller holds the line is queued for
 /// that controller (criterion 1) and acknowledged by the cursor the controller sends back (criterion 2); what the
-/// controller had not collected when it dropped away lands with the local assistant, saying so (criterion 3).
+/// controller had not collected when it dropped away lands with the local assistant, saying so (criterion 3). The
+/// split is taken only for a sender under a profile the pairing grant covers; any other sender's mail stays local.
 /// </summary>
 public sealed class NodeNotifyRoutingTests : IDisposable
 {
@@ -74,11 +75,34 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.Empty(_Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray());
     }
 
-    private AgentsMcpTools _Agents()
+    // The scope the pairing grant draws (AC-1292) is the scope of this split too: the same sender, on a desk that does
+    // hold a local assistant, reaches the controller under a shared profile and only the local inbox under any other.
+    [Theory]
+    [InlineData(true, "DESKTOP", 0)]
+    [InlineData(false, null, 1)]
+    public async Task Notify_ReachesTheController_OnlyFromAProfileTheGrantCovers(bool profileShared, string? controller, int keptLocally)
+    {
+        McpRequestContext.Set(AgentOnTheNode);
+        var reply = _Json(await _Agents(profileShared, withLocalAssistant: true).NotifyAsync(AssistantIdentity.PaneId, "done", "Green."));
+
+        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.Equal(controller, reply["controller"]?.GetValue<string>());
+        Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
+    }
+
+    private AgentsMcpTools _Agents(bool profileShared = true, bool withLocalAssistant = false)
     {
         var gateway = Substitute.For<IWorkspaceAgentGateway>();
+        var assistant = new WorkspaceAgentPane(AssistantIdentity.PaneId, "Assistant", "personal", "", true);
         gateway.GetWorkspaceSnapshotAsync(AgentOnTheNode).Returns(Task.FromResult<WorkspaceAgentSnapshot?>(
-            new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane(AgentOnTheNode, AgentOnTheNode, null, "", true)])));
+            new WorkspaceAgentSnapshot("ws-1", [
+                new WorkspaceAgentPane(AgentOnTheNode, AgentOnTheNode, "personal", "", true),
+                .. withLocalAssistant ? new[] { assistant } : [],
+            ])));
+        var pairing = Substitute.For<INodePairingBroker>();
+        pairing.IsProfileAllowed("personal").Returns(profileShared);
         return new AgentsMcpTools(
             gateway,
             new WorkspaceAgentCoordinator(),
@@ -86,7 +110,8 @@ public sealed class NodeNotifyRoutingTests : IDisposable
             new AgentNotifyAuditLog(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance),
             new AgentResourceClaims(),
             new AgentLineBudget(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000),
-            _presence);
+            _presence,
+            pairing);
     }
 
     private NodeSessionMcpTools _Node() => new(
