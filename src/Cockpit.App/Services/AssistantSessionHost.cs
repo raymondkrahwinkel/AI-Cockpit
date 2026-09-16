@@ -76,10 +76,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     [ObservableProperty]
     private SessionViewModel? _session;
 
-    // A session that arrives while a controller already holds the line takes the hold with it — the start began
-    // before the controller was seen, and nothing else would revisit it.
-    partial void OnSessionChanged(SessionViewModel? value) => _ApplyTurnHold();
-
     // What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.
     [ObservableProperty]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
@@ -586,7 +582,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _ = ClearConversationAsync();
     }
 
-    partial void OnSessionChanged(SessionViewModel? value) => _pendingConversationClear = false;
+    partial void OnSessionChanged(SessionViewModel? value)
+    {
+        _pendingConversationClear = false;
+        // A session that arrives while a controller already holds the line takes the hold with it — the start began
+        // before the controller was seen, and nothing else would revisit it.
+        _ApplyTurnHold();
+    }
 
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
     // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
