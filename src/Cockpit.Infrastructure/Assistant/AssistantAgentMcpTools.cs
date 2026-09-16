@@ -1053,7 +1053,7 @@ internal sealed class AssistantAgentMcpTools(
                 return _Serialize(new
                 {
                     ok = false,
-                    error = "A behaviour rule is something you are told; machine knowledge is learned by doing, when a command fails or a path differs.",
+                    error = "scope is required and must be \"behaviour\" or \"machine\". A behaviour rule is something you are told; machine knowledge is learned by doing, when a command fails or a path differs.",
                 });
             }
 
