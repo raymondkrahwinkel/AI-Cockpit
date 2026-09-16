@@ -573,13 +573,25 @@ public class AssistantSessionHostTests
         var options = AssistantSessionHost._LaunchOptions(
             _Profile() with { SystemPrompt = "Your name is Zyra." },
             replacesStandingInstruction: false,
-            memory: "- 2026-08-02 — The operator is called Raymond.");
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            machineMemory: "- 2026-08-02 — Git Bash lives here.");
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
         Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
-        Assert.EndsWith("The operator is called Raymond.", instruction, StringComparison.Ordinal);
+        Assert.Contains("The operator is called Raymond.", instruction, StringComparison.Ordinal);
         Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains("Git Bash lives here.", instruction, StringComparison.Ordinal);
+
+        var withoutMachineMemory = AssistantSessionHost._LaunchOptions(
+            _Profile(),
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            machineMemory: null)[WellKnownPluginSessionOptions.AppendSystemPrompt];
+
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, withoutMachineMemory, StringComparison.Ordinal);
+        Assert.Contains("nothing yet", withoutMachineMemory, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1295,7 +1307,7 @@ public class AssistantSessionHostTests
             var memoryPath = Path.Combine(directory.FullName, "assistant-memory.md");
             var statePath = Path.Combine(directory.FullName, "assistant-state.md");
             var memory = new AssistantMemoryFile(memoryPath, statePath);
-            await memory.RememberAsync("The operator is called Raymond.");
+            await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
             await memory.NoteCurrentStateAsync("We are on AC-1261; the clear tool is being built.");
             var memoryBefore = await File.ReadAllBytesAsync(memoryPath);
             var stateBefore = await File.ReadAllBytesAsync(statePath);

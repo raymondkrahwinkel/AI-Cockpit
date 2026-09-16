@@ -9,6 +9,12 @@ public static class AssistantStandingInstruction
     public const string MemoryHeading =
         "What you have been asked to remember, from earlier conversations with this operator:";
 
+    public const string MachineMemoryHeading =
+        "What I know about this machine:";
+
+    private const string MemoryScopeRule =
+        "The first block is about the operator and how to work with them; the second is only true on this machine.";
+
     // What the state left behind at a hand-over is introduced as (AC-596).
     public const string CurrentStateHeading =
         "Where the conversation stood when you last handed over. It is yours, written before a restart, and it may "
@@ -22,6 +28,7 @@ public static class AssistantStandingInstruction
         bool replacesDefault,
         string? memory,
         string? currentState = null,
+        string? machineMemory = null,
         bool sdkAsksPermission = true,
         bool consentCardAsks = true)
     {
@@ -42,7 +49,9 @@ public static class AssistantStandingInstruction
 
         // Last, and each under a heading of its own: this is the operator's material and the assistant's own note
         // rather than the product's rules, and one that cannot tell them apart recites a remembered line as a rule.
-        return _Append(_Append(instruction, MemoryHeading, memory), CurrentStateHeading, currentState);
+        return _AppendMachineMemory(
+            _Append(_Append(instruction, MemoryHeading, memory), CurrentStateHeading, currentState),
+            machineMemory);
     }
 
     private static string _Append(string instruction, string heading, string? block)
@@ -50,4 +59,8 @@ public static class AssistantStandingInstruction
         var text = block?.Trim();
         return string.IsNullOrEmpty(text) ? instruction : instruction + "\n\n" + heading + "\n\n" + text;
     }
+
+    private static string _AppendMachineMemory(string instruction, string? machineMemory) =>
+        instruction + "\n\n" + MemoryScopeRule + "\n\n" + MachineMemoryHeading + "\n\n"
+        + (string.IsNullOrWhiteSpace(machineMemory) ? "nothing yet" : machineMemory.Trim());
 }

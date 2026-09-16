@@ -45,6 +45,8 @@ internal static class CockpitConfigPath
     // prune it.
     public static string AssistantMemory => Path.Combine(Root, "assistant-memory.md");
 
+    public static string AssistantMachineMemory => Path.Combine(Root, "assistant-machine.md");
+
     // Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
     // section of the memory: one is appended to and the other overwritten, and separate files need no parser and
     // no lock between them.

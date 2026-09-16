@@ -15,6 +15,8 @@ public sealed class AssistantMemoryBackupTests : IDisposable
 
     private string _StatePath => Path.Combine(_directory, "assistant-state.md");
 
+    private string _MachinePath => Path.Combine(_directory, "assistant-machine.md");
+
     private string _ArchivePath => Path.Combine(_directory, "export.zip");
 
     [Fact]
@@ -22,18 +24,31 @@ public sealed class AssistantMemoryBackupTests : IDisposable
     {
         File.WriteAllText(_MemoryPath, "- remembered thing");
         File.WriteAllText(_StatePath, "where we stood");
+        File.WriteAllText(_MachinePath, "- Git Bash lives here");
 
-        var written = AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath);
-        Assert.Equal(["assistant-memory.md", "assistant-state.md"], written);
+        var written = AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
+        Assert.Equal(["assistant-memory.md", "assistant-state.md", "assistant-machine.md"], written);
 
         File.Delete(_MemoryPath);
         File.Delete(_StatePath);
+        File.Delete(_MachinePath);
 
-        var restored = AssistantMemoryBackup.Restore(_ArchivePath, _MemoryPath, _StatePath);
+        var restored = AssistantMemoryBackup.Restore(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
 
-        Assert.Equal(["assistant-memory.md", "assistant-state.md"], restored);
+        Assert.Equal(["assistant-memory.md", "assistant-state.md", "assistant-machine.md"], restored);
         Assert.Equal("- remembered thing", File.ReadAllText(_MemoryPath));
         Assert.Equal("where we stood", File.ReadAllText(_StatePath));
+        Assert.Equal("- Git Bash lives here", File.ReadAllText(_MachinePath));
+
+        File.Delete(_MachinePath);
+        AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
+        File.Delete(_MemoryPath);
+        File.Delete(_StatePath);
+
+        Assert.Equal(
+            ["assistant-memory.md", "assistant-state.md"],
+            AssistantMemoryBackup.Restore(_ArchivePath, _MemoryPath, _StatePath, _MachinePath));
+        Assert.False(File.Exists(_MachinePath));
     }
 
     [Fact]
@@ -41,7 +56,7 @@ public sealed class AssistantMemoryBackupTests : IDisposable
     {
         File.WriteAllText(_MemoryPath, "- remembered thing");
 
-        var written = AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath);
+        var written = AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
 
         Assert.Equal(["assistant-memory.md"], written);
     }
@@ -49,17 +64,17 @@ public sealed class AssistantMemoryBackupTests : IDisposable
     [Fact]
     public void Write_WithNeitherFile_Throws()
     {
-        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath));
+        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath));
     }
 
     [Fact]
     public void Restore_CopiesWhatItReplaces_Aside_RatherThanDeletingIt()
     {
         File.WriteAllText(_MemoryPath, "- old memory");
-        AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath);
+        AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
 
         File.WriteAllText(_MemoryPath, "- live memory nobody backed up yet");
-        AssistantMemoryBackup.Restore(_ArchivePath, _MemoryPath, _StatePath);
+        AssistantMemoryBackup.Restore(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
 
         Assert.Equal("- old memory", File.ReadAllText(_MemoryPath));
 
@@ -75,7 +90,7 @@ public sealed class AssistantMemoryBackupTests : IDisposable
         {
         }
 
-        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Restore(emptyArchive, _MemoryPath, _StatePath));
+        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Restore(emptyArchive, _MemoryPath, _StatePath, _MachinePath));
     }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
