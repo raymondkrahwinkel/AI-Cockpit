@@ -24,7 +24,9 @@ public sealed class AssistantStandingInstructionTests
         var instruction = AssistantStandingInstruction.Compose(
             null, replacesDefault: false, memory: null, currentState: null, sdkAsksPermission: true, consentCardAsks: true);
 
-        Assert.Equal(AssistantSystemPrompt.Default, instruction);
+        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("nothing yet", instruction, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -79,6 +81,8 @@ public sealed class AssistantStandingInstructionTests
             "You are a terse assistant.", replacesDefault: true, memory: null, currentState: null,
             sdkAsksPermission: false, consentCardAsks: false);
 
-        Assert.Equal("You are a terse assistant.", instruction);
+        Assert.StartsWith("You are a terse assistant.", instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.EndsWith("nothing yet", instruction, StringComparison.Ordinal);
     }
 }
