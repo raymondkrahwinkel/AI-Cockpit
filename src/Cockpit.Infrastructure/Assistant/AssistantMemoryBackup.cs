@@ -3,15 +3,15 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-// A loose, light backup/restore for just the two assistant memory files (AC-657), separate from a full cockpit
+// A loose, light backup/restore for the assistant memory files (AC-657), separate from a full cockpit
 // backup (`BackupService`). No manifest, no secrets scrubbing, no plugin selection: an operator carrying just
 // the assistant's memory to another machine does not need the rest of that flow.
 internal static class AssistantMemoryBackup
 {
-    // Writes whichever of the two files exist to a .zip at `archivePath`, overwriting whatever was there.
-    public static IReadOnlyList<string> Write(string archivePath, string memoryPath, string statePath)
+    // Writes whichever memory files exist to a .zip at `archivePath`, overwriting whatever was there.
+    public static IReadOnlyList<string> Write(string archivePath, string memoryPath, string statePath, string machinePath)
     {
-        var files = new[] { memoryPath, statePath }.Where(File.Exists).ToList();
+        var files = new[] { memoryPath, statePath, machinePath }.Where(File.Exists).ToList();
         if (files.Count == 0)
         {
             throw new InvalidOperationException("There is nothing to export: the assistant has not remembered anything yet.");
@@ -33,10 +33,10 @@ internal static class AssistantMemoryBackup
         return files.Select(Path.GetFileName).ToList()!;
     }
 
-    // Puts back whichever of the two files the archive carries. What is being replaced is copied aside with a
+    // Puts back whichever memory files the archive carries. What is being replaced is copied aside with a
     // timestamp first, never deleted — the same "goes aside, not away" principle `BackupService._RestoreLooseFiles`
     // uses for the cockpit's own loose files.
-    public static IReadOnlyList<string> Restore(string archivePath, string memoryPath, string statePath)
+    public static IReadOnlyList<string> Restore(string archivePath, string memoryPath, string statePath, string machinePath)
     {
         using var archive = ZipFile.OpenRead(archivePath);
 
@@ -44,6 +44,7 @@ internal static class AssistantMemoryBackup
         {
             [Path.GetFileName(memoryPath)] = memoryPath,
             [Path.GetFileName(statePath)] = statePath,
+            [Path.GetFileName(machinePath)] = machinePath,
         };
 
         var restored = new List<string>();
@@ -69,7 +70,7 @@ internal static class AssistantMemoryBackup
         if (restored.Count == 0)
         {
             throw new InvalidOperationException(
-                $"This archive carries neither {Path.GetFileName(memoryPath)} nor {Path.GetFileName(statePath)}, so nothing was restored.");
+                $"This archive carries no assistant memory files, so nothing was restored.");
         }
 
         return restored;

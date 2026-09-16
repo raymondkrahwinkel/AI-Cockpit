@@ -17,9 +17,9 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
 
     public List<string> Imported { get; } = [];
 
-    public Task<string> ReadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Contents);
+    public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) => Task.FromResult(Contents);
 
-    public Task RememberAsync(string text, CancellationToken cancellationToken = default)
+    public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
     {
         Remembered.Add(text);
         return Task.CompletedTask;

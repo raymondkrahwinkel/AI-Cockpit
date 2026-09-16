@@ -8,14 +8,14 @@ namespace Cockpit.Core.Abstractions.Assistant;
 public interface IAssistantMemory
 {
     /// <summary>
-    /// What has been remembered, ready to go into the launch instruction. Empty when nothing ever was.
+    /// What has been remembered for one scope, ready to go into the launch instruction. Empty when nothing ever was.
     /// </summary>
-    Task<string> ReadAsync(CancellationToken cancellationToken = default);
+    Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Adds a line. Blank text is refused rather than stored — an empty memory entry is noise a later read cannot tell from a real one.
+    /// Adds a line to one scope. Blank text is refused rather than stored.
     /// </summary>
-    Task RememberAsync(string text, CancellationToken cancellationToken = default);
+    Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Where the conversation stands right now (AC-596) — what carries across the restart the assistant makes when
@@ -40,4 +40,10 @@ public interface IAssistantMemory
     /// copied aside with a timestamp first, never deleted. Returns the file names restored.
     /// </summary>
     Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default);
+}
+
+public enum AssistantMemoryScope
+{
+    Behaviour,
+    Machine,
 }

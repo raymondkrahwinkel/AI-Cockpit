@@ -31,6 +31,8 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class AssistantSessionHostTests
 {
+    private static void _AssertMachineMemorySuffix(string instruction) =>
+        Assert.EndsWith($"{AssistantStandingInstruction.MachineMemoryHeading}\n\nnothing yet", instruction, StringComparison.Ordinal);
     [Fact]
     public void Constructing_TheHost_StartsNothing()
     {
@@ -473,7 +475,8 @@ public class AssistantSessionHostTests
         Assert.False(options.ContainsKey("effort"));
 
         // And the one thing the launch does owe it is still there.
-        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // One behaviour, one exercise: the capability map a plain launch actually hands the session. Each row is a
@@ -538,7 +541,8 @@ public class AssistantSessionHostTests
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.DoesNotContain("teapot", instruction, StringComparison.Ordinal);
-        Assert.EndsWith("You are Olaf.", instruction, StringComparison.Ordinal);
+        Assert.Contains("You are Olaf.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     [Fact]
@@ -552,7 +556,8 @@ public class AssistantSessionHostTests
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
-        Assert.EndsWith("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     [Fact]
@@ -562,7 +567,8 @@ public class AssistantSessionHostTests
 
         var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
-        Assert.Equal("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
@@ -573,13 +579,25 @@ public class AssistantSessionHostTests
         var options = AssistantSessionHost._LaunchOptions(
             _Profile() with { SystemPrompt = "Your name is Zyra." },
             replacesStandingInstruction: false,
-            memory: "- 2026-08-02 — The operator is called Raymond.");
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            machineMemory: "- 2026-08-02 — Git Bash lives here.");
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
         Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
-        Assert.EndsWith("The operator is called Raymond.", instruction, StringComparison.Ordinal);
+        Assert.Contains("The operator is called Raymond.", instruction, StringComparison.Ordinal);
         Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, instruction, StringComparison.Ordinal);
+        Assert.Contains("Git Bash lives here.", instruction, StringComparison.Ordinal);
+
+        var withoutMachineMemory = AssistantSessionHost._LaunchOptions(
+            _Profile(),
+            replacesStandingInstruction: false,
+            memory: "- 2026-08-02 — The operator is called Raymond.",
+            machineMemory: null)[WellKnownPluginSessionOptions.AppendSystemPrompt];
+
+        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, withoutMachineMemory, StringComparison.Ordinal);
+        Assert.Contains("nothing yet", withoutMachineMemory, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -596,7 +614,8 @@ public class AssistantSessionHostTests
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
         Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
-        Assert.EndsWith("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+        Assert.Contains("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
@@ -1055,7 +1074,8 @@ public class AssistantSessionHostTests
 
         var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
-        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
@@ -1295,7 +1315,7 @@ public class AssistantSessionHostTests
             var memoryPath = Path.Combine(directory.FullName, "assistant-memory.md");
             var statePath = Path.Combine(directory.FullName, "assistant-state.md");
             var memory = new AssistantMemoryFile(memoryPath, statePath);
-            await memory.RememberAsync("The operator is called Raymond.");
+            await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
             await memory.NoteCurrentStateAsync("We are on AC-1261; the clear tool is being built.");
             var memoryBefore = await File.ReadAllBytesAsync(memoryPath);
             var stateBefore = await File.ReadAllBytesAsync(statePath);

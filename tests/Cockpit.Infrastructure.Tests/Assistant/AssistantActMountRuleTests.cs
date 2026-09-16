@@ -75,6 +75,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         // AC-1323: `node` sends a start to another machine instead of the gateway this test counts; left blank,
         // the start stays local. The refusal tests above still fill it, since they never get that far.
         parameter.Name == "node" ? null
+            : parameter.Name == "scope" ? "behaviour"
             : parameter.ParameterType == typeof(string) ? Whatever
             : parameter.ParameterType == typeof(List<AskStructuredQuestionOptionArg>)
                 // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict

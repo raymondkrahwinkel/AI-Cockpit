@@ -425,8 +425,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             launchOptions: _LaunchOptions(
                 profile,
                 slot.ReplacesStandingInstruction,
-                await _memory.ReadAsync(cancellationToken).ConfigureAwait(true),
+                await _memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(true),
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true),
+                await _memory.ReadAsync(AssistantMemoryScope.Machine, cancellationToken).ConfigureAwait(true),
                 _SdkAsksPermission(profile),
                 // AC-1013: Gate B (AC-759) reads ConsentBypassAll alone, not the per-source lists — the paragraph
                 // describes the general expectation, and the per-call `approval` field (AssistantAgentMcpTools)
@@ -825,6 +826,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         bool replacesStandingInstruction,
         string? memory,
         string? currentState = null,
+        string? machineMemory = null,
         bool sdkAsksPermission = true,
         bool consentCardAsks = true)
     {
@@ -833,7 +835,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = AssistantStandingInstruction.Compose(
-            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, sdkAsksPermission, consentCardAsks);
+            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks);
 
         return options;
     }

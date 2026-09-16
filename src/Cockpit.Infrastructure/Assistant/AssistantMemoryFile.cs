@@ -11,26 +11,31 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
     private const string Heading = "# What the operator asked me to remember";
 
+    private const string MachineHeading = "# What I know about this machine";
+
     private const string StateHeading = "# Where the conversation stood when I last restarted";
 
     private readonly string _filePath;
 
     private readonly string _statePath;
 
+    private readonly string _machinePath;
+
     public AssistantMemoryFile()
-        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState)
+        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory)
     {
     }
 
     // Test seam: point the memory at arbitrary files.
-    internal AssistantMemoryFile(string filePath, string statePath)
+    internal AssistantMemoryFile(string filePath, string statePath, string? machinePath = null)
     {
         _filePath = filePath;
         _statePath = statePath;
+        _machinePath = machinePath ?? Path.Combine(Path.GetDirectoryName(filePath)!, "assistant-machine.md");
     }
 
-    public Task<string> ReadAsync(CancellationToken cancellationToken = default) =>
-        _ReadAsync(_filePath, cancellationToken);
+    public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
+        _ReadAsync(_PathFor(scope), cancellationToken);
 
     public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) =>
         _ReadAsync(_statePath, cancellationToken);
@@ -63,28 +68,37 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 
     // ponytail: append-only, so the file only ever grows. It is one line per thing the operator said to keep, and
     // pruning is opening it — worth a second look on the day it is long enough to weigh on the launch instruction.
-    public async Task RememberAsync(string text, CancellationToken cancellationToken = default)
+    public async Task RememberAsync(
+        string text,
+        AssistantMemoryScope scope,
+        CancellationToken cancellationToken = default)
     {
         var line = text?.Trim();
         ArgumentException.ThrowIfNullOrWhiteSpace(line);
 
-        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(_filePath) ?? CockpitConfigPath.Root);
+        var path = _PathFor(scope);
+        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(path) ?? CockpitConfigPath.Root);
 
-        var isNew = !File.Exists(_filePath);
+        var isNew = !File.Exists(path);
         var entry = $"- {DateTimeOffset.Now:yyyy-MM-dd} — {line.ReplaceLineEndings(" ")}{Environment.NewLine}";
 
         await File.AppendAllTextAsync(
-            _filePath,
-            isNew ? $"{Heading}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
+            path,
+            isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
             cancellationToken).ConfigureAwait(false);
     }
+
+    private string _PathFor(AssistantMemoryScope scope) => scope == AssistantMemoryScope.Machine ? _machinePath : _filePath;
+
+    private static string _HeadingFor(AssistantMemoryScope scope) =>
+        scope == AssistantMemoryScope.Machine ? MachineHeading : Heading;
 
     // Synchronous file I/O (AC-657): both files are a few kilobytes of markdown, and the loose backup/restore this
     // serves is already behind an MCP consent gate that awaits elsewhere — no need to thread cancellation through
     // ZipFile's own sync-only API for that.
     public Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default) =>
-        Task.FromResult(AssistantMemoryBackup.Write(archivePath, _filePath, _statePath));
+        Task.FromResult(AssistantMemoryBackup.Write(archivePath, _filePath, _statePath, _machinePath));
 
     public Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default) =>
-        Task.FromResult(AssistantMemoryBackup.Restore(archivePath, _filePath, _statePath));
+        Task.FromResult(AssistantMemoryBackup.Restore(archivePath, _filePath, _statePath, _machinePath));
 }
