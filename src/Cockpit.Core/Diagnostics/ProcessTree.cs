@@ -89,6 +89,48 @@ public sealed class ProcessTableSnapshot
         return abandoned;
     }
 
+    // AC-1331: live processes with a shell on the path from the root — work the session started and waits on. The
+    // root is never counted and marks the path only for a terminal pane (`rootIsShell`), since on Windows the `.cmd`
+    // shim makes `cmd.exe` every agent's root. ponytail: an MCP server launched via `sh -c` counts as work for life.
+    public int OutstandingCount(IReadOnlySet<int> members, int rootProcessId, bool rootIsShell)
+    {
+        var budget = members.Count;
+        return _OutstandingBelow(rootProcessId, rootIsShell, ref budget);
+    }
+
+    // Recursive so a sample allocates nothing (AC-1233). `budget` bounds the walk: a table read while processes
+    // come and go can contain a cycle, and a live tree never has more processes than the membership holds.
+    private int _OutstandingBelow(int processId, bool underShell, ref int budget)
+    {
+        if (!_children.TryGetValue(processId, out var kids))
+        {
+            return 0;
+        }
+
+        var outstanding = 0;
+        foreach (var kid in kids)
+        {
+            if (--budget < 0)
+            {
+                break;
+            }
+
+            var shellOnPath = underShell || _IsShell(_byId[kid].Name);
+            outstanding += (shellOnPath ? 1 : 0) + _OutstandingBelow(kid, shellOnPath, ref budget);
+        }
+
+        return outstanding;
+    }
+
+    // `ps` on macOS reports a login shell as `-zsh` and may carry the path; Windows reports `cmd.exe`.
+    private static bool _IsShell(string name) =>
+        ShellNames.Contains(Path.GetFileName(name).TrimStart('-'));
+
+    private static readonly HashSet<string> ShellNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sh", "bash", "zsh", "dash", "fish", "ksh", "cmd.exe", "powershell.exe", "pwsh.exe",
+    };
+
     // AC-1096: weighs an explicit set rather than a tree, for a membership the parent chain can no longer describe.
     public ResourceSample SumOf(IReadOnlyCollection<int> processIds)
     {

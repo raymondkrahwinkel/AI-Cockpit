@@ -556,6 +556,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session that ended its turn while a command it started through one of its MCP servers (a
+  Codex `ctx_execute`, say) was still running no longer counts as finished — `list_sessions` reports
+  `hasOutstandingWork: true`, `watch_session` says it is still running and the finished toast waits, on the
+  Claude, Codex and terminal routes alike; what a session actually left behind is still reported as such.
 - fixed: a session no longer keeps flagging "needs attention" in the sidebar and to the assistant after its
   last open Allow/Deny question has been answered; it drops the moment the click lands rather than at the
   next message (AC-1324).

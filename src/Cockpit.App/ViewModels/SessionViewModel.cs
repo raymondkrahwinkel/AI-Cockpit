@@ -3275,7 +3275,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True while a backgrounded shell is still running (AC-276). It does not hold the status — a never-ending
     // dev server would pin the session forever — but it does suppress the "session finished" notification, which
     // would otherwise announce a session that is still doing something.
-    public override bool HasOutstandingBackgroundShells => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.Shell);
+    public override bool HasOutstandingBackgroundShells =>
+        _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.Shell) || base.HasOutstandingBackgroundShells;
 
     // The meter sums the tokens and follows the cost, which the result reports as a session total rather than a
     // per-turn share.

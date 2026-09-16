@@ -409,8 +409,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // It deliberately does not affect `SessionStatus` — a dev server or a `tail -f` never ends, and holding the status
     // on one would strand the session on "working" forever, which is worse than the premature Done it set out to fix
-    // (AC-276).
-    public virtual bool HasOutstandingBackgroundShells => false;
+    // (AC-276). AC-1331: the base reads it from the process tree; a route with its own signal unions that in.
+    public virtual bool HasOutstandingBackgroundShells => _hasOutstandingProcesses;
+
+    private bool _hasOutstandingProcesses;
+    private bool _lastSampleHadOutstanding;
+    private int _outstandingSampleStreak;
 
     // AC-1096: what this session's processes are doing, refreshed by the cockpit's resource sample. All zero
     // until the first sample, and for a session with no local process to weigh (an HTTP-backed provider).
@@ -458,9 +462,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     partial void OnAbandonedProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
 
     // AC-1310: called on every resource sample with what this session has running beside its own root process.
-    // Only the TTY route uses it — the SDK route is told by an event and has no need to measure.
-    internal virtual void OnProcessesSampled(int spawnedProcessCount)
+    // AC-1331: damped symmetrically — two samples to raise and two to clear — so a shell caught once (Claude's
+    // statusline hook) cannot flip the flag and fire a second "finished" toast on its way back down.
+    internal virtual void OnProcessesSampled(int spawnedProcessCount, int outstandingProcessCount)
     {
+        var hasOutstanding = outstandingProcessCount > 0;
+        _outstandingSampleStreak = hasOutstanding == _lastSampleHadOutstanding ? _outstandingSampleStreak + 1 : 1;
+        _lastSampleHadOutstanding = hasOutstanding;
+
+        if (_outstandingSampleStreak >= 2 && _hasOutstandingProcesses != hasOutstanding)
+        {
+            _hasOutstandingProcesses = hasOutstanding;
+            OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+        }
     }
 
     // Short human-readable label for `SessionStatus`, for the sidebar status row. AC-1311: three visual classes

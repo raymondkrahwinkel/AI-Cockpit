@@ -9,7 +9,7 @@ public sealed class SessionProcessMembership
 
     // Everything still alive that this session has ever spawned, plus whatever those have spawned since. One
     // sample can only miss a process that both started and exited between two reads, which held nothing for long.
-    public SessionProcesses Measure(IReadOnlyList<ProcessRow> rows, int rootProcessId)
+    public SessionProcesses Measure(IReadOnlyList<ProcessRow> rows, int rootProcessId, bool rootIsShell = false)
     {
         var snapshot = ProcessTree.Snapshot(rows);
         var seeds = _membersByRoot.GetValueOrDefault(rootProcessId) ?? [];
@@ -23,7 +23,8 @@ public sealed class SessionProcessMembership
             snapshot.SumOf(members),
             members.Count,
             members.Count - (members.Contains(rootProcessId) ? 1 : 0),
-            snapshot.AbandonedCount(members, rootProcessId));
+            snapshot.AbandonedCount(members, rootProcessId),
+            snapshot.OutstandingCount(members, rootProcessId, rootIsShell));
     }
 
     // AC-1086: adds every measured session's processes to `target`, so a cockpit-wide total can be taken over the

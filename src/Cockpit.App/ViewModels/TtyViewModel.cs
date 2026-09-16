@@ -123,7 +123,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private bool _hasOutstandingBackgroundShells;
 
-    public override bool HasOutstandingBackgroundShells => _hasOutstandingBackgroundShells;
+    public override bool HasOutstandingBackgroundShells => _hasOutstandingBackgroundShells || base.HasOutstandingBackgroundShells;
 
     // Tokens seen since the last completed turn (AC-398): a tool-using turn writes several assistant lines
     // before its own TurnComplete line, each with its own usage, and these hold the running sum until that line
@@ -643,8 +643,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1310: the TTY route has no event saying work is still running, so the sample that already reads the
     // process table every two seconds is the only source. The damping lives in the tracker.
-    internal override void OnProcessesSampled(int spawnedProcessCount)
+    internal override void OnProcessesSampled(int spawnedProcessCount, int outstandingProcessCount)
     {
+        base.OnProcessesSampled(spawnedProcessCount, outstandingProcessCount);
+
         if (_statusTrackingStopped)
         {
             return;
