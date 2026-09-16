@@ -2493,20 +2493,30 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1324: three outcomes, each told on the row itself. Answered there: closed with the machine named. No
     // longer open there (answered on the node, or the session gone): closed, nothing done. Line failed: the row
-    // stays open with the reason, so the buttons still work once the node is back.
+    // reopens with the reason, so the buttons work again once the node is back.
     private static async Task _AnswerOnNodeAsync(TranscriptEntryViewModel entry, NodePermissionOrigin onNode, bool allow)
     {
+        // Closed before the line is called, like the local path (`_MarkDecided` before the runtime): the call takes
+        // up to the client's budget, and a second click in that window would be a second answer over the line.
+        if (!entry.IsPendingPermission)
+        {
+            return;
+        }
+
+        entry.IsPendingPermission = false;
+        entry.PermissionDecision = $"Answering on {onNode.Node}…";
+
         var reply = await onNode.Answer(allow);
         if (reply.Error is { } error)
         {
             entry.PermissionDecision = $"Not answered — {error}";
+            entry.IsPendingPermission = true;
             return;
         }
 
         entry.PermissionDecision = reply.Answered
             ? $"{(allow ? "Allowed" : "Denied")} on {onNode.Node}"
             : $"Already answered on {onNode.Node}";
-        entry.IsPendingPermission = false;
     }
 
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is

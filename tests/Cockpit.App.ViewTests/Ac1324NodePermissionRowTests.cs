@@ -44,9 +44,11 @@ public class Ac1324NodePermissionRowTests
             Assert.True(_Button(rowView, "Deny").IsEffectivelyVisible);
             Assert.DoesNotContain(rowView.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content is "Always (exact)" or "Always (wildcard)");
 
-            // Answered there.
+            // Answered there — clicked twice, the way a double-click lands: one answer goes over the line.
             client.AnswerPermissionAsync(Node, Pane, "toolu_1", true, Arg.Any<CancellationToken>()).Returns(new NodePermissionAnswer(true));
-            await _ClickAsync(_Button(rowView, "Allow"));
+            var allow = _Button(rowView, "Allow");
+            await _ClickAsync(allow);
+            await _ClickAsync(allow);
             window.UpdateLayout();
             await client.Received(1).AnswerPermissionAsync(Node, Pane, "toolu_1", true, Arg.Any<CancellationToken>());
             var row = conversation.Transcript.Single(r => r.ToolUseId == "toolu_1");
