@@ -91,16 +91,46 @@ public sealed class ProcessTableSnapshot
 
     // AC-1331: live processes with a shell on the path from the root — work the session started and waits on. The
     // root is never counted and marks the path only for a terminal pane (`rootIsShell`), since on Windows the `.cmd`
-    // shim makes `cmd.exe` every agent's root. ponytail: an MCP server launched via `sh -c` counts as work for life.
-    public int OutstandingCount(IReadOnlySet<int> members, int rootProcessId, bool rootIsShell)
+    // shim makes `cmd.exe` every agent's root. A shell in `launcherShells` started an MCP server and is looked past.
+    public int OutstandingCount(IReadOnlySet<int> members, IReadOnlySet<int> launcherShells, int rootProcessId, bool rootIsShell)
     {
         var budget = members.Count;
-        return _OutstandingBelow(rootProcessId, rootIsShell, ref budget);
+        return _OutstandingBelow(rootProcessId, rootIsShell, launcherShells, ref budget);
+    }
+
+    // AC-1331: every shell below the root, into `shells` — taken in a session's first samples to know its launchers.
+    public void AddShellsBelow(IReadOnlySet<int> members, int rootProcessId, HashSet<int> shells)
+    {
+        var budget = members.Count;
+        _AddShellsBelow(rootProcessId, shells, ref budget);
+    }
+
+    private void _AddShellsBelow(int processId, HashSet<int> shells, ref int budget)
+    {
+        if (!_children.TryGetValue(processId, out var kids))
+        {
+            return;
+        }
+
+        foreach (var kid in kids)
+        {
+            if (--budget < 0)
+            {
+                break;
+            }
+
+            if (_IsShell(_byId[kid].Name))
+            {
+                shells.Add(kid);
+            }
+
+            _AddShellsBelow(kid, shells, ref budget);
+        }
     }
 
     // Recursive so a sample allocates nothing (AC-1233). `budget` bounds the walk: a table read while processes
     // come and go can contain a cycle, and a live tree never has more processes than the membership holds.
-    private int _OutstandingBelow(int processId, bool underShell, ref int budget)
+    private int _OutstandingBelow(int processId, bool underShell, IReadOnlySet<int> launcherShells, ref int budget)
     {
         if (!_children.TryGetValue(processId, out var kids))
         {
@@ -115,8 +145,8 @@ public sealed class ProcessTableSnapshot
                 break;
             }
 
-            var shellOnPath = underShell || _IsShell(_byId[kid].Name);
-            outstanding += (shellOnPath ? 1 : 0) + _OutstandingBelow(kid, shellOnPath, ref budget);
+            var shellOnPath = underShell || (!launcherShells.Contains(kid) && _IsShell(_byId[kid].Name));
+            outstanding += (shellOnPath ? 1 : 0) + _OutstandingBelow(kid, shellOnPath, launcherShells, ref budget);
         }
 
         return outstanding;
