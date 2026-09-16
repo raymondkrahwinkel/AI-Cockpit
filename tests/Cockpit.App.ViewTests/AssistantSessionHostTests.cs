@@ -31,6 +31,8 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class AssistantSessionHostTests
 {
+    private static void _AssertMachineMemorySuffix(string instruction) =>
+        Assert.EndsWith($"{AssistantStandingInstruction.MachineMemoryHeading}\n\nnothing yet", instruction, StringComparison.Ordinal);
     [Fact]
     public void Constructing_TheHost_StartsNothing()
     {
@@ -473,7 +475,8 @@ public class AssistantSessionHostTests
         Assert.False(options.ContainsKey("effort"));
 
         // And the one thing the launch does owe it is still there.
-        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // One behaviour, one exercise: the capability map a plain launch actually hands the session. Each row is a
@@ -538,7 +541,8 @@ public class AssistantSessionHostTests
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.DoesNotContain("teapot", instruction, StringComparison.Ordinal);
-        Assert.EndsWith("You are Olaf.", instruction, StringComparison.Ordinal);
+        Assert.Contains("You are Olaf.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     [Fact]
@@ -552,7 +556,8 @@ public class AssistantSessionHostTests
 
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
-        Assert.EndsWith("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     [Fact]
@@ -562,7 +567,8 @@ public class AssistantSessionHostTests
 
         var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
-        Assert.Equal("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
@@ -608,7 +614,8 @@ public class AssistantSessionHostTests
         var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
         Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
         Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
-        Assert.EndsWith("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+        Assert.Contains("the release desk is running the tests.", instruction, StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(instruction);
     }
 
     // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
@@ -1067,7 +1074,8 @@ public class AssistantSessionHostTests
 
         var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
 
-        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
