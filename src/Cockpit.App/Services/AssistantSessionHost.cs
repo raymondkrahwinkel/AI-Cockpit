@@ -435,10 +435,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 consentCardAsks: !settings.ConsentBypassAll),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
-        // AC-1239: named against the assistant, since SessionViewModel's own warning says only which profile it was.
+        // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
         if (!_IsAlive(session))
         {
-            _logger.LogWarning("The assistant session was not running right after its start: {Reason}", session.StartFailure ?? session.Status);
+            var reason = session.StartFailure ?? session.Status;
+            _logger.LogWarning("The assistant session was not running right after its start: {Reason}", reason);
+            await _DisposeQuietlyAsync(session).ConfigureAwait(true);
+            _SetUnavailable($"The assistant could not start: {reason}");
+            return null;
         }
 
         // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a
