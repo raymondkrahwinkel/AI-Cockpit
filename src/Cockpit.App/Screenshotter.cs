@@ -357,6 +357,8 @@ internal static class Screenshotter
         // AC-1321: the node while a paired controller holds the line — the takeover notice where the off notice
         // stands, and no button, since nothing here ends it.
         ["simple-view-start-screen-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, controlled: true) },
+        // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
+        ["simple-view-start-screen-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2269,7 +2271,7 @@ internal static class Screenshotter
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false)
+    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false, string? failedToStart = null)
     {
         var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
         conversation.ActiveProfileLabel = "work";
@@ -2287,7 +2289,7 @@ internal static class Screenshotter
         // puts itself on `cockpit.AssistantChat`, so building it inside a factory would leave the rail without its
         // root until that factory happened to run.
         var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit,
-            unavailableReason: assistantOff ? "The assistant is switched off. Turn it on in Options → Assistant." : null);
+            unavailableReason: assistantOff ? "The assistant is switched off. Turn it on in Options → Assistant." : failedToStart);
 
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId,
@@ -2365,10 +2367,10 @@ internal static class Screenshotter
     // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
     // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
     // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false)
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false, string? failedToStart = null)
     {
-        // Off means no session either: the host never starts one it is not allowed to.
-        var cockpit = _SimpleStand(withAssistant: !assistantOff, assistantOff);
+        // Off means no session either: the host never starts one it is not allowed to. A failed start leaves none too.
+        var cockpit = _SimpleStand(withAssistant: !assistantOff && failedToStart is null, assistantOff, failedToStart);
         if (controlled)
         {
             cockpit.ActiveController = new ActiveController("LAPTOP", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero));
