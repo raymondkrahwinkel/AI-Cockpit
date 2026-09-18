@@ -27,6 +27,11 @@ public sealed class BehaviourMemorySync(
         @" \(from (?<machine>[^,()]+), (?<date>\d{4}-\d{2}-\d{2})\)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    // `AssistantMemoryFile.RememberAsync` writes every entry as `- {date} — {text}` under a heading (AC-1330
+    // review) — stripped here so the sync compares and re-sends the rule text, not that file's own bullet.
+    private static readonly Regex _DatePrefix = new(
+        @"^- \d{4}-\d{2}-\d{2} — ", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public async Task RunAsync(string nodeName, CancellationToken cancellationToken = default)
     {
         var nodeRead = await nodes.ReadMemoryAsync(nodeName, "behaviour", cancellationToken).ConfigureAwait(false);
@@ -39,8 +44,8 @@ public sealed class BehaviourMemorySync(
         }
 
         var ownMachine = Environment.MachineName;
-        var localLines = _Lines(await memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(false));
-        var nodeLines = _Lines(nodeRead.Text ?? "");
+        var localLines = _Entries(await memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(false));
+        var nodeLines = _Entries(nodeRead.Text ?? "");
         var localCores = localLines.Select(_StripOrigin).ToHashSet(StringComparer.Ordinal);
         var nodeCores = nodeLines.Select(_StripOrigin).ToHashSet(StringComparer.Ordinal);
 
@@ -90,8 +95,19 @@ public sealed class BehaviourMemorySync(
         inbox.Deliver(nodeName, AssistantIdentity.PaneId, "behaviour-sync", body);
     }
 
-    private static List<string> _Lines(string text) =>
-        [.. text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+    // Only a `- ` line is a rule — the heading and the blank line under it are structure, not content, and must
+    // never round-trip as if the operator had written a rule that says "# What the operator asked me to remember".
+    private static List<string> _Entries(string text) =>
+        [.. text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(_StripDatePrefix)];
+
+    private static string _StripDatePrefix(string entry)
+    {
+        var match = _DatePrefix.Match(entry);
+        return match.Success ? entry[match.Length..] : entry;
+    }
 
     private static string _StripOrigin(string line)
     {

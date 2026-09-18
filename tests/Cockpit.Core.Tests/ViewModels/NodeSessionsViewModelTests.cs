@@ -233,11 +233,9 @@ public class NodeSessionsViewModelTests
         await memory.RememberAsync("A", AssistantMemoryScope.Behaviour);
         await memory.RememberAsync("B", AssistantMemoryScope.Behaviour);
         var machineBefore = await memory.ReadAsync(AssistantMemoryScope.Machine);
-        var client = new FakeNodeSessions
-        {
-            Snapshot = new NodeSessionsSnapshot("laptop", [], [], []),
-            NodeBehaviour = "B\nC",
-        };
+        var client = new FakeNodeSessions { Snapshot = new NodeSessionsSnapshot("laptop", [], [], []) };
+        await client.RememberOnNodeAsync("laptop", "B", "behaviour");
+        await client.RememberOnNodeAsync("laptop", "C", "behaviour");
         var inbox = new AgentMessageInbox();
         var sync = new BehaviourMemorySync(client, memory, inbox);
         var card = new NodeSessionsViewModel(client, "laptop", behaviourSync: sync);
@@ -245,16 +243,22 @@ public class NodeSessionsViewModelTests
 
         await card.RefreshAsync();
 
-        Assert.Equal($"A\nB\nC (from laptop, {today})", await memory.ReadAsync(AssistantMemoryScope.Behaviour));
-        Assert.Equal($"B\nC\nA (from {Environment.MachineName}, {today})", client.NodeBehaviour);
+        var localAfterFirstSync = await memory.ReadAsync(AssistantMemoryScope.Behaviour);
+        var nodeAfterFirstSync = client.NodeBehaviour;
+        // Each side kept its own two entries and took over exactly one, tagged with where it came from — the
+        // real `- {date} — {text}` markdown shape (AC-1330 review), not the bare lines the fakes used before.
+        Assert.Contains("— A", localAfterFirstSync, StringComparison.Ordinal);
+        Assert.Contains("— B", localAfterFirstSync, StringComparison.Ordinal);
+        Assert.Contains($"C (from laptop, {today})", localAfterFirstSync, StringComparison.Ordinal);
+        Assert.Contains($"A (from {Environment.MachineName}, {today})", nodeAfterFirstSync, StringComparison.Ordinal);
         Assert.Equal(machineBefore, await memory.ReadAsync(AssistantMemoryScope.Machine));
         var report = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
         Assert.Equal("Took over 1 behaviour rules from laptop and sent 1 there.", report.Body);
 
         await sync.RunAsync("laptop");
 
-        Assert.Equal($"A\nB\nC (from laptop, {today})", await memory.ReadAsync(AssistantMemoryScope.Behaviour));
-        Assert.Equal($"B\nC\nA (from {Environment.MachineName}, {today})", client.NodeBehaviour);
+        Assert.Equal(localAfterFirstSync, await memory.ReadAsync(AssistantMemoryScope.Behaviour));
+        Assert.Equal(nodeAfterFirstSync, client.NodeBehaviour);
         Assert.Empty(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
     }
 
@@ -291,10 +295,14 @@ public class NodeSessionsViewModelTests
         public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
             Task.FromResult(_text.GetValueOrDefault(scope, ""));
 
+        // Mirrors `AssistantMemoryFile.RememberAsync`'s on-disk shape — a heading, then one `- {date} — {text}`
+        // entry per line — closely enough that `BehaviourMemorySync`'s parsing is exercised the way it runs for
+        // real (AC-1330 review: the bare-line fakes let a parsing bug through unnoticed).
         public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
         {
+            var entry = $"- {DateTimeOffset.Now:yyyy-MM-dd} — {text}";
             var existing = _text.GetValueOrDefault(scope, "");
-            _text[scope] = existing.Length == 0 ? text : $"{existing}\n{text}";
+            _text[scope] = existing.Length == 0 ? $"# Remembered\n\n{entry}" : $"{existing}\n{entry}";
             return Task.CompletedTask;
         }
 
@@ -379,9 +387,12 @@ public class NodeSessionsViewModelTests
             return Task.FromResult(new NodeMemoryRead(NodeBehaviour));
         }
 
+        // Same real on-disk shape as `InMemoryAssistantMemory.RememberAsync` above — a node's own memory file is
+        // written by the same `AssistantMemoryFile` code, just on that machine.
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default)
         {
-            NodeBehaviour = NodeBehaviour.Length == 0 ? text : $"{NodeBehaviour}\n{text}";
+            var entry = $"- {DateTimeOffset.Now:yyyy-MM-dd} — {text}";
+            NodeBehaviour = NodeBehaviour.Length == 0 ? $"# Remembered\n\n{entry}" : $"{NodeBehaviour}\n{entry}";
             return Task.FromResult<string?>(null);
         }
 
