@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 
@@ -20,8 +21,8 @@ public class NodePairingBrokerTests : IDisposable
 
     private NodeEndpointSettingsStore _Store() => new(_configPath);
 
-    private NodePairingBroker _Broker(NodeEndpointSettingsStore? store = null) =>
-        new(store ?? _Store(), new NodeSelfSignedCertificate(_certificatePath), _liveSecret, [], _time);
+    private NodePairingBroker _Broker(NodeEndpointSettingsStore? store = null, IMcpServerStore? servers = null) =>
+        new(store ?? _Store(), new NodeSelfSignedCertificate(_certificatePath), _liveSecret, [], servers, _time);
 
     [Fact]
     public async Task Claim_BeforeTheOperatorConfirms_IsPendingAndGrantsNothing()
@@ -113,6 +114,31 @@ public class NodePairingBrokerTests : IDisposable
         Assert.Equal(NodePairingError.AlreadyPaired, refusal.Error);
         Assert.Contains("Raymond's desktop", refusal.Message, StringComparison.Ordinal);
         Assert.Contains("192.168.1.5", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// AC-1325: no chains. A cockpit that already controls a node of its own refuses a pairing request naming that
+    /// node, and its counter-proof in the same row set — no controlled node — is today's existing behaviour: the
+    /// request becomes <c>Pending</c> exactly as before this ticket.
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "laptop" }, NodePairingError.IsAController, "laptop")]
+    [InlineData(new string[0], null, "")]
+    public async Task Request_RefusesOnlyWhenThisCockpitAlreadyControlsANode(string[] controlledNodes, string? expectedError, string expectedNameInMessage)
+    {
+        var servers = new _FakeMcpServerStore([.. controlledNodes.Select(node => new McpServerConfig
+        {
+            Name = NodeServerName.For(node, NodeServerName.SessionsServerName),
+            Transport = McpTransport.Http,
+            Url = $"https://{node}/mcp",
+        })]);
+        var broker = _Broker(servers: servers);
+
+        var refusal = await Record.ExceptionAsync(() => broker.RequestAsync("desk", "192.168.1.5")) as NodePairingException;
+
+        Assert.Equal(expectedError, refusal?.Error);
+        Assert.Equal(expectedError is null, broker.Pending is not null);
+        Assert.Contains(expectedNameInMessage, refusal?.Message ?? "", StringComparison.Ordinal);
     }
 
     [Fact]
@@ -436,6 +462,14 @@ public class NodePairingBrokerTests : IDisposable
 
         Assert.Equal(1, changes);
         Assert.Null(broker.Pending);
+    }
+
+    private sealed class _FakeMcpServerStore(IReadOnlyList<McpServerConfig> servers) : IMcpServerStore
+    {
+        public Task<IReadOnlyList<McpServerConfig>> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(servers);
+
+        public Task SaveAsync(IReadOnlyList<McpServerConfig> value, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("This test double is read-only — the guard under test only lists nodes.");
     }
 
     // xunit's own FakeTimeProvider lives in a package this project does not take; a settable clock is four lines.
