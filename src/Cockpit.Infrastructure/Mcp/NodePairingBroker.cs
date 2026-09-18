@@ -19,6 +19,10 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private readonly NodeSelfSignedCertificate _certificate;
     private readonly NodeSharedSecret _liveSecret;
     private readonly IEnumerable<ICockpitInternalMcpProvider> _endpointHosts;
+
+    // AC-1325: "do I already control a node" — null in the design-time/unit-test graph, same shape every other
+    // optional store in this codebase takes, and then the guard below simply has nothing to refuse on.
+    private readonly IMcpServerStore? _servers;
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
 
@@ -38,8 +42,9 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         INodeEndpointSettingsStore settings,
         NodeSelfSignedCertificate certificate,
         NodeSharedSecret liveSecret,
-        IEnumerable<ICockpitInternalMcpProvider> endpointHosts)
-        : this(settings, certificate, liveSecret, endpointHosts, TimeProvider.System)
+        IEnumerable<ICockpitInternalMcpProvider> endpointHosts,
+        IMcpServerStore? servers = null)
+        : this(settings, certificate, liveSecret, endpointHosts, servers, TimeProvider.System)
     {
     }
 
@@ -49,12 +54,14 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         NodeSelfSignedCertificate certificate,
         NodeSharedSecret liveSecret,
         IEnumerable<ICockpitInternalMcpProvider> endpointHosts,
+        IMcpServerStore? servers,
         TimeProvider time)
     {
         _settings = settings;
         _certificate = certificate;
         _liveSecret = liveSecret;
         _endpointHosts = endpointHosts;
+        _servers = servers;
         _time = time;
     }
 
@@ -94,8 +101,21 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         var fingerprint = _certificate.Fingerprint;
         var name = string.IsNullOrWhiteSpace(controllerName) ? "an unnamed cockpit" : controllerName.Trim();
 
+        // Also outside the lock: this is a registry read, the same shape as the fingerprint above.
+        var controlledNodes = await _ControlledNodeNamesAsync(cancellationToken).ConfigureAwait(false);
+
         lock (_gate)
         {
+            // AC-1325: no chains — a cockpit that is itself controlling one or more nodes may not also become one.
+            // Checked before AlreadyPaired since it is the more fundamental reason: unpairing here would not help.
+            if (controlledNodes.Count > 0)
+            {
+                var names = string.Join(", ", controlledNodes);
+                throw NodePairingException.For(
+                    NodePairingError.IsAController,
+                    $"This cockpit already controls {names}. Unpair {(controlledNodes.Count == 1 ? "it" : "them")} first — a cockpit cannot be both a node and a controller.");
+            }
+
             if (_pairing is { } existing)
             {
                 throw NodePairingException.For(
@@ -377,6 +397,28 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         _pending is { } pending && !pending.Claimed && !pending.Refused && !pending.Confirmed && !_IsExpired(pending) ? pending : null;
 
     private bool _IsExpired(PendingPairing pending) => _time.GetUtcNow() >= pending.ExpiresAtUtc;
+
+    // AC-1325: the names of the nodes this cockpit already controls, read off the MCP registry the same way
+    // `INodeSessionsClient.ListNodesAsync` does — lighter than depending on that whole interface for the one
+    // yes/no this broker actually needs.
+    private async Task<IReadOnlyList<string>> _ControlledNodeNamesAsync(CancellationToken cancellationToken)
+    {
+        if (_servers is null)
+        {
+            return [];
+        }
+
+        var known = await _servers.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return
+        [
+            .. known
+                .Select(server => NodeServerName.Split(server.Name))
+                .Where(split => split is { } parts && string.Equals(parts.ServerName, NodeServerName.SessionsServerName, StringComparison.Ordinal))
+                .Select(split => split!.Value.NodeName)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal),
+        ];
+    }
 
     // Constant-time for the same reason `McpAuthMiddleware` compares its bearer that way: this one is presented
     // by an unauthenticated caller over a real network, and it is the only thing standing between an overheard

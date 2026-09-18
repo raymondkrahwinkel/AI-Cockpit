@@ -32,7 +32,8 @@ public interface INodePairingBroker
 
     /// <summary>
     /// Takes on a pairing request. Refuses with <see cref="NodePairingError.AlreadyPaired"/> when already
-    /// controlled, and with <see cref="NodePairingError.PairingInProgress"/> while another request still waits.
+    /// controlled, with <see cref="NodePairingError.PairingInProgress"/> while another request still waits, and
+    /// with <see cref="NodePairingError.IsAController"/> when this cockpit already controls a node of its own.
     /// </summary>
     /// <exception cref="NodePairingException">The request is refused; <c>Problem</c> says why.</exception>
     Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default);

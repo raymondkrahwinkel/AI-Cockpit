@@ -842,6 +842,15 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
+        // AC-1325: no chains — before any network call, refuse when this cockpit is itself already a node.
+        if (nodePairing?.Pairing is { } controlledBy)
+        {
+            PairingStatus =
+                $"This cockpit is already controlled by \"{controlledBy.ControllerName}\" ({controlledBy.ControllerAddress}). "
+                + "Unpair it on the Nodes page first — a cockpit cannot be both a node and a controller.";
+            return;
+        }
+
         IsPairingBusy = true;
         PairingStatus = "";
         try

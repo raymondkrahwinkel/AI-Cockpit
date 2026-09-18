@@ -64,6 +64,10 @@ public static class NodePairingError
     // from a credential problem without guessing.
     public const string AlreadyPaired = "already_paired";
 
+    // AC-1325: this cockpit already controls one or more nodes of its own — no chains. The description names
+    // them, so the operator knows what to unpair before retrying.
+    public const string IsAController = "is_a_controller";
+
     // Another pairing is pending. A second request must not be allowed to quietly replace the one the operator
     // is looking at — that would make cancelling somebody else's pairing a thing an unauthenticated caller can do.
     public const string PairingInProgress = "pairing_in_progress";

@@ -148,6 +148,34 @@ public class SecurityOptionsViewModelTests
         Assert.Contains(expectedText, vm.NodeEndpointNoListenerText, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// AC-1325: no chains, controller side. This cockpit is itself already a node — starting "Pair with another
+    /// Cockpit" must refuse before touching the network, naming the controller it is already answering to.
+    /// </summary>
+    [Fact]
+    public async Task StartPairing_WhileThisCockpitIsAlreadyANode_RefusesBeforeAnyNetworkCall()
+    {
+        var pairing = Substitute.For<INodePairingBroker>();
+        pairing.Pairing.Returns(new NodePairing
+        {
+            ControllerName = "Raymond's desktop",
+            ControllerAddress = "192.168.1.5",
+            PairedAtUtc = DateTimeOffset.UnixEpoch,
+        });
+        var client = new FakePairingClient();
+
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairing: pairing, nodePairingClient: client)
+        {
+            PairWithNodeAddress = "192.168.1.20:7331",
+        };
+
+        await vm.StartPairingCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, client.BeginCalls);
+        Assert.Contains("Raymond's desktop", vm.PairingStatus, StringComparison.Ordinal);
+        Assert.False(vm.IsComparingPairingCode);
+    }
+
     [Fact]
     public async Task CompletingAPairing_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierPairingsRows()
     {
@@ -509,9 +537,14 @@ public class SecurityOptionsViewModelTests
 
     private sealed class FakePairingClient : INodePairingClient
     {
-        public Task<NodePairingHandshake> BeginAsync(string address, string controllerName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodePairingHandshake(
+        public int BeginCalls { get; private set; }
+
+        public Task<NodePairingHandshake> BeginAsync(string address, string controllerName, CancellationToken cancellationToken = default)
+        {
+            BeginCalls++;
+            return Task.FromResult(new NodePairingHandshake(
                 $"https://{address}/", "pairing-id", "claim-token", "laptop", "314159", "AABBCCDD", DateTimeOffset.MaxValue));
+        }
 
         public Task<NodePairingGrant> CompleteAsync(NodePairingHandshake handshake, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodePairingGrant("granted-by-pairing", [new NodeEndpointAddress("cockpit-agents", "https://192.168.1.20:7401/mcp")]));

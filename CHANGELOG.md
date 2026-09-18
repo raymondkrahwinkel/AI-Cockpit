@@ -465,6 +465,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it is connected and can start, stop and steer sessions and read their transcripts — on the pairing request, on
   the paired-controller card under Options → Nodes and on the banner in the main window. The choice of which
   profiles and projects it may reach is the same as before and still bounds every call (AC-1323).
+- changed: pairing no longer allows a chain. A cockpit that already controls one or more nodes now refuses an
+  incoming pairing request, naming the node(s) to unpair first, and a cockpit that is itself already paired as a
+  node now refuses to start "Pair with another Cockpit" before touching the network, naming the controller it
+  already answers to (AC-1325).
 - changed: the first-run question "What kind of work is this for?" now reads as a choice. The four kinds sit in one
   framed track as buttons — the same control as the Simple/Panels switch — instead of a row of labels that gave no
   sign they could be clicked, and a line above the list says what your pick did to it: which plugins were suggested,
