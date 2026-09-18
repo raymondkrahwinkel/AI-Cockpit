@@ -48,7 +48,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private readonly RecordingAssistantMemory _memory = new();
 
-    private AssistantAgentMcpTools _Tools() => new(_gateway, _memory, _consent);
+    private readonly RecordingNodesClient _nodes = new();
+
+    private AssistantAgentMcpTools _Tools() => new(_gateway, _memory, _consent, _nodes);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -214,7 +216,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Equal(
             tools.Count,
-            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count);
+            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _nodes.Reads.Count);
     }
 
     [Fact]
@@ -523,6 +525,48 @@ public sealed class AssistantActMountRuleTests : IDisposable
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
         {
         }
+    }
+
+    /// <summary>
+    /// AC-1329: a stand-in for the paired-node line, wide enough for this file's reflection sweep — `remember`'s
+    /// behaviour path lists zero nodes, and <c>read_node_memory</c> is the one tool here that actually reads
+    /// through it. Every other member is unused by anything this class calls with the sweep's filled-in arguments.
+    /// </summary>
+    private sealed class RecordingNodesClient : INodeSessionsClient
+    {
+        public List<(string Node, string Scope)> Reads { get; } = [];
+
+        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default)
+        {
+            Reads.Add((nodeName, scope));
+            return Task.FromResult(new NodeMemoryRead("what this node knows"));
+        }
+
+        public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => throw new NotSupportedException();
+
+        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     /// <summary>Clears the ambient pane so one test's caller is never another's.</summary>

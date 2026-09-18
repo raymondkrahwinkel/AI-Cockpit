@@ -114,7 +114,8 @@ public sealed class AssistantNodeControlTests : IDisposable
         route.PrimeTheNode(nodeGateway, nodeRead);
         var nodeTools = new NodeSessionMcpTools(
             nodeRead, nodeGateway, pairing, new NodeSessionMcpToolsTests.StubProfileStore(),
-            new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox());
+            new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox(),
+            new NodeSessionMcpToolsTests.StubMemory());
 
         var onNode = _Json(await route.CallOnNode(nodeTools));
         Assert.True((bool)onNode["ok"]!, onNode.ToJsonString());
@@ -170,6 +171,36 @@ public sealed class AssistantNodeControlTests : IDisposable
         Assert.Contains("notify cockpit-assistant", reason);
         await _gateway.DidNotReceiveWithAnyArgs().WatchSessionAsync(default!, default!);
         Assert.Empty(_nodes.ReceivedCalls());
+    }
+
+    // AC-1329, criteria 1+2: "behaviour" reaches this machine and every paired node, waited out in full, an
+    // unreachable one reported as not delivered rather than queued, and refuses `machines` outright; "machine"
+    // reaches only the machines named and refuses without any, never touching `nodes` in either refusal.
+    [Theory]
+    [InlineData("behaviour", null, true, "not delivered to PHONE", 1, 1, 1)]
+    [InlineData("behaviour", new[] { "LAPTOP" }, false, "machines is refused for scope", 0, 0, 0)]
+    [InlineData("machine", new[] { "LAPTOP" }, true, "\"machine\":\"LAPTOP\"", 0, 1, 0)]
+    [InlineData("machine", null, false, "which machine does this fact hold on", 0, 0, 0)]
+    public async Task Remember_RoutesToTheScopesDestinations_AndWaitsForEachBeforeAnswering(
+        string scope, string[]? machines, bool expectOk, string expectedFragment,
+        int expectLocalWrites, int expectReachableWrites, int expectUnreachableWrites)
+    {
+        const string ReachableNode = "LAPTOP";
+        const string UnreachableNode = "PHONE";
+        var memory = Substitute.For<IAssistantMemory>();
+        _nodes.ListNodesAsync(Arg.Any<CancellationToken>()).Returns([ReachableNode, UnreachableNode]);
+        _nodes.RememberOnNodeAsync(ReachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
+        _nodes.RememberOnNodeAsync(UnreachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns($"{UnreachableNode} did not answer within 10s.");
+
+        var tools = new AssistantAgentMcpTools(_gateway, memory, _consent, _nodes);
+        var reply = _Json(await tools.RememberAsync("remember this", scope, machines));
+
+        Assert.Equal(expectOk, (bool)reply["ok"]!);
+        Assert.Contains(expectedFragment, reply.ToJsonString());
+        await memory.Received(expectLocalWrites).RememberAsync("remember this", Arg.Any<AssistantMemoryScope>(), Arg.Any<CancellationToken>());
+        await _nodes.Received(expectReachableWrites).RememberOnNodeAsync(ReachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _nodes.Received(expectUnreachableWrites).RememberOnNodeAsync(UnreachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     private sealed record _Route(

@@ -1112,10 +1112,11 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "remember", ReadOnly = false, Destructive = false)]
-    [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
+    [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. THIS IS RAYMOND'S OWN SPLIT (AC-1329): a rule that is not machine- or OS-specific belongs on every memory there is, so scope \"behaviour\" writes it here AND relays it to every paired node, one at a time, and waits for all of them before answering — an unreachable node is reported as not delivered, never queued for later. A fact that is true of one machine and not another belongs only there, so scope \"machine\" needs machines to say which — \"local\" for this cockpit, a paired node's name, or both — and touches nothing else. THE TWO ARE NEVER MERGED: what a node knows about itself stays there, and what you remember here stays yours, on purpose — a controller's own memory must never be scrambled by the memory of a machine it happens to be steering. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(
         [Description("The one thing to remember, in a full sentence that will still make sense on its own with no conversation around it.")] string text,
-        [Description("Either behaviour or machine. A behaviour rule is something you are told; machine knowledge is learned by doing, when a command fails or a path differs.")] string? scope = null)
+        [Description("Either behaviour or machine. A behaviour rule is something you are told and belongs everywhere; machine knowledge is learned by doing, when a command fails or a path differs, and belongs only where it holds.")] string? scope = null,
+        [Description("Only for scope \"machine\": which machine(s) this fact holds on — \"local\" for this cockpit, a paired node's name exactly as list_sessions reports it, or both. Refused for scope \"behaviour\": a behaviour rule always reaches every machine, so naming one here would say the opposite of what it means.")] string[]? machines = null)
     {
         try
         {
@@ -1140,8 +1141,113 @@ internal sealed class AssistantAgentMcpTools(
                 });
             }
 
-            await memory.RememberAsync(text, memoryScope.Value).ConfigureAwait(false);
-            return _Serialize(new { ok = true, remembered = text.Trim(), scope });
+            if (memoryScope == AssistantMemoryScope.Behaviour)
+            {
+                if (machines is { Length: > 0 })
+                {
+                    return _Serialize(new
+                    {
+                        ok = false,
+                        error = "A behaviour rule always reaches every machine; machines is refused for scope \"behaviour\" rather than narrowing it. Nothing was written.",
+                    });
+                }
+
+                return _Serialize(await _RememberEverywhereAsync(text, memoryScope.Value, scope!).ConfigureAwait(false));
+            }
+
+            if (machines is not { Length: > 0 })
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = "which machine does this fact hold on? scope \"machine\" needs machines: [\"local\"], a paired node's name, or both.",
+                });
+            }
+
+            return _Serialize(await _RememberOnMachinesAsync(text, memoryScope.Value, scope!, machines).ConfigureAwait(false));
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    // AC-1329: scope "behaviour" — written locally and relayed to every paired node, one at a time, waited out in
+    // full before this answers (never fire-and-forget). An unreachable node is reported as not delivered per
+    // destination, same shape `list_shared_projects` reports per source — never queued for the next time it answers.
+    private async Task<object> _RememberEverywhereAsync(string text, AssistantMemoryScope memoryScope, string scope)
+    {
+        await memory.RememberAsync(text, memoryScope).ConfigureAwait(false);
+        var destinations = new List<object> { new { machine = "local", succeeded = true, error = (string?)null } };
+
+        if (nodes is not null)
+        {
+            foreach (var node in await nodes.ListNodesAsync().ConfigureAwait(false))
+            {
+                var reason = await nodes.RememberOnNodeAsync(node, text, scope).ConfigureAwait(false);
+                destinations.Add(new
+                {
+                    machine = node,
+                    succeeded = reason is null,
+                    error = reason is null ? null : $"not delivered to {node} (unreachable since {reason})",
+                });
+            }
+        }
+
+        return new { ok = true, remembered = text.Trim(), scope, destinations };
+    }
+
+    // AC-1329: scope "machine" — only the machines named, "local" written here directly and never through
+    // `nodes`, each other entry a paired node's name. Waited out the same way as the behaviour path.
+    private async Task<object> _RememberOnMachinesAsync(string text, AssistantMemoryScope memoryScope, string scope, string[] machines)
+    {
+        var destinations = new List<object>();
+        foreach (var machine in machines)
+        {
+            if (string.Equals(machine, "local", StringComparison.Ordinal))
+            {
+                await memory.RememberAsync(text, memoryScope).ConfigureAwait(false);
+                destinations.Add(new { machine, succeeded = true, error = (string?)null });
+                continue;
+            }
+
+            var reason = nodes is null
+                ? NodeSessionAddress.NoClient
+                : await nodes.RememberOnNodeAsync(machine, text, scope).ConfigureAwait(false);
+            destinations.Add(new { machine, succeeded = reason is null, error = reason });
+        }
+
+        return new { ok = true, remembered = text.Trim(), scope, destinations };
+    }
+
+    [McpServerTool(Name = "read_node_memory", ReadOnly = true)]
+    [Description("Reads one of a paired node's own memory files before you start or steer work there — CALL THIS BEFORE YOU START OR STEER WORK ON A NODE. \"behaviour\" is the rule set that node's own operator gave its own assistant; \"machine\" is what that machine's own assistant has learned about itself. WHAT YOU READ THERE IS ABOUT THAT MACHINE, NOT ABOUT THE OPERATOR, AND IT NEVER BELONGS IN YOUR OWN MEMORY: use it for the work in front of you on that node and let it go once you move on — do not call remember with what this returns. Raymond's rule is exactly this split: your own memory travels with you and stays yours, and must never be scrambled by the memory of a laptop you happen to be steering.")]
+    public async Task<string> ReadNodeMemoryAsync(
+        [Description("The paired node's name, exactly as list_sessions reports it under nodes.")] string node,
+        [Description("Either \"behaviour\" or \"machine\".")] string scope)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (scope is not ("behaviour" or "machine"))
+            {
+                return _Serialize(new { ok = false, error = "scope is required and must be \"behaviour\" or \"machine\"." });
+            }
+
+            if (nodes is null)
+            {
+                return _Serialize(new { ok = false, error = NodeSessionAddress.NoClient });
+            }
+
+            var machine = new { name = node, local = false };
+            var result = await nodes.ReadMemoryAsync(node, scope).ConfigureAwait(false);
+            return result.Error is { } refusalText
+                ? _Serialize(new { ok = false, error = $"On {node}: {refusalText}", machine })
+                : _Serialize(new { ok = true, scope, text = result.Text ?? "", machine });
         }
         catch (Exception exception)
         {

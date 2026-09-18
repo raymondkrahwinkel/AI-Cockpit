@@ -120,7 +120,8 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Substitute.For<INodePairingBroker>(),
         Substitute.For<ISessionProfileStore>(),
         new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")),
-        _inbox);
+        _inbox,
+        Substitute.For<IAssistantMemory>());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 

@@ -90,7 +90,24 @@ public interface INodeSessionsClient
     /// (<c>start_agent</c>'s local/node ambiguity check, <c>list_profiles</c>'s node rows) reads instead.
     /// </remarks>
     (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName);
+
+    /// <summary>
+    /// AC-1329: reads one of <paramref name="nodeName"/>'s own memory files — "behaviour" or "machine" — for the
+    /// controller's assistant to use while it is working on that node. What comes back is never written into the
+    /// controller's own memory: the two are never merged into one.
+    /// </summary>
+    Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1329: appends <paramref name="text"/> to <paramref name="nodeName"/>'s own memory file for the given
+    /// scope. Null when written, else the node's own refusal or the reason it was not reached.
+    /// </summary>
+    Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default);
 }
+
+// AC-1329: one memory read on a node. A non-null Error means nothing was read; Text is empty (never null) rather
+// than absent when that scope's file has nothing in it yet.
+public sealed record NodeMemoryRead(string? Text, string? Error = null);
 
 // AC-1324: what an answer on a node came to. `Answered` false with no error means the question was no longer
 // open there — answered on the node itself, or the session gone — and nothing was done.

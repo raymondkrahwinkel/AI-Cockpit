@@ -38,8 +38,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
     private readonly StubPairing _pairing = new();
 
-    private NodeSessionMcpTools _Tools() =>
-        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox());
+    private NodeSessionMcpTools _Tools(IAssistantMemory? memory = null) =>
+        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox(), memory ?? new StubMemory());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -254,7 +254,59 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.False(answer["ok"]!.GetValue<bool>());
     }
 
+    // AC-1329 criterion 3, plus its counterproof: scope "machine" gives the machine file's content and never the
+    // behaviour file's, remember_on_node appends to the file the scope names, and neither reaches this machine's
+    // memory at all without the controller's own identity.
+    [Fact]
+    public async Task Memory_IsScopedToTheFileNamed_AndRefusedWithoutTheControllersIdentity_WithoutWriting()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        var memory = new StubMemory { Machine = "this laptop's own paths", Behaviour = "how this laptop's operator wants replies" };
+        var tools = _Tools(memory);
+
+        var machineRead = _Json(await tools.ReadNodeMemoryAsync("machine"));
+        Assert.True(machineRead["ok"]!.GetValue<bool>());
+        Assert.Equal("this laptop's own paths", machineRead["text"]!.GetValue<string>());
+        // Counterproof: the behaviour file's content never rides along on a machine-scoped read.
+        Assert.DoesNotContain("how this laptop's operator wants replies", machineRead.ToJsonString(), StringComparison.Ordinal);
+
+        var remembered = _Json(await tools.RememberOnNodeAsync("a fact learned by doing here", "machine"));
+        Assert.True(remembered["ok"]!.GetValue<bool>());
+        Assert.Equal((AssistantMemoryScope.Machine, "a fact learned by doing here"), memory.Remembered.Single());
+
+        McpRequestContext.Set(OrdinarySessionPane);
+        var refused = _Json(await tools.RememberOnNodeAsync("should never land", "machine"));
+        Assert.False(refused["ok"]!.GetValue<bool>());
+        Assert.Single(memory.Remembered);
+    }
+
     public void Dispose() => McpRequestContext.Set(null);
+
+    internal sealed class StubMemory : IAssistantMemory
+    {
+        public string Machine { get; set; } = "";
+
+        public string Behaviour { get; set; } = "";
+
+        public List<(AssistantMemoryScope Scope, string Text)> Remembered { get; } = [];
+
+        public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(scope == AssistantMemoryScope.Machine ? Machine : Behaviour);
+
+        public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
+        {
+            Remembered.Add((scope, text));
+            return Task.CompletedTask;
+        }
+
+        public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 
     // Internal rather than private: `NodeSessionsClientRealNetworkTests` (AC-796) reuses these four fakes to host a
     // real `NodeSessionMcpTools` behind a real TLS listener, instead of redeclaring the same stand-ins twice.

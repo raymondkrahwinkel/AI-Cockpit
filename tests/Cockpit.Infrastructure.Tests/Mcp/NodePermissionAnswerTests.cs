@@ -40,7 +40,8 @@ public sealed class NodePermissionAnswerTests : IDisposable
 
     private NodeSessionMcpTools _Tools() => new(
         _read, _gateway, _pairing, new NodeSessionMcpToolsTests.StubProfileStore(),
-        new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox());
+        new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox(),
+        new NodeSessionMcpToolsTests.StubMemory());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
