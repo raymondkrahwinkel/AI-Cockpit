@@ -191,10 +191,10 @@ public class NodeSessionsViewModelTests
         Assert.Empty(client.Queued);
     }
 
-    // AC-1327 criterion 2: the controller's assistant hears about the node itself, once per reachable↔unreachable
-    // edge, never per poll — three failed refreshes in a row are still one "node-dropped" message.
+    // AC-1327 criterion 2: one missed 20s poll is a blip, not a drop, so the first miss reports nothing; the
+    // second is the threshold and reports "node-dropped"; a third still in a row adds no second message.
     [Fact]
-    public async Task Refresh_OnAReachabilityTransition_TellsTheControllersAssistant_OncePerTransition_NotPerPoll()
+    public async Task Refresh_NeedsASecondConsecutiveMiss_ThenReportsOncePerEdge()
     {
         var client = new FakeNodeSessions
         {
@@ -204,12 +204,15 @@ public class NodeSessionsViewModelTests
         var card = new NodeSessionsViewModel(client, "laptop", new NodeInboxRelay(client, inbox));
 
         await card.RefreshAsync();
-        await card.RefreshAsync();
-        await card.RefreshAsync();
+        Assert.Empty(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
 
+        await card.RefreshAsync();
         var dropped = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
         Assert.Equal("laptop", dropped.FromPaneId);
         Assert.Equal("node-dropped", dropped.Kind);
+
+        await card.RefreshAsync();
+        Assert.Empty(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
 
         client.Snapshot = new NodeSessionsSnapshot("laptop", [SweepOnTheNode], [], []);
         await card.RefreshAsync();

@@ -56,6 +56,10 @@ public sealed partial class NodeSessionsViewModel(
     // nobody asked about — only an edge after that fires a message, never a level.
     private bool _wasReachable = true;
 
+    // AC-1327 criterion 2: one missed 20s poll is a blip, not a drop — mirrors the node-side 60s fallback, which
+    // does not tip on a single miss either. Counts consecutive failures; the second is the threshold.
+    private int _consecutiveMisses;
+
     [RelayCommand]
     public async Task RefreshAsync()
     {
@@ -127,10 +131,19 @@ public sealed partial class NodeSessionsViewModel(
         }
     }
 
-    // AC-1327 criterion 2: fires only on the reachable↔unreachable edge, using the same relay/Deliver path as
-    // the mail poll above — `InboxWakeScheduler` wakes for this post the same way it does for any other.
+    // AC-1327 criterion 2: fires only on the reachable↔unreachable edge, past the second consecutive miss, using
+    // the same relay/Deliver path as the mail poll above — `InboxWakeScheduler` wakes for this post like any other.
     private void _NoteReachability(bool reachable, int sessionCount)
     {
+        if (reachable)
+        {
+            _consecutiveMisses = 0;
+        }
+        else if (++_consecutiveMisses < 2)
+        {
+            return;
+        }
+
         if (reachable == _wasReachable)
         {
             return;

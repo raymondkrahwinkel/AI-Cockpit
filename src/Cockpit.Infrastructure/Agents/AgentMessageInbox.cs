@@ -110,26 +110,35 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     // the session list, since the handover notice is still worth sending without it.
     private async Task _DeliverControllerHandoverNoticeAsync(ActiveController previous)
     {
-        IReadOnlyList<AssistantSessionRow> sessions = [];
-        if (_services?.GetService<IAssistantReadGateway>() is { } sessionsRead)
+        // The whole body, not just the session-list read below: this is fire-and-forget off an event handler
+        // with no await point on the caller's side, so anything left to throw here becomes an unobserved Task.
+        try
         {
-            try
+            IReadOnlyList<AssistantSessionRow> sessions = [];
+            if (_services?.GetService<IAssistantReadGateway>() is { } sessionsRead)
             {
-                sessions = await sessionsRead.ListSessionsAsync().ConfigureAwait(false);
+                try
+                {
+                    sessions = await sessionsRead.ListSessionsAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort — the notice still says who and when without the session list.
+                }
             }
-            catch (Exception)
-            {
-                // Best-effort — the notice still says who and when without the session list.
-            }
-        }
 
-        var running = sessions.Count == 0 ? "nothing" : string.Join(", ", sessions.Select(session => session.Name));
-        Deliver(
-            previous.Name,
-            AssistantIdentity.PaneId,
-            "controller-handover",
-            $"{previous.Name} controlled this machine from {previous.SinceUtc:u} to {DateTimeOffset.UtcNow:u}. "
-            + $"Running here now: {running}.");
+            var running = sessions.Count == 0 ? "nothing" : string.Join(", ", sessions.Select(session => session.Name));
+            Deliver(
+                previous.Name,
+                AssistantIdentity.PaneId,
+                "controller-handover",
+                $"{previous.Name} controlled this machine from {previous.SinceUtc:u} to {DateTimeOffset.UtcNow:u}. "
+                + $"Running here now: {running}.");
+        }
+        catch (Exception)
+        {
+            // Swallowed deliberately — see the comment above the try.
+        }
     }
 
     public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body)
