@@ -249,6 +249,12 @@ public class NodeSessionsViewModelTests
         public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodePermissionAnswer(false));
 
+        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeMemoryRead(""));
+
+        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
         public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
         {
             if (FailNextInboxRead)

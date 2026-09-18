@@ -253,6 +253,31 @@ internal sealed class NodeSessionsClient(
         }
     }
 
+    public async Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            var result = await _CallAsync(client, "read_node_memory", new Dictionary<string, object?> { ["scope"] = scope }, cancellationToken).ConfigureAwait(false);
+
+            return _ErrorIn(result) is { } refusal
+                ? new NodeMemoryRead(null, refusal)
+                : new NodeMemoryRead(_Text(result, "text"));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogInformation(exception, "Could not read {Scope} memory on node {Node}.", scope, nodeName);
+            return new NodeMemoryRead(null, Classify(nodeName, exception));
+        }
+    }
+
+    public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "remember_on_node", new Dictionary<string, object?> { ["text"] = text, ["scope"] = scope }, cancellationToken);
+
     public async Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default)
     {
         try

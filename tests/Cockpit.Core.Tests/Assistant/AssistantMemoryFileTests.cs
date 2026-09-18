@@ -38,11 +38,12 @@ public class AssistantMemoryFileTests : IDisposable
     }
 
     [Theory]
-    [InlineData("machine", true, false, true, true)]
-    [InlineData("behaviour", false, true, false, false)]
-    [InlineData(null, false, false, true, false)]
+    [InlineData("machine", new[] { "local" }, true, false, true, true)]
+    [InlineData("behaviour", null, false, true, false, false)]
+    [InlineData(null, null, false, false, true, false)]
     public async Task Remember_RequiresAScope_AndKeepsTheExistingBehaviourFileByteIdenticalWhenItDoesNotTargetIt(
         string? scope,
+        string[]? machines,
         bool isInMachineMemory,
         bool isInBehaviourMemory,
         bool behaviourIsUnchanged,
@@ -54,7 +55,7 @@ public class AssistantMemoryFileTests : IDisposable
         McpRequestContext.Set(AssistantIdentity.PaneId);
 
         var result = JsonNode.Parse(await new AssistantAgentMcpTools(
-            Substitute.For<IAssistantAgentGateway>(), memory).RememberAsync("Git Bash lives here.", scope))!;
+            Substitute.For<IAssistantAgentGateway>(), memory).RememberAsync("Git Bash lives here.", scope, machines))!;
 
         Assert.Equal(scope is not null, result["ok"]!.GetValue<bool>());
         Assert.Equal(isInMachineMemory, (await memory.ReadAsync(AssistantMemoryScope.Machine)).Contains("Git Bash lives here.", StringComparison.Ordinal));

@@ -20,7 +20,11 @@ internal sealed class NodeSessionMcpTools(
     INodePairingBroker pairing,
     ISessionProfileStore profiles,
     NodeDiscoveryId discoveryId,
-    IAgentMessageInbox inbox)
+    IAgentMessageInbox inbox,
+    // AC-1329: this machine's own memory — the same behaviour/machine split its own assistant reads at every
+    // start. Never merged with the controller's: what these two tools hand over is read there and let go, per
+    // Raymond's rule that a controller's memory must not be scrambled by the memory of the machine it is working on.
+    IAssistantMemory memory)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -184,6 +188,59 @@ internal sealed class NodeSessionMcpTools(
         catch (Exception exception)
         {
             return Task.FromResult(_Serialize(new { ok = false, error = exception.Message }));
+        }
+    }
+
+    [McpServerTool(Name = "read_node_memory", ReadOnly = true)]
+    [Description("Reads one of THIS machine's own memory files for its controller — never a pane, so the only gate is being the controller at all. \"behaviour\" is the rule set this machine's own operator gave its own assistant; \"machine\" is what this machine's own assistant has learned about itself by doing — a path, a quirk, a command that failed here. Raymond's rule for why this exists: the controller needs to see this while it is steering work here, but what it reads must never travel back into its own memory — that would be exactly the scrambling he ruled out (its memory travels with it, stays its own, and is never merged with a laptop's). scope is required and must be \"behaviour\" or \"machine\"; anything else is refused.")]
+    public async Task<string> ReadNodeMemoryAsync(
+        [Description("Either \"behaviour\" or \"machine\".")] string scope)
+    {
+        try
+        {
+            if (_RefuseIfNotTheController() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (_ParseMemoryScope(scope) is not { } memoryScope)
+            {
+                return _ScopeRefusal();
+            }
+
+            var text = await memory.ReadAsync(memoryScope).ConfigureAwait(false);
+            return _Serialize(new { ok = true, node = Environment.MachineName, scope, text });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "remember_on_node", ReadOnly = false, Destructive = false)]
+    [Description("Appends one fact to THIS machine's own memory — the same file its own assistant reads at every start — in the scope named. USE THIS FOR MACHINE KNOWLEDGE LEARNED WHILE WORKING HERE (a path, a quirk, a command that only fails on this box): the controller's own remember tool already reaches this tool by itself for a behaviour rule, since Raymond's rule is that anything not machine/OS-specific goes on every memory at once, and only what is specific to a machine is written to that machine alone. scope is required and must be \"behaviour\" or \"machine\"; anything else is refused and nothing is written.")]
+    public async Task<string> RememberOnNodeAsync(
+        [Description("The one thing to remember, as a full sentence that will still make sense with no conversation around it.")] string text,
+        [Description("Either \"behaviour\" or \"machine\" — which of this machine's own memory files the line is appended to.")] string scope)
+    {
+        try
+        {
+            if (_RefuseIfNotTheController() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (_ParseMemoryScope(scope) is not { } memoryScope)
+            {
+                return _ScopeRefusal();
+            }
+
+            await memory.RememberAsync(text, memoryScope).ConfigureAwait(false);
+            return _Serialize(new { ok = true, node = Environment.MachineName, remembered = text.Trim(), scope });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
         }
     }
 
@@ -491,6 +548,18 @@ internal sealed class NodeSessionMcpTools(
         var usable = workspaces.Where(workspace => workspace.CanHostSessions).ToList();
         return (usable.FirstOrDefault(workspace => workspace.IsActive) ?? usable.FirstOrDefault())?.Id;
     }
+
+    // AC-1329: the same two-value parse `remember` uses on the controller, kept local rather than shared — every
+    // MCP tool class here already carries its own `_Serialize`/refusal helpers rather than a common base.
+    private static AssistantMemoryScope? _ParseMemoryScope(string? scope) => scope switch
+    {
+        "behaviour" => AssistantMemoryScope.Behaviour,
+        "machine" => AssistantMemoryScope.Machine,
+        _ => null,
+    };
+
+    private static string _ScopeRefusal() =>
+        _Serialize(new { ok = false, error = "scope is required and must be \"behaviour\" or \"machine\"." });
 
     private static string? _RefuseIfNotTheController() =>
         string.Equals(McpRequestContext.CurrentPaneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal)
