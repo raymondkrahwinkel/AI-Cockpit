@@ -207,6 +207,9 @@ public class NodeSessionsViewModelTests
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
 
+        public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) =>
+            string.Equals(nodeName, Snapshot.NodeName, StringComparison.Ordinal) ? (Snapshot, DateTimeOffset.UtcNow) : null;
+
         public Task<NodeStartResult> StartAsync(
             string nodeName,
             string profileLabel,

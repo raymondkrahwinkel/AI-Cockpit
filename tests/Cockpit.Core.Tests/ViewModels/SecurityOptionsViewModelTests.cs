@@ -462,6 +462,8 @@ public class SecurityOptionsViewModelTests
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], []));
 
+        public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
+
         public Task<NodeStartResult> StartAsync(
             string nodeName,
             string profileLabel,
