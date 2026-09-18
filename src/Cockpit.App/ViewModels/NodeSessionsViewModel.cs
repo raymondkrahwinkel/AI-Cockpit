@@ -52,6 +52,14 @@ public sealed partial class NodeSessionsViewModel(
     [ObservableProperty]
     private string _status = "";
 
+    // AC-1327 criterion 2: starts reachable so the very first successful refresh does not read as a "node-back"
+    // nobody asked about — only an edge after that fires a message, never a level.
+    private bool _wasReachable = true;
+
+    // AC-1327 criterion 2: one missed 20s poll is a blip, not a drop — mirrors the node-side 60s fallback, which
+    // does not tip on a single miss either. Counts consecutive failures; the second is the threshold.
+    private int _consecutiveMisses;
+
     [RelayCommand]
     public async Task RefreshAsync()
     {
@@ -76,6 +84,7 @@ public sealed partial class NodeSessionsViewModel(
                 // swallow: the lists stay empty and the reason is on screen, so nothing here reads as "nothing is
                 // running there" when the truth is "nobody answered".
                 Status = error;
+                _NoteReachability(reachable: false, sessionCount: 0);
                 return;
             }
 
@@ -113,11 +122,35 @@ public sealed partial class NodeSessionsViewModel(
             {
                 await inboxRelay.PollAsync(NodeName).ConfigureAwait(true);
             }
+
+            _NoteReachability(reachable: true, sessionCount: Sessions.Count);
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    // AC-1327 criterion 2: fires only on the reachable↔unreachable edge, past the second consecutive miss, using
+    // the same relay/Deliver path as the mail poll above — `InboxWakeScheduler` wakes for this post like any other.
+    private void _NoteReachability(bool reachable, int sessionCount)
+    {
+        if (reachable)
+        {
+            _consecutiveMisses = 0;
+        }
+        else if (++_consecutiveMisses < 2)
+        {
+            return;
+        }
+
+        if (reachable == _wasReachable)
+        {
+            return;
+        }
+
+        _wasReachable = reachable;
+        inboxRelay?.NotifyTransition(NodeName, reachable, sessionCount, DateTimeOffset.UtcNow);
     }
 
     // Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks on the thread that constructed

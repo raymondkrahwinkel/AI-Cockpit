@@ -31,6 +31,20 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
 
     public event EventHandler? Changed;
 
+    // AC-1327 reviewbevinding 1: an unpair ends the coupling at once, so Current must clear at once too, not wait
+    // out the minute-long expiry. Called post-construction (`CockpitMcpEndpointHost.StartAsync`) rather than a
+    // constructor dependency, which would pull the broker's whole endpoint-hosting chain into every resolution here.
+    internal void WatchPairing(INodePairingBroker pairing)
+    {
+        pairing.Changed += (_, _) =>
+        {
+            if (pairing.Pairing is null)
+            {
+                _Clear();
+            }
+        };
+    }
+
     public ActiveController? Current
     {
         get
@@ -76,5 +90,24 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // AC-1327 reviewbevinding 1: the unpair-driven clear — skips the window check `_Expire` makes, since an
+    // unpair is not a missed poll, it is the coupling ending right now.
+    private void _Clear()
+    {
+        bool disappeared;
+        lock (_gate)
+        {
+            disappeared = _current is not null;
+            _current = null;
+            _expiry?.Dispose();
+            _expiry = null;
+        }
+
+        if (disappeared)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

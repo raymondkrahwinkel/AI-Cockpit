@@ -78,6 +78,14 @@ internal sealed class CockpitMcpEndpointHost
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // AC-1327 reviewbevinding 1: wires presence to the pairing broker's Changed event once, now that both
+        // singletons exist — see `NodeControllerPresence.WatchPairing` for why this is not a constructor dependency.
+        if (_services.GetService<NodeControllerPresence>() is { } presence
+            && _services.GetService<INodePairingBroker>() is { } pairing)
+        {
+            presence.WatchPairing(pairing);
+        }
+
         foreach (var endpoint in _endpoints)
         {
             try

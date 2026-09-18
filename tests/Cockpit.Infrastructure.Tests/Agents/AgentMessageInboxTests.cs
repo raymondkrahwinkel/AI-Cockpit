@@ -1,4 +1,7 @@
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Agents;
 
 namespace Cockpit.Infrastructure.Tests.Agents;
@@ -281,6 +284,30 @@ public sealed class AgentMessageInboxTests
             inbox.Deliver("pane-a", "pane-b", "question", "did you see this?"))));
 
         Assert.Single(_DrainAll(inbox, "pane-b"));
+    }
+
+    /// <summary>
+    /// AC-1327 reviewbevinding 2: presence can expire in the window between a caller reading it and this Deliver
+    /// landing — closing that race here, under the same lock the fold itself takes, rather than leaving a message
+    /// stuck in an abandoned controller queue until the next expiry, or forever if none comes.
+    /// </summary>
+    [Fact]
+    public void Deliver_ToTheControllerQueue_WithNoPresence_FoldsItStraightIntoTheLocalInboxInstead()
+    {
+        var inbox = new AgentMessageInbox(new _AlwaysGoneCurrentPresence());
+
+        inbox.Deliver("pane-a", AssistantIdentity.ControllerInboxPaneId, "done", "already gone by the time this landed");
+
+        Assert.Empty(_DrainAll(inbox, AssistantIdentity.ControllerInboxPaneId));
+        var landed = Assert.Single(_DrainAll(inbox, AssistantIdentity.PaneId));
+        Assert.Equal(AgentMessageInbox.FellBackFromController + "already gone by the time this landed", landed.Body);
+    }
+
+    private sealed class _AlwaysGoneCurrentPresence : INodeControllerPresence
+    {
+        public ActiveController? Current => null;
+
+        public event EventHandler? Changed { add { } remove { } }
     }
 
     [Fact]

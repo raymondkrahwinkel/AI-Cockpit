@@ -326,14 +326,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _ApplySpeech(live, settings);
         }
 
+        // AC-1327 criterion 1: a controller outranks every other unavailable reason, including the feature being
+        // off — a connected node always has an assistant. Re-run on every transition, so falling back here
+        // restores whichever reason applies without one.
+        if (_cockpit.ActiveController is { } controller)
+        {
+            _SetUnavailable(TakeoverReason(controller));
+            return;
+        }
+
         if (settings.IsEnabled)
         {
-            if (_cockpit.ActiveController is { } controller)
-            {
-                _SetUnavailable(TakeoverReason(controller));
-                return;
-            }
-
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
             // the first hold or click is still what wakes it. A live session that was stood down for a controller
             // (AC-1321) comes back to what it is doing rather than to Ready.

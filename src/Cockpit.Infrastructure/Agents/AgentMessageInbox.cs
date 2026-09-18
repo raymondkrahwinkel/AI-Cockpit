@@ -1,7 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Agents;
 
@@ -25,18 +28,44 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     // because the two states allow different next actions and a flag would need every reader to remember to skip it.
     private readonly Dictionary<string, List<AgentMessage>> _inFlight = new(StringComparer.Ordinal);
 
+    private readonly INodeControllerPresence? _presence;
+
+    // AC-1327 point 3: resolved lazily via the container, not taken as `IAssistantReadGateway` directly — its
+    // app-side implementation depends on `CockpitViewModel`, which already depends on this class, so a
+    // constructor-time dependency here would close a cycle.
+    private readonly IServiceProvider? _services;
+
+    // AC-1327 point 3: the controller last seen holding the line, remembered so the handover notice below can say
+    // who and since when — `Current` is already null by the time `Changed` fires for the drop.
+    private ActiveController? _lastKnownController;
+
     // AC-1322: the controller's queue lives in this store under `AssistantIdentity.ControllerInboxPaneId`; when the
     // controller drops away, whatever it had not collected folds into the local assistant's inbox. Subscribed
     // here rather than in a watcher because the move has to happen under `_lock`, in-flight included.
-    public AgentMessageInbox(INodeControllerPresence? presence = null)
+    public AgentMessageInbox(INodeControllerPresence? presence = null, IServiceProvider? services = null)
     {
+        _presence = presence;
+        _services = services;
+        _lastKnownController = presence?.Current;
+
         if (presence is not null)
         {
             presence.Changed += (_, _) =>
             {
-                if (presence.Current is null)
+                if (presence.Current is { } controller)
                 {
-                    _FoldControllerQueueIntoLocal();
+                    _lastKnownController = controller;
+                    return;
+                }
+
+                _FoldControllerQueueIntoLocal();
+
+                // AC-1327 point 3: one message to the local assistant once the controller lets go — after the
+                // queue fallback above, which is synchronous and so always lands first.
+                if (_lastKnownController is { } previous)
+                {
+                    _lastKnownController = null;
+                    _ = _DeliverControllerHandoverNoticeAsync(previous);
                 }
             };
         }
@@ -46,27 +75,69 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     {
         lock (_lock)
         {
-            _inboxes.Remove(AssistantIdentity.ControllerInboxPaneId, out var waiting);
-            _inFlight.Remove(AssistantIdentity.ControllerInboxPaneId, out var inFlight);
-            var folding = (inFlight ?? []).Concat(waiting ?? []).ToList();
-            if (folding.Count == 0)
+            _FoldControllerQueueIntoLocalUnlocked();
+        }
+    }
+
+    // Call only while already holding `_lock` — see `Deliver`'s own idempotent call, closing the race in
+    // reviewbevinding 2 (AC-1327): presence can expire between a caller reading it and the delivery below landing.
+    private void _FoldControllerQueueIntoLocalUnlocked()
+    {
+        _inboxes.Remove(AssistantIdentity.ControllerInboxPaneId, out var waiting);
+        _inFlight.Remove(AssistantIdentity.ControllerInboxPaneId, out var inFlight);
+        var folding = (inFlight ?? []).Concat(waiting ?? []).ToList();
+        if (folding.Count == 0)
+        {
+            return;
+        }
+
+        if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var local))
+        {
+            local = [];
+            _inboxes[AssistantIdentity.PaneId] = local;
+        }
+
+        // Past the cap rather than dropped: these were accepted once already, and a message nobody can be told
+        // about is worse than a queue one batch over its bound.
+        local.AddRange(folding.Select(message => message with
+        {
+            ToPaneId = AssistantIdentity.PaneId,
+            Body = FellBackFromController + message.Body,
+        }));
+    }
+
+    // AC-1327 point 3: who controlled this machine, for how long, and what is running here now — best-effort on
+    // the session list, since the handover notice is still worth sending without it.
+    private async Task _DeliverControllerHandoverNoticeAsync(ActiveController previous)
+    {
+        // The whole body, not just the session-list read below: this is fire-and-forget off an event handler
+        // with no await point on the caller's side, so anything left to throw here becomes an unobserved Task.
+        try
+        {
+            IReadOnlyList<AssistantSessionRow> sessions = [];
+            if (_services?.GetService<IAssistantReadGateway>() is { } sessionsRead)
             {
-                return;
+                try
+                {
+                    sessions = await sessionsRead.ListSessionsAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort — the notice still says who and when without the session list.
+                }
             }
 
-            if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var local))
-            {
-                local = [];
-                _inboxes[AssistantIdentity.PaneId] = local;
-            }
-
-            // Past the cap rather than dropped: these were accepted once already, and a message nobody can be told
-            // about is worse than a queue one batch over its bound.
-            local.AddRange(folding.Select(message => message with
-            {
-                ToPaneId = AssistantIdentity.PaneId,
-                Body = FellBackFromController + message.Body,
-            }));
+            var running = sessions.Count == 0 ? "nothing" : string.Join(", ", sessions.Select(session => session.Name));
+            Deliver(
+                previous.Name,
+                AssistantIdentity.PaneId,
+                "controller-handover",
+                $"{previous.Name} controlled this machine from {previous.SinceUtc:u} to {DateTimeOffset.UtcNow:u}. "
+                + $"Running here now: {running}.");
+        }
+        catch (Exception)
+        {
+            // Swallowed deliberately — see the comment above the try.
         }
     }
 
@@ -110,6 +181,17 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
                 body,
                 DateTimeOffset.UtcNow);
             waiting.Add(delivered);
+
+            // AC-1327 reviewbevinding 2: presence can expire between AgentsMcpTools reading it and this delivery
+            // landing in the controller's queue. Folding again here, under the same lock, closes that window
+            // instead of leaving the message stuck until the next expiry — or forever, if no controller reconnects.
+            if (_presence is not null
+                && string.Equals(toPaneId, AssistantIdentity.ControllerInboxPaneId, StringComparison.Ordinal)
+                && _presence.Current is null)
+            {
+                _FoldControllerQueueIntoLocalUnlocked();
+            }
+
             return new AgentMessageDelivery(AgentMessageDeliveryOutcome.Delivered, delivered);
         }
     }
