@@ -110,31 +110,38 @@ public sealed class AssistantNodeSessionsTests(ITestOutputHelper output) : IDisp
     }
 
     // AC-1326 criterion 1, plus its counterproof as the fourth row: a shared project (same Project.Id on both
-    // machines) is one row naming both; a local-only and a node-only project are their own rows; two projects
-    // that merely share a NAME with different ids never collapse into one — id is the only merge key.
+    // machines) is one row naming both; id is the only merge key. Fifth row is AC-1333: an unreachable node's
+    // project stays out of `projects`, and the node itself lands in `nodes[]` with the reason.
     [Theory]
     [InlineData("p1", "Alpha", "p1", "Alpha", "p1", 1, true, true)]
     [InlineData("p2", "Beta", "p9", "Zeta", "p2", 2, true, false)]
     [InlineData("p8", "Omega", "p3", "Gamma", "p3", 2, false, true)]
     [InlineData("p4", "Delta", "p5", "Delta", "p4", 2, true, false)]
+    [InlineData("p10", "Kappa", "p11", "NodeOnly", "p11", 1, false, false, 0, "LAPTOP is asleep.")]
     public async Task ListProjects_MergesOnlyByProjectId_NeverByName(
         string localId, string localName, string nodeId, string nodeName,
-        string checkRowId, int expectedRowCount, bool expectHere, bool expectNode)
+        string checkRowId, int expectedRowCount, bool expectHere, bool expectNode,
+        int expectedMatches = 1, string? nodeError = null)
     {
         McpRequestContext.Set(AssistantIdentity.PaneId);
         _read.ListProjectsAsync().Returns([new AssistantProjectRow(localId, localName, null, null, null, new Dictionary<string, string>(), null, [])]);
         _nodes.ListNodesAsync(Arg.Any<CancellationToken>()).Returns([Node]);
         _nodes.ReadAsync(Node, Arg.Any<CancellationToken>()).Returns(new NodeSessionsSnapshot(
-            Node, [], [], [new NodeProjectRow(nodeId, nodeName)], DiscoveryId: "NODE-ID"));
+            Node, [], [], [new NodeProjectRow(nodeId, nodeName)], DiscoveryId: "NODE-ID", Error: nodeError));
 
         var reply = _Json(await _ReadTools().ListProjectsAsync());
         var rows = reply["projects"]!.AsArray();
 
         Assert.Equal(expectedRowCount, rows.Count);
-        var row = Assert.Single(rows, candidate => (string)candidate!["Id"]! == checkRowId);
-        var runsOn = row!["runsOn"]!.AsArray().Select(entry => (string)entry!).ToList();
+        var matches = rows.Where(candidate => (string)candidate!["Id"]! == checkRowId).ToList();
+        Assert.Equal(expectedMatches, matches.Count);
+        var runsOn = matches.SelectMany(candidate => candidate!["runsOn"]!.AsArray()).Select(entry => (string)entry!).ToList();
         Assert.Equal(expectHere, runsOn.Contains(Environment.MachineName));
         Assert.Equal(expectNode, runsOn.Contains(Node));
+
+        var node = Assert.Single(reply["nodes"]!.AsArray());
+        Assert.Equal(nodeError is null, (bool)node!["reachable"]!);
+        Assert.Equal(nodeError, node["error"]?.GetValue<string>());
     }
 
     // AC-1326 criterion 2, with its counterproof folded in: a label that exists on both machines stays two rows,

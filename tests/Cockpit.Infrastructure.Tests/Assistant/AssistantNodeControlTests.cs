@@ -189,12 +189,22 @@ public sealed class AssistantNodeControlTests : IDisposable
         const string UnreachableNode = "PHONE";
         var memory = Substitute.For<IAssistantMemory>();
         _nodes.ListNodesAsync(Arg.Any<CancellationToken>()).Returns([ReachableNode, UnreachableNode]);
-        _nodes.RememberOnNodeAsync(ReachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
+        // AC-1333: a Task that stays unfinished until this test says so — an already-completed fake proves nothing
+        // about whether `remember` actually awaits a destination rather than firing it and moving on.
+        var reachableSource = new TaskCompletionSource<string?>();
+        _nodes.RememberOnNodeAsync(ReachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => reachableSource.Task);
         _nodes.RememberOnNodeAsync(UnreachableNode, "remember this", Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns($"{UnreachableNode} did not answer within 10s.");
 
         var tools = new AssistantAgentMcpTools(_gateway, memory, _consent, _nodes);
-        var reply = _Json(await tools.RememberAsync("remember this", scope, machines));
+        var task = tools.RememberAsync("remember this", scope, machines);
+
+        // Only a row that actually reaches the reachable node is still unfinished here — a row refused before
+        // touching a node completes synchronously, exactly as it always did.
+        Assert.Equal(expectReachableWrites > 0, !task.IsCompleted);
+        reachableSource.TrySetResult(null);
+        var reply = _Json(await task);
 
         Assert.Equal(expectOk, (bool)reply["ok"]!);
         Assert.Contains(expectedFragment, reply.ToJsonString());
