@@ -1172,9 +1172,9 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
-    // AC-1329: scope "behaviour" — written locally and relayed to every paired node, one at a time, waited out in
-    // full before this answers (never fire-and-forget). An unreachable node is reported as not delivered per
-    // destination, same shape `list_shared_projects` reports per source — never queued for the next time it answers.
+    // AC-1329: scope "behaviour" — written locally and relayed to every paired node, waited out in full, never
+    // fire-and-forget. The local write already happened by the time listing the nodes can fail, so that failure is
+    // its own destination row rather than a thrown exception making an already-written fact read as "nothing happened".
     private async Task<object> _RememberEverywhereAsync(string text, AssistantMemoryScope memoryScope, string scope)
     {
         await memory.RememberAsync(text, memoryScope).ConfigureAwait(false);
@@ -1182,14 +1182,25 @@ internal sealed class AssistantAgentMcpTools(
 
         if (nodes is not null)
         {
-            foreach (var node in await nodes.ListNodesAsync().ConfigureAwait(false))
+            IReadOnlyList<string> nodeNames;
+            try
+            {
+                nodeNames = await nodes.ListNodesAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                destinations.Add(new { machine = "(paired nodes)", succeeded = false, error = exception.Message });
+                nodeNames = [];
+            }
+
+            foreach (var node in nodeNames)
             {
                 var reason = await nodes.RememberOnNodeAsync(node, text, scope).ConfigureAwait(false);
                 destinations.Add(new
                 {
                     machine = node,
                     succeeded = reason is null,
-                    error = reason is null ? null : $"not delivered to {node} (unreachable since {reason})",
+                    error = reason is null ? null : $"not delivered to {node}: {reason}",
                 });
             }
         }
