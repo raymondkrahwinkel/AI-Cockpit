@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text.Json;
 using ModelContextProtocol.Client;
@@ -29,6 +30,14 @@ internal sealed class NodeSessionsClient(
     // ponytail: no backoff — a node left switched off draws one multicast query every 20s forever. Back off after
     // a few fruitless re-resolves if that ever shows up on a network.
     private static readonly TimeSpan RediscoverWindow = TimeSpan.FromSeconds(2);
+
+    // AC-1326: the last snapshot a successful ReadAsync produced for a node, no matter which caller triggered the
+    // read. A failed read never overwrites this — a stale-but-real snapshot is what start_agent's ambiguity check
+    // and list_profiles's node rows read instead of a round trip, and that only works if a timeout can't erase it.
+    private readonly ConcurrentDictionary<string, (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)> _lastSnapshots = new(StringComparer.Ordinal);
+
+    public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) =>
+        _lastSnapshots.TryGetValue(nodeName, out var memory) ? memory : null;
 
     public async Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
     {
@@ -63,7 +72,7 @@ internal sealed class NodeSessionsClient(
                 return new NodeSessionsSnapshot(nodeName, [], [], [], refusal);
             }
 
-            return new NodeSessionsSnapshot(
+            var snapshot = new NodeSessionsSnapshot(
                 nodeName,
                 [.. _Array(sessions, "sessions").Select(row => new NodeSessionRow(
                     _Text(row, "paneId"),
@@ -86,6 +95,9 @@ internal sealed class NodeSessionsClient(
                     _Text(row, "purpose") is { Length: > 0 } purpose ? purpose : null))],
                 [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))],
                 DiscoveryId: _Text(sessions, "discoveryId"));
+
+            _lastSnapshots[nodeName] = (snapshot, DateTimeOffset.UtcNow);
+            return snapshot;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -79,6 +79,17 @@ public interface INodeSessionsClient
     /// row this cockpit drew for it. Never throws for an unreachable node — see <see cref="NodePermissionAnswer.Error"/>.
     /// </summary>
     Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1326: the last snapshot <see cref="ReadAsync"/> succeeded with for <paramref name="nodeName"/> and when
+    /// it was read, from whichever caller triggered it — the operator's node card, <c>list_sessions</c> or
+    /// <c>list_projects</c> — or null when nothing has read that node yet this run.
+    /// </summary>
+    /// <remarks>
+    /// Makes no call of its own: this is what a caller that must add no round trip to the node
+    /// (<c>start_agent</c>'s local/node ambiguity check, <c>list_profiles</c>'s node rows) reads instead.
+    /// </remarks>
+    (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName);
 }
 
 // AC-1324: what an answer on a node came to. `Answered` false with no error means the question was no longer
