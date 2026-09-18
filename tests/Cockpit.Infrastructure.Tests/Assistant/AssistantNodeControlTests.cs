@@ -131,6 +131,31 @@ public sealed class AssistantNodeControlTests : IDisposable
         Assert.DoesNotContain(nodeRead.ReceivedCalls(), call => call.GetMethodInfo().Name != nameof(IAssistantReadGateway.ListSessionsAsync));
     }
 
+    // AC-1326 criterion 3 plus its counterproofs as rows: no `node` refuses when the last known node snapshot
+    // also has the project (read off INodeSessionsClient, never a fresh call); node: "local" bypasses that on
+    // purpose, and an unknown-to-the-snapshot project starts locally exactly as it does today.
+    [Theory]
+    [InlineData(null, "shared-id", false, 0, "exists on this machine and on LAPTOP")]
+    [InlineData("local", "shared-id", true, 1, "\"ok\":true")]
+    [InlineData(null, "local-only-id", true, 1, "\"ok\":true")]
+    public async Task StartAgent_WithoutNode_RefusesOnlyWhenTheLastNodeSnapshotAlsoKnowsTheProject(
+        string? node, string projectId, bool expectOk, int expectedSpawnCalls, string expectedFragment)
+    {
+        _nodes.ListNodesAsync(Arg.Any<CancellationToken>()).Returns([Node]);
+        _nodes.TryGetLastSnapshot(Node).Returns((
+            new NodeSessionsSnapshot(Node, [], [], [new NodeProjectRow("shared-id", "Shared")]),
+            DateTimeOffset.UtcNow));
+        _gateway.SpawnAsync(Arg.Any<AgentSpawnRequest>(), Arg.Any<CancellationToken>())
+            .Returns(AgentSpawnResult.Started("pane-1", "AC-1", "/repo"));
+
+        var reply = _Json(await _ActTools().StartAgentAsync(workspaceId: "ws-1", profile: "Sonnet", projectId: projectId, node: node));
+
+        Assert.Equal(expectOk, (bool)reply["ok"]!);
+        Assert.Contains(expectedFragment, reply.ToJsonString());
+        await _gateway.Received(expectedSpawnCalls).SpawnAsync(Arg.Any<AgentSpawnRequest>(), Arg.Any<CancellationToken>());
+        await _nodes.DidNotReceiveWithAnyArgs().StartAsync(default!, default!);
+    }
+
     // Criterion 3: a watch on a node address is refused with a reason that says what does work there.
     [Fact]
     public async Task WatchSession_OnANodeAddress_Refuses_AndSaysWhatWorksInstead()

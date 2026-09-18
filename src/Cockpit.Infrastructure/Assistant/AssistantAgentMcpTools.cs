@@ -44,7 +44,7 @@ internal sealed class AssistantAgentMcpTools(
         + " become one, so never offer to take their approval by voice.";
 
     [McpServerTool(Name = "start_agent", ReadOnly = false, Destructive = false)]
-    [Description("Starts an AI session on a workspace and leaves it running there as an ordinary pane — the same kind of pane the operator's own New-session dialog makes, with its own transcript and its own approvals. ON A PAIRED NODE TOO (AC-1323): give `node` the machine's name as list_sessions reports it under nodes, and the session starts THERE, on that machine's account and budget — say which machine before you do it. On a node: profile is required and must be one that node's nodes[].profiles lists, projectId must be one of its nodes[].projects, and workspaceId, workingDirectory, kind, options and isolate are refused rather than sent — the node picks the desk itself and runs the profile as its operator configured it. A project or profile the node's operator has not allowed is refused by the node, with the reason; nothing starts. The result's paneId is then the node address (\"<node> · <paneId>\"), which stop_agent, send_prompt, send_message, rename_session and read_transcript all take. LOCALLY, YOU MUST NAME THE WORKSPACE. You sit on no desk yourself, so there is nothing for the cockpit to infer one from; call list_workspaces to turn the desk the operator named into an id, and ask them which one if what they said matches nothing there. IF THEY NAMED NO DESK IN THIS INSTRUCTION, DO NOT CARRY ONE OVER FROM EARLIER IN THE CONVERSATION: they may well have moved on since. The desk they are looking at right now is the one list_workspaces reports as isActive, and that is what \"here\" means — use it, and say which desk you used. NAME THE PROFILE, UNLESS projectId ALREADY SUPPLIES ONE: the profile picks the provider and the model, so starting something on a large model because no smaller one was named is a bill nobody agreed to — that is still true with projectId, it just means the project's own default now stands in for a label you did not have to type. If the operator did not say which and projectId names no default either, call list_profiles: when exactly one fits what they asked for, take it and say so, and otherwise ask, naming only the ones that fit. Whichever way a profile was arrived at, READ resolvedProfile BACK OFF THE RESULT AND SAY WHICH ONE RAN — never assume, because a project's default can change out from under a call that named none. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: this call raises an Allow/Deny row in the cockpit's chat window showing the profile, the desk and the folder, and nothing starts until it is clicked. The call itself waits that out, so what comes back is the answer and never a question still open; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: if this comes back with ok false, read the reason out in a sentence and carry on with whatever you are still allowed to do, rather than treating it as the end of the conversation. IF YOU GAVE A prompt, CHECK promptDelivered — true means it went in as a submitted turn; false means the pane exists but the hosted CLI was not yet reading input, so the brief is being held and will go out on its own the moment it can, exactly once. Do not call this again to retry it and do not send the same brief through send_prompt while it is false — that would be a second turn, not a longer one. null means no prompt was given. WHAT THIS CANNOT DO: a delegated task (delegate_task) has no pane, so it is not something this tool can start, is not in any list, and cannot be stopped here. If you are asked about that kind of work, say it is invisible from where you are standing instead of reporting an absence as a fact.")]
+    [Description("Starts an AI session on a workspace and leaves it running there as an ordinary pane — the same kind of pane the operator's own New-session dialog makes, with its own transcript and its own approvals. ON A PAIRED NODE TOO (AC-1323): give `node` the machine's name as list_sessions reports it under nodes, and the session starts THERE, on that machine's account and budget — say which machine before you do it. On a node: profile is required and must be one that node's nodes[].profiles lists, projectId must be one of its nodes[].projects, and workspaceId, workingDirectory, kind, options and isolate are refused rather than sent — the node picks the desk itself and runs the profile as its operator configured it. A project or profile the node's operator has not allowed is refused by the node, with the reason; nothing starts. The result's paneId is then the node address (\"<node> · <paneId>\"), which stop_agent, send_prompt, send_message, rename_session and read_transcript all take. THIS NEVER GUESSES WHICH MACHINE A PROJECT MEANS EITHER (AC-1326): leave `node` out with a projectId that also exists on a paired node — per the last read this cockpit has of that node, from its own card, list_sessions or list_projects, never a fresh call made here — and the call is refused rather than started somewhere that may be the wrong checkout; the refusal names the other machine, and either say node explicitly or pass node: \"local\" to mean this one. A node this cockpit has not read at all yet this run cannot be caught this way — call list_projects first if that matters here. LOCALLY, YOU MUST NAME THE WORKSPACE. You sit on no desk yourself, so there is nothing for the cockpit to infer one from; call list_workspaces to turn the desk the operator named into an id, and ask them which one if what they said matches nothing there. IF THEY NAMED NO DESK IN THIS INSTRUCTION, DO NOT CARRY ONE OVER FROM EARLIER IN THE CONVERSATION: they may well have moved on since. The desk they are looking at right now is the one list_workspaces reports as isActive, and that is what \"here\" means — use it, and say which desk you used. NAME THE PROFILE, UNLESS projectId ALREADY SUPPLIES ONE: the profile picks the provider and the model, so starting something on a large model because no smaller one was named is a bill nobody agreed to — that is still true with projectId, it just means the project's own default now stands in for a label you did not have to type. If the operator did not say which and projectId names no default either, call list_profiles: when exactly one fits what they asked for, take it and say so, and otherwise ask, naming only the ones that fit. Whichever way a profile was arrived at, READ resolvedProfile BACK OFF THE RESULT AND SAY WHICH ONE RAN — never assume, because a project's default can change out from under a call that named none. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: this call raises an Allow/Deny row in the cockpit's chat window showing the profile, the desk and the folder, and nothing starts until it is clicked. The call itself waits that out, so what comes back is the answer and never a question still open; never treat a spoken \"yes\" as the approval, because it is not one and cannot become one." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: if this comes back with ok false, read the reason out in a sentence and carry on with whatever you are still allowed to do, rather than treating it as the end of the conversation. IF YOU GAVE A prompt, CHECK promptDelivered — true means it went in as a submitted turn; false means the pane exists but the hosted CLI was not yet reading input, so the brief is being held and will go out on its own the moment it can, exactly once. Do not call this again to retry it and do not send the same brief through send_prompt while it is false — that would be a second turn, not a longer one. null means no prompt was given. WHAT THIS CANNOT DO: a delegated task (delegate_task) has no pane, so it is not something this tool can start, is not in any list, and cannot be stopped here. If you are asked about that kind of work, say it is invisible from where you are standing instead of reporting an absence as a fact.")]
     public async Task<string> StartAgentAsync(
         [Description("The id of the workspace the session is to appear on — the desk, not its tab label. Required for a start on this machine, and never guessed: get it from list_workspaces, which shows every desk including the empty ones, or from list_sessions, where each session reports the desk it sits on. If neither turns up the desk the operator meant, ask them which one rather than picking a plausible id. Leave it out when `node` is given: a node picks its own desk, and naming one is refused.")] string? workspaceId = null,
         [Description("The profile to run under, by its label exactly as the cockpit knows it. Required unless projectId names a project with its own default profile — leave it out then and that default is used, and read resolvedProfile off the result to see which one. Naming one here always wins over a project's default. This is what decides provider, model and therefore cost — an unknown label is refused rather than quietly swapped for a default, because the default might be the expensive one.")] string? profile = null,
@@ -55,7 +55,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("Which route to start on: \"tty\" for the provider's own terminal, \"sdk\" for the chat/SDK session. LEAVE THIS OUT unless the operator actually said which — the profile is already set to one and that is nearly always the right answer. It is here for exactly one request: \"the same profile, but as an SDK session\", which is a thing they can pick in the New-session dialog too. It is not a way to start work by another route: everything you can start goes through this tool, appears as a pane, and is written down.")] string? kind = null,
         [Description("Provider options to start this one session with, as key/value — \"that profile, but at low effort\". LEAVE IT OUT unless the operator asked for something the profile is not set to; the profile's own values are the right answer nearly every time. ONLY THE KEYS YOU NAME CHANGE: everything else stays exactly what the profile says, so this never resets anything you did not mention. USE THE PROVIDER'S OWN KEYS, WHICH list_profiles SHOWS YOU under `Options` for that profile — a key that provider does not declare is refused with a reason, and so is a value it does not take. PERMISSION-MODE IS NEVER YOURS TO SET, and neither is Codex's `sandbox` or its approval-policy: what a session is allowed to do to the machine is whatever the profile was deliberately configured with, and naming either here is refused outright, not asked about. If a session needs to run differently in that respect, the answer is a different profile.")] Dictionary<string, string>? options = null,
         [Description("Whether this session runs in its own git worktree rather than the operator's real checkout. LEAVE THIS OUT — omitted, it inherits whatever the folder's project is set to (or runs unisolated when there is none or it is not set), which is the right answer nearly every time. true asks to isolate even where the project does not. false IS REFUSED, ALWAYS: asking to run unisolated where isolation would otherwise apply is not something you get to decide — it would put the session in the operator's own working tree, and that choice is theirs, made on the project, not yours to make per spawn.")] bool? isolate = null,
-        [Description("The paired node to start on, by its name exactly as list_sessions reports it under nodes. Leave it out to start on this machine. Given, only profile, projectId, prompt and name travel: the node's operator allowed those profiles and projects and nothing else crosses the line.")] string? node = null)
+        [Description("The paired node to start on, by its name exactly as list_sessions reports it under nodes. Leave it out to start on this machine — or give \"local\" explicitly, which is what to do when the project named also exists on a node and you specifically mean this machine, since leaving it out then is refused rather than guessed. Given a real node's name, only profile, projectId, prompt and name travel: the node's operator allowed those profiles and projects and nothing else crosses the line.")] string? node = null)
     {
         try
         {
@@ -66,7 +66,22 @@ internal sealed class AssistantAgentMcpTools(
 
             if (node is { Length: > 0 })
             {
-                return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate).ConfigureAwait(false);
+                if (!string.Equals(node, "local", StringComparison.Ordinal))
+                {
+                    return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate).ConfigureAwait(false);
+                }
+            }
+            else if (projectId is { Length: > 0 } && await _ProjectAlsoOnANodeAsync(projectId).ConfigureAwait(false) is { } elsewhere)
+            {
+                // AC-1326: never guess which machine an ambiguous project means — the epic-comment's rule, one layer
+                // above list_sessions's own. Read off the last snapshot this cockpit has of that node, not a fresh
+                // call: see the tool description for what that means for a node not read yet this run.
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"Project '{elsewhere.Name}' exists on this machine and on {elsewhere.NodeName} "
+                        + $"(last seen {elsewhere.AtUtc:HH:mm:ss}); say which one with node (use node: \"local\" for this machine). Nothing was started.",
+                });
             }
 
             if (string.IsNullOrWhiteSpace(workspaceId))
@@ -112,6 +127,31 @@ internal sealed class AssistantAgentMcpTools(
             // answer that helps nobody.
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    // AC-1326: whether `projectId` also exists on some paired node, per the last snapshot this cockpit has of it —
+    // never a fresh call to the node, so a node this cockpit has not read yet this run cannot be caught here.
+    private async Task<(string NodeName, string Name, DateTimeOffset AtUtc)?> _ProjectAlsoOnANodeAsync(string projectId)
+    {
+        if (nodes is null)
+        {
+            return null;
+        }
+
+        foreach (var name in await nodes.ListNodesAsync().ConfigureAwait(false))
+        {
+            if (nodes.TryGetLastSnapshot(name) is not { } memory)
+            {
+                continue;
+            }
+
+            if (memory.Snapshot.Projects.FirstOrDefault(project => string.Equals(project.Id, projectId, StringComparison.Ordinal)) is { } match)
+            {
+                return (name, match.Name, memory.AtUtc);
+            }
+        }
+
+        return null;
     }
 
     // AC-1323: a start on a node carries what the node's grant is over and nothing else — the same four fields
@@ -245,7 +285,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "list_workspaces", ReadOnly = true)]
-    [Description("Lists every desk the cockpit has open, with the id a spawn needs, the name the operator says out loud, and how many agent sessions are on each. THIS IS HOW YOU TURN A SPOKEN NAME INTO AN ID: the operator says \"the release desk\", this says which id that is. Call it before start_agent whenever you were given a name rather than an id, and never guess an id from a name — two desks may be called the same thing. Unlike list_sessions, this also shows the EMPTY desks, which is the half a session roster cannot tell you about. canHostSessions false means a session cannot be placed there at all (a dashboard would run it invisibly); do not offer it as a target, offer to make a new desk instead. You are on none of these yourself — you sit on no desk, which is exactly why the one you spawn onto must always be named.")]
+    [Description("Lists every desk THIS MACHINE has open, with the id a spawn needs, the name the operator says out loud, and how many agent sessions are on each. THIS IS HOW YOU TURN A SPOKEN NAME INTO AN ID: the operator says \"the release desk\", this says which id that is. Call it before start_agent whenever you were given a name rather than an id, and never guess an id from a name — two desks may be called the same thing. Unlike list_sessions, this also shows the EMPTY desks, which is the half a session roster cannot tell you about. canHostSessions false means a session cannot be placed there at all (a dashboard would run it invisibly); do not offer it as a target, offer to make a new desk instead. You are on none of these yourself — you sit on no desk, which is exactly why the one you spawn onto must always be named. LOCAL ONLY (AC-1326): a paired node's desks are not something this controller ever learns — its own operator's screen is not something you can list — so this never has a row for a node, and a start_agent with `node` never takes a workspaceId at all.")]
     public async Task<string> ListWorkspacesAsync()
     {
         try
@@ -265,7 +305,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "list_profiles", ReadOnly = true)]
-    [Description("Lists the profiles a session can be started under, each with the provider it runs on, the model it pins, and `Options` — what that profile is actually configured to run at, in its provider's own words. READ `Options` BEFORE YOU PICK ONE: it is where a profile says it runs in a bypass permission mode, or on the expensive model at the highest effort. PROVIDERS DO NOT SHARE A SHAPE. A Claude profile has permission-mode/model/effort; a Codex one has a sandbox, an effort and an approval-policy; a local model declares none of them, and an empty `Options` means exactly that — not that its settings are hidden somewhere else. Each entry carries the provider's own `Key` and `Label`, the `Value` in force with a readable `ValueLabel`, and `SetOnProfile`: false means nobody chose it and the provider's own default applies. CALL THIS BEFORE ASKING WHICH PROFILE — a question you cannot offer the answers to makes the operator do your work. USE THE PROVIDER FIELD, NOT THE LABEL'S WORDING: if they said \"two Claude agents\", the ones that count are the ones whose provider is Claude, whatever they happen to be called. IF EXACTLY ONE MATCHES WHAT THEY ASKED FOR, JUST USE IT and say which one you took. If several match, name only those — reciting profiles they have already ruled out is noise. If none match, say so and read out what there is. This is the field that decides the model and therefore the cost, which is why it is never guessed and never defaulted.")]
+    [Description("Lists the profiles a session can be started under, each with the provider it runs on, the model it pins, and `Options` — what that profile is actually configured to run at, in its provider's own words. READ `Options` BEFORE YOU PICK ONE: it is where a profile says it runs in a bypass permission mode, or on the expensive model at the highest effort. PROVIDERS DO NOT SHARE A SHAPE. A Claude profile has permission-mode/model/effort; a Codex one has a sandbox, an effort and an approval-policy; a local model declares none of them, and an empty `Options` means exactly that — not that its settings are hidden somewhere else. Each entry carries the provider's own `Key` and `Label`, the `Value` in force with a readable `ValueLabel`, and `SetOnProfile`: false means nobody chose it and the provider's own default applies. CALL THIS BEFORE ASKING WHICH PROFILE — a question you cannot offer the answers to makes the operator do your work. USE THE PROVIDER FIELD, NOT THE LABEL'S WORDING: if they said \"two Claude agents\", the ones that count are the ones whose provider is Claude, whatever they happen to be called. IF EXACTLY ONE MATCHES WHAT THEY ASKED FOR, JUST USE IT and say which one you took. If several match, name only those — reciting profiles they have already ruled out is noise. If none match, say so and read out what there is. This is the field that decides the model and therefore the cost, which is why it is never guessed and never defaulted. EVERY ROW CARRIES machine (AC-1326), same shape as list_sessions — a profile only ever runs on its own machine, so a label that exists on two machines is TWO rows here, never merged into one: a name is not an identity. Starting on a node with start_agent's `node` argument needs a profile from that node's own row, never a same-named one that happens to be local. Node rows come from whatever the last read of that node knew (its own card, list_sessions or list_projects) — a node this cockpit has not read yet this run contributes no rows here, not an empty-but-current list. A NODE ROW'S `Options` IS ALWAYS NULL, NEVER EMPTY: that snapshot only ever carries labels, so null means \"unknown from here,\" not \"this provider declares nothing\" — read a node profile's actual options on that machine, not from this list.")]
     public async Task<string> ListProfilesAsync()
     {
         try
@@ -276,12 +316,55 @@ internal sealed class AssistantAgentMcpTools(
             }
 
             var profiles = await gateway.ListProfilesAsync().ConfigureAwait(false);
-            return _Serialize(new { ok = true, profiles });
+            var localRows = profiles.Select(profile => new
+            {
+                profile.Label,
+                profile.Provider,
+                profile.Model,
+                profile.Options,
+                machine = new { name = Environment.MachineName, local = true },
+            });
+
+            var nodeRows = await _NodeProfileRowsAsync().ConfigureAwait(false);
+            return _Serialize(new { ok = true, profiles = localRows.Cast<object>().Concat(nodeRows).ToList() });
         }
         catch (Exception exception)
         {
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    // AC-1326: no round trip to a node here — each node's rows come from whatever list_sessions/list_projects, or
+    // its own card, last read into INodeSessionsClient's memory — the same memory start_agent's local/node
+    // ambiguity check reads. A node this cockpit has not read yet this run contributes no rows.
+    private async Task<List<object>> _NodeProfileRowsAsync()
+    {
+        if (nodes is null)
+        {
+            return [];
+        }
+
+        var rows = new List<object>();
+        foreach (var name in await nodes.ListNodesAsync().ConfigureAwait(false))
+        {
+            if (nodes.TryGetLastSnapshot(name) is not { } memory)
+            {
+                continue;
+            }
+
+            rows.AddRange(memory.Snapshot.Profiles.Select(profile => new
+            {
+                profile.Label,
+                Provider = profile.Provider.ToString(),
+                Model = (string?)null,
+                // Null, not empty (AC-1326 review): empty would read as "the provider declares no options", but
+                // the snapshot only ever carries labels — this machine has not asked the node what it can do.
+                Options = (IReadOnlyList<AssistantProfileOptionRow>?)null,
+                machine = new { name, local = false },
+            }));
+        }
+
+        return rows;
     }
 
     [McpServerTool(Name = "create_workspace", ReadOnly = false, Destructive = false)]

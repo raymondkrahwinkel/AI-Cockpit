@@ -50,6 +50,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   answer comes back as an error naming the machine, and nothing on this machine is touched. Only watching a
   session on a node is not possible — there is no event stream between two machines — and the refusal says
   what does work instead (AC-1323).
+- added: the assistant's project and profile lists now say which machine each row is on and, for a project,
+  every machine it is known to exist on — a project bound on both this cockpit and a paired node shows up once,
+  naming both, never as two rows just because the names happen to match. Starting a session without saying which
+  machine now refuses, naming both, when the project is also known to exist on a node; say the machine explicitly,
+  or "local" for this one (AC-1326).
 - added: the Simple view's left column now carries the same **Plugin store**, **Menu** and **Help** rows as the
   panels sidebar, so Options, Profiles, MCP servers and the command palette can be reached there without
   switching to Panels or remembering a shortcut.

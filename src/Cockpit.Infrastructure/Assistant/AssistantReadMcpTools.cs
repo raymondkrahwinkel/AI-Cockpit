@@ -190,7 +190,7 @@ internal sealed class AssistantReadMcpTools(
     internal const int MaxEntryTextLength = 2000;
 
     [McpServerTool(Name = "list_projects", ReadOnly = true)]
-    [Description("Lists the projects this cockpit knows: name, what the operator wrote about each, the folder its work lives in, the profile its sessions default to, and links — what a plugin calls this project elsewhere, keyed by field, e.g. {\"youtrack.project\": \"AC\"}. That key is the ticket prefix: an issue named AC-555 belongs to whichever project links \"youtrack.project\" to \"AC\", which is how \"pick up AC-555\" is assembled from list_projects, YouTrack's own get_issue, list_workspaces and start_agent rather than needing a tool of its own. A LINK'S VALUE CAN NAME SEVERAL PREFIXES, comma-separated, e.g. {\"youtrack.project\": \"EWB, AT, EJ\"} for one Cockpit project tracked under several YouTrack projects at once — an issue named AT-42 belongs to that project exactly as EWB-1 does; check every comma-separated item, not just the first. A PROJECT IS NOT A DESK AND NOT A SESSION — it is the operator's own idea of a body of work, it outlives every session, and asking \"which projects do we have\" is this tool and never list_workspaces. A project with no folder is an ordinary project, not a broken one: administrative work is work. The folder is also the honest answer to \"start something for that project\": it is where that project's sessions are meant to run, so pass it as the working directory rather than guessing a path. A PROJECT CAN DECLARE MORE THAN ONE REPOSITORY (AC-938) — a web repo and an android repo, say, neither nested in the other, kept as one project: repositories lists all of them, each with its path and an optional label the operator gave it (\"web\", \"android\"); sourceDirectory is always repositories[0].path. A session runs in exactly one repository at a time — pick the one you mean and pass its path as the working directory, rather than assuming the first is the one wanted. NEVER GUESS A LINK: if two projects' comma-separated lists under the same key share a prefix, or a prefix matches no project's list at all, that is a question for the operator, not a coin flip — say what you found (or that two projects claim it) and ask which one, rather than picking either.")]
+    [Description("Lists the projects this cockpit knows: name, what the operator wrote about each, the folder its work lives in, the profile its sessions default to, and links — what a plugin calls this project elsewhere, keyed by field, e.g. {\"youtrack.project\": \"AC\"}. That key is the ticket prefix: an issue named AC-555 belongs to whichever project links \"youtrack.project\" to \"AC\", which is how \"pick up AC-555\" is assembled from list_projects, YouTrack's own get_issue, list_workspaces and start_agent rather than needing a tool of its own. A LINK'S VALUE CAN NAME SEVERAL PREFIXES, comma-separated, e.g. {\"youtrack.project\": \"EWB, AT, EJ\"} for one Cockpit project tracked under several YouTrack projects at once — an issue named AT-42 belongs to that project exactly as EWB-1 does; check every comma-separated item, not just the first. A PROJECT IS NOT A DESK AND NOT A SESSION — it is the operator's own idea of a body of work, it outlives every session, and asking \"which projects do we have\" is this tool and never list_workspaces. A project with no folder is an ordinary project, not a broken one: administrative work is work. The folder is also the honest answer to \"start something for that project\": it is where that project's sessions are meant to run, so pass it as the working directory rather than guessing a path. A PROJECT CAN DECLARE MORE THAN ONE REPOSITORY (AC-938) — a web repo and an android repo, say, neither nested in the other, kept as one project: repositories lists all of them, each with its path and an optional label the operator gave it (\"web\", \"android\"); sourceDirectory is always repositories[0].path. A session runs in exactly one repository at a time — pick the one you mean and pass its path as the working directory, rather than assuming the first is the one wanted. NEVER GUESS A LINK: if two projects' comma-separated lists under the same key share a prefix, or a prefix matches no project's list at all, that is a question for the operator, not a coin flip — say what you found (or that two projects claim it) and ask which one, rather than picking either. THIS ALSO COVERS EVERY PAIRED NODE'S PROJECTS (AC-1326), same as list_sessions: each row carries machine and runsOn — every machine name that project is known to exist on, this one included. A shared project bound on both machines (the same Project.Id on each) is ONE row with both names in runsOn; a project that exists only on a node is a row with just that node's name, and the fields this cockpit cannot know about it (description, folder, links) are absent rather than guessed. Never merge two rows by name — only a shared Project.Id makes them the same project. This is what start_agent's refusal (a project on more than one machine needs node said explicitly) is reading when it says which other machine has it.")]
     public async Task<string> ListProjectsAsync()
     {
         try
@@ -200,7 +200,75 @@ internal sealed class AssistantReadMcpTools(
                 return refusal;
             }
 
-            var projects = await gateway.ListProjectsAsync().ConfigureAwait(false);
+            var localTask = gateway.ListProjectsAsync();
+            var nodeReads = await _ReadNodesAsync().ConfigureAwait(false);
+            var localProjects = await localTask.ConfigureAwait(false);
+
+            var here = new { name = Environment.MachineName, discoveryId = self.Value, local = true };
+            var runsOn = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var project in localProjects)
+            {
+                runsOn[project.Id] = [Environment.MachineName];
+            }
+
+            foreach (var read in nodeReads)
+            {
+                if (read.Snapshot is null)
+                {
+                    continue;
+                }
+
+                foreach (var project in read.Snapshot.Projects)
+                {
+                    if (!runsOn.TryGetValue(project.Id, out var machines))
+                    {
+                        runsOn[project.Id] = machines = [];
+                    }
+
+                    if (!machines.Contains(read.Name))
+                    {
+                        machines.Add(read.Name);
+                    }
+                }
+            }
+
+            var localRows = localProjects.Select(project => new
+            {
+                project.Id,
+                project.Name,
+                project.Description,
+                project.SourceDirectory,
+                project.DefaultProfileLabel,
+                project.Links,
+                project.GitUrl,
+                project.Repositories,
+                machine = here,
+                runsOn = runsOn[project.Id],
+            });
+
+            // Node-only projects (AC-1326): no local record exists, so only the id and name a node reported are
+            // known — the fields a local project carries (folder, links, profile) are absent, not guessed.
+            var localIds = localProjects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
+            var seenNodeOnly = new HashSet<string>(StringComparer.Ordinal);
+            var nodeOnlyRows = nodeReads
+                .Where(read => read.Snapshot is not null)
+                .SelectMany(read => read.Snapshot!.Projects
+                    .Where(project => !localIds.Contains(project.Id) && seenNodeOnly.Add(project.Id))
+                    .Select(project => new
+                    {
+                        project.Id,
+                        project.Name,
+                        Description = (string?)null,
+                        SourceDirectory = (string?)null,
+                        DefaultProfileLabel = (string?)null,
+                        Links = (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(),
+                        GitUrl = (string?)null,
+                        Repositories = (IReadOnlyList<AssistantProjectRepositoryRow>)[],
+                        machine = new { name = read.Name, discoveryId = read.Snapshot!.DiscoveryId, local = false },
+                        runsOn = runsOn[project.Id],
+                    }));
+
+            var projects = localRows.Cast<object>().Concat(nodeOnlyRows).ToList();
             return _Serialize(new { ok = true, projects });
         }
         catch (Exception exception)
@@ -246,7 +314,7 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "list_delegated_tasks", ReadOnly = true)]
-    [Description("Lists the delegated tasks this cockpit is running — the background work a session started with delegate_task — newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId — the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Each entry also carries permission — what the task was allowed to do, read-only unless its caller asked for more — and changedPaths, the paths the cockpit itself found changed in its working directory, which is what answers 'who wrote that' about work no pane did. A null changedPaths means the cockpit could not establish it (no working directory, or not a git checkout), never that nothing changed. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success — a task with turns and no result is still working, and one that is Failed says why in error.")]
+    [Description("Lists the delegated tasks THIS MACHINE is running — the background work a session started with delegate_task, which always runs here even for a session on a paired node (AC-1326: a node has no delegation of its own) — newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId — the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Each entry also carries permission — what the task was allowed to do, read-only unless its caller asked for more — and changedPaths, the paths the cockpit itself found changed in its working directory, which is what answers 'who wrote that' about work no pane did. A null changedPaths means the cockpit could not establish it (no working directory, or not a git checkout), never that nothing changed. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success — a task with turns and no result is still working, and one that is Failed says why in error.")]
     public string ListDelegatedTasks(
         [Description("Only tasks in this state: Queued, Running, Completed, Failed or Stopped. Omit it for every task. An unrecognised value is refused rather than quietly listing everything — a filter nobody applied reads exactly like nothing matching it.")] string? status = null)
     {
