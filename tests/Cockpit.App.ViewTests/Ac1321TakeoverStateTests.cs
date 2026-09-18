@@ -125,6 +125,40 @@ public class Ac1321TakeoverStateTests
         }
     });
 
+    // AC-1327 criterion 1: `ActiveController` outranks every other unavailable reason, including the feature
+    // being off. Falling back restores exactly what stood before, since `ApplySettingsAsync` re-derives it from
+    // settings rather than remembering the old reason. Tegenproef: without the fix, "switched off" stays on screen.
+    [Fact]
+    public async Task WithTheAssistantSwitchedOff_AnActiveControllerStillShows_AndFallbackRestoresSwitchedOff() =>
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
+            try
+            {
+                var cockpit = (CockpitViewModel)window.DataContext!;
+                var clock = new FakeTimeProvider(Noon);
+                var presence = new NodeControllerPresence(clock);
+                cockpit.WatchController(presence);
+                var host = _Host(cockpit, isEnabled: false);
+                await host.ApplySettingsAsync();
+                window.UpdateLayout();
+                Assert.Contains("switched off", host.UnavailableReason);
+
+                presence.Seen("LAPTOP");
+                window.UpdateLayout();
+                Assert.Contains("LAPTOP", host.UnavailableReason);
+
+                clock.Advance(TimeSpan.FromSeconds(61));
+                window.UpdateLayout();
+                Assert.Null(cockpit.ActiveController);
+                Assert.Contains("switched off", host.UnavailableReason);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
     // Criterion 3: which machine, since when (local clock, short), and that it comes back by itself — and once the
     // conversation is back on screen, the same words in the composer, where the notice cannot cover the rows.
     [Fact]
@@ -169,10 +203,10 @@ public class Ac1321TakeoverStateTests
 
     // The real host on the scene's cockpit, enabled and with a profile: what refuses the turn is the takeover and
     // nothing earlier in its start path.
-    private static AssistantSessionHost _Host(CockpitViewModel cockpit)
+    private static AssistantSessionHost _Host(CockpitViewModel cockpit, bool isEnabled = true)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
-        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = true });
+        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = isEnabled });
         var profiles = Substitute.For<IAssistantProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>())
             .Returns(new AssistantProfileSlot(new SessionProfile("assistant-local", new ClaudeConfig("/tmp/claude"))));

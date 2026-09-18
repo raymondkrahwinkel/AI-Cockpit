@@ -55,4 +55,15 @@ public sealed class NodeInboxRelay(
     internal static string Origin(string nodeName, string discoveryId, string from) =>
         $"[From node {nodeName}" + (discoveryId is { Length: > 0 } ? $" ({discoveryId})" : "")
         + $", session {from}. Reply with send_message to that address; notify does not reach it.] ";
+
+    // AC-1327 criterion 2: one message per reachable↔unreachable transition, never per poll — same Deliver path
+    // as the mail relay above, so the controller's assistant hears about the node itself the way it hears from
+    // the node's own agents.
+    public void NotifyTransition(string nodeName, bool reachable, int sessionCount, DateTimeOffset atUtc)
+    {
+        var body = reachable
+            ? $"Node {nodeName} is reachable again as of {atUtc:u}, with {sessionCount} session(s) running there."
+            : $"Node {nodeName} stopped answering as of {atUtc:u}.";
+        inbox.Deliver(nodeName, AssistantIdentity.PaneId, reachable ? "node-back" : "node-dropped", body);
+    }
 }

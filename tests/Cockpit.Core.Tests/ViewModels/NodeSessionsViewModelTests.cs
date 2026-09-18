@@ -191,6 +191,34 @@ public class NodeSessionsViewModelTests
         Assert.Empty(client.Queued);
     }
 
+    // AC-1327 criterion 2: the controller's assistant hears about the node itself, once per reachable↔unreachable
+    // edge, never per poll — three failed refreshes in a row are still one "node-dropped" message.
+    [Fact]
+    public async Task Refresh_OnAReachabilityTransition_TellsTheControllersAssistant_OncePerTransition_NotPerPoll()
+    {
+        var client = new FakeNodeSessions
+        {
+            Snapshot = new NodeSessionsSnapshot("laptop", [], [], [], "Could not reach laptop: no route to host"),
+        };
+        var inbox = new AgentMessageInbox();
+        var card = new NodeSessionsViewModel(client, "laptop", new NodeInboxRelay(client, inbox));
+
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+
+        var dropped = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+        Assert.Equal("laptop", dropped.FromPaneId);
+        Assert.Equal("node-dropped", dropped.Kind);
+
+        client.Snapshot = new NodeSessionsSnapshot("laptop", [SweepOnTheNode], [], []);
+        await card.RefreshAsync();
+
+        var back = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+        Assert.Equal("node-back", back.Kind);
+        Assert.Contains("with 1 session", back.Body, StringComparison.Ordinal);
+    }
+
     private sealed class FakeNodeSessions : INodeSessionsClient
     {
         public required NodeSessionsSnapshot Snapshot { get; set; }

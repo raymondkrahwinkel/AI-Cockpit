@@ -67,12 +67,38 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         _presence.Current = null;
         _presence.Raise();
 
-        var landed = Assert.Single(_inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+        // AC-1327 criterion 3 adds a second message after this one (its own test below) — the queue fallback
+        // this test is about is still the first to land.
+        var landed = _inbox.Drain(AssistantIdentity.PaneId, 25).Messages[0];
         Assert.Equal(AgentOnTheNode, landed.FromPaneId);
         Assert.Equal("blocked", landed.Kind);
         Assert.Equal("[Was meant for the controller of this machine, which dropped away before collecting it.] Need a decision on the branch.", landed.Body);
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
         Assert.Empty(_Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray());
+    }
+
+    // AC-1327 criterion 3: the node's local assistant hears who controlled it, for how long, and what is running
+    // here now — after the queue fallback above, never before it.
+    [Fact]
+    public async Task ControllerDroppingAway_TellsTheLocalAssistant_WhoAndForHowLong_AfterTheQueueFallback()
+    {
+        McpRequestContext.Set(AgentOnTheNode);
+        await _Agents().NotifyAsync(AssistantIdentity.PaneId, "blocked", "Need a decision on the branch.");
+
+        _presence.Current = null;
+        _presence.Raise();
+
+        var landed = _inbox.Drain(AssistantIdentity.PaneId, 25).Messages;
+        Assert.Equal(2, landed.Count);
+        Assert.Equal("controller-handover", landed[1].Kind);
+        Assert.Equal("DESKTOP", landed[1].FromPaneId);
+        Assert.Contains("DESKTOP controlled this machine", landed[1].Body);
+
+        // Tegenproef: a node that was never taken over has nothing to report when presence merely re-raises.
+        var neverControlled = new StubPresence();
+        var freshInbox = new AgentMessageInbox(neverControlled);
+        neverControlled.Raise();
+        Assert.Null(freshInbox.PeekOldest(AssistantIdentity.PaneId));
     }
 
     // The scope the pairing grant draws (AC-1292) is the scope of this split too: the same sender, on a desk that does
