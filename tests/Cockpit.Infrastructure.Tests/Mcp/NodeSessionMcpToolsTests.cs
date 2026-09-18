@@ -254,11 +254,21 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.False(answer["ok"]!.GetValue<bool>());
     }
 
+    // What the refusal-without-identity row (below) drives: remember_on_node was already proven here, and AC-1333
+    // adds read_node_memory on the same gate — dispatched by index rather than a branch in the test method.
+    private static readonly Func<NodeSessionMcpTools, Task<string>>[] _MemoryRefusalCalls =
+    [
+        tools => tools.RememberOnNodeAsync("should never land", "machine"),
+        tools => tools.ReadNodeMemoryAsync("machine"),
+    ];
+
     // AC-1329 criterion 3, plus its counterproof: scope "machine" gives the machine file's content and never the
-    // behaviour file's, remember_on_node appends to the file the scope names, and neither reaches this machine's
-    // memory at all without the controller's own identity.
-    [Fact]
-    public async Task Memory_IsScopedToTheFileNamed_AndRefusedWithoutTheControllersIdentity_WithoutWriting()
+    // behaviour file's, remember_on_node appends to the file the scope names, and neither remember_on_node nor
+    // read_node_memory (AC-1333) reaches this machine's memory at all without the controller's own identity.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Memory_IsScopedToTheFileNamed_AndRefusedWithoutTheControllersIdentity_WithoutWriting(int callIndex)
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
         var memory = new StubMemory { Machine = "this laptop's own paths", Behaviour = "how this laptop's operator wants replies" };
@@ -275,9 +285,10 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Equal((AssistantMemoryScope.Machine, "a fact learned by doing here"), memory.Remembered.Single());
 
         McpRequestContext.Set(OrdinarySessionPane);
-        var refused = _Json(await tools.RememberOnNodeAsync("should never land", "machine"));
+        var before = memory.Interactions;
+        var refused = _Json(await _MemoryRefusalCalls[callIndex](tools));
         Assert.False(refused["ok"]!.GetValue<bool>());
-        Assert.Single(memory.Remembered);
+        Assert.Equal(before, memory.Interactions);
     }
 
     public void Dispose() => McpRequestContext.Set(null);
@@ -290,11 +301,19 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         public List<(AssistantMemoryScope Scope, string Text)> Remembered { get; } = [];
 
-        public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
-            Task.FromResult(scope == AssistantMemoryScope.Machine ? Machine : Behaviour);
+        // AC-1333: one counter for both reads and writes, so a refusal test can assert "nothing happened" without
+        // caring which of the two tools it refused.
+        public int Interactions { get; private set; }
+
+        public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default)
+        {
+            Interactions++;
+            return Task.FromResult(scope == AssistantMemoryScope.Machine ? Machine : Behaviour);
+        }
 
         public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
         {
+            Interactions++;
             Remembered.Add((scope, text));
             return Task.CompletedTask;
         }
