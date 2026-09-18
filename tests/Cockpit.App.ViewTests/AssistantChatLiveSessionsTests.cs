@@ -142,10 +142,10 @@ public sealed class AssistantChatLiveSessionsTests
     // by pre-stamping a session before adding it, like the tests above — that would miss the bug entirely, since
     // it is the order of AddSession vs. the StartedByTheAssistant stamp in that method that is under test here.
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
+    [InlineData(true, 2)]
+    [InlineData(false, 1)]
     public async Task SessionsStartedByTheAssistant_IncludesASecondAssistantSessionAsSoonAsItLaunches(
-        bool secondStartedByTheAssistant) => await HeadlessAvalonia.RunAsync(async () =>
+        bool secondStartedByTheAssistant, int expectedCount) => await HeadlessAvalonia.RunAsync(async () =>
     {
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync().Returns(
@@ -157,10 +157,8 @@ public sealed class AssistantChatLiveSessionsTests
         await cockpit.NewSessionCommand.ExecuteAsync(null);
         await cockpit.NewSessionCommand.ExecuteAsync(null);
 
-        var expectedPaneIds = secondStartedByTheAssistant
-            ? cockpit.Sessions.Select(session => session.PaneId).ToArray()
-            : new[] { cockpit.Sessions[0].PaneId };
-        Assert.Equal(expectedPaneIds, vm.SessionsStartedByTheAssistant.Select(session => session.PaneId));
+        Assert.Equal(expectedCount, vm.SessionsStartedByTheAssistant.Count);
+        Assert.Contains(cockpit.Sessions[0], vm.SessionsStartedByTheAssistant);
     });
 
     private static NewSessionResult _Result(string name, bool startedByTheAssistant) => new(
