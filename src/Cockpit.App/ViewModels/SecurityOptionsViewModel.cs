@@ -46,7 +46,10 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
     // design-time/unit-test graph like the client above. AC-1324: the permission relay rides the same poll.
     NodeInboxRelay? nodeInboxRelay = null,
-    NodePermissionRelay? nodePermissionRelay = null) : ObservableObject
+    NodePermissionRelay? nodePermissionRelay = null,
+    // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
+    // design-time/unit-test graph like the relays above.
+    BehaviourMemorySync? behaviourSync = null) : ObservableObject
 {
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
@@ -405,7 +408,7 @@ public sealed partial class SecurityOptionsViewModel(
 
             foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
             {
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay);
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync);
                 PairedNodes.Add(card);
                 card.StartPolling();
 

@@ -15,7 +15,8 @@ public sealed partial class NodeSessionsViewModel(
     INodeSessionsClient client,
     string nodeName,
     NodeInboxRelay? inboxRelay = null,
-    NodePermissionRelay? permissionRelay = null) : ObservableObject, IDisposable
+    NodePermissionRelay? permissionRelay = null,
+    BehaviourMemorySync? behaviourSync = null) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
     // it stays a handshake and three small calls rather than something the node's operator would notice.
@@ -59,6 +60,11 @@ public sealed partial class NodeSessionsViewModel(
     // AC-1327 criterion 2: one missed 20s poll is a blip, not a drop — mirrors the node-side 60s fallback, which
     // does not tip on a single miss either. Counts consecutive failures; the second is the threshold.
     private int _consecutiveMisses;
+
+    // AC-1330: its own flag rather than `_wasReachable` above — starting false makes this card's very first
+    // successful read count as an edge too, which is exactly the "once at launch" case, where `_wasReachable`
+    // deliberately must not (that one exists to keep the very first read from reading as a node-back message).
+    private bool _wasReachableForBehaviourSync;
 
     [RelayCommand]
     public async Task RefreshAsync()
@@ -123,7 +129,10 @@ public sealed partial class NodeSessionsViewModel(
                 await inboxRelay.PollAsync(NodeName).ConfigureAwait(true);
             }
 
-            _NoteReachability(reachable: true, sessionCount: Sessions.Count);
+            if (_NoteReachability(reachable: true, sessionCount: Sessions.Count) && behaviourSync is not null)
+            {
+                await behaviourSync.RunAsync(NodeName).ConfigureAwait(true);
+            }
         }
         finally
         {
@@ -133,7 +142,8 @@ public sealed partial class NodeSessionsViewModel(
 
     // AC-1327 criterion 2: fires only on the reachable↔unreachable edge, past the second consecutive miss, using
     // the same relay/Deliver path as the mail poll above — `InboxWakeScheduler` wakes for this post like any other.
-    private void _NoteReachability(bool reachable, int sessionCount)
+    // AC-1330: the bool return is that same edge, for the behaviour sync — its caller awaits it, this stays sync.
+    private bool _NoteReachability(bool reachable, int sessionCount)
     {
         if (reachable)
         {
@@ -141,16 +151,20 @@ public sealed partial class NodeSessionsViewModel(
         }
         else if (++_consecutiveMisses < 2)
         {
-            return;
+            return false;
         }
+
+        var syncBehaviour = reachable && !_wasReachableForBehaviourSync;
+        _wasReachableForBehaviourSync = reachable;
 
         if (reachable == _wasReachable)
         {
-            return;
+            return syncBehaviour;
         }
 
         _wasReachable = reachable;
         inboxRelay?.NotifyTransition(NodeName, reachable, sessionCount, DateTimeOffset.UtcNow);
+        return syncBehaviour;
     }
 
     // Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks on the thread that constructed

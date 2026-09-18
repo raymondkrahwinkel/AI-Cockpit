@@ -1,4 +1,6 @@
+using System.Globalization;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
@@ -222,6 +224,91 @@ public class NodeSessionsViewModelTests
         Assert.Contains("with 1 session", back.Body, StringComparison.Ordinal);
     }
 
+    // AC-1330 criterion 1: controller {A, B}, node {B, C} → controller {A, B, C(from laptop)}, node {B, C,
+    // A(from <this machine>)}; a second sync right after changes neither (idempotent, no pingpong on the suffix).
+    [Fact]
+    public async Task Refresh_TakesOverBehaviourRulesBothWays_AndASecondSyncRightAfterChangesNothing()
+    {
+        var memory = new InMemoryAssistantMemory();
+        await memory.RememberAsync("A", AssistantMemoryScope.Behaviour);
+        await memory.RememberAsync("B", AssistantMemoryScope.Behaviour);
+        var machineBefore = await memory.ReadAsync(AssistantMemoryScope.Machine);
+        var client = new FakeNodeSessions
+        {
+            Snapshot = new NodeSessionsSnapshot("laptop", [], [], []),
+            NodeBehaviour = "B\nC",
+        };
+        var inbox = new AgentMessageInbox();
+        var sync = new BehaviourMemorySync(client, memory, inbox);
+        var card = new NodeSessionsViewModel(client, "laptop", behaviourSync: sync);
+        var today = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        await card.RefreshAsync();
+
+        Assert.Equal($"A\nB\nC (from laptop, {today})", await memory.ReadAsync(AssistantMemoryScope.Behaviour));
+        Assert.Equal($"B\nC\nA (from {Environment.MachineName}, {today})", client.NodeBehaviour);
+        Assert.Equal(machineBefore, await memory.ReadAsync(AssistantMemoryScope.Machine));
+        var report = Assert.Single(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+        Assert.Equal("Took over 1 behaviour rules from laptop and sent 1 there.", report.Body);
+
+        await sync.RunAsync("laptop");
+
+        Assert.Equal($"A\nB\nC (from laptop, {today})", await memory.ReadAsync(AssistantMemoryScope.Behaviour));
+        Assert.Equal($"B\nC\nA (from {Environment.MachineName}, {today})", client.NodeBehaviour);
+        Assert.Empty(inbox.Drain(AssistantIdentity.PaneId, 25).Messages);
+    }
+
+    // AC-1330 criterion 2: the sync runs once at launch (this card's first successful read) and once more on the
+    // unreachable→reachable edge AC-1327 gates behind a second consecutive miss — never on a poll in between.
+    [Fact]
+    public async Task Refresh_RunsTheBehaviourSyncOnLaunchAndOnTheReachableEdge_NeverPerPoll()
+    {
+        var client = new FakeNodeSessions { Snapshot = new NodeSessionsSnapshot("laptop", [], [], []) };
+        var sync = new BehaviourMemorySync(client, new InMemoryAssistantMemory(), new AgentMessageInbox());
+        var card = new NodeSessionsViewModel(client, "laptop", behaviourSync: sync);
+
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        Assert.Equal(1, client.ReadMemoryCalls);
+
+        client.Snapshot = new NodeSessionsSnapshot("laptop", [], [], [], "Could not reach laptop: no route to host");
+        await card.RefreshAsync();
+        await card.RefreshAsync();
+        client.Snapshot = new NodeSessionsSnapshot("laptop", [], [], []);
+        await card.RefreshAsync();
+
+        Assert.Equal(2, client.ReadMemoryCalls);
+    }
+
+    // An in-memory `IAssistantMemory` keyed by scope, since `AssistantMemoryFile` (the real one) touches disk.
+    private sealed class InMemoryAssistantMemory : IAssistantMemory
+    {
+        private readonly Dictionary<AssistantMemoryScope, string> _text = new();
+
+        public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_text.GetValueOrDefault(scope, ""));
+
+        public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
+        {
+            var existing = _text.GetValueOrDefault(scope, "");
+            _text[scope] = existing.Length == 0 ? text : $"{existing}\n{text}";
+            return Task.CompletedTask;
+        }
+
+        public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) => Task.FromResult("");
+
+        public Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>> ExportAsync(string archivePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
     private sealed class FakeNodeSessions : INodeSessionsClient
     {
         public required NodeSessionsSnapshot Snapshot { get; set; }
@@ -280,11 +367,23 @@ public class NodeSessionsViewModelTests
         public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodePermissionAnswer(false));
 
-        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeMemoryRead(""));
+        // AC-1330: the node's own "behaviour" memory file, and how many times it was read — the sync's only call
+        // that nothing else on this card makes, so a count of it is a count of syncs.
+        public string NodeBehaviour { get; set; } = "";
 
-        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
-            Task.FromResult<string?>(null);
+        public int ReadMemoryCalls { get; private set; }
+
+        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default)
+        {
+            ReadMemoryCalls++;
+            return Task.FromResult(new NodeMemoryRead(NodeBehaviour));
+        }
+
+        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default)
+        {
+            NodeBehaviour = NodeBehaviour.Length == 0 ? text : $"{NodeBehaviour}\n{text}";
+            return Task.FromResult<string?>(null);
+        }
 
         public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
         {

@@ -3122,7 +3122,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodeControllerPresence? controllerPresence = null,
         // AC-1322: collects, on the node cards' poll, what agents on a paired node sent their assistant. Absent in
         // the design-time/unit-test graph, where the cards only list.
-        NodeInboxRelay? nodeInboxRelay = null)
+        NodeInboxRelay? nodeInboxRelay = null,
+        // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
+        // design-time/unit-test graph like the relay above.
+        BehaviourMemorySync? behaviourSync = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3156,7 +3159,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeSessionsClient,
             nodeInboxRelay,
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
-            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session));
+            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
+            behaviourSync);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
