@@ -5808,6 +5808,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         SessionPanelViewModel session = result.Kind == SessionKind.Sdk ? _sessionFactory() : _ttySessionFactory();
         session.LaunchResult = result;
+
+        // AC-1332: stamped before AddSession, not after — the rail rebuilds off Sessions' own CollectionChanged
+        // (AssistantChatViewModel._RebuildLiveSessions), so an unstamped session lands unseen and never gets a
+        // second look. _AttachRestoredSession follows the same order for the restore path.
+        session.StartedByTheAssistant = result.StartedByTheAssistant;
         AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen, targetWorkspaceId);
 
         // AC-410: written now, before the session actually starts — see _PersistNewSessionPane for why this order

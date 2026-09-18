@@ -1,8 +1,21 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Layout;
+using Cockpit.Core.Notifications;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.SessionBehavior;
+using Cockpit.Core.Terminal;
+using Cockpit.Core.TranscriptDisplay;
+using Cockpit.Core.Voice;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -123,6 +136,70 @@ public sealed class AssistantChatLiveSessionsTests
         var assistant = new SessionViewModel { BelongsToNoWorkspace = true, StartedByTheAssistant = true };
 
         Assert.False(AssistantSessionOrigin.Resolve(assistant));
+    }
+
+    // AC-1332: driven through the real launch path (NewSessionCommand -> _LaunchSessionFromResultAsync) rather than
+    // by pre-stamping a session before adding it, like the tests above — that would miss the bug entirely, since
+    // it is the order of AddSession vs. the StartedByTheAssistant stamp in that method that is under test here.
+    [Theory]
+    [InlineData(true, 2)]
+    [InlineData(false, 1)]
+    public async Task SessionsStartedByTheAssistant_IncludesASecondAssistantSessionAsSoonAsItLaunches(
+        bool secondStartedByTheAssistant, int expectedCount) => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(
+            _Result("A", startedByTheAssistant: true),
+            _Result("C", startedByTheAssistant: secondStartedByTheAssistant));
+        var cockpit = _FullCockpit(dialogService);
+        var vm = _Vm(cockpit);
+
+        await cockpit.NewSessionCommand.ExecuteAsync(null);
+        await cockpit.NewSessionCommand.ExecuteAsync(null);
+
+        Assert.Equal(expectedCount, vm.SessionsStartedByTheAssistant.Count);
+        Assert.Contains(cockpit.Sessions[0], vm.SessionsStartedByTheAssistant);
+    });
+
+    private static NewSessionResult _Result(string name, bool startedByTheAssistant) => new(
+        SessionKind.Sdk,
+        new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
+        SessionOptionCatalog.DefaultPermissionMode,
+        SessionOptionCatalog.DefaultModel,
+        SessionOptionCatalog.DefaultEffort,
+        name)
+    {
+        StartedByTheAssistant = startedByTheAssistant,
+    };
+
+    private static CockpitViewModel _FullCockpit(ISessionDialogService dialogService)
+    {
+        var notifications = Substitute.For<INotificationSettingsStore>();
+        notifications.LoadAsync().Returns(new NotificationSettings());
+        var transcriptDisplay = Substitute.For<ITranscriptDisplaySettingsStore>();
+        transcriptDisplay.LoadAsync().Returns(new TranscriptDisplaySettings());
+        var sessionBehavior = Substitute.For<ISessionBehaviorSettingsStore>();
+        sessionBehavior.LoadAsync().Returns(new SessionBehaviorSettings());
+        var layout = Substitute.For<ILayoutSettingsStore>();
+        layout.LoadAsync().Returns(new LayoutSettings());
+        var voice = Substitute.For<IVoiceSettingsStore>();
+        voice.LoadAsync().Returns(new VoiceSettings());
+        var terminal = Substitute.For<ITerminalSettingsStore>();
+        terminal.LoadAsync().Returns(new TerminalSettings());
+
+        return new CockpitViewModel(
+            () => new SessionViewModel(),
+            () => new TtyViewModel(),
+            dialogService,
+            Substitute.For<IAudioCaptureService>(),
+            Substitute.For<IAudioPlaybackService>(),
+            Substitute.For<IAttentionNotifier>(),
+            notifications,
+            transcriptDisplay,
+            sessionBehavior,
+            layout,
+            voice,
+            terminal);
     }
 
     // AC-774 again: the live-session subscription must come off on close, or every reopened chat window chains another handler.
