@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot epic run now forks its worktree from a collection branch derived from the epic itself,
+  checks whether a sub already merged into that branch, and opens its pull request against it, instead of every
+  sub going straight to main; an operator can opt back into the old behaviour globally in Autopilot's settings
+  storage (no panel yet).
+
 - added: a session can run one PowerShell command as administrator on Windows through the `cockpit-session`
   tool `run_elevated`; you first see a consent card with the exact command line, the working directory and the
   agent's reason, then Windows shows its usual UAC prompt, and the command's output comes back to the session.

@@ -165,6 +165,10 @@ internal sealed class AutopilotRunContext
                 await _host.RememberWorkingPathAsync(repositoryDirectory, _cts.Token);
             }
 
+            // AC-1337: this epic's own collection branch, unless the operator opted back into v1 (direct to main) —
+            // null for a run with no epic (a single-issue click), same as it always forked from the checkout.
+            var collectionBranch = AutopilotCollectionBranch.For(_settings.EpicDirectToMain(), plan.Source?.EpicId);
+
             // One worktree for the whole run when it isolates (AC-174): every step runs in it so their work
             // accumulates on one branch — the merge-ready deliverable — instead of a throwaway worktree per step.
             // Null when the run does not isolate, or the worktree could not be created (falls back per-step).
@@ -173,7 +177,7 @@ internal sealed class AutopilotRunContext
             {
                 try
                 {
-                    runWorktree = await _host.CreateRunWorktreeAsync(repositoryDirectory, "autopilot", _cts.Token);
+                    runWorktree = await _host.CreateRunWorktreeAsync(repositoryDirectory, "autopilot", collectionBranch, _cts.Token);
                 }
                 catch (Exception)
                 {
@@ -200,7 +204,7 @@ internal sealed class AutopilotRunContext
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
-            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch, RunId, plan.Label);
+            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch, RunId, plan.Label, collectionBranch);
             await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
         }
         catch (Exception)

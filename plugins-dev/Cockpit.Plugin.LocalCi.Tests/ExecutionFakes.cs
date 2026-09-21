@@ -21,10 +21,10 @@ internal sealed class FakeWorktreeManager : IWorktreeManager
     public Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, CancellationToken cancellationToken = default) =>
+    public Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, string? baseRef = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, CancellationToken cancellationToken = default) =>
+    public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, string? baseRef = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     public Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default) =>

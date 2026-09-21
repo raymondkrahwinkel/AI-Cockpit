@@ -8,7 +8,14 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.31.0: a memory source can now be written to by the host itself (AC-492) —
+    <!-- 0.32.0: a run worktree can now fork from a named branch's remote tip instead of the checkout's own
+         branch (AC-1337) — a fourth-argument ICockpitHost.CreateRunWorktreeAsync overload taking `baseRef`.
+         Default-implemented, forwarding to the existing three-argument overload, so an already-compiled plugin
+         loads and behaves exactly as before; the bump is for the other direction. A plugin that calls the new
+         overload sets minHostVersion 0.32.0 — an older host's copy of the SDK has no such member, so the call
+         cannot resolve at all. Autopilot calls it unconditionally (baseRef null included) and sets it. Minor
+         because it is additive; still 0.x.
+         0.31.0: a memory source can now be written to by the host itself (AC-492) —
          ProjectMemorySourceRegistration.AppendNoteAsync, the contract's first write operation, so a quick note
          lands in a project's memory without a session being started. Deliberately NOT an abstractionsVersion
          bump, on the same reasoning as 0.30.0 below: a trailing init-property with a null default, so an
@@ -239,7 +246,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.31.0</VersionPrefix>
+    <VersionPrefix>0.32.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

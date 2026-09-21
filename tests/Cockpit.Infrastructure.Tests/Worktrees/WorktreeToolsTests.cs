@@ -21,7 +21,7 @@ public class WorktreeToolsTests
     public async Task CreateAsync_AsksForTheSourceToBeLeftAlone()
     {
         var manager = Substitute.For<IWorktreeManager>();
-        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        manager.CreateForSessionAsync(Arg.Is("pane"), Arg.Is<string?>(label => label == null), Arg.Is("/repo"), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_Record("pane", "/wt/path"));
         var tools = new WorktreeTools(manager);
 
@@ -31,11 +31,12 @@ public class WorktreeToolsTests
         // there — so this route may never be the reason that repository's branch or working tree is written to.
         // isAgentCreated: true (AC-520 fix 5) — every worktree this tool creates is one an agent asked for.
         await manager.Received().CreateForSessionAsync(
-            "pane",
-            null,
-            "/repo",
-            WorktreeSourceHandling.LeaveSourceAlone,
-            true,
+            Arg.Is("pane"),
+            Arg.Is<string?>(label => label == null),
+            Arg.Is("/repo"),
+            Arg.Is(WorktreeSourceHandling.LeaveSourceAlone),
+            Arg.Is(true),
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -71,7 +72,7 @@ public class WorktreeToolsTests
     {
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record("pane", "/wt/path");
-        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, true, Arg.Any<CancellationToken>()).Returns(record);
+        manager.CreateForSessionAsync(Arg.Is("pane"), Arg.Is<string?>(label => label == null), Arg.Is("/repo"), Arg.Is(WorktreeSourceHandling.LeaveSourceAlone), Arg.Is(true), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(record);
         var tools = new WorktreeTools(manager);
 
         using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));

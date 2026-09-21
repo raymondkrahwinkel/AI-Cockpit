@@ -11,7 +11,8 @@ internal sealed record AutopilotRunEnvironment(
     bool IsolateSteps,
     string? RunWorktreeBranch = null,
     string? RunId = null,
-    string? RunLabel = null)
+    string? RunLabel = null,
+    string? CollectionBranch = null)
 {
     // Whether this run has one shared git worktree on its own branch — the merge-ready deliverable a code run can push and open a PR from (AC-216). False for a parallel-only or non-git run.
     public bool HasRunBranch => RunWorktreePath is { Length: > 0 } && RunWorktreeBranch is { Length: > 0 };

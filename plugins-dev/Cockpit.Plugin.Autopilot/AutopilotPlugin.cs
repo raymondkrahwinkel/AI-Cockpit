@@ -92,11 +92,15 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                     ? active
                     : Directory.GetCurrentDirectory();
 
+                // AC-1337: the same collection branch the run itself will fork its worktree from and publish
+                // against — this epic's derived branch unless the operator opted back into v1 (direct to main).
+                var collectionBranch = AutopilotCollectionBranch.For(settings.EpicDirectToMain(), run.IssueId);
+
                 var epicOutcome = await AutopilotEpicRunner.ResolveAsync(
                     provider,
                     run,
                     settings.ExecutableStage(run.Tracker),
-                    new GitEpicSubMergeChecker(repositoryDirectory),
+                    new GitEpicSubMergeChecker(repositoryDirectory, collectionBranch),
                     CancellationToken.None);
 
                 switch (epicOutcome.Kind)

@@ -38,4 +38,8 @@ public enum WorktreeSourceOutcome
     // HEAD was detached and either origin had nothing newer or it could not be compared against at all (no
     // remote, or no resolvable default branch) — so the commit HEAD already pointed at is the fork commit.
     DetachedHead,
+
+    // Forked from a named branch's remote tip instead of the checkout's own branch (AC-1337) — an epic run's
+    // collection-branch setting, say, rather than whatever the operator's checkout happens to have checked out.
+    ForkedFromCollectionBranch,
 }

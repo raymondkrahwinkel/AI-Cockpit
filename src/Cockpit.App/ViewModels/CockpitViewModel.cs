@@ -9013,7 +9013,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
     // `Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync`.
-    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken)
+    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken) =>
+        CreateRunWorktreeAsync(repositoryDirectory, label, baseRef: null, cancellationToken);
+
+    // AC-1337: same worktree creation, but forking from `baseRef`'s remote tip (an epic run's collection branch)
+    // instead of the checkout's own branch when one is given — backs the four-argument `ICockpitHost` overload.
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, string? baseRef, CancellationToken cancellationToken)
     {
         if (_worktreeManager is null
             || string.IsNullOrWhiteSpace(repositoryDirectory)
@@ -9022,7 +9027,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken: cancellationToken);
+        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, baseRef: baseRef, cancellationToken: cancellationToken);
         return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
@@ -9038,7 +9043,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Information for the two outcomes where everything went as it should — the branch was brought forward, or
         // the session started from the upstream and left the branch alone. The rest are cases where the session is
         // running on an older base than it could have, which is the kind of thing worth catching an eye.
-        var severity = refresh.Outcome is WorktreeSourceOutcome.FastForwarded or WorktreeSourceOutcome.ForkedFromUpstream
+        var severity = refresh.Outcome is WorktreeSourceOutcome.FastForwarded or WorktreeSourceOutcome.ForkedFromUpstream or WorktreeSourceOutcome.ForkedFromCollectionBranch
             ? ToastSeverity.Information
             : ToastSeverity.Warning;
 

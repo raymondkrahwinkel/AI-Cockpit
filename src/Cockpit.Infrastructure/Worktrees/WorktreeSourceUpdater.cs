@@ -341,6 +341,60 @@ internal static class WorktreeSourceUpdater
             + (disturbed ? $" Your checkout at {root} now has changes in it — worth a look before you carry on." : string.Empty));
     }
 
+    // AC-1337: forks from a named branch's remote tip — an epic run's collection-branch setting — instead of the
+    // checkout's own branch. A remote that cannot be reached at all falls back to the checkout's local HEAD; a
+    // branch that does not exist yet there (an epic's first sub) falls back to the remote's default branch instead.
+    public static async Task<WorktreeSourceRefresh> ForkFromNamedBranchAsync(
+        GitRepositoryInfo repository,
+        string branchName,
+        CancellationToken cancellationToken)
+    {
+        var remote = await _DefaultRemoteAsync(repository.Root, cancellationToken).ConfigureAwait(false);
+        if (remote is null || !await _FetchAsync(repository.Root, remote, cancellationToken).ConfigureAwait(false))
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.FetchFailed,
+                0,
+                null,
+                $"Could not reach a remote to fetch '{branchName}', so this session forked from the checkout's local HEAD instead.");
+        }
+
+        var reference = $"{remote}/{branchName}";
+        var target = await _RevParseAsync(repository.Root, reference, cancellationToken).ConfigureAwait(false);
+        if (target is not null)
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.ForkedFromCollectionBranch,
+                0,
+                reference,
+                $"This session forked from the collection branch {reference}.",
+                target);
+        }
+
+        // The branch itself does not exist on the remote yet — an epic's first sub, before any collection branch
+        // was ever pushed. That is not a reason to fork from whatever the operator's checkout happens to hold; the
+        // remote's own default branch is the same upstream path an ordinary session start already takes.
+        var defaultReference = await _DefaultBranchAsync(repository.Root, remote, cancellationToken).ConfigureAwait(false);
+        var defaultTarget = defaultReference is null
+            ? null
+            : await _RevParseAsync(repository.Root, defaultReference, cancellationToken).ConfigureAwait(false);
+        if (defaultReference is null || defaultTarget is null)
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.CheckFailed,
+                0,
+                null,
+                $"'{reference}' does not exist and no default branch could be resolved, so this session forked from the checkout's local HEAD instead.");
+        }
+
+        return new WorktreeSourceRefresh(
+            WorktreeSourceOutcome.ForkedFromUpstream,
+            0,
+            defaultReference,
+            $"'{branchName}' does not exist on the remote yet, so this session forked from {defaultReference} instead.",
+            defaultTarget);
+    }
+
     private static WorktreeSourceRefresh _CouldNotCheck(string branch) => new(
         WorktreeSourceOutcome.CheckFailed,
         0,

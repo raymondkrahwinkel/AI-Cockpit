@@ -35,12 +35,17 @@ public interface IWorktreeManager
     /// the source when clean (AC-349), else forks local HEAD. <paramref name="handling"/> gates that move to
     /// operator sessions (AC-376); <paramref name="isAgentCreated"/> flags an agent's subtask worktree (AC-520 fix 5).
     /// </summary>
+    /// <param name="baseRef">
+    /// A named branch to fork from instead (AC-1337) — an epic run's collection-branch setting, say. Forks from
+    /// that branch's remote tip and ignores <paramref name="handling"/>; null keeps today's checkout-HEAD behaviour.
+    /// </param>
     Task<WorktreeRecord> CreateAsync(
         string sessionId,
         string branch,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
         bool isAgentCreated = false,
+        string? baseRef = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -48,12 +53,14 @@ public interface IWorktreeManager
     /// and <paramref name="sessionId"/> (AC-85) — the convenience both the SDK/headless start path and the TTY launch
     /// path use, so branch naming lives in one place. <paramref name="isAgentCreated"/> carries the same meaning as on <see cref="CreateAsync"/>.
     /// </summary>
+    /// <param name="baseRef">Same as on <see cref="CreateAsync"/> — a named branch to fork from instead.</param>
     Task<WorktreeRecord> CreateForSessionAsync(
         string sessionId,
         string? sessionLabel,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
         bool isAgentCreated = false,
+        string? baseRef = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);

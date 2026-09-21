@@ -34,8 +34,8 @@ internal interface IEpicSubMergeChecker
 
 // The real `IEpicSubMergeChecker` (AC-346): a sub counts as merged when a commit *subject line* (never its
 // body) in `origin/main`'s history starts with its exact ticket number, word-boundary matched in .NET rather
-// than via `git log --grep`. Checked against `origin/main`, never a local branch, with `git fetch` first (best-effort).
-internal sealed class GitEpicSubMergeChecker(string repositoryDirectory) : IEpicSubMergeChecker
+// than via `git log --grep`. `collectionBranch` (AC-1337), when given, checks that branch instead of `main`.
+internal sealed class GitEpicSubMergeChecker(string repositoryDirectory, string? collectionBranch = null) : IEpicSubMergeChecker
 {
     private IReadOnlyList<string>? _subjects;
 
@@ -48,9 +48,18 @@ internal sealed class GitEpicSubMergeChecker(string repositoryDirectory) : IEpic
             return;
         }
 
-        _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", "main"], repositoryDirectory, cancellationToken);
+        // A collection branch that does not exist on origin yet (an epic's very first click, before any sub ever
+        // pushed to it) is not a failure to report — nothing has merged there, so main is exactly the right answer.
+        var branch = string.IsNullOrWhiteSpace(collectionBranch) ? "main" : collectionBranch;
+        _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", branch], repositoryDirectory, cancellationToken);
 
-        var result = await GitCommandLine.RunAsync("git", ["log", "origin/main", "--format=%s"], repositoryDirectory, cancellationToken);
+        var result = await GitCommandLine.RunAsync("git", ["log", $"origin/{branch}", "--format=%s"], repositoryDirectory, cancellationToken);
+        if (!result.Ok && branch != "main")
+        {
+            _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", "main"], repositoryDirectory, cancellationToken);
+            result = await GitCommandLine.RunAsync("git", ["log", "origin/main", "--format=%s"], repositoryDirectory, cancellationToken);
+        }
+
         if (!result.Ok)
         {
             return;

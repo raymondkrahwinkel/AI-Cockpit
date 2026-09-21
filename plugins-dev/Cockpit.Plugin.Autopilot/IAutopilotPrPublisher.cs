@@ -5,8 +5,9 @@ namespace Cockpit.Plugin.Autopilot;
 internal sealed record AutopilotPrProbe(bool IsGitRun, bool HasRemote, bool GhAvailable);
 
 // The work to publish for a merge-ready code run (AC-216). `Title` doubles as the leftover-work safety commit
-// message — no AI/agent mention. `Body` is the PR body (the run's goal and source link).
-internal sealed record AutopilotPrRequest(string WorktreePath, string Branch, string Title, string Body);
+// message — no AI/agent mention. `Body` is the PR body (the run's goal and source link). `Base` (AC-1337) is the
+// branch the PR targets — an epic run's collection branch; null opens it against the default branch, as v1 did.
+internal sealed record AutopilotPrRequest(string WorktreePath, string Branch, string Title, string Body, string? Base = null);
 
 // What became of work a step committed on a worktree of its own instead of on the run's branch (AC-1037).
 // `Recovered`: cherry-picked onto the run branch, oldest first. `Stranded`: still only on the step's own branch,

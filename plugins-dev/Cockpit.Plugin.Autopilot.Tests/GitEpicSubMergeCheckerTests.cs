@@ -127,6 +127,24 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
         Assert.False(checker.IsMerged("AC-88"));
     }
 
+    // AC-1337: a collection branch, when given, is checked instead of main — a sub merged only into the collection
+    // branch reads as merged there and as not-yet-merged when no collection branch is set (main never saw it).
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("release/epic", true)]
+    public async Task IsMerged_WithACollectionBranch_ChecksThatBranchInsteadOfMain(string? collectionBranch, bool expectMerged)
+    {
+        await _Run(_clone, "checkout", "-b", "release/epic");
+        await _Commit("AC-2 - merged into the collection branch only");
+        await _Run(_clone, "push", "-u", "origin", "release/epic");
+        await _Run(_clone, "checkout", "main");
+
+        var checker = new GitEpicSubMergeChecker(_clone, collectionBranch);
+        await checker.RefreshAsync();
+
+        Assert.Equal(expectMerged, checker.IsMerged("AC-2"));
+    }
+
     public void Dispose()
     {
         _TryDelete(_origin);
