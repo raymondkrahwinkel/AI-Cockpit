@@ -786,14 +786,86 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var blockReason = controller.BlockReason;
         var blockadeAnswers = controller.BlockadeAnswers;
         var pullRequestMissing = controller.PullRequestMissing;
+        var mergeResult = context.Coordinator.MergeResult;
+        var strandedCommits = context.Coordinator.StrandedCommits;
 
-        _OnUi(() =>
+        AutopilotRunRecord? settled = null;
+        await _RunOnUiAsync(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
-            _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
+            settled = _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
             _Render();
         });
+
+        // AC-1340: an epic sub that settled hands the chain its facts — the next Ready sub starts itself, or the
+        // chain says why not. Awaited here, off the UI thread, since resolving the next sub fetches and reads links.
+        if (settled is not null && settledPlan?.Source is { EpicId.Length: > 0 } source)
+        {
+            await _ChainNextSubAsync(source, settledPlan, settled, mergeResult, strandedCommits);
+        }
+    }
+
+    // The settle-hook's chain (AC-1340): the same resolve the epic click runs, the same planning start the "plan"
+    // intent makes — the automation replaces exactly that click, nothing else. Stops are said on the epic and to the
+    // assistant by the chain itself; a fault in this hook is reported the same way rather than swallowed.
+    private async Task _ChainNextSubAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotRunRecord settled, AutopilotMergeResult? mergeResult, bool strandedCommits)
+    {
+        var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            return;
+        }
+
+        var epic = new AutopilotRun(source.Tracker, source.EpicId, string.Empty, string.Empty, new Dictionary<string, string>());
+        var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
+        var collectionBranch = AutopilotCollectionBranch.For(_settings.EpicDirectToMain(), source.EpicId);
+        var epicRuns = _history.Items.Where(record => string.Equals(record.EpicId, source.EpicId, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var chain = new AutopilotEpicChain(
+            cancellationToken => AutopilotEpicRunner.ResolveAsync(
+                provider,
+                epic,
+                _settings.ExecutableStage(source.Tracker),
+                new GitEpicSubMergeChecker(repositoryDirectory, collectionBranch),
+                cancellationToken,
+                _settings.AcceptanceHeadings(),
+                new AutopilotMergeBuildLedger(_host.Storage).LastBuild(collectionBranch)),
+            _StartPlanningForSubAsync,
+            (text, cancellationToken) => provider.PostCommentAsync(source.EpicId, text, cancellationToken),
+            text => _host.NotifyAssistantAsync("epic-chain", $"{source.EpicId}: {text}"),
+            _settings.ChainUncleanRunTolerance());
+
+        try
+        {
+            _ = await chain.ContinueAsync(settled, epicRuns, mergeResult, strandedCommits);
+        }
+        catch (Exception failure)
+        {
+            _ = await _host.NotifyAssistantAsync("epic-chain", $"{source.EpicId}: Autopilot could not continue this epic's chain after {settled.Ticket}: {failure.Message}");
+        }
+    }
+
+    // The "plan" intent's start, minus the click (AC-1340): the sub the epic-runner picked opens its planning round
+    // on the shared controller, and the render below pops the CEO out — AC-1339 then submits a groomed sub itself.
+    // False when a round is already open or a run on this sub is in flight; the chain reports that as its stop.
+    private async Task<bool> _StartPlanningForSubAsync(AutopilotRun run)
+    {
+        var started = false;
+        await _RunOnUiAsync(() =>
+        {
+            if (AutopilotPlugin._HasRunInFlight(_plan, _queue, _manager, run.Tracker, run.IssueId) || !_RequireCeoProfile())
+            {
+                return;
+            }
+
+            started = _plan.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title));
+            if (started)
+            {
+                _Render();
+            }
+        });
+        return started;
     }
 
     // Whether a run's final phase gets recorded in history and toasted (AC-196): merge-ready, blocked, or
@@ -801,14 +873,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
         outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
 
-    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers, bool pullRequestMissing)
+    // Returns the record it added to history, or null when the run was not a settled one (AC-1340 reads it).
+    private AutopilotRunRecord? _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers, bool pullRequestMissing)
     {
         // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
         // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
+        AutopilotRunRecord? settled = null;
         if (IsSettledOutcome(outcome) && plan is not null)
         {
             _completedRuns++;
-            _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
+            settled = AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now);
+            _history.Add(settled);
 
             // AC-346: this run's sub came from an epic chain — one progress comment on the epic per settled step.
             // Best-effort and fire-and-forget, like every other tracker write in this plugin.
@@ -846,6 +921,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
             _completedRuns = 0;
         }
+
+        return settled;
     }
 
     // AC-346: the epic-runner's progress comment, one per settled sub-run, written onto the epic (not the sub).

@@ -49,6 +49,12 @@ internal sealed class AutopilotRunCoordinator(
     // gate, null otherwise. `AwaitingMergeGo` is what the surface and the go tool read.
     private TaskCompletionSource<AutopilotMergeGo>? _mergeGo;
 
+    // What the settle-hook reads to decide whether the epic's chain goes on (AC-1340), guarded by _lock: the gate's
+    // landing (null while nothing landed — gate skipped, refused, or cancelled) and whether a step left commits
+    // stranded in a worktree of its own. Structured facts, so the chain never reads them back out of a comment.
+    private AutopilotMergeResult? _mergeResult;
+    private bool _strandedCommits;
+
     // Replaces the run's validator with a fresh session briefed on the carry-over it is handed, returning it — or null
     // when the host refused to embed one (AC-253). Null in a bare test graph, and in a run whose surface cannot embed:
     // both simply never checkpoint. The app supplies the real swap through AutopilotRunContext.
@@ -158,6 +164,31 @@ internal sealed class AutopilotRunCoordinator(
         }
     }
 
+    // How the merge gate landed this run's sub (AC-1338), or null when nothing landed — what AC-1340's chain reads.
+    public AutopilotMergeResult? MergeResult
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _mergeResult;
+            }
+        }
+    }
+
+    // Whether any step of this run left commits stranded in a worktree of its own (AC-1037) — work the run branch
+    // does not carry, so the chain must not build the next sub on it (AC-1340).
+    public bool StrandedCommits
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _strandedCommits;
+            }
+        }
+    }
+
     // A go or a refusal for the sub waiting at this run's merge gate (AC-1338) — from the operator's button on the run
     // or from `autopilot_merge_go`. `issue` must name this run's sub (or, for a run with no source, its label); false
     // when nothing is waiting or the name is another run's, so a go can never land on the wrong sub.
@@ -224,6 +255,11 @@ internal sealed class AutopilotRunCoordinator(
             _Note(lastStepId, $"Go from {go.By} — rebasing onto {collection} and merging…");
             var request = new AutopilotMergeRequest(worktree, branch, collection, published.PrUrl, buildCommand, buildTimeout);
             var result = await _mergeExecutor.MergeAsync(request, cancellationToken).ConfigureAwait(false);
+            lock (_lock)
+            {
+                _mergeResult = result;
+            }
+
             if (!result.Merged)
             {
                 await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Failed(current, collection, result.Error), cancellationToken).ConfigureAwait(false);
@@ -1021,6 +1057,14 @@ internal sealed class AutopilotRunCoordinator(
             try
             {
                 var stray = await _prPublisher.RecoverStrayCommitsAsync(runWorktree, runBranch, stepWorktree, cancellationToken).ConfigureAwait(false);
+                if (stray.Stranded.Count > 0)
+                {
+                    lock (_lock)
+                    {
+                        _strandedCommits = true;
+                    }
+                }
+
                 if (stray.NeedsSaying)
                 {
                     notes.Add(_DescribeStray(stray, runBranch, stepWorktree));
