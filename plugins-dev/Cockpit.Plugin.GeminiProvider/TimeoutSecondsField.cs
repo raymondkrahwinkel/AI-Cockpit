@@ -5,7 +5,8 @@ namespace Cockpit.Plugin.GeminiProvider;
 // being touched, even for a call that never reaches them.
 internal static class TimeoutSecondsField
 {
-    // Blank keeps the SDK default (null), a positive number is accepted, zero/negative are rejected.
+    // Blank returns null, which BuildClientOptions then maps to OpenAiCompatConfig.DefaultTimeoutSeconds
+    // (600s) — not the OpenAI SDK's own 100s default. A positive number is accepted; zero/negative rejected.
     internal static bool TryParse(string text, out int? timeoutSeconds)
     {
         var trimmed = text.Trim();
