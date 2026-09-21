@@ -790,37 +790,45 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var strandedCommits = context.Coordinator.StrandedCommits;
 
         AutopilotRunRecord? settled = null;
+        List<AutopilotRunRecord> epicRuns = [];
         await _RunOnUiAsync(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
             settled = _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
             _Render();
+
+            // Read on the UI thread, where history is mutated, so a second run settling meanwhile cannot race this.
+            if (settledPlan?.Source is { EpicId.Length: > 0 } epic)
+            {
+                epicRuns = _history.Items.Where(record => string.Equals(record.EpicId, epic.EpicId, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
         });
 
         // AC-1340: an epic sub that settled hands the chain its facts — the next Ready sub starts itself, or the
         // chain says why not. Awaited here, off the UI thread, since resolving the next sub fetches and reads links.
-        if (settled is not null && settledPlan?.Source is { EpicId.Length: > 0 } source)
+        // A run cancelled by a closing workspace has no surface left to chain on.
+        if (settled is not null && !context.IsCancelled && settledPlan?.Source is { EpicId.Length: > 0 } source)
         {
-            await _ChainNextSubAsync(source, settledPlan, settled, mergeResult, strandedCommits);
+            await _ChainNextSubAsync(source, settledPlan, settled, epicRuns, mergeResult, strandedCommits);
         }
     }
 
     // The settle-hook's chain (AC-1340): the same resolve the epic click runs, the same planning start the "plan"
     // intent makes — the automation replaces exactly that click, nothing else. Stops are said on the epic and to the
     // assistant by the chain itself; a fault in this hook is reported the same way rather than swallowed.
-    private async Task _ChainNextSubAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotRunRecord settled, AutopilotMergeResult? mergeResult, bool strandedCommits)
+    private async Task _ChainNextSubAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotRunRecord settled, IReadOnlyList<AutopilotRunRecord> epicRuns, AutopilotMergeResult? mergeResult, bool strandedCommits)
     {
         var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
         if (provider is null)
         {
+            _ = await _host.NotifyAssistantAsync("epic-chain", $"{source.EpicId}: Autopilot could not continue this epic's chain after {settled.Ticket}: no tracker provider for {source.Tracker} is loaded.");
             return;
         }
 
         var epic = new AutopilotRun(source.Tracker, source.EpicId, string.Empty, string.Empty, new Dictionary<string, string>());
         var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
         var collectionBranch = AutopilotCollectionBranch.For(_settings.EpicDirectToMain(), source.EpicId);
-        var epicRuns = _history.Items.Where(record => string.Equals(record.EpicId, source.EpicId, StringComparison.OrdinalIgnoreCase)).ToList();
 
         var chain = new AutopilotEpicChain(
             cancellationToken => AutopilotEpicRunner.ResolveAsync(
@@ -848,24 +856,39 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     // The "plan" intent's start, minus the click (AC-1340): the sub the epic-runner picked opens its planning round
     // on the shared controller, and the render below pops the CEO out — AC-1339 then submits a groomed sub itself.
-    // False when a round is already open or a run on this sub is in flight; the chain reports that as its stop.
-    private async Task<bool> _StartPlanningForSubAsync(AutopilotRun run)
+    // Returns why it could not start, or null when it did; `_popoutOpen` is the one planning round at a time (D4).
+    private async Task<string?> _StartPlanningForSubAsync(AutopilotRun run)
     {
-        var started = false;
+        string? refused = null;
         await _RunOnUiAsync(() =>
         {
-            if (AutopilotPlugin._HasRunInFlight(_plan, _queue, _manager, run.Tracker, run.IssueId) || !_RequireCeoProfile())
+            if (_popoutOpen)
             {
+                refused = "a planning round is already open";
                 return;
             }
 
-            started = _plan.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title));
-            if (started)
+            if (AutopilotPlugin._HasRunInFlight(_plan, _queue, _manager, run.Tracker, run.IssueId))
+            {
+                refused = $"a run on {run.IssueId} is already in flight";
+                return;
+            }
+
+            if (!_RequireCeoProfile())
+            {
+                refused = "no CEO profile is set in the Autopilot settings";
+                return;
+            }
+
+            if (_plan.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
             {
                 _Render();
+                return;
             }
+
+            refused = "the shared plan controller is busy with another run";
         });
-        return started;
+        return refused;
     }
 
     // Whether a run's final phase gets recorded in history and toasted (AC-196): merge-ready, blocked, or

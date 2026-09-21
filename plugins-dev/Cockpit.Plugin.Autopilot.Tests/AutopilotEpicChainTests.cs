@@ -17,6 +17,10 @@ public class AutopilotEpicChainTests
 
     private static readonly AutopilotEpicOutcome NextPaused = AutopilotEpicOutcome.Paused("AC-2", "AC-2 is on Backlog, not Ready");
 
+    // The resolver handing back the sub that just landed — what a merge whose commits carry no ticket id looks like.
+    private static readonly AutopilotEpicOutcome SameSubAgain =
+        AutopilotEpicOutcome.Ready(new AutopilotRun("youtrack", "AC-1", "First", "Ready", new Dictionary<string, string>()));
+
     private static AutopilotRunRecord Settled(AutopilotPlanPhase outcome, AutopilotStepStatus status, AutopilotCorrectionKind correction) =>
         new("run", "goal", outcome, BlockReason, "2026-09-21T00:00:00+00:00", [new AutopilotRunStepRecord("Build", status, string.Empty) { Correction = correction }])
         {
@@ -25,28 +29,29 @@ public class AutopilotEpicChainTests
         };
 
     // Columns: how the run ended (phase, its one step's status and correction), stranded commits, the gate's landing,
-    // the AC-347 tolerance, what resolving the epic answers, whether planning accepts the sub — then how many planning
-    // starts are expected, whether the chain went on, and the fragment both the epic comment and the note must carry.
+    // the AC-347 tolerance, what resolving the epic answers, why planning refused the sub (null: it started) — then how
+    // many planning starts are expected, whether the chain went on, and the fragment the comment and the note carry.
     public static IEnumerable<object?[]> SettledSubs() =>
     [
-        [AutopilotPlanPhase.Blocked, AutopilotStepStatus.Failed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, true, 0, false, "the run blocked"],
-        [AutopilotPlanPhase.Stopped, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, true, 0, false, "stopped by the operator"],
+        [AutopilotPlanPhase.Blocked, AutopilotStepStatus.Failed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, null, 0, false, "the run blocked"],
+        [AutopilotPlanPhase.Stopped, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, null, 0, false, "stopped by the operator"],
         // A skippable gate out of attempts settles Failed inside a run that still reads merge-ready.
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Failed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, true, 0, false, "ran out of attempts (Build)"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, true, Green, 0, NextReady, true, 0, false, "stranded"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, null, 0, NextReady, true, 0, false, "nothing was merged"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, NotLanded, 0, NextReady, true, 0, false, "did not land (the rebase hit a conflict)"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Red, 0, NextReady, true, 0, false, "exited 1"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, NoVerdict, 0, NextReady, true, 0, false, "exited with no verdict"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Failed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, null, 0, false, "ran out of attempts (Build)"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, true, Green, 0, NextReady, null, 0, false, "stranded"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, null, 0, NextReady, null, 0, false, "nothing was merged"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, NotLanded, 0, NextReady, null, 0, false, "did not land (the rebase hit a conflict)"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Red, 0, NextReady, null, 0, false, "exited 1"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, NoVerdict, 0, NextReady, null, 0, false, "exited with no verdict"],
         // AC-347: a corrected run is not clean — above the tolerance it stops the chain, within it the chain goes on.
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.ReviewFinding, false, Green, 0, NextReady, true, 0, false, "did not run clean, above the tolerance of 0"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.ReviewFinding, false, Green, 1, NextReady, true, 1, true, "chained to AC-2"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.ReviewFinding, false, Green, 0, NextReady, null, 0, false, "did not run clean, above the tolerance of 0"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.ReviewFinding, false, Green, 1, NextReady, null, 1, true, "chained to AC-2"],
         // Resolving the epic again: paused, done, not an epic, planning refused — and the one row that chains.
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextPaused, true, 0, false, "AC-2 is on Backlog, not Ready"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, AutopilotEpicOutcome.Complete, true, 0, false, "every sub is merged"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, AutopilotEpicOutcome.NotEpic, true, 0, false, "no subtasks found"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, false, 1, false, "planning round is already open"],
-        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, true, 1, true, "chained to AC-2"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextPaused, null, 0, false, "AC-2 is on Backlog, not Ready"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, AutopilotEpicOutcome.Complete, null, 0, false, "every sub is merged"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, AutopilotEpicOutcome.NotEpic, null, 0, false, "no subtasks found"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, "a planning round is already open", 1, false, "a planning round is already open, so AC-2 could not be started"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, SameSubAgain, null, 0, false, "AC-1 still reads as unmerged"],
+        [AutopilotPlanPhase.MergeReady, AutopilotStepStatus.Passed, AutopilotCorrectionKind.None, false, Green, 0, NextReady, null, 1, true, "chained to AC-2"],
     ];
 
     [Theory]
@@ -59,7 +64,7 @@ public class AutopilotEpicChainTests
         object? merge,
         int tolerance,
         object resolved,
-        bool planningAccepts,
+        string? planningRefusal,
         int expectedPlanningStarts,
         bool expectedChained,
         string expectedFragment)
@@ -72,7 +77,7 @@ public class AutopilotEpicChainTests
             run =>
             {
                 started.Add(run.IssueId);
-                return Task.FromResult(planningAccepts);
+                return Task.FromResult(planningRefusal);
             },
             (text, _) =>
             {

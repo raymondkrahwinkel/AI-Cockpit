@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.Autopilot;
 // reads structured facts (the run's record, the gate's landing) and never the text of a comment.
 internal sealed class AutopilotEpicChain(
     Func<CancellationToken, Task<AutopilotEpicOutcome>> resolveNext,
-    Func<AutopilotRun, Task<bool>> startPlanning,
+    Func<AutopilotRun, Task<string?>> startPlanning,
     Func<string, CancellationToken, Task> commentEpic,
     Func<string, Task<bool>> notifyAssistant,
     int uncleanRunTolerance)
@@ -29,13 +29,22 @@ internal sealed class AutopilotEpicChain(
         var next = await resolveNext(cancellationToken).ConfigureAwait(false);
         if (next is { Kind: AutopilotEpicOutcomeKind.Ready, Run: { } run })
         {
-            if (await startPlanning(run).ConfigureAwait(false))
+            // The sub that just landed reads as unmerged again (no commit subject on the collection branch starts
+            // with its id): planning it once more would loop the chain on one sub, unattended, for as long as that holds.
+            if (string.Equals(run.IssueId, settled.Ticket, StringComparison.OrdinalIgnoreCase))
             {
-                await _SayAsync($"Autopilot chained to {run.IssueId} ({run.Title}) after {settled.Ticket}.", cancellationToken).ConfigureAwait(false);
+                stop = $"{run.IssueId} still reads as unmerged on the collection branch after its merge — no commit there starts with its id";
+            }
+            else if (await startPlanning(run).ConfigureAwait(false) is { } refused)
+            {
+                stop = $"{refused}, so {run.IssueId} could not be started";
+            }
+            else
+            {
+                await _SayAsync($"Autopilot chained to {run.IssueId} ({run.Title}) after {settled.Ticket}: its planning round is open.", cancellationToken).ConfigureAwait(false);
                 return null;
             }
 
-            stop = "a planning round is already open, so the next sub could not be started";
             await _SayAsync($"Autopilot stopped this epic's chain after {settled.Ticket}: {stop}", cancellationToken).ConfigureAwait(false);
             return stop;
         }
