@@ -5,12 +5,9 @@ namespace Cockpit.Plugin.Autopilot;
 // its commits added net — the count the ticket's test budget is read against.
 internal sealed record AutopilotEpicGateSubMeasurement(string IssueId, IReadOnlyList<string> AddedTestFiles, IReadOnlyList<string> MissingTestFiles, int TestAttributesAdded);
 
-// What the epic gate measured (AC-1341). `TipSha` is the commit the suite ran on, pinned after main was brought in
-// (§14 step 0); `MainSha` is what origin/main stood at, which a recorded baseline must match; `MainBroughtIn` says
-// how that went. `SuiteExitCode` null: the suite gave no verdict (no command, a timeout, a CLI that would not start).
-//
-// `ResultsDirectory` holds the TRX files. `Error` is null only when every step ran — a gate that could not measure
-// says so rather than reading as one that found nothing.
+// What the epic gate measured (AC-1341): the pinned tip the suite ran on after main was brought in (§14 step 0), the
+// origin/main sha a baseline must match, a null `SuiteExitCode` for a suite without a verdict, where the TRX went,
+// and an `Error` that is null only when every step ran — "could not measure" never reads as "found nothing".
 internal sealed record AutopilotEpicGateMeasurement(
     string TipSha,
     string MainSha,

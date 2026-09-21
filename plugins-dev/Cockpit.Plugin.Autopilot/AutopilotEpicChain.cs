@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
 // AC-1340: after a settled epic sub, the next Ready sub starts itself — strictly one at a time (D4) — or the chain
-// stops out loud: one comment on the epic and one note to the cockpit-assistant, never a silent end. The decision
-// reads structured facts (the run's record, the gate's landing) and never the text of a comment.
-//
-// `gate` (AC-1341) runs every `gateEverySubs` merged subs and at Complete; null in a graph without one, as before.
+// stops out loud: one comment on the epic and one note to the cockpit-assistant, never a silent end. It reads
+// structured facts, never a comment's text. `gate` (AC-1341) runs every `gateEverySubs` merged subs and at Complete.
 internal sealed class AutopilotEpicChain(
     Func<CancellationToken, Task<AutopilotEpicOutcome>> resolveNext,
     Func<AutopilotRun, Task<string?>> startPlanning,
@@ -34,10 +32,8 @@ internal sealed class AutopilotEpicChain(
         if (next is { Kind: AutopilotEpicOutcomeKind.Ready, Run: { } run })
         {
             // EpicWorkflow §5: the full suite every K merged subs, while the sessions that broke it are still fresh.
-            // A finding holds the chain — the meter repairs nothing, and the choice is the assistant's, not the chain's.
-            //
-            // ponytail: keyed on the merged count hitting a multiple of K; a sub merged outside the chain shifts the
-            // schedule by one, and the end gate below runs regardless.
+            // A finding holds the chain — the meter repairs nothing; the choice is the assistant's. ponytail: keyed on
+            // the merged count hitting a multiple of K, so a sub merged outside the chain shifts the schedule by one.
             if (gate is not null && IsMidGateDue(next.MergedSubs.Count, gateEverySubs))
             {
                 var verdict = await gate(AutopilotEpicGateKind.Mid, next.MergedSubs, cancellationToken).ConfigureAwait(false);

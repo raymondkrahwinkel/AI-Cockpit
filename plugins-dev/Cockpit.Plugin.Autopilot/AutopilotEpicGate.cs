@@ -1,11 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The mid- and end-of-epic gate (AC-1341) — EpicWorkflow §5, §6d and §14 in automated form: main brought in, the
-// full suite on a pinned tip with TRX left behind, the red set read against a recorded baseline, every merged sub's
-// test files checked on the tip, its test count read against its budget.
-//
-// It repairs nothing: the report goes on the epic and to the assistant, and at the end of the epic the pull request
-// to main waits for an explicit go.
+// The mid- and end-of-epic gate (AC-1341) — EpicWorkflow §5, §6d and §14 automated: main in, the full suite on a
+// pinned tip with TRX kept, the red set against a recorded baseline, each merged sub's test files and count. It
+// repairs nothing: the report goes on the epic and to the assistant; the PR to main at the end waits for a go.
 internal sealed class AutopilotEpicGate(
     IAutopilotEpicGateExecutor executor,
     string epicId,
