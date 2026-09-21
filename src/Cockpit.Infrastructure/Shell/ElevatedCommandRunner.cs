@@ -47,7 +47,14 @@ internal sealed class ElevatedCommandRunner : IElevatedCommandRunner, ISingleton
 
         // Created here, at medium integrity, so the file is the operator's own before the elevated process
         // overwrites it — and an empty file afterwards means "ran and wrote nothing", not "never started".
-        File.WriteAllText(plan.OutputFile, string.Empty);
+        try
+        {
+            File.WriteAllText(plan.OutputFile, string.Empty);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return new ElevatedCommandResult(ElevatedCommandOutcome.Failed, null, string.Empty, $"Could not create the output file '{plan.OutputFile}': {exception.Message}");
+        }
 
         using var process = ElevatedProcessStart.Start(start, out var declined, out var startError);
         if (process is null)
@@ -108,7 +115,7 @@ internal sealed class ElevatedCommandRunner : IElevatedCommandRunner, ISingleton
             File.Delete(outputFile);
             return output;
         }
-        catch (IOException exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // A process that outlived its timeout still holds the file open: report where it is, do not hide it.
             error = $"{error} Could not read or remove the output file '{outputFile}': {exception.Message}".Trim();
