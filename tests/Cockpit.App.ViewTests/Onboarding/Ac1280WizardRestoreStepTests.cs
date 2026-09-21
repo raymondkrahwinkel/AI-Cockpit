@@ -67,7 +67,7 @@ public sealed class Ac1280WizardRestoreStepTests
             // The window closing is what the startup route hangs its own finish on. After a restore that must do
             // nothing at all — no second cockpit over the restored settings, and no second completion marker.
             var cockpitsStarted = 0;
-            wizard.FinishFromStartup(stateStore, () => cockpitsStarted++);
+            await wizard.FinishFromStartupAsync(stateStore, () => cockpitsStarted++);
 
             Assert.Equal(takesTheWizardOver ? 0 : 1, cockpitsStarted);
             await stateStore.Received(1).MarkCompletedAsync(FirstRunWizardVersion.Current, Arg.Any<CancellationToken>());

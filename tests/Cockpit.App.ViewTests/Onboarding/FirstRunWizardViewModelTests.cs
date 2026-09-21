@@ -1,5 +1,7 @@
+using NSubstitute;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.ViewTests.Onboarding;
 
@@ -179,4 +181,27 @@ public class FirstRunWizardViewModelTests
 
         Assert.Contains("Order 10", exception.Message, StringComparison.Ordinal);
     });
+
+    // AC-1336: MarkCompletedAsync was started fire-and-forget, so a slow write could lose the completion marker
+    // to the app closing around it. Awaited, closing now waits — a state store that only completes after being
+    // told to proves it: startCockpit must not run before that resolves.
+    [Fact]
+    public Task FinishFromStartupAsync_WaitsForMarkCompletedAsync_BeforeStartingTheCockpit() =>
+        HeadlessAvalonia.RunAsync(async () =>
+        {
+            var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
+            var markCompleted = new TaskCompletionSource();
+            var stateStore = Substitute.For<IFirstRunWizardStateStore>();
+            stateStore.MarkCompletedAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(markCompleted.Task);
+            var cockpitStarted = false;
+
+            var finish = viewModel.FinishFromStartupAsync(stateStore, () => cockpitStarted = true);
+
+            Assert.False(cockpitStarted);
+
+            markCompleted.SetResult();
+            await finish;
+
+            Assert.True(cockpitStarted);
+        });
 }

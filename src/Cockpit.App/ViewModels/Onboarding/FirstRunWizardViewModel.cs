@@ -159,17 +159,17 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     [RelayCommand]
     private void Skip() => RequestClose?.Invoke(this, EventArgs.Empty);
 
-    // What the startup route does when the wizard window closes: mark the wizard done, then show the cockpit.
-    // A step that restored a backup (AC-1280) has already done the first and asked for a restart, so both are
-    // skipped — a cockpit started here would come up on the settings that restore had just replaced.
-    internal void FinishFromStartup(IFirstRunWizardStateStore stateStore, Action startCockpit)
+    // What the startup route does when the wizard window closes: await marking the wizard done (AC-1336: not
+    // fire-and-forget, so closing rounds up the write), then show the cockpit. A step that restored a backup
+    // (AC-1280) has already done the first and asked for a restart, so both are skipped here.
+    internal async Task FinishFromStartupAsync(IFirstRunWizardStateStore stateStore, Action startCockpit)
     {
         if (_steps.OfType<RestoreStep>().Any(step => step.ViewModel.TookOver))
         {
             return;
         }
 
-        _ = stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
+        await stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
         startCockpit();
     }
 

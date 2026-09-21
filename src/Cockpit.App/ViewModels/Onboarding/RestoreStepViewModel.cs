@@ -29,7 +29,7 @@ public sealed partial class RestoreStepViewModel : ObservableObject
     }
 
     // True once a restore has landed and the restart is on its way. The startup route reads it to leave its own
-    // close handling alone (`FirstRunWizardViewModel.FinishFromStartup`): this wizard is over, and the settings it
+    // close handling alone (`FirstRunWizardViewModel.FinishFromStartupAsync`): this wizard is over, and the settings it
     // would otherwise write are the ones that were just put back.
     public bool TookOver { get; private set; }
 
