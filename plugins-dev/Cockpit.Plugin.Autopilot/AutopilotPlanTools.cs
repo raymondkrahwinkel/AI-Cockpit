@@ -208,7 +208,9 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             return null;
         }
 
-        if (levels.Any(level => string.Equals(level, step.Effort, StringComparison.OrdinalIgnoreCase)))
+        // Ordinal, not IgnoreCase: the value travels on to the driver's options map verbatim (never re-cased), and
+        // SpawnOptionOverrides.Merge — the start_agent validation this follows — matches its KnownValues the same way.
+        if (levels.Any(level => string.Equals(level, step.Effort, StringComparison.Ordinal)))
         {
             return null;
         }

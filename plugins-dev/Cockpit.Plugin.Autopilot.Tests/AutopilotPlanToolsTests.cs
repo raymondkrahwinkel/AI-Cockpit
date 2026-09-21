@@ -130,12 +130,13 @@ public class AutopilotPlanToolsTests
         Assert.All(expected, fragment => Assert.Contains(fragment, error));
     }
 
-    // AC-1342: a step's effort is validated against a profile's declared levels the same way its model is validated
-    // against ModelSuggestions — a known level is accepted, an unknown one is refused and named; a profile that
-    // declares no levels at all (Qwen (local)) validates nothing, so any value is accepted there too.
+    // AC-1342: a known level is accepted, an unknown one refused and named; a profile with no declared levels
+    // (Qwen (local)) validates nothing. Ordinal, not case-insensitive — "High" is refused even though "high" is
+    // offered, matching how the value later lands in the launch options and how the driver itself compares it.
     [Theory]
     [InlineData("Claude", "sonnet", "high", true)]
     [InlineData("Claude", "sonnet", "hyperspeed", false)]
+    [InlineData("Claude", "sonnet", "High", false)]
     [InlineData("Qwen (local)", null, "whatever", true)]
     public void ValidateStepProfiles_ChecksEffortAgainstTheProfilesDeclaredLevels(string profile, string? model, string effort, bool accepted)
     {
