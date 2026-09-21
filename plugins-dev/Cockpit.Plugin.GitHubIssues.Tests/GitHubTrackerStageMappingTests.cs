@@ -9,6 +9,7 @@ public class GitHubTrackerStageMappingTests
     [Theory]
     [InlineData(TrackerWorkStage.InProgress, "in progress")]
     [InlineData(TrackerWorkStage.InReview, "in review")]
+    [InlineData(TrackerWorkStage.InTest, "in test")]
     [InlineData(TrackerWorkStage.Done, "done")]
     public void SuggestStageName_MapsEachStage_ToAConventionalLabel(TrackerWorkStage stage, string expected) =>
         Assert.Equal(expected, new GitHubTrackerProvider().SuggestStageName(stage));

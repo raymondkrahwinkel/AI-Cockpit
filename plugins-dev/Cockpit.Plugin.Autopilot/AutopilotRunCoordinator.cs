@@ -16,7 +16,9 @@ internal sealed class AutopilotRunCoordinator(
     TimeSpan? stepStallTimeout = null,
     IAutopilotPrPublisher? prPublisher = null,
     IAutopilotEvidenceSource? evidenceSource = null,
-    Func<string, Task<IEmbeddedSession?>>? checkpointCeo = null)
+    Func<string, Task<IEmbeddedSession?>>? checkpointCeo = null,
+    IAutopilotMergeExecutor? mergeExecutor = null,
+    AutopilotMergeBuildLedger? mergeBuildLedger = null)
 {
     private readonly Lock _lock = new();
 
@@ -33,6 +35,19 @@ internal sealed class AutopilotRunCoordinator(
     // summary (AC-255); null in a bare test graph, and in every run the source cannot observe — both fall back to the
     // deep inspection. The app supplies the real GitCliEvidenceSource through AutopilotRunContext.
     private readonly IAutopilotEvidenceSource? _evidenceSource = evidenceSource;
+
+    // Lands an epic run's sub on its collection branch at the merge gate (AC-1338); null in a bare test graph and in a
+    // run with no collection branch (a single-issue click, or direct-to-main), where the gate is skipped and the run
+    // ends merge-ready with its PR as v1 did. The app supplies the real GitCliMergeExecutor through AutopilotRunContext.
+    private readonly IAutopilotMergeExecutor? _mergeExecutor = mergeExecutor;
+
+    // Where the gate records the collection branch's build after landing (AC-1338), so the epic runner holds the next
+    // sub while the branch is red. Null in a bare test graph: nothing is recorded.
+    private readonly AutopilotMergeBuildLedger? _mergeBuildLedger = mergeBuildLedger;
+
+    // The go the merge gate is waiting on (AC-1338, explicit mode), guarded by _lock: set while the run stands at the
+    // gate, null otherwise. `AwaitingMergeGo` is what the surface and the go tool read.
+    private TaskCompletionSource<AutopilotMergeGo>? _mergeGo;
 
     // Replaces the run's validator with a fresh session briefed on the carry-over it is handed, returning it — or null
     // when the host refused to embed one (AC-253). Null in a bare test graph, and in a run whose surface cannot embed:
@@ -123,8 +138,173 @@ internal sealed class AutopilotRunCoordinator(
         {
             // AC-216: deliver the merge-ready pull request for a code run (commit → push → PR), or report a clear outcome
             // and leave the work on its branch when it cannot — never a silent "done". An admin run reports nothing.
-            await _FinalizeMergeReadyAsync(environment, runOnUi, cancellationToken);
+            var published = await _FinalizeMergeReadyAsync(environment, runOnUi, cancellationToken);
             await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InReview, cancellationToken);
+
+            // AC-1338: an epic run's sub then stands at the merge gate — evidence to the assistant, a go, the landing.
+            await _MergeGateAsync(environment, settings, published, cancellationToken);
+        }
+    }
+
+    // Whether this run stands at its merge gate waiting for a go (AC-1338) — what the run surface shows its buttons on.
+    public bool AwaitingMergeGo
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _mergeGo is not null;
+            }
+        }
+    }
+
+    // A go or a refusal for the sub waiting at this run's merge gate (AC-1338) — from the operator's button on the run
+    // or from `autopilot_merge_go`. `issue` must name this run's sub (or, for a run with no source, its label); false
+    // when nothing is waiting or the name is another run's, so a go can never land on the wrong sub.
+    public bool ReportMergeGo(string issue, bool go, string? reason, string by)
+    {
+        lock (_lock)
+        {
+            var mine = plan.Plan?.Source?.IssueId is { Length: > 0 } issueId ? issueId : plan.Plan?.Label;
+            if (_mergeGo is not { } pending || !string.Equals(mine, issue, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return pending.TrySetResult(new AutopilotMergeGo(go, reason, by));
+        }
+    }
+
+    // AC-1338: the merge gate. Only an epic run whose branch was pushed reaches it. The branch is measured (diff-stat,
+    // head, its own build) and the package goes to the assistant's inbox — never a toast. A red build refuses on its
+    // own in either mode; otherwise explicit mode waits for a go, automatic mode lands at once. Fail-soft throughout.
+    private async Task _MergeGateAsync(AutopilotRunEnvironment environment, AutopilotSettings settings, AutopilotPrPublishOutcome published, CancellationToken cancellationToken)
+    {
+        if (_mergeExecutor is null
+            || environment.CollectionBranch is not { Length: > 0 } collection
+            || environment.RunWorktreePath is not { Length: > 0 } worktree
+            || environment.RunWorktreeBranch is not { Length: > 0 } branch
+            || !published.Pushed)
+        {
+            return;
+        }
+
+        var current = plan.Plan;
+        var lastStepId = current?.Steps.LastOrDefault()?.Id;
+        var mode = current?.MergeMode ?? AutopilotSettings.DefaultMergeMode;
+        var buildCommand = settings.MergeBuildCommand();
+        var buildTimeout = TimeSpan.FromMinutes(settings.MergeBuildTimeoutMinutes());
+
+        try
+        {
+            var evidence = await _mergeExecutor.DescribeAsync(worktree, collection, buildCommand, buildTimeout, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var assistantNotified = await host.NotifyAssistantAsync("merge-gate", AutopilotMergeGateBrief.Evidence(current, collection, published.PrUrl, evidence, mode)).ConfigureAwait(false);
+
+            if (!evidence.BuildPassed || !string.IsNullOrWhiteSpace(evidence.Error))
+            {
+                // Nothing lands red or unmeasured, whatever the mode — a branch that does not build, or whose diff
+                // against the collection branch could not be read, is not a go anyone gets to give here.
+                var why = string.IsNullOrWhiteSpace(evidence.Error)
+                    ? $"the branch's own build exited {evidence.BuildExitCode?.ToString() ?? "with no verdict"}"
+                    : $"the measurement failed ({evidence.Error})";
+                await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Refused(current, collection, "the merge gate", why), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var go = mode == AutopilotMergeMode.Automatic
+                ? new AutopilotMergeGo(true, "automatic merge mode", "Autopilot")
+                : await _AwaitMergeGoAsync(lastStepId, collection, assistantNotified, cancellationToken).ConfigureAwait(false);
+            if (!go.Go)
+            {
+                await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Refused(current, collection, go.By, go.Reason), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            _Note(lastStepId, $"Go from {go.By} — rebasing onto {collection} and merging…");
+            var request = new AutopilotMergeRequest(worktree, branch, collection, published.PrUrl, buildCommand, buildTimeout);
+            var result = await _mergeExecutor.MergeAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!result.Merged)
+            {
+                await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Failed(current, collection, result.Error), cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (result.TipSha is { Length: > 0 } tip && result.BuildExitCode is { } exit)
+            {
+                // Recorded before the comment and the stage move: a red tip must hold the next sub even if those fail.
+                _mergeBuildLedger?.Record(new AutopilotMergeBuildRecord(collection, tip, exit));
+            }
+
+            await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Merged(current, collection, go.By, result, buildCommand), cancellationToken).ConfigureAwait(false);
+            if (result.BuildExitCode == 0)
+            {
+                // EpicWorkflow §3 step 6: merged and green is what "Test" means; a red tip leaves the ticket in review.
+                await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InTest, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The run was cancelled at the gate (the surface closed, the operator stopped it) before anything was
+            // merged; said on the step so the surface does not keep showing a gate that is still waiting.
+            _Note(lastStepId, "The run was cancelled at the merge gate — nothing was merged.");
+        }
+        catch (Exception failure)
+        {
+            // Fail-soft, like the PR finalization: the run already did its work, and a gate fault must not crash the settle.
+            _Note(lastStepId, $"The merge gate could not finish: {failure.Message}");
+        }
+    }
+
+    // Explicit mode: stand at the gate until ReportMergeGo answers, or the run is cancelled. The note on the last step
+    // is what tells the operator what the run waits for; the surface reads AwaitingMergeGo for its buttons.
+    private async Task<AutopilotMergeGo> _AwaitMergeGoAsync(string? lastStepId, string collection, bool assistantNotified, CancellationToken cancellationToken)
+    {
+        var pending = new TaskCompletionSource<AutopilotMergeGo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_lock)
+        {
+            _mergeGo = pending;
+        }
+
+        _Note(lastStepId, AutopilotMergeGateBrief.Waiting(collection, assistantNotified));
+        try
+        {
+            return await pending.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _mergeGo = null;
+            }
+        }
+    }
+
+    // The gate's outcome, said twice: on the last step for the run surface and history, and on the epic for the
+    // trail EpicWorkflow §3 asks for. The epic comment is best-effort, like every tracker write here.
+    private async Task _CloseGateAsync(string? lastStepId, string outcome, CancellationToken cancellationToken)
+    {
+        _Note(lastStepId, outcome);
+        if (plan.Plan?.Source is not { EpicId.Length: > 0 } source || _ResolveSourceTracker() is not { } resolved)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = await resolved.Provider.PostCommentAsync(source.EpicId, outcome, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The gate's outcome is already on the run; a tracker that is down does not undo what happened at the gate.
+        }
+    }
+
+    private void _Note(string? stepId, string note)
+    {
+        if (stepId is { Length: > 0 })
+        {
+            plan.NoteStep(stepId, note);
         }
     }
 
@@ -164,14 +344,15 @@ internal sealed class AutopilotRunCoordinator(
 
     // AC-216: at merge-ready, publish the code run's branch and open its PR — or report a clear outcome and leave the
     // work on its branch when it cannot. Fail-soft: a publish fault is recorded, never a crashed run. Silent for an admin
-    // run (NotExpected), which reports the plain "settled merge-ready".
-    private async Task _FinalizeMergeReadyAsync(AutopilotRunEnvironment environment, Func<Action, Task> runOnUi, CancellationToken cancellationToken)
+    // run (NotExpected), which reports the plain "settled merge-ready". Returns what landed, for the merge gate (AC-1338).
+    private async Task<AutopilotPrPublishOutcome> _FinalizeMergeReadyAsync(AutopilotRunEnvironment environment, Func<Action, Task> runOnUi, CancellationToken cancellationToken)
     {
+        var pushed = false;
+        string? prUrl = null;
         try
         {
             var delivery = await _DecideDeliveryAsync(environment, cancellationToken);
 
-            string? prUrl = null;
             string? error = null;
             if (delivery is AutopilotPrDelivery.CanCreatePr or AutopilotPrDelivery.PushOnly
                 && _prPublisher is not null
@@ -195,6 +376,7 @@ internal sealed class AutopilotRunCoordinator(
                     request,
                     createPullRequest: delivery == AutopilotPrDelivery.CanCreatePr && heldBack is null,
                     cancellationToken);
+                pushed = result.Pushed;
                 prUrl = result.PrUrl;
                 error = heldBack ?? result.Error;
             }
@@ -226,6 +408,8 @@ internal sealed class AutopilotRunCoordinator(
         {
             // Fail-soft (AC-216): the run already did its work; a finalization fault must not crash the settle.
         }
+
+        return new AutopilotPrPublishOutcome(pushed, prUrl);
     }
 
     // The PR title for a merge-ready code run (AC-216) — the run's label (issue key + name), a clean human title. It also

@@ -86,7 +86,9 @@ internal sealed class AutopilotRunContext
             Controller,
             prPublisher: new GitCliPrPublisher(),
             evidenceSource: new GitCliEvidenceSource(),
-            checkpointCeo: _CheckpointCeoAsync);
+            checkpointCeo: _CheckpointCeoAsync,
+            mergeExecutor: new GitCliMergeExecutor(),
+            mergeBuildLedger: new AutopilotMergeBuildLedger(host.Storage));
         Completed = _RunAsync(plan);
     }
 

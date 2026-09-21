@@ -23,6 +23,10 @@ internal sealed record AutopilotPlan(
     // when false (admin run, free/CEO-first plan) merge-ready settles with no PR expectation. Defaults to false.
     public bool DeliversPullRequest { get; init; }
 
+    // How this run's sub lands on its collection branch once both review gates pass (AC-1338, D1) — chosen per run
+    // at approval, or taken from the settings for an auto-submitted sub. Only an epic run (a collection branch) reads it.
+    public AutopilotMergeMode MergeMode { get; init; } = AutopilotSettings.DefaultMergeMode;
+
     // The run's display label — its `Name`, or the `Goal` when no name was set yet,
     // prefixed with the source issue key (AC-199) so a tracker-triggered run reads as "AC-191 - …" in the queue and
     // history rather than by its bare summary.
@@ -55,6 +59,9 @@ internal sealed record AutopilotPlan(
 
     // This plan carrying the chosen template's PR-delivery signal (AC-216), stamped at approval — true only for a code run that must end with a merge-ready pull request.
     public AutopilotPlan WithDeliversPullRequest(bool deliversPullRequest) => this with { DeliversPullRequest = deliversPullRequest };
+
+    // This plan with its merge mode (AC-1338), stamped at approval or auto-submit.
+    public AutopilotPlan WithMergeMode(AutopilotMergeMode mode) => this with { MergeMode = mode };
 
     // An empty plan to open the planning round on — the CEO fills the steps from there.
     public static AutopilotPlan Empty(AutopilotPlanSource? source, string goal) => new(goal, source, []);

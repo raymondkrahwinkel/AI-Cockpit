@@ -23,4 +23,13 @@ public enum TrackerWorkStage
     /// The work is complete and accepted — the terminal stage a tracker closes an item at.
     /// </summary>
     Done,
+
+    /// <summary>
+    /// The work is merged and awaiting a human's test — an epic run's sub that passed the merge gate (AC-1338).
+    /// </summary>
+    /// <remarks>
+    /// Appended after <see cref="Done"/> so the earlier values keep their integers: a tracker plugin compiled against
+    /// this enum still maps an older host's <see cref="Done"/> to its done column.
+    /// </remarks>
+    InTest,
 }

@@ -26,6 +26,7 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
     {
         TrackerWorkStage.InProgress => "Develop",
         TrackerWorkStage.InReview => "Review",
+        TrackerWorkStage.InTest => "Test",
         TrackerWorkStage.Done => "Done",
         _ => null,
     };

@@ -435,7 +435,13 @@
          declares as its own effort levels. An already-compiled plugin keeps loading unchanged (no effort set, no
          suggestions read); a plugin that sets or reads either sets minHostVersion 0.33.0 — an older host's copy of
          the record has no such member. Additions only — a minor; major and abstractionsVersion stay 2. -->
-    <Version>1.63.0</Version>
+    <!-- 1.64.0 (AC-1338): added ICockpitHost.NotifyAssistantAsync (default returns false) so a plugin can put a
+         message in the cockpit-assistant's inbox, and TrackerWorkStage.InTest (appended after Done, so existing
+         integers are unchanged) for the stage an epic run's sub reaches once its merge gate landed it. An
+         already-compiled plugin keeps loading unchanged; a plugin that calls NotifyAssistantAsync sets
+         minHostVersion 0.34.0, since an older host's default body delivers nothing. Additions only — a minor;
+         major and abstractionsVersion stay 2. -->
+    <Version>1.64.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

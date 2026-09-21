@@ -15,11 +15,14 @@ internal static class GitCommandLine
     // `Error`: Why it failed — its stderr, or the exit code when stderr was silent.
     internal sealed record CommandResult(bool Ok, string StdOut, string Error);
 
+    // `timeout` overrides the two-minute default for the one caller that legitimately runs longer — the merge
+    // gate's build of the whole solution (AC-1338); every git/gh call keeps the default.
     public static async Task<CommandResult> RunAsync(
         string file,
         IReadOnlyList<string> arguments,
         string workingDirectory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? timeout = null)
     {
         try
         {
@@ -52,12 +55,12 @@ internal static class GitCommandLine
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(CommandTimeout);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(timeout ?? CommandTimeout);
 
             try
             {
-                await process.WaitForExitAsync(timeout.Token);
+                await process.WaitForExitAsync(deadline.Token);
             }
             catch (OperationCanceledException)
             {

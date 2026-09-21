@@ -276,7 +276,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             && steps.Count(step => step.IsReviewGate) >= 2
             && plan.TryClaimAutoSubmit())
         {
-            manager.Submit(groomed.WithDeliversPullRequest(true));
+            manager.Submit(groomed.WithDeliversPullRequest(true).WithMergeMode(settings.MergeMode()));
         }
     }
 
