@@ -113,6 +113,10 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         return false;
     }
 
+    // A go or refusal at a merge gate (AC-1338) — routed to the run standing at its gate for `issue`. Every coordinator
+    // checks the issue is its own, so trying each is safe; false when no run waits for that issue.
+    public bool ReportMergeGo(string issue, bool go, string? reason, string by) => _Route(coordinator => coordinator.ReportMergeGo(issue, go, reason, by));
+
     // Starts as many queued runs as there is capacity for, then returns. Called on submit and whenever a run frees a
     // slot. A reservation counter keeps the capacity check honest while a start runs outside the lock (starting a run
     // embeds a session, which must not happen while the lock is held).

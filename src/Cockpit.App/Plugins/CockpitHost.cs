@@ -7,6 +7,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -14,6 +15,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
@@ -956,6 +958,28 @@ internal sealed class CockpitHost(
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
+
+    // AC-1338: the same inbox a session's `notify cockpit-assistant` lands in, with this plugin as the stated sender —
+    // the shape CiWatcher/SessionWatcher already use for a non-pane sender. The assistant is not in FindSession
+    // (deliberately unwakeable through SendToSessionAsync), so this is a plugin's only door to it.
+    public Task<bool> NotifyAssistantAsync(string kind, string body)
+    {
+        if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(body) || services.GetService<IAgentMessageInbox>() is not { } inbox)
+        {
+            return Task.FromResult(false);
+        }
+
+        // Bounded like CiWatcher's own deliveries, only wider: an evidence package (a diff-stat, a build tail) needs
+        // room, but a plugin must not be able to pour a megabyte into the assistant's context in one message.
+        var bounded = body.Length <= MaxAssistantNotifyLength
+            ? body
+            : body[..(MaxAssistantNotifyLength - AssistantNotifyTruncationMarker.Length)] + AssistantNotifyTruncationMarker;
+        var delivery = inbox.Deliver($"cockpit-plugin:{pluginId}", AssistantIdentity.PaneId, kind.Trim(), bounded);
+        return Task.FromResult(delivery.Outcome != AgentMessageDeliveryOutcome.RecipientInboxFull);
+    }
+
+    private const int MaxAssistantNotifyLength = 6_000;
+    private const string AssistantNotifyTruncationMarker = " … (the rest of this message was cut off)";
 
     public IPluginSessionBinding BindToSession(string paneId)
     {

@@ -23,6 +23,7 @@ internal sealed class GitHubTrackerProvider : ITrackerProvider
     {
         TrackerWorkStage.InProgress => "in progress",
         TrackerWorkStage.InReview => "in review",
+        TrackerWorkStage.InTest => "in test",
         TrackerWorkStage.Done => "done",
         _ => null,
     };

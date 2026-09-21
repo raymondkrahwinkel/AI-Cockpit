@@ -16,7 +16,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager m
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
 
     [McpServerTool(Name = "autopilot_step_done", ReadOnly = false, Destructive = false)]
-    [Description("Signal that you have finished this Autopilot step. Pass a short summary of what you did and the result (a branch, a PR url, a review outcome) so the CEO can validate it against the step's acceptance. Call this exactly once, when the step's work is complete. Do not merge anything — a human does the final merge.")]
+    [Description("Signal that you have finished this Autopilot step. Pass a short summary of what you did and the result (a branch, a PR url, a review outcome) so the CEO can validate it against the step's acceptance. Call this exactly once, when the step's work is complete. Do not merge anything — the merge happens at the merge gate, after the reviews, never in a step.")]
     public string StepDone(
         [Description("A short summary of what you did and the result, for the CEO to validate against the step's acceptance.")] string summary)
     {

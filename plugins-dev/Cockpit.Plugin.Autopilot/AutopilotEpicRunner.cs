@@ -49,7 +49,8 @@ internal static class AutopilotEpicRunner
         string executableStage,
         IEpicSubMergeChecker mergeChecker,
         CancellationToken cancellationToken,
-        IReadOnlyList<string>? acceptanceHeadings = null)
+        IReadOnlyList<string>? acceptanceHeadings = null,
+        AutopilotMergeBuildRecord? lastMergeBuild = null)
     {
         IReadOnlyList<TrackerLinkedIssue> links;
         try
@@ -118,6 +119,15 @@ internal static class AutopilotEpicRunner
         // One refresh for the whole resolve pass (AC-346 review): the original shape fetched origin/main once per sub,
         // inside the loop below — up to one fetch-and-timeout per sub, serially, in the click handler.
         await mergeChecker.RefreshAsync(cancellationToken);
+
+        // AC-1338: the previous sub landed but left the collection branch red. Every later sub would fork from that
+        // red tip, so the chain holds — until someone moves the tip (a fix pushed by hand, or a green re-merge).
+        if (lastMergeBuild is { IsRed: true } red
+            && mergeChecker.TipSha is { Length: > 0 } tip
+            && string.Equals(tip, red.Sha, StringComparison.OrdinalIgnoreCase))
+        {
+            return AutopilotEpicOutcome.Paused(null, $"the merge-gate build on {red.Branch} exited {red.ExitCode} at {red.Sha} and the branch still stands there. Fix the branch (or re-run the build green) before the next sub starts.");
+        }
 
         foreach (var subId in order)
         {

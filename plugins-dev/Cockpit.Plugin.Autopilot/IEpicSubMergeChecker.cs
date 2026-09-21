@@ -30,6 +30,12 @@ internal interface IEpicSubMergeChecker
     /// merged yet" and quietly re-run a sub that may already be delivered — it should pause and say so instead.
     /// </summary>
     bool? IsMerged(string issueId);
+
+    /// <summary>
+    /// The sha the checked branch's remote tip stood at when <see cref="RefreshAsync"/> last succeeded, or null when it
+    /// could not be read — what the merge gate's red-build record (AC-1338) is compared against.
+    /// </summary>
+    string? TipSha { get; }
 }
 
 // The real `IEpicSubMergeChecker` (AC-346): a sub counts as merged when a commit *subject line* (never its
@@ -39,9 +45,12 @@ internal sealed class GitEpicSubMergeChecker(string repositoryDirectory, string?
 {
     private IReadOnlyList<string>? _subjects;
 
+    public string? TipSha { get; private set; }
+
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
         _subjects = null;
+        TipSha = null;
 
         if (string.IsNullOrWhiteSpace(repositoryDirectory) || !Directory.Exists(repositoryDirectory))
         {
@@ -56,8 +65,9 @@ internal sealed class GitEpicSubMergeChecker(string repositoryDirectory, string?
         var result = await GitCommandLine.RunAsync("git", ["log", $"origin/{branch}", "--format=%s"], repositoryDirectory, cancellationToken);
         if (!result.Ok && branch != "main")
         {
-            _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", "main"], repositoryDirectory, cancellationToken);
-            result = await GitCommandLine.RunAsync("git", ["log", "origin/main", "--format=%s"], repositoryDirectory, cancellationToken);
+            branch = "main";
+            _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", branch], repositoryDirectory, cancellationToken);
+            result = await GitCommandLine.RunAsync("git", ["log", $"origin/{branch}", "--format=%s"], repositoryDirectory, cancellationToken);
         }
 
         if (!result.Ok)
@@ -65,6 +75,9 @@ internal sealed class GitEpicSubMergeChecker(string repositoryDirectory, string?
             return;
         }
 
+        // The tip of the same ref the log above read (AC-1338) — the collection branch, or main when it fell back.
+        var tip = await GitCommandLine.RunAsync("git", ["rev-parse", "--verify", "--quiet", $"origin/{branch}"], repositoryDirectory, cancellationToken);
+        TipSha = tip.Ok ? tip.StdOut.Trim() : null;
         _subjects = result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 

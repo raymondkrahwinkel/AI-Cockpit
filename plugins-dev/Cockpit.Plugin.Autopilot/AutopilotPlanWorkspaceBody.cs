@@ -1240,7 +1240,19 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             dirBox.Text = text;
         }
 
-        var approve = _ApproveButton(() => nameBox.Text ?? string.Empty, () => dirBox.Text ?? string.Empty);
+        // AC-1338 (D1): the run's merge mode, pre-filled from the settings' default — an epic run's sub either waits
+        // at the merge gate for a go (unticked) or lands as soon as both review gates pass and the branch builds.
+        var mergeAutomatically = new CheckBox
+        {
+            Content = "Merge automatically once both review gates pass (epic runs; otherwise wait for a go)",
+            FontSize = 11,
+            IsChecked = _settings.MergeMode() == AutopilotMergeMode.Automatic,
+        };
+
+        var approve = _ApproveButton(
+            () => nameBox.Text ?? string.Empty,
+            () => dirBox.Text ?? string.Empty,
+            () => mergeAutomatically.IsChecked == true ? AutopilotMergeMode.Automatic : AutopilotMergeMode.Explicit);
 
         // Approve can start the run only once the CEO has planned at least one step and the run has a name and a working
         // directory — an empty plan has nothing to run, a nameless run cannot be told apart in the queue, and a run
@@ -1345,6 +1357,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                             nameBox,
                         },
                     },
+                    mergeAutomatically,
                     new DockPanel
                     {
                         LastChildFill = false,
@@ -1565,7 +1578,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private static bool _SamePath(string a, string b) =>
         string.Equals(a.TrimEnd('/', '\\'), b.TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase);
 
-    private Button _ApproveButton(Func<string> nameProvider, Func<string> workingDirectoryProvider)
+    private Button _ApproveButton(Func<string> nameProvider, Func<string> workingDirectoryProvider, Func<AutopilotMergeMode> mergeModeProvider)
     {
         var button = new Button
         {
@@ -1584,7 +1597,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 var approved = string.IsNullOrEmpty(name) ? plan : plan.WithName(name);
                 _manager.Submit(approved
                     .WithWorkingDirectory(workingDirectoryProvider().Trim())
-                    .WithDeliversPullRequest(_deliversPullRequest));
+                    .WithDeliversPullRequest(_deliversPullRequest)
+                    .WithMergeMode(mergeModeProvider()));
             }
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
@@ -1755,9 +1769,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var validating = context.IsValidating && context.CeoView is not null;
         var right = new Border
         {
-            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || (!validating && context.StepView is null) ? new Thickness(16) : new Thickness(0),
+            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || context.Coordinator.AwaitingMergeGo || (!validating && context.StepView is null) ? new Thickness(16) : new Thickness(0),
             Child = controller.Phase == AutopilotPlanPhase.AwaitingOperator
                 ? _BuildBlockadePanel(context)
+                : context.Coordinator.AwaitingMergeGo
+                ? _BuildMergeGatePanel(context)
                 : context.IsValidating && context.CeoView is { } ceoView
                     ? _BuildValidatingSurface(ceoView)
                     : context.StepView is { } stepView
@@ -1888,6 +1904,53 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 break;
         }
     }
+
+    // The merge gate (AC-1338, explicit mode): both review gates passed and the evidence went to the assistant; the
+    // operator can give the go or refuse it here — the same answer autopilot_merge_go gives from a session. The reason
+    // box is optional on a go and the record of why on a refusal.
+    private Control _BuildMergeGatePanel(AutopilotRunContext context)
+    {
+        var issue = context.Controller.Plan?.Source?.IssueId is { Length: > 0 } id ? id : context.Controller.Plan?.Label ?? string.Empty;
+        var reason = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 64,
+            PlaceholderText = "Why (optional on a go; recorded on the epic on a refusal)…",
+        };
+
+        var go = new Button { Classes = { "Accent" }, Content = "Merge go" };
+        go.Click += (_, _) => context.Coordinator.ReportMergeGo(issue, go: true, _Trimmed(reason.Text), "the operator");
+
+        var refuse = new Button { Classes = { "Ghost" }, Content = "Refuse" };
+        refuse.Click += (_, _) => context.Coordinator.ReportMergeGo(issue, go: false, _Trimmed(reason.Text) ?? "refused on the run", "the operator");
+
+        var note = context.Controller.Plan?.Steps.LastOrDefault()?.Note;
+        return new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 12,
+                MaxWidth = 520,
+                Children =
+                {
+                    new TextBlock { Text = "At the merge gate", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
+                    new TextBlock
+                    {
+                        Text = string.IsNullOrWhiteSpace(note) ? "Both review gates passed — waiting for a go before anything is merged." : note,
+                        FontSize = 14,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = _Brush("CockpitTextPrimaryBrush"),
+                    },
+                    reason,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { go, refuse } },
+                },
+            },
+        };
+    }
+
+    private static string? _Trimmed(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
     // The blockade panel (AC-155): the step's question, an answer box, and a Send that relays the reply and resumes
     // the run. Wrapped in its own ScrollViewer since AC-440 — an escalation's question and advice routinely runs

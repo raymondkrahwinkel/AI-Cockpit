@@ -18,7 +18,7 @@ internal static class AutopilotValidatorBrief
             set and the operator approved it, so you do not plan or change it. As each step finishes you are handed what
             its agent did and the step's acceptance; decide whether the output meets that acceptance and call
             mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_validate with passed=true (it meets it) or passed=false (it
-            does not — it will be reworked), and a one-line reason.{{tracker}} You do not merge — a human does the final merge.
+            does not — it will be reworked), and a one-line reason.{{tracker}} You do not merge — the merge gate does, after your validations, on a go from the operator or the assistant.
 
             You are also the workers' manager: mid-step, a worker on the running step may consult you before it continues.
             You are handed its question; inspect the code in your working directory (Read/Grep) if you need to, then answer

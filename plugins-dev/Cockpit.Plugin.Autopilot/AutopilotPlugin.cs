@@ -64,6 +64,11 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // Same pane-scoping and live-only gating.
         _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
+        // The merge gate's go tool (AC-1338): the one Autopilot endpoint that is NOT internal, because the
+        // cockpit-assistant — the gate's second reader — only receives what the default fan-out offers. Always on:
+        // the assistant's session outlives any run, so a gate that comes and goes cannot be mounted at its start.
+        _ = host.AddMcpEndpoint(AutopilotMergeGateTools.EndpointName, new AutopilotMergeGateTools(host, manager), isEnabled: null, isInternal: false);
+
         // The issues a refusal has already been written onto, so clicking a backlog item twice does not leave the same
         // paragraph twice. Lives for the app's lifetime — a comment is only worth writing once per issue per session.
         var commented = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -102,7 +107,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                     settings.ExecutableStage(run.Tracker),
                     new GitEpicSubMergeChecker(repositoryDirectory, collectionBranch),
                     CancellationToken.None,
-                    settings.AcceptanceHeadings());
+                    settings.AcceptanceHeadings(),
+                    // AC-1338: the collection branch's last merge-gate build — red at the current tip holds the chain.
+                    new AutopilotMergeBuildLedger(host.Storage).LastBuild(collectionBranch));
 
                 switch (epicOutcome.Kind)
                 {

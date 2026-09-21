@@ -20,6 +20,15 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string ExecutableStagePrefix = "executableStage:";
     private const string EpicDirectToMainKey = "epicDirectToMain";
     private const string AcceptanceHeadingsKey = "acceptanceHeadings";
+    private const string MergeModeKey = "mergeMode";
+    private const string MergeBuildCommandKey = "mergeBuildCommand";
+
+    // The one named place the merge gate's default lives (AC-1338, D1): a run that never chose waits for a go.
+    public const AutopilotMergeMode DefaultMergeMode = AutopilotMergeMode.Explicit;
+
+    // What the merge gate builds with, before asking for a go and again on the collection tip after landing (AC-1338).
+    // EpicWorkflow §3 step 5 for this repository; a setting, so another repository names its own.
+    public const string DefaultMergeBuildCommand = "dotnet build Cockpit.slnx -c Release -warnaserror";
 
     // The description-section heading(s) that count as "this ticket states its acceptance criteria" (AC-1339) —
     // policy text, not a value baked into the code, so a differently-worded grooming convention is a settings
@@ -138,6 +147,18 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
         storage.Get<List<string>>(AcceptanceHeadingsKey) is { Count: > 0 } configured ? configured : DefaultAcceptanceHeadings;
 
     public void SetAcceptanceHeadings(IReadOnlyList<string> headings) => _Write(null, AcceptanceHeadingsKey, headings);
+
+    // The merge mode a run starts with (AC-1338, D1) — what the approval checkbox is pre-filled with, and what an
+    // auto-submitted epic sub (AC-1339, no approval click) takes as its own. Resolves like every other field.
+    public AutopilotMergeMode MergeMode(string? projectId = null) => _ReadValue(projectId, MergeModeKey, DefaultMergeMode);
+
+    public void SetMergeMode(AutopilotMergeMode mode, string? projectId = null) => _Write(projectId, MergeModeKey, mode);
+
+    // The build the merge gate runs (AC-1338); blank falls back to the default rather than to "no build".
+    public string MergeBuildCommand(string? projectId = null) =>
+        _ReadString(projectId, MergeBuildCommandKey) is { Length: > 0 } command ? command : DefaultMergeBuildCommand;
+
+    public void SetMergeBuildCommand(string? command, string? projectId = null) => _Write(projectId, MergeBuildCommandKey, command);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 

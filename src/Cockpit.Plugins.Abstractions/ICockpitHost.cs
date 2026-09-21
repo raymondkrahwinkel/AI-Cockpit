@@ -498,6 +498,16 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
+    /// Puts a message in the cockpit-assistant's inbox (AC-1338) — the same channel a session's <c>notify</c> to
+    /// <c>cockpit-assistant</c> uses — so a plugin can hand the assistant evidence to judge without a toast or a desk.
+    /// </summary>
+    /// <remarks>
+    /// The assistant reads it as data from a stated origin (this plugin), never as an operator instruction. Never
+    /// throws; false on a host with no assistant inbox or when that inbox is full, and the default body returns false.
+    /// </remarks>
+    Task<bool> NotifyAssistantAsync(string kind, string body) => Task.FromResult(false);
+
+    /// <summary>
     /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own conversation
     /// (AC-1023). Null on a host with no assistant; dispose the gateway to close the channel.
     /// </summary>
