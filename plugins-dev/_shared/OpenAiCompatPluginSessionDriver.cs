@@ -124,10 +124,10 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         {
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
         }
-        // AC-1344: the SDK retries a NetworkTimeout up to 4x, then wraps every attempt's TaskCanceledException
-        // in one AggregateException instead of throwing on the caller's own token — unlike a session interrupt
-        // (caught above), so it gets its own readable message instead of the raw retry dump.
-        catch (AggregateException aggregate) when (_IsNetworkTimeout(aggregate))
+        // AC-1344: the SDK retries a NetworkTimeout up to 4x, wrapping every attempt in one AggregateException —
+        // readable message instead of the raw dump. IsCancellationRequested excludes an interrupt landing right
+        // after an earlier attempt already timed out once, which the SDK wraps the same way.
+        catch (AggregateException aggregate) when (!cancellationToken.IsCancellationRequested && _IsNetworkTimeout(aggregate))
         {
             _events.Publish(new PluginSessionError
             {
