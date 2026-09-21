@@ -18,6 +18,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string CostStrategyKey = "costStrategy";
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
     private const string ExecutableStagePrefix = "executableStage:";
+    private const string EpicDirectToMainKey = "epicDirectToMain";
 
     // What "a person has judged this executable" is called on each tracker Autopilot ships with (AC-345) — a stage on
     // YouTrack, and on GitHub Issues, which has none, a label. A tracker with no default here gates on nothing
@@ -117,6 +118,12 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public static IReadOnlyCollection<string> TrackersWithADefaultStage => DefaultExecutableStages.Keys;
 
     private static string _ExecutableStageKey(string trackerId) => ExecutableStagePrefix + trackerId.ToLowerInvariant();
+
+    // The operator's opt-out back to v1 (AC-1337, D2): false (default) puts an epic run's subs on their own
+    // collection branch; true keeps every sub's PR going straight to main. Global only, like AutonomyMode.
+    public bool EpicDirectToMain(string? projectId = null) => _ReadValue(projectId, EpicDirectToMainKey, false);
+
+    public void SetEpicDirectToMain(bool directToMain, string? projectId = null) => _Write(projectId, EpicDirectToMainKey, directToMain);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 
