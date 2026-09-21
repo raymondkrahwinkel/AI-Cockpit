@@ -6,8 +6,13 @@ namespace Cockpit.Plugin.GeminiProvider;
 // `OpenAiCompatProviderConfigView`/`OpenAiCompatPluginSessionDriverFactory` via the
 // opaque `ConfigJson` the host round-trips (#45). One shape covers both providers this plugin
 // registers (Gemini and OpenAI) — they differ only in which base URL a profile carries.
-internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl)
+internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, int? TimeoutSeconds = null)
 {
+    // AC-1344: the OpenAI SDK's own NetworkTimeout default (100s) is too short for a reasoning model that
+    // "thinks" before its first token on a remote gateway (measured: Hetzner Inference, Qwen3.8-27B, timed
+    // out mid-thinking). A profile without this key gets this wider default instead of the SDK's own.
+    internal const int DefaultTimeoutSeconds = 600;
+
     // Case-insensitive property matching on deserialize — the two call sites (this plugin's own view and
     // driver factory) always agree on casing already, but a config JSON that ends up hand-edited in
     // `cockpit.json` should not fail to parse over a casing mismatch.

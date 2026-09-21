@@ -11,7 +11,11 @@ namespace Cockpit.Plugins.OpenAiCompat;
 // error classification, and an agentic tool loop over the toolset the host mounts and gates. Linked into each
 // plugin as source (<Compile Include>) rather than shipped as a shared assembly, so every plugin still builds,
 // versions and installs as one self-contained dll — while the loop itself exists once.
-internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel) : IPluginSessionDriver
+
+// AC-1344: `networkTimeout` mirrors the factory's own `OpenAIClientOptions.NetworkTimeout`, so a timeout
+// that still fires can name the configured number. Optional — only Gemini/OpenAI passes one; the sibling
+// factories that don't get an un-numbered message instead of a guessed one.
+internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private readonly List<ChatMessage> _history = [];
@@ -120,6 +124,22 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         {
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
         }
+        // AC-1344: the SDK retries a NetworkTimeout up to 4x, wrapping every attempt in one AggregateException —
+        // readable message instead of the raw dump. IsCancellationRequested excludes an interrupt landing right
+        // after an earlier attempt already timed out once, which the SDK wraps the same way.
+        catch (AggregateException aggregate) when (!cancellationToken.IsCancellationRequested && _IsNetworkTimeout(aggregate))
+        {
+            _events.Publish(new PluginSessionError
+            {
+                SessionId = _sessionId,
+                Message = networkTimeout is { } timeout
+                    ? $"Provider did not respond within {timeout.TotalSeconds:0}s."
+                    : "Provider did not respond within the configured network timeout.",
+                Kind = PluginSessionErrorKind.ServiceUnavailable,
+                RetryAfter = null,
+            });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+        }
         catch (Exception ex)
         {
             _events.Publish(new PluginSessionError
@@ -132,6 +152,11 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
     }
+
+    // AC-1344: a NetworkTimeout is the only failure the SDK reports this way — every retry attempt's own
+    // TaskCanceledException, batched into one AggregateException instead of a single exception.
+    private static bool _IsNetworkTimeout(AggregateException aggregate) =>
+        aggregate.InnerExceptions.Count > 0 && aggregate.InnerExceptions.All(inner => inner is TaskCanceledException);
 
     // AC-720: the HTTP status is the one structured signal an OpenAI-compatible server gives — mirrors
     // the host's own Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver._ClassifyError. An

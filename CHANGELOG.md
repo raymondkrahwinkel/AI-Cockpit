@@ -1016,6 +1016,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: the whiteboard colour flyout's active-swatch outline and clear-icon now follow the app's own theme colours
   instead of a fixed black and grey, so they stay legible and consistent with the rest of the cockpit under a
   repaint.
+- fixed: the OpenAI-compatible provider (Gemini/OpenAI, used for OpenAI-compatible gateways such as Hetzner
+  Inference) gave up on a slow model with a raw retry dump instead of a readable message — its network timeout
+  is now configurable per profile, defaults to a much longer 600s so a reasoning model has room to think before
+  its first token, and a timeout that still fires says so in plain language instead of four silent retries.
 
 ### Added
 
