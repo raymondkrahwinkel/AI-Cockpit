@@ -8889,7 +8889,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1342: a step's own reasoning-effort choice, folded in the same additive way as the hidden system
         // prompt — no drop-the-profile-default logic like permission mode's, since there is no fail-closed gate
         // riding on effort. A provider that declares no "effort" option simply never reads the key.
-        var addEffort = !string.IsNullOrWhiteSpace(request.Effort);
+        var effort = request.Effort?.Trim();
+        var addEffort = effort is { Length: > 0 };
         if (!addPrompt && !addConfine && !dropProfilePermissionMode && !addUnattended && !addEffort)
         {
             return defaults;
@@ -8918,9 +8919,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Unattended] = "true";
         }
 
-        if (addEffort)
+        if (effort is { Length: > 0 } value)
         {
-            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Effort] = request.Effort!.Trim();
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Effort] = value;
         }
 
         return options;
