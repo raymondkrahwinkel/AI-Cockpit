@@ -480,6 +480,36 @@ public sealed class ConsentServiceTests
     }
 
     [Fact]
+    public async Task RequestConsentAsync_AnElevatedCommand_ShowsTheCardWithoutEverAskingTheBypass()
+    {
+        // AC-1335: the policy would say yes to anything here ("allow all"), yet the card still comes — and the
+        // policy is not even consulted, so no list an operator can tick makes this a blind UAC prompt.
+        var policy = new StubPolicy(answer: true);
+        var broker = new ConsentService(_audit, policy);
+        var prompts = _RecordPrompts(broker);
+
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            var request = new ConsentRequest(
+                "A session wants to run a command as administrator",
+                "powershell.exe -NoProfile -NonInteractive -Command \"& { wsl --install } *> 'C:\\t\\out.txt'\"",
+                new ConsentSource("cockpit-assistant", null, ConsentSourceCatalog.ElevatedCommand),
+                "session.elevated-command",
+                ConsentRisk.Dangerous);
+            var decision = await broker.RequestConsentAsync(request);
+
+            Assert.Single(prompts);
+            Assert.False(decision.Bypassed);
+            Assert.Empty(policy.Asked);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
     public async Task RequestConsentAsync_WhenTheBypassSaysNo_ShowsTheCardExactlyAsBefore()
     {
         var policy = new StubPolicy(answer: false);

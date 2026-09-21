@@ -1,4 +1,5 @@
 using Cockpit.Core.Terminal;
+using Cockpit.Infrastructure.Shell;
 
 namespace Cockpit.Core.Tests.Terminal;
 
@@ -11,10 +12,18 @@ public class ElevatedTerminalLauncherTests
     private static readonly ShellDescriptor Shell =
         new("pwsh", "PowerShell", OperatingSystem.IsWindows() ? @"C:\nope\pwsh.exe" : "/nope/pwsh", ["-NoLogo"]);
 
-    [Fact]
-    public void IsSupported_MatchesWindows()
+    // Both entry points onto the runas start (AC-967 terminal, AC-1335 command) answer the same platform question.
+    public static TheoryData<string, bool> ElevationEntryPoints => new()
     {
-        Assert.Equal(OperatingSystem.IsWindows(), ElevatedTerminalLauncher.IsSupported);
+        { "administrator terminal", ElevatedTerminalLauncher.IsSupported },
+        { "elevated command", new ElevatedCommandRunner().IsSupported },
+    };
+
+    [Theory]
+    [MemberData(nameof(ElevationEntryPoints))]
+    public void IsSupported_MatchesWindows(string entryPoint, bool isSupported)
+    {
+        Assert.True(OperatingSystem.IsWindows() == isSupported, $"The {entryPoint} must be offered on Windows and nowhere else.");
     }
 
     [Fact]

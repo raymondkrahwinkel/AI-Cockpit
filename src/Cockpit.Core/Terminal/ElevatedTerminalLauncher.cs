@@ -1,14 +1,13 @@
-using System.ComponentModel;
 using System.Diagnostics;
 
 namespace Cockpit.Core.Terminal;
 
 // Opens a shell as administrator (AC-967). Deliberately *not* a pane: elevation goes through
-// `ShellExecuteEx` (`UseShellExecute` + the `runas` verb), which gives the elevated process its own console window,
+// `ElevatedProcessStart` (`ShellExecuteEx` + `runas`), which gives the elevated process its own console window,
 // so this never touches the cockpit's ConPTY and needs no system setting beyond the UAC prompt Windows shows itself.
 public static class ElevatedTerminalLauncher
 {
-    public static bool IsSupported => OperatingSystem.IsWindows();
+    public static bool IsSupported => ElevatedProcessStart.IsSupported;
 
     // Null when the elevated window started, otherwise a short message for the operator — a declined UAC prompt is
     // the common case and must never fail silently.
@@ -21,8 +20,6 @@ public static class ElevatedTerminalLauncher
 
         var start = new ProcessStartInfo(shell.ExecutablePath)
         {
-            UseShellExecute = true,
-            Verb = "runas",
             WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
         };
 
@@ -31,19 +28,13 @@ public static class ElevatedTerminalLauncher
             start.ArgumentList.Add(argument);
         }
 
-        try
+        if (ElevatedProcessStart.Start(start, out var declined, out var error) is not null)
         {
-            return Process.Start(start) is null
-                ? "Could not start an elevated terminal."
-                : null;
+            return null;
         }
-        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223) // ERROR_CANCELLED
-        {
-            return "Elevation was declined — no administrator terminal was started.";
-        }
-        catch (Exception exception)
-        {
-            return $"Could not start an elevated terminal: {exception.Message}";
-        }
+
+        return declined
+            ? "Elevation was declined — no administrator terminal was started."
+            : $"Could not start an elevated terminal: {error}";
     }
 }
