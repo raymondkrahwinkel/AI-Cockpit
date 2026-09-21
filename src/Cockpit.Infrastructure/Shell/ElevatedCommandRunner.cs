@@ -12,6 +12,8 @@ namespace Cockpit.Infrastructure.Shell;
 // in %TEMP% that the cockpit reads back once the process has ended. Nothing is cached and nothing is remembered.
 internal sealed class ElevatedCommandRunner : IElevatedCommandRunner, ISingletonService
 {
+    private static readonly TimeSpan KillSettleTimeout = TimeSpan.FromSeconds(5);
+
     public bool IsSupported => ElevatedProcessStart.IsSupported;
 
     public ElevatedCommandPlan Plan(string command)
@@ -76,14 +78,15 @@ internal sealed class ElevatedCommandRunner : IElevatedCommandRunner, ISingleton
         return new ElevatedCommandResult(timedOut ? ElevatedCommandOutcome.TimedOut : ElevatedCommandOutcome.Completed, exitCode, output, error);
     }
 
-    // The handle ShellExecuteEx returned may or may not carry PROCESS_TERMINATE against a high-IL child (AC-925,
-    // measured both ways); when it does not, the operator is told which process to close rather than left with
-    // an invisible one.
+    // The handle ShellExecuteEx returned carries PROCESS_TERMINATE against the high-IL child (measured 2026-09-21,
+    // unlike a fresh OpenProcess — AC-925); should that ever not hold, the operator is told which process to close.
+    // The bounded wait is what lets the output file be read: Kill returns before the file handle is released.
     private static string? _TryKill(Process process)
     {
         try
         {
             process.Kill();
+            process.WaitForExit(KillSettleTimeout);
             return "Timed out; the elevated process was ended.";
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
