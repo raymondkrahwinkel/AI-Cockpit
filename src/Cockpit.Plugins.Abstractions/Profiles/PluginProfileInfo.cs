@@ -43,6 +43,15 @@ public sealed record PluginProfileInfo(string Label, string Provider, string Con
     public IReadOnlyList<PluginModelCostEstimate> ModelCostEstimatesCheapestFirst { get; init; } = [];
 
     /// <summary>
+    /// The reasoning-effort levels this profile's provider declares (AC-1342), for a picker like Autopilot's CEO
+    /// step field — the same declared vocabulary a running session validates an override against. Empty when the
+    /// provider declares no <c>effort</c> option, or declares one with no fixed set of values (a value resolved
+    /// only once a session is live); either way, a caller has nothing to check a step's effort against and should
+    /// accept whatever it is given rather than reject it.
+    /// </summary>
+    public IReadOnlyList<string> EffortSuggestions { get; init; } = [];
+
+    /// <summary>
     /// Whether this profile runs a model on local hardware rather than a paid hosted API — a cost signal for a
     /// consumer that routes work across profiles.
     /// </summary>

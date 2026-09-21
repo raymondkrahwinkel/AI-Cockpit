@@ -19,6 +19,11 @@ internal sealed record AutopilotStep(
     // own report endpoint. Server ids as the host advertises them (e.g. `cockpit-verify`).
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
+    // The reasoning effort this step's session runs at (AC-1342), where its profile's provider offers a choice;
+    // null leaves the provider's own default. Validated at plan time against the profile's own declared effort
+    // levels (AutopilotPlanTools.ValidateStepProfile), the same roster field the CEO brief lists them from.
+    public string? Effort { get; init; }
+
     // The tracker-neutral id of the issue this step is drafted from, when the CEO folded a specific item into the
     // plan (AC-411); null for most steps. Lets `AutopilotPlanTools.SetPlan` check a child against the
     // same executable-stage gate its parent already passed, rather than trusting the CEO's read from the brief.

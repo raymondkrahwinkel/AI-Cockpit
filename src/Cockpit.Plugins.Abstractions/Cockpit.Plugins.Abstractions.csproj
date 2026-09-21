@@ -429,7 +429,13 @@
          Lets a caller that only holds an issue id (Autopilot's epic-runner, picking a sub off a link list that
          carries no description) read the same fields a direct tracker click already gets. Additions only — a
          minor; major and abstractionsVersion stay 2. -->
-    <Version>1.62.0</Version>
+    <!-- 1.63.0 (AC-1342): added EmbeddedSessionRequest.Effort (a trailing init-property, null default) and
+         PluginProfileInfo.EffortSuggestions (a trailing init-property, empty default), so a plugin can hand a
+         reasoning-effort choice into an embedded session's launch options and read back what a profile's provider
+         declares as its own effort levels. An already-compiled plugin keeps loading unchanged (no effort set, no
+         suggestions read); a plugin that sets or reads either sets minHostVersion 0.33.0 — an older host's copy of
+         the record has no such member. Additions only — a minor; major and abstractionsVersion stay 2. -->
+    <Version>1.63.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

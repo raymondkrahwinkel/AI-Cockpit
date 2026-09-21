@@ -8886,7 +8886,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The embedded run's explicit permission mode (an Autopilot step's autonomy mode, AC-152) is a deliberate
         // per-run choice and must win over the profile's own stored permission-mode default.
         var dropProfilePermissionMode = !string.IsNullOrWhiteSpace(request.PermissionMode) && defaults is { Count: > 0 };
-        if (!addPrompt && !addConfine && !dropProfilePermissionMode && !addUnattended)
+        // AC-1342: a step's own reasoning-effort choice, folded in the same additive way as the hidden system
+        // prompt — no drop-the-profile-default logic like permission mode's, since there is no fail-closed gate
+        // riding on effort. A provider that declares no "effort" option simply never reads the key.
+        var effort = request.Effort?.Trim();
+        var addEffort = effort is { Length: > 0 };
+        if (!addPrompt && !addConfine && !dropProfilePermissionMode && !addUnattended && !addEffort)
         {
             return defaults;
         }
@@ -8912,6 +8917,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (addUnattended)
         {
             options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Unattended] = "true";
+        }
+
+        if (effort is { Length: > 0 } value)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Effort] = value;
         }
 
         return options;

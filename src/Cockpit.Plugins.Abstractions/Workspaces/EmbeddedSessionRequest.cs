@@ -62,6 +62,14 @@ public sealed record EmbeddedSessionRequest
     public string? Model { get; init; }
 
     /// <summary>
+    /// The reasoning effort to run this one session at (AC-1342), where the profile's provider offers a choice;
+    /// null leaves the provider's own default. The valid values are whatever the provider itself declares as its
+    /// own <c>effort</c> launch option, never a fixed list this contract enforces; a provider that declares none
+    /// ignores this silently.
+    /// </summary>
+    public string? Effort { get; init; }
+
+    /// <summary>
     /// The minimal set of MCP server ids to launch this session with — only what the step needs, not everything
     /// (AC-174): a smaller surface is fewer tool definitions in context and tighter least-privilege.
     /// </summary>

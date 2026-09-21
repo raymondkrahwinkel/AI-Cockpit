@@ -25,10 +25,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
     [McpServerTool(Name = ToolName, ReadOnly = false, Destructive = false)]
-    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'reviewGate' true marks the code-review/security-review pair (AC-434) — the run runs every step so marked concurrently instead of one after another and treats it as hard regardless of 'hard'. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
+    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, effort, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'reviewGate' true marks the code-review/security-review pair (AC-434) — the run runs every step so marked concurrently instead of one after another and treats it as hard regardless of 'hard'. 'model' may be omitted when the profile pins its own model (a local profile). 'effort' is optional and, where the profile lists effort levels, must be one of those. Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public async Task<string> SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,
-        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'reviewGate' true marks a step as one of the code-review/security-review pair (AC-434) so the run reads them concurrently and clears their findings through one shared fix pass, instead of running them one after another. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files. 'issueId' is the tracker item this step is drafted from — the run's source issue, or (for an epic) one of its child issues you folded in — so it can be checked against the tracker's own stage; omit it for a step with no such backing item.")] string stepsJson,
+        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, effort, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'reviewGate' true marks a step as one of the code-review/security-review pair (AC-434) so the run reads them concurrently and clears their findings through one shared fix pass, instead of running them one after another. 'effort' is the step's reasoning-effort choice — leave it out to use the profile's own default; where the profile above lists effort levels, it must be one of those. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files. 'issueId' is the tracker item this step is drafted from — the run's source issue, or (for an epic) one of its child issues you folded in — so it can be checked against the tracker's own stage; omit it for a step with no such backing item.")] string stepsJson,
         [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null,
         [Description("The absolute path of the folder this run should work in, when you can resolve it from the item (e.g. the repository the issue is about) — you propose it and the operator can override it before approving. Optional; when omitted the current directory is kept. A folder that is a git repository has each step isolated in its own worktree; a plain folder (an admin task with no repo) runs without isolation.")] string? workingDirectory = null)
     {
@@ -128,6 +128,8 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                 // A review gate (AC-434) is definitionally required — the CEO does not also have to remember 'hard'.
                 dto.ReviewGate || dto.Hard ? GateMode.Hard : GateMode.Skip)
             {
+                // The step's reasoning-effort choice (AC-1342), blank dropped to null — leaves the provider's own default.
+                Effort = string.IsNullOrWhiteSpace(dto.Effort) ? null : dto.Effort.Trim(),
                 // Minimal MCP set per step: only what the step needs — blanks dropped.
                 McpServers = dto.Mcp is { Count: > 0 }
                     ? [.. dto.Mcp.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim())]
@@ -168,7 +170,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
 
     // AC-210: validate one step's (profile, model). The profile must exist by label; a choice-provider profile
     // (non-empty `ModelSuggestions`) must carry a model from that list; a local profile that pins its own model
-    // must carry none. Returns the violation, or null. Assumes a non-empty roster.
+    // must carry none. Returns the first violation, or null (falls through to effort, AC-1342). Non-empty roster.
     internal static string? ValidateStepProfile(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles)
     {
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
@@ -187,13 +189,34 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                 var got = string.IsNullOrWhiteSpace(step.Model) ? "no model" : $"\"{step.Model}\"";
                 return $"Step \"{step.Id}\" on profile \"{profile.Label}\" must use one of that profile's models ({offered}); it has {got}.";
             }
+        }
+        else if (!string.IsNullOrWhiteSpace(step.Model))
+        {
+            return $"Step \"{step.Id}\" runs on the local profile \"{profile.Label}\", which pins its own model, so leave 'model' empty; it has \"{step.Model}\".";
+        }
 
+        return ValidateStepEffort(step, profile);
+    }
+
+    // AC-1342: checked only against a profile that declares known effort values — the same declared vocabulary
+    // list_profiles and start_agent's own option check validate against. None declared (no option, or one
+    // resolved only once live, e.g. Codex) means nothing to check against, so the value is accepted, not refused.
+    internal static string? ValidateStepEffort(AutopilotStep step, PluginProfileInfo profile)
+    {
+        if (string.IsNullOrWhiteSpace(step.Effort) || profile.EffortSuggestions is not { Count: > 0 } levels)
+        {
             return null;
         }
 
-        return string.IsNullOrWhiteSpace(step.Model)
-            ? null
-            : $"Step \"{step.Id}\" runs on the local profile \"{profile.Label}\", which pins its own model, so leave 'model' empty; it has \"{step.Model}\".";
+        // Ordinal, not IgnoreCase: the value travels on to the driver's options map verbatim (never re-cased), and
+        // SpawnOptionOverrides.Merge — the start_agent validation this follows — matches its KnownValues the same way.
+        if (levels.Any(level => string.Equals(level, step.Effort, StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        var offered = string.Join(", ", levels);
+        return $"Step \"{step.Id}\" on profile \"{profile.Label}\" sets effort \"{step.Effort}\", which is not one of that profile's effort levels ({offered}).";
     }
 
     // AC-411: the code half of the child-stage gate. A step with no `SourceIssueId`, or naming the run's own
@@ -271,6 +294,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         public string? Description { get; init; }
         public string? Profile { get; init; }
         public string? Model { get; init; }
+        public string? Effort { get; init; }
         public string? Brief { get; init; }
         public string? Acceptance { get; init; }
         public bool Hard { get; init; }

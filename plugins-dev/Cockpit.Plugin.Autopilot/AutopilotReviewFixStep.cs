@@ -28,6 +28,11 @@ internal static class AutopilotReviewFixStep
             {findings}
             """.ReplaceLineEndings("\n"), // AC-1051: raw string literals take the source file's line endings.
             "Every finding above is resolved in the diff, and the project builds and its test suite passes (run it once here) with no new warnings.",
-            GateMode.Skip);
+            GateMode.Skip)
+        {
+            // AC-1342: the lead gate's own effort choice, so the step that actually writes the fix runs at the same
+            // level the gate that found the problem did, rather than quietly dropping to the profile's default.
+            Effort = lead.Effort,
+        };
     }
 }
