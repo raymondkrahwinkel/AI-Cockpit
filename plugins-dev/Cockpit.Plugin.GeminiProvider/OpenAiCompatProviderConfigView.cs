@@ -14,8 +14,10 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private readonly TextBox _apiKey;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
+    private readonly TextBox _timeoutSeconds;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
+    private readonly TextBlock _timeoutStatus = ProviderConfigStatus.CreateLine();
 
     public Control View { get; }
 
@@ -38,10 +40,16 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             IsTextCompletionEnabled = false,
         };
         _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl };
+        _timeoutSeconds = new TextBox
+        {
+            Text = existing?.TimeoutSeconds?.ToString() ?? string.Empty,
+            PlaceholderText = OpenAiCompatConfig.DefaultTimeoutSeconds.ToString(),
+        };
 
         _fetchModels = new Button { Content = "Fetch", Margin = new Thickness(6, 0, 0, 0) };
         _fetchModels.Click += (_, _) => _ = _FetchModelsAsync();
         _modelStatus.IsVisible = false;
+        _timeoutStatus.IsVisible = false;
 
         View = new StackPanel
         {
@@ -55,19 +63,34 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
                 _modelStatus,
                 _Label("Base URL"),
                 _baseUrl,
+                _Label("Timeout (seconds)"),
+                _timeoutSeconds,
+                _timeoutStatus,
             },
         };
     }
 
     public bool TryGetConfigJson(out string configJson)
     {
+        // Cleared up front, not only on the success path — otherwise a timeout error from a previous attempt
+        // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
+        _timeoutStatus.IsVisible = false;
+
         if (string.IsNullOrWhiteSpace(_apiKey.Text) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim()));
+        if (!TimeoutSecondsField.TryParse(_timeoutSeconds.Text ?? string.Empty, out var timeoutSeconds))
+        {
+            _timeoutStatus.IsVisible = true;
+            ProviderConfigStatus.Set(_timeoutStatus, "Timeout (seconds) must be a positive number.", isOk: false);
+            configJson = string.Empty;
+            return false;
+        }
+
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
         return true;
     }
 

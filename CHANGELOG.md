@@ -1023,6 +1023,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Gemini/OpenAI provider's profile editor now has its own Timeout (seconds) field, next to the API
+  key/model/base URL. Leave it blank for the 600s default, or set a longer one for a slow model; a zero or
+  negative value is rejected right in the field instead of being saved. A hand-edited config that still ends
+  up with one falls back to the default rather than breaking the connection.
+
 - added: a stroke or object drawn over a pasted image on the whiteboard now sticks to that image — move or resize
   the picture and the annotations move and scale with it, staying on the same spot. An annotation that hangs partly
   off the edge is never clipped. Deleting an image that has annotations on it now asks whether to remove them too

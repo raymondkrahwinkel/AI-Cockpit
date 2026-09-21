@@ -10,6 +10,9 @@ public class OpenAiCompatPluginSessionDriverFactoryTests
     [Theory]
     [InlineData("""{"ApiKey":"key","Model":"model","BaseUrl":"https://example.test","TimeoutSeconds":45}""", 45)]
     [InlineData("""{"ApiKey":"key","Model":"model","BaseUrl":"https://example.test"}""", OpenAiCompatConfig.DefaultTimeoutSeconds)]
+    // AC-1345: a hand-edited cockpit.json can carry a non-positive value the view would have rejected —
+    // falls back to the default instead of handing the SDK a zero/negative network timeout.
+    [InlineData("""{"ApiKey":"key","Model":"model","BaseUrl":"https://example.test","TimeoutSeconds":0}""", OpenAiCompatConfig.DefaultTimeoutSeconds)]
     public void BuildClientOptions_NetworkTimeout_UsesTheConfiguredValueOrTheDefault(string configJson, int expectedSeconds)
     {
         var config = JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions)
