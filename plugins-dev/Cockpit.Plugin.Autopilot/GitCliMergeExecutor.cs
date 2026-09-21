@@ -5,13 +5,10 @@ namespace Cockpit.Plugin.Autopilot;
 // fast-forward — never `--force`; the one forced push is `--force-with-lease` on the run's own branch after rebase.
 internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
 {
-    // A Release build of a whole solution outruns GitCommandLine's two-minute default by a wide margin.
-    private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(20);
-
     // What survives of a build's output in the evidence — the tail is where dotnet prints the errors and the summary.
     private const int OutputTailLines = 30;
 
-    public async Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, CancellationToken cancellationToken = default)
+    public async Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, TimeSpan buildTimeout, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(worktreePath) || !Directory.Exists(worktreePath))
         {
@@ -22,7 +19,7 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
         var fetch = await GitCommandLine.RunAsync("git", ["fetch", "origin", collectionBranch], worktreePath, cancellationToken);
         var head = await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], worktreePath, cancellationToken);
         var diff = await GitCommandLine.RunAsync("git", ["diff", "--stat", $"origin/{collectionBranch}...HEAD"], worktreePath, cancellationToken);
-        var (exitCode, tail) = await _BuildAsync(worktreePath, buildCommand, cancellationToken);
+        var (exitCode, tail) = await _BuildAsync(worktreePath, buildCommand, buildTimeout, cancellationToken);
 
         var error = !fetch.Ok ? $"fetch of origin/{collectionBranch} failed: {fetch.Error}" : !head.Ok ? head.Error : !diff.Ok ? diff.Error : null;
         return new AutopilotMergeEvidence(head.StdOut.Trim(), diff.StdOut.TrimEnd(), exitCode, tail, error);
@@ -95,8 +92,12 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
             route = $"fast-forwarded {request.CollectionBranch} to {rebasedHead} with a plain push (gh unavailable or no pull request to merge)";
         }
 
-        // §3 step 4: a merged branch left standing is litter. Best-effort — the merge above is already done.
-        _ = await GitCommandLine.RunAsync("git", ["push", "origin", "--delete", request.Branch], path, cancellationToken);
+        // §3 step 4: a merged branch left standing is litter. The merge above is already done, so a refusal here
+        // does not undo it — but it is said in the route, because a branch that stays behind is meant to be seen.
+        var delete = await GitCommandLine.RunAsync("git", ["push", "origin", "--delete", request.Branch], path, cancellationToken);
+        route += delete.Ok
+            ? $"; run branch {request.Branch} deleted from origin"
+            : $"; run branch {request.Branch} NOT deleted from origin: {delete.Error}";
 
         // Bring the worktree to the collection branch's new tip (a fast-forward: the tip contains this branch's
         // work), so the build below runs on exactly the commit the branch now stands at.
@@ -109,14 +110,14 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
         }
 
         var tip = (await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], path, cancellationToken)).StdOut.Trim();
-        var (exitCode, tail) = await _BuildAsync(path, request.BuildCommand, cancellationToken);
+        var (exitCode, tail) = await _BuildAsync(path, request.BuildCommand, request.BuildTimeout, cancellationToken);
         return new AutopilotMergeResult(true, route, tip, exitCode, tail, null);
     }
 
     // Runs the configured build command (a plain whitespace-split command line) in the worktree. A null exit code
     // means the build produced no verdict — no command, a CLI that would not start, a timeout, a cancellation —
     // and the tail says which; only a process that ran to its end yields a code the ledger may record.
-    private static async Task<(int? ExitCode, string Tail)> _BuildAsync(string worktreePath, string buildCommand, CancellationToken cancellationToken)
+    private static async Task<(int? ExitCode, string Tail)> _BuildAsync(string worktreePath, string buildCommand, TimeSpan buildTimeout, CancellationToken cancellationToken)
     {
         var parts = buildCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length == 0)
@@ -124,7 +125,7 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
             return (null, "No build command is configured.");
         }
 
-        var result = await GitCommandLine.RunAsync(parts[0], parts[1..], worktreePath, cancellationToken, BuildTimeout);
+        var result = await GitCommandLine.RunAsync(parts[0], parts[1..], worktreePath, cancellationToken, buildTimeout);
         var output = string.IsNullOrWhiteSpace(result.StdOut) ? result.Error : result.StdOut;
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tail = string.Join("\n", lines.TakeLast(OutputTailLines));

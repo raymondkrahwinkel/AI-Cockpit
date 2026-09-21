@@ -9,12 +9,13 @@ internal sealed record AutopilotMergeEvidence(string HeadSha, string DiffStat, i
 }
 
 // Everything the executor needs to land one sub (AC-1338): the run worktree and its branch, the collection branch
-// to rebase onto and merge into, the PR the publisher opened (null when none was), and the build to run afterwards.
-internal sealed record AutopilotMergeRequest(string WorktreePath, string Branch, string CollectionBranch, string? PrUrl, string BuildCommand);
+// to rebase onto and merge into, the PR the publisher opened (null when none was), and the build to run afterwards
+// with how long it may take (AutopilotSettings.MergeBuildTimeoutMinutes).
+internal sealed record AutopilotMergeRequest(string WorktreePath, string Branch, string CollectionBranch, string? PrUrl, string BuildCommand, TimeSpan BuildTimeout);
 
 // What landing a sub came to (AC-1338). `Merged` is true only once the collection branch on the remote actually
-// carries the work. `Route` names how: the PR merge, or the fast-forward push it fell back to without gh.
-// `TipSha` is the collection branch's new tip — what the build below ran on. `BuildExitCode` null: not built.
+// carries the work. `Route` names how (the PR merge, or the fast-forward push without gh) and whether the run
+// branch was deleted from origin. `TipSha` is the collection tip the build ran on. `BuildExitCode` null: no verdict.
 internal sealed record AutopilotMergeResult(bool Merged, string Route, string? TipSha, int? BuildExitCode, string BuildOutputTail, string? Error);
 
 /// <summary>
@@ -26,9 +27,9 @@ internal interface IAutopilotMergeExecutor
 {
     /// <summary>
     /// Measures the run branch against <paramref name="collectionBranch"/> — head sha, three-dot diff-stat, and a build of
-    /// the worktree with <paramref name="buildCommand"/> — for the evidence package. Never throws.
+    /// the worktree with <paramref name="buildCommand"/> within <paramref name="buildTimeout"/> — for the evidence package. Never throws.
     /// </summary>
-    Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, CancellationToken cancellationToken = default);
+    Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, TimeSpan buildTimeout, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rebases the run branch onto the collection branch's remote tip, lands it there, brings the worktree to the new tip

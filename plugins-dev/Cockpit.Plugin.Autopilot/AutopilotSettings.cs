@@ -22,6 +22,11 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string AcceptanceHeadingsKey = "acceptanceHeadings";
     private const string MergeModeKey = "mergeMode";
     private const string MergeBuildCommandKey = "mergeBuildCommand";
+    private const string MergeBuildTimeoutKey = "mergeBuildTimeoutMinutes";
+
+    // How long the merge gate lets one build run (AC-1338) — a Release build of a whole solution outruns
+    // GitCommandLine's two-minute default by a wide margin; the one named place for that number.
+    public const int DefaultMergeBuildTimeoutMinutes = 20;
 
     // The one named place the merge gate's default lives (AC-1338, D1): a run that never chose waits for a go.
     public const AutopilotMergeMode DefaultMergeMode = AutopilotMergeMode.Explicit;
@@ -159,6 +164,13 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
         _ReadString(projectId, MergeBuildCommandKey) is { Length: > 0 } command ? command : DefaultMergeBuildCommand;
 
     public void SetMergeBuildCommand(string? command, string? projectId = null) => _Write(projectId, MergeBuildCommandKey, command);
+
+    // The merge gate's build deadline in minutes (AC-1338); a stored zero or negative value reads as the default
+    // rather than as a build that is killed at once.
+    public int MergeBuildTimeoutMinutes(string? projectId = null) =>
+        _ReadValue(projectId, MergeBuildTimeoutKey, DefaultMergeBuildTimeoutMinutes) is > 0 and var minutes ? minutes : DefaultMergeBuildTimeoutMinutes;
+
+    public void SetMergeBuildTimeoutMinutes(int minutes, string? projectId = null) => _Write(projectId, MergeBuildTimeoutKey, minutes);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 

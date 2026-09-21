@@ -193,10 +193,11 @@ internal sealed class AutopilotRunCoordinator(
         var lastStepId = current?.Steps.LastOrDefault()?.Id;
         var mode = current?.MergeMode ?? AutopilotSettings.DefaultMergeMode;
         var buildCommand = settings.MergeBuildCommand();
+        var buildTimeout = TimeSpan.FromMinutes(settings.MergeBuildTimeoutMinutes());
 
         try
         {
-            var evidence = await _mergeExecutor.DescribeAsync(worktree, collection, buildCommand, cancellationToken).ConfigureAwait(false);
+            var evidence = await _mergeExecutor.DescribeAsync(worktree, collection, buildCommand, buildTimeout, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             var assistantNotified = await host.NotifyAssistantAsync("merge-gate", AutopilotMergeGateBrief.Evidence(current, collection, published.PrUrl, evidence, mode)).ConfigureAwait(false);
 
@@ -221,7 +222,7 @@ internal sealed class AutopilotRunCoordinator(
             }
 
             _Note(lastStepId, $"Go from {go.By} — rebasing onto {collection} and merging…");
-            var request = new AutopilotMergeRequest(worktree, branch, collection, published.PrUrl, buildCommand);
+            var request = new AutopilotMergeRequest(worktree, branch, collection, published.PrUrl, buildCommand, buildTimeout);
             var result = await _mergeExecutor.MergeAsync(request, cancellationToken).ConfigureAwait(false);
             if (!result.Merged)
             {

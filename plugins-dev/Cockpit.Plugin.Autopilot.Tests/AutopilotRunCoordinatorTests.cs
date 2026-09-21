@@ -856,7 +856,7 @@ public class AutopilotRunCoordinatorTests
 
         public int MergeCalls => Volatile.Read(ref _mergeCalls);
 
-        public Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, CancellationToken cancellationToken = default) =>
+        public Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, TimeSpan buildTimeout, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AutopilotMergeEvidence("abc1234", " src/OtherSub.cs | 12 ------------\n 1 file changed, 12 deletions(-)", buildExit, "error CS0001" , null));
 
         public Task<AutopilotMergeResult> MergeAsync(AutopilotMergeRequest request, CancellationToken cancellationToken = default)

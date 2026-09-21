@@ -50,7 +50,7 @@ public sealed class GitCliMergeExecutorTests : IDisposable
     [InlineData("git this-is-not-a-git-command", false)]
     public async Task DescribeAsync_ShowsTheDeletionOfAnotherSubsFile_AndTheBranchsOwnBuild(string buildCommand, bool expectedBuildPassed)
     {
-        var evidence = await _executor.DescribeAsync(_clone, Collection, buildCommand);
+        var evidence = await _executor.DescribeAsync(_clone, Collection, buildCommand, TimeSpan.FromMinutes(1));
 
         Assert.Null(evidence.Error);
         Assert.Equal(_Run(_clone, "rev-parse", "HEAD").Trim(), evidence.HeadSha);
@@ -73,12 +73,14 @@ public sealed class GitCliMergeExecutorTests : IDisposable
         var collectionBefore = _Run(_origin, "rev-parse", Collection).Trim();
         _Run(_clone, "checkout", RunBranch);
 
-        var result = await _executor.MergeAsync(new AutopilotMergeRequest(_clone, RunBranch, Collection, PrUrl: null, "git --version"));
+        var result = await _executor.MergeAsync(new AutopilotMergeRequest(_clone, RunBranch, Collection, PrUrl: null, "git --version", TimeSpan.FromMinutes(1)));
 
         Assert.Equal(expectedMerged, result.Merged);
         var collectionAfter = _Run(_origin, "rev-parse", Collection).Trim();
         var runBranchOnRemote = _Run(_origin, "for-each-ref", $"refs/heads/{RunBranch}", "--format=%(objectname)").Trim();
         Assert.Equal(expectedRunBranchStillOnRemote, runBranchOnRemote.Length > 0);
+        // The route says out loud that the branch went — a branch left behind is meant to be seen in the epic comment.
+        Assert.Equal(expectedMerged, result.Route.Contains($"run branch {RunBranch} deleted from origin", StringComparison.Ordinal));
         // Merged: the remote collection tip is the rebased run work (it contains the meanwhile commit and the run's
         // readme), the worktree stands on it, and the build ran there. Refused: the remote collection did not move.
         Assert.Equal(expectedMerged, collectionAfter != collectionBefore);
