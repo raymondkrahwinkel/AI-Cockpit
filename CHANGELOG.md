@@ -509,6 +509,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   status says, so the assistant and another agent trying to wake it are not told it is idle when it still has
   something running underneath it. The sidebar now shows "Failed" for a crashed session too, in the same
   colour as "needs attention" for now — a more considered label and colour of its own are a following change.
+- changed: "Idle" and "Done" now say so when a background shell is still running underneath them — "Idle ·
+  background work" / "Done · background work" — on the sidebar row, the simple stand and the focus-rail
+  tile, instead of reading like nothing is happening while a long test run or dev server is still going.
 
 - changed: a crashed session now sorts to the top of the sidebar next to the ones waiting on you, instead of
   sitting wherever it happened to be — the same place "needs attention" already pulls a session to. The

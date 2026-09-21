@@ -239,4 +239,47 @@ public class SessionOutstandingWorkStatusTests
 
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
     });
+
+    // AC-1334: the sidebar/rail word itself said "Idle" or "Done" while a backgrounded shell (a 15-minute
+    // `dotnet test`) was still running underneath — SF-197, PP-135, PP-18, all measured the same morning.
+    // `setup` reaches the baseline before listening starts, so `finalAction` is the one event under test.
+    public static TheoryData<Action<SessionViewModel>, Action<SessionViewModel>, string> OutstandingWorkLabelCases => new()
+    {
+        {
+            s => { s.IsBusy = true; s.Apply(Turn()); },
+            s => s.Apply(_Ledger(true)),
+            "Done · background work"
+        },
+        {
+            _ => { },
+            s => s.Apply(_Ledger(true)),
+            "Idle · background work"
+        },
+        {
+            s => { s.IsBusy = true; s.Apply(Turn()); s.Apply(_Ledger(true)); },
+            s => s.Apply(_Ledger(false)),
+            "Done"
+        },
+        {
+            _ => { },
+            s => { s.IsBusy = true; s.Apply(Turn()); },
+            "Done"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(OutstandingWorkLabelCases))]
+    public void SessionStatusLabel_CarriesOutstandingWork_WithoutTouchingTheStatusMachine(
+        Action<SessionViewModel> setup, Action<SessionViewModel> finalAction, string expectedLabel) => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        setup(session);
+
+        var labelChanged = false;
+        session.PropertyChanged += (_, e) => labelChanged |= e.PropertyName == nameof(SessionViewModel.SessionStatusLabel);
+        finalAction(session);
+
+        Assert.Equal(expectedLabel, session.SessionStatusLabel);
+        Assert.True(labelChanged, "the sidebar/rail bindings must be told the label changed, not just recompute it lazily");
+    });
 }
