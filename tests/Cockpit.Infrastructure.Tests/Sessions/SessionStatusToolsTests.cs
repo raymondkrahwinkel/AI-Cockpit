@@ -1,11 +1,15 @@
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -53,7 +57,9 @@ public class SessionStatusToolsTests
         IWorkspaceAgentGateway? workspaces = null,
         IWorkspaceAgentCoordinator? coordinator = null,
         IAgentMessageInbox? inbox = null,
-        IProjectJobHistory? jobHistory = null) =>
+        IProjectJobHistory? jobHistory = null,
+        IConsentBroker? consent = null,
+        IElevatedCommandRunner? elevated = null) =>
         new(
             labels ?? _Labels(),
             runner ?? Substitute.For<ITrackedCommandRunner>(),
@@ -61,7 +67,9 @@ public class SessionStatusToolsTests
             workspaces ?? Substitute.For<IWorkspaceAgentGateway>(),
             coordinator ?? Substitute.For<IWorkspaceAgentCoordinator>(),
             inbox ?? Substitute.For<IAgentMessageInbox>(),
-            jobHistory);
+            jobHistory,
+            consent,
+            elevated);
 
     // AC-490 criterion 3: the verified pane decides which run gets the summary, never the id the agent names (the AC-128 rule).
     [Fact]
@@ -380,5 +388,59 @@ public class SessionStatusToolsTests
         Assert.True(status.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("Failed", status.RootElement.GetProperty("verdict").GetString());
         Assert.Equal(1, status.RootElement.GetProperty("exitCode").GetInt32());
+    }
+
+    // AC-1335 criterion 1, both halves on the same code: the card carries the literal command line the runner is
+    // handed, the audit line carries the decision with that same text, and a denial starts nothing.
+    [Theory]
+    [InlineData(ConsentOutcome.Approved, ConsentAuditAction.Approved, 1, true)]
+    [InlineData(ConsentOutcome.Denied, ConsentAuditAction.Denied, 0, false)]
+    public async Task RunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApproved(
+        ConsentOutcome answer, ConsentAuditAction audited, int starts, bool ok)
+    {
+        var plan = new ElevatedCommandPlan(@"C:\ps\powershell.exe", @"-NoProfile -NonInteractive -Command ""& { Get-Date } *> 'C:\t\out.txt'""", @"C:\t\out.txt");
+        var elevated = Substitute.For<IElevatedCommandRunner>();
+        elevated.IsSupported.Returns(true);
+        elevated.Plan("Get-Date").Returns(plan);
+        elevated.RunAsync(plan, @"C:\work", Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new ElevatedCommandResult(ElevatedCommandOutcome.Completed, 0, "Monday"));
+
+        var entries = new List<ConsentAuditEntry>();
+        var auditLog = Substitute.For<IConsentAuditLog>();
+        auditLog.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var broker = new ConsentService(auditLog);
+        var prompts = new List<ConsentPrompt>();
+        broker.PromptOpened += (_, prompt) =>
+        {
+            prompts.Add(prompt);
+            broker.Respond(prompt.Id, answer, remember: false);
+        };
+
+        var tools = _Tools(consent: broker, elevated: elevated);
+        McpRequestContext.Set("caller-pane");
+        string reply;
+        try
+        {
+            reply = await tools.RunElevatedAsync("Get-Date", @"C:\work", "to read the date as administrator");
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+
+        var prompt = Assert.Single(prompts);
+        Assert.StartsWith(plan.CommandLine, prompt.Request.Action, StringComparison.Ordinal);
+        Assert.Equal(ConsentRisk.Dangerous, prompt.Request.Risk);
+        Assert.False(prompt.CanRemember);
+        Assert.Equal(ConsentSourceCatalog.ElevatedCommand, prompt.Request.Source.Label);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(audited, entry.Action);
+        Assert.StartsWith(plan.CommandLine, entry.ActionText, StringComparison.Ordinal);
+        Assert.Equal("caller-pane", entry.PaneId);
+
+        await elevated.Received(starts).RunAsync(plan, @"C:\work", Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        using var document = JsonDocument.Parse(reply);
+        Assert.Equal(ok, document.RootElement.GetProperty("ok").GetBoolean());
     }
 }

@@ -43,8 +43,13 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         // AC-575: the operator can switch the card off ahead of time, per source, for the assistant only. Placed
         // after the pane-id override (an agent can't fake its way in) and before the _remembered check (a bypass
         // is stronger and mustn't become a remembered approval). "Not low risk" so a future risk value fails closed.
+        var sourceKey = _SourceKey(request);
+
+        // AC-1335: an elevated command is never put to the policy at all — the card is the only place the operator
+        // sees the command line before Windows asks about "PowerShell".
         if (verifiedPaneId is not null
-            && bypassPolicy?.ShouldBypass(verifiedPaneId, _SourceKey(request), request.Risk != ConsentRisk.LowRisk) == true)
+            && sourceKey != ConsentSourceCatalog.ElevatedCommand
+            && bypassPolicy?.ShouldBypass(verifiedPaneId, sourceKey, request.Risk != ConsentRisk.LowRisk) == true)
         {
             await _RecordAsync(request, ConsentOutcome.Approved, remembered: false, bypassed: true).ConfigureAwait(false);
             return new ConsentDecision(ConsentOutcome.Approved, Remembered: false, Bypassed: true);

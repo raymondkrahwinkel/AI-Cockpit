@@ -69,8 +69,12 @@ public static class ConsentSourceCatalog
     // leave notes or hand off a session unasked has not thereby agreed to it reaching out to any URL it names.
     public const string AssistantOpenUrl = "Assistant open URL";
 
+    // A session running one command as administrator (AC-1335). Never in `HostSources` and never bypassed, not
+    // even by "allow all": skipping this card leaves the operator a UAC prompt that names PowerShell, not the command.
+    public const string ElevatedCommand = "Elevated command";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
-    // Plugin rows are absent on purpose, `WhiteboardInvite` included — see its own comment above.
+    // Plugin rows are absent on purpose, `WhiteboardInvite` and `ElevatedCommand` included — see their own comments above.
     public static IReadOnlyList<string> HostSources { get; } =
     [
         TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,

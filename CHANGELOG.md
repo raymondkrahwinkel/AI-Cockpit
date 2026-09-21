@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session can run one PowerShell command as administrator on Windows through the `cockpit-session`
+  tool `run_elevated`; you first see a consent card with the exact command line, the working directory and the
+  agent's reason, then Windows shows its usual UAC prompt, and the command's output comes back to the session.
+  Every call asks again — nothing is remembered and the assistant's consent bypass does not cover it (AC-1335).
 - added: when a session on a paired node stops on an Allow/Deny question, that question now appears in the
   controller's assistant conversation as the same row it would show locally, with the machine named on it,
   and clicking Allow or Deny there answers it on the node; a question already answered on the node says so
