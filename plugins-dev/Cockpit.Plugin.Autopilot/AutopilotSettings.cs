@@ -24,6 +24,10 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string MergeBuildCommandKey = "mergeBuildCommand";
     private const string MergeBuildTimeoutKey = "mergeBuildTimeoutMinutes";
     private const string ChainUncleanRunToleranceKey = "chainUncleanRunTolerance";
+    private const string EpicGateEverySubsKey = "epicGateEverySubs";
+    private const string EpicGateBaselineDirectoryKey = "epicGateBaselineDirectory";
+    private const string EpicGateSuiteCommandKey = "epicGateSuiteCommand";
+    private const string EpicGateSuiteTimeoutKey = "epicGateSuiteTimeoutMinutes";
 
     // How long the merge gate lets one build run (AC-1338) — a Release build of a whole solution outruns
     // GitCommandLine's two-minute default by a wide margin; the one named place for that number.
@@ -32,6 +36,17 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     // How many non-clean runs in a row (AC-347) an epic's chain rides through before it stops (AC-1340); the one
     // named place for that number. Zero: the first sub that needed a correction ends the chain.
     public const int DefaultChainUncleanRunTolerance = 0;
+
+    // After how many merged subs an epic's chain runs its mid-epic gate (AC-1341, EpicWorkflow §5) — the one named
+    // place for K. Zero switches the mid gate off; the end gate at Complete always runs.
+    public const int DefaultEpicGateEverySubs = 5;
+
+    // How long the epic gate lets the full suite run (AC-1341) — a whole solution's tests outrun a build by far.
+    public const int DefaultEpicGateSuiteTimeoutMinutes = 60;
+
+    // What the epic gate runs the full suite with (AC-1341, EpicWorkflow §5): TRX left behind, in the directory
+    // Autopilot substitutes for `{results}` — a setting, so another repository names its own suite.
+    public const string DefaultEpicGateSuiteCommand = "dotnet test Cockpit.slnx -c Release --logger:trx --results-directory {results}";
 
     // The one named place the merge gate's default lives (AC-1338, D1): a run that never chose waits for a go.
     public const AutopilotMergeMode DefaultMergeMode = AutopilotMergeMode.Explicit;
@@ -183,6 +198,31 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
         _ReadValue(projectId, ChainUncleanRunToleranceKey, DefaultChainUncleanRunTolerance) is >= 0 and var tolerance ? tolerance : DefaultChainUncleanRunTolerance;
 
     public void SetChainUncleanRunTolerance(int tolerance, string? projectId = null) => _Write(projectId, ChainUncleanRunToleranceKey, tolerance);
+
+    // Every how many merged subs the epic gate runs mid-epic (AC-1341); a stored negative value reads as the default,
+    // zero as "no mid gate". No settings panel yet, like ChainUncleanRunTolerance — set through plugin storage directly.
+    public int EpicGateEverySubs(string? projectId = null) =>
+        _ReadValue(projectId, EpicGateEverySubsKey, DefaultEpicGateEverySubs) is >= 0 and var every ? every : DefaultEpicGateEverySubs;
+
+    public void SetEpicGateEverySubs(int everySubs, string? projectId = null) => _Write(projectId, EpicGateEverySubsKey, everySubs);
+
+    // Where the TRX files of a recorded suite run on `origin/main` live (AC-1341, EpicWorkflow §6d) — the baseline
+    // the gate reads its red set against. Null: no baseline, and the gate says so rather than classifying anything.
+    public string? EpicGateBaselineDirectory(string? projectId = null) => _ReadString(projectId, EpicGateBaselineDirectoryKey);
+
+    public void SetEpicGateBaselineDirectory(string? directory, string? projectId = null) => _Write(projectId, EpicGateBaselineDirectoryKey, directory);
+
+    // The full-suite command the epic gate runs (AC-1341); blank falls back to the default rather than to "no suite".
+    public string EpicGateSuiteCommand(string? projectId = null) =>
+        _ReadString(projectId, EpicGateSuiteCommandKey) is { Length: > 0 } command ? command : DefaultEpicGateSuiteCommand;
+
+    public void SetEpicGateSuiteCommand(string? command, string? projectId = null) => _Write(projectId, EpicGateSuiteCommandKey, command);
+
+    // The epic gate's suite deadline in minutes (AC-1341); a stored zero or negative value reads as the default.
+    public int EpicGateSuiteTimeoutMinutes(string? projectId = null) =>
+        _ReadValue(projectId, EpicGateSuiteTimeoutKey, DefaultEpicGateSuiteTimeoutMinutes) is > 0 and var minutes ? minutes : DefaultEpicGateSuiteTimeoutMinutes;
+
+    public void SetEpicGateSuiteTimeoutMinutes(int minutes, string? projectId = null) => _Write(projectId, EpicGateSuiteTimeoutKey, minutes);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 

@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot epic chain now runs a mid-epic gate every few merged subs (default 5, configurable) and an
+  end gate once every sub is merged: it brings main into the collection branch first, runs the full suite on the
+  pinned tip with TRX reports kept, reads the red set against a recorded suite run on main (red on both is the
+  environment, red only on the tip is ours), checks that each merged sub's added test files are still on the tip,
+  and reports each sub's added test count against the budget its ticket states. The gate repairs nothing; a
+  finding mid-epic stops the chain and says why on the epic and in the cockpit-assistant's inbox. At the end of
+  the epic the pull request to main is opened only on an explicit go — the assistant's `autopilot_merge_go` named
+  after the epic, or the button on the Autopilot surface — whatever the run's merge mode was. The baseline is a
+  suite run you record on `origin/main` yourself: its TRX files plus a `baseline.json` beside them naming the commit
+  (`{"sha": "..."}`); a baseline that is missing or has no sha gives "no verdict" and holds the chain rather than
+  classifying anything, and one recorded on an older main still classifies under a caveat the report names. The suite command,
+  its timeout, the baseline directory and the sub interval are Autopilot settings (settings storage, no panel yet).
 - added: an Autopilot epic chain now runs itself, strictly one sub at a time — once a sub has merged and the
   collection branch built green, the next Ready sub opens its own planning round in the same settle, so nobody has
   to click the epic again between subs. The chain stops, and says so on the epic and in the cockpit-assistant's

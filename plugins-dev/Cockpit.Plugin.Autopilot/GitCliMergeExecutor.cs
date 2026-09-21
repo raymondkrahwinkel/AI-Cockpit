@@ -19,7 +19,7 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
         var fetch = await GitCommandLine.RunAsync("git", ["fetch", "origin", collectionBranch], worktreePath, cancellationToken);
         var head = await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], worktreePath, cancellationToken);
         var diff = await GitCommandLine.RunAsync("git", ["diff", "--stat", $"origin/{collectionBranch}...HEAD"], worktreePath, cancellationToken);
-        var (exitCode, tail) = await _BuildAsync(worktreePath, buildCommand, buildTimeout, cancellationToken);
+        var (exitCode, tail) = await RunToVerdictAsync(worktreePath, buildCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), buildTimeout, cancellationToken);
 
         var error = !fetch.Ok ? $"fetch of origin/{collectionBranch} failed: {fetch.Error}" : !head.Ok ? head.Error : !diff.Ok ? diff.Error : null;
         return new AutopilotMergeEvidence(head.StdOut.Trim(), diff.StdOut.TrimEnd(), exitCode, tail, error);
@@ -110,22 +110,21 @@ internal sealed class GitCliMergeExecutor : IAutopilotMergeExecutor
         }
 
         var tip = (await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], path, cancellationToken)).StdOut.Trim();
-        var (exitCode, tail) = await _BuildAsync(path, request.BuildCommand, request.BuildTimeout, cancellationToken);
+        var (exitCode, tail) = await RunToVerdictAsync(path, request.BuildCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), request.BuildTimeout, cancellationToken);
         return new AutopilotMergeResult(true, route, tip, exitCode, tail, null);
     }
 
-    // Runs the configured build command (a plain whitespace-split command line) in the worktree. A null exit code
-    // means the build produced no verdict — no command, a CLI that would not start, a timeout, a cancellation —
-    // and the tail says which; only a process that ran to its end yields a code the ledger may record.
-    private static async Task<(int? ExitCode, string Tail)> _BuildAsync(string worktreePath, string buildCommand, TimeSpan buildTimeout, CancellationToken cancellationToken)
+    // Runs a configured command line (already split into its parts) in the worktree. A null exit code means it
+    // produced no verdict — no command, a CLI that would not start, a timeout, a cancellation — and the tail says
+    // which; only a process that ran to its end yields a code. Shared with the epic gate's suite run (AC-1341).
+    internal static async Task<(int? ExitCode, string Tail)> RunToVerdictAsync(string worktreePath, IReadOnlyList<string> commandLine, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var parts = buildCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0)
+        if (commandLine.Count == 0)
         {
-            return (null, "No build command is configured.");
+            return (null, "No command is configured.");
         }
 
-        var result = await GitCommandLine.RunAsync(parts[0], parts[1..], worktreePath, cancellationToken, buildTimeout);
+        var result = await GitCommandLine.RunAsync(commandLine[0], [.. commandLine.Skip(1)], worktreePath, cancellationToken, timeout);
         var output = string.IsNullOrWhiteSpace(result.StdOut) ? result.Error : result.StdOut;
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tail = string.Join("\n", lines.TakeLast(OutputTailLines));

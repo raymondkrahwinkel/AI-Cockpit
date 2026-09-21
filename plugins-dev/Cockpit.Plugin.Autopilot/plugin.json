@@ -1,11 +1,11 @@
 {
   "id": "autopilot",
   "name": "Autopilot",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "entryAssembly": "Cockpit.Plugin.Autopilot.dll",
   "entryType": "Cockpit.Plugin.Autopilot.AutopilotPlugin",
   "abstractionsVersion": 2,
   "minHostVersion": "0.34.0",
-  "description": "Operator-triggered \"issue → merge-ready PR\" pipeline. Start a YouTrack or GitHub issue into a visible, self-driving agent session in its own isolated worktree; it works the item behind a quality gate (visual verify, code review, security review, conventions), posts progress and questions back to the issue and moves its stage as it goes, and stops at a merge-ready PR — you approve the run before it starts; an epic run then waits at a merge gate for your (or the assistant's) go before it lands on the epic's collection branch, unless you set that run to merge automatically; once a sub has merged and built green, the epic's next Ready sub starts itself, one at a time, until the chain stops and says why.",
+  "description": "Operator-triggered \"issue → merge-ready PR\" pipeline. Start a YouTrack or GitHub issue into a visible, self-driving agent session in its own isolated worktree; it works the item behind a quality gate (visual verify, code review, security review, conventions), posts progress and questions back to the issue and moves its stage as it goes, and stops at a merge-ready PR — you approve the run before it starts; an epic run then waits at a merge gate for your (or the assistant's) go before it lands on the epic's collection branch, unless you set that run to merge automatically; once a sub has merged and built green, the epic's next Ready sub starts itself, one at a time, until the chain stops and says why; every few merged subs and at the end of the epic a gate brings main in, runs the full suite on the pinned tip with TRX kept, reads the red set against a recorded run on main, checks each merged sub's test files and test count, and opens the pull request to main only on your (or the assistant's) go.",
   "author": "Cockpit"
 }

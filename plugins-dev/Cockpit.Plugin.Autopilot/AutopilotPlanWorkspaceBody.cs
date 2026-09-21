@@ -52,6 +52,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     private bool _popoutOpen;
     private int _completedRuns;
+
+    // Cancelled when the workspace is really closed (AC-1341): an epic's end gate waiting for its go, or its suite
+    // still running, has no surface left to answer on and unwinds like a cancelled run does.
+    private readonly CancellationTokenSource _closing = new();
     private IEmbeddedSession? _ceo;
 
     // The chosen template's PR-delivery signal (AC-216), remembered from the template picker until Approve stamps it on
@@ -136,6 +140,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         {
             context.Cancel();
         }
+
+        _closing.Cancel();
     }
 
     // The manager or queue changed (a run started/ended/queued) — re-render on the UI thread.
@@ -188,7 +194,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         surface.Children.Add(_DisplayedContext() is { } displayed
             ? _BuildPipeline(displayed)
-            : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
+            : _manager.AwaitingEpicGo is { } epicAtGate
+                ? _BuildEpicGatePanel(epicAtGate)
+                : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
 
         return surface;
     }
@@ -788,6 +796,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var pullRequestMissing = controller.PullRequestMissing;
         var mergeResult = context.Coordinator.MergeResult;
         var strandedCommits = context.Coordinator.StrandedCommits;
+        var runWorktreePath = context.Coordinator.RunWorktreePath;
 
         AutopilotRunRecord? settled = null;
         List<AutopilotRunRecord> epicRuns = [];
@@ -810,14 +819,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A run cancelled by a closing workspace has no surface left to chain on.
         if (settled is not null && !context.IsCancelled && settledPlan?.Source is { EpicId.Length: > 0 } source)
         {
-            await _ChainNextSubAsync(source, settledPlan, settled, epicRuns, mergeResult, strandedCommits);
+            await _ChainNextSubAsync(source, settledPlan, settled, epicRuns, mergeResult, strandedCommits, runWorktreePath);
         }
     }
 
     // The settle-hook's chain (AC-1340): the same resolve the epic click runs, the same planning start the "plan"
     // intent makes — the automation replaces exactly that click, nothing else. Stops are said on the epic and to the
     // assistant by the chain itself; a fault in this hook is reported the same way rather than swallowed.
-    private async Task _ChainNextSubAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotRunRecord settled, IReadOnlyList<AutopilotRunRecord> epicRuns, AutopilotMergeResult? mergeResult, bool strandedCommits)
+    private async Task _ChainNextSubAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotRunRecord settled, IReadOnlyList<AutopilotRunRecord> epicRuns, AutopilotMergeResult? mergeResult, bool strandedCommits, string? runWorktreePath)
     {
         var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
         if (provider is null)
@@ -830,6 +839,26 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
         var collectionBranch = AutopilotCollectionBranch.For(_settings.EpicDirectToMain(), source.EpicId);
 
+        Func<string, CancellationToken, Task> commentEpic = (text, cancellationToken) => provider.PostCommentAsync(source.EpicId, text, cancellationToken);
+        Func<string, Task<bool>> notifyAssistant = text => _host.NotifyAssistantAsync("epic-chain", $"{source.EpicId}: {text}");
+
+        // AC-1341: the epic gate measures in the settled run's worktree, which the merge gate left on the collection
+        // tip; a run without one (or without a collection branch) has no gate, and the chain runs as AC-1340 did.
+        AutopilotEpicGate? gate = collectionBranch is { Length: > 0 } collection && runWorktreePath is { Length: > 0 } worktree
+            ? new AutopilotEpicGate(
+                new GitCliEpicGateExecutor(),
+                source.EpicId,
+                collection,
+                worktree,
+                _settings.EpicGateSuiteCommand(),
+                TimeSpan.FromMinutes(_settings.EpicGateSuiteTimeoutMinutes()),
+                _settings.EpicGateBaselineDirectory(),
+                async (sub, cancellationToken) => (await provider.GetIssueSnapshotAsync(sub, cancellationToken)).Description,
+                _manager.AwaitEpicGoAsync,
+                commentEpic,
+                notifyAssistant)
+            : null;
+
         var chain = new AutopilotEpicChain(
             cancellationToken => AutopilotEpicRunner.ResolveAsync(
                 provider,
@@ -840,13 +869,19 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 _settings.AcceptanceHeadings(),
                 new AutopilotMergeBuildLedger(_host.Storage).LastBuild(collectionBranch)),
             _StartPlanningForSubAsync,
-            (text, cancellationToken) => provider.PostCommentAsync(source.EpicId, text, cancellationToken),
-            text => _host.NotifyAssistantAsync("epic-chain", $"{source.EpicId}: {text}"),
-            _settings.ChainUncleanRunTolerance());
+            commentEpic,
+            notifyAssistant,
+            _settings.ChainUncleanRunTolerance(),
+            gate is null ? null : gate.RunAsync,
+            _settings.EpicGateEverySubs());
 
         try
         {
-            _ = await chain.ContinueAsync(settled, epicRuns, mergeResult, strandedCommits);
+            _ = await chain.ContinueAsync(settled, epicRuns, mergeResult, strandedCommits, _closing.Token);
+        }
+        catch (OperationCanceledException) when (_closing.IsCancellationRequested)
+        {
+            // The workspace closed under the chain (a gate waiting for its go, a suite still running): nothing to say to.
         }
         catch (Exception failure)
         {
@@ -2003,6 +2038,48 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 content.Content = null;
                 break;
         }
+    }
+
+    // The epic's end gate (AC-1341, EpicWorkflow §14 step 7): every sub is merged and the gate's report went to the
+    // epic and the assistant; the operator gives or refuses the go for the pull request to main here — the same answer
+    // autopilot_merge_go gives from a session, addressed to the epic. Shown in the run slot, which is empty by then.
+    private Control _BuildEpicGatePanel(string epicId)
+    {
+        var reason = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 64,
+            PlaceholderText = "Why (optional on a go; recorded on the epic on a refusal)…",
+        };
+
+        var go = new Button { Classes = { "Accent" }, Content = "Open the pull request to main" };
+        go.Click += (_, _) => _manager.ReportMergeGo(epicId, go: true, _Trimmed(reason.Text), "the operator");
+
+        var refuse = new Button { Classes = { "Ghost" }, Content = "Refuse" };
+        refuse.Click += (_, _) => _manager.ReportMergeGo(epicId, go: false, _Trimmed(reason.Text) ?? "refused on the Autopilot surface", "the operator");
+
+        return new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 12,
+                MaxWidth = 520,
+                Children =
+                {
+                    new TextBlock { Text = $"{epicId} at its end gate", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
+                    new TextBlock
+                    {
+                        Text = "Every sub is merged and the gate's report (full suite on the pinned tip, red set against the baseline, test files and counts per sub) is on the epic and in the assistant's inbox. Nothing is opened until a go.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    },
+                    reason,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { go, refuse } },
+                },
+            },
+        };
     }
 
     // The merge gate (AC-1338, explicit mode): both review gates passed and the evidence went to the assistant; the
