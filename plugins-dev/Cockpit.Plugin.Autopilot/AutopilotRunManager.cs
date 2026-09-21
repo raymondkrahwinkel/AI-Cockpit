@@ -9,6 +9,12 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     private readonly List<AutopilotRunCoordinator> _active = [];
     private Func<AutopilotPlan, AutopilotRunHandle>? _runner;
 
+    // The go an epic's end gate waits on for its pull request to main (AC-1341), guarded by _lock: set while the gate
+    // stands, null otherwise. Held here rather than on a coordinator because the run that completed the epic has
+    // already settled by then; `AwaitingEpicGo` is what the surface shows its buttons on.
+    private TaskCompletionSource<AutopilotMergeGo>? _epicGo;
+    private string? _epicGoIssue;
+
     // Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.
     public event Action? Changed;
 
@@ -113,9 +119,66 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
         return false;
     }
 
-    // A go or refusal at a merge gate (AC-1338) — routed to the run standing at its gate for `issue`. Every coordinator
-    // checks the issue is its own, so trying each is safe; false when no run waits for that issue.
-    public bool ReportMergeGo(string issue, bool go, string? reason, string by) => _Route(coordinator => coordinator.ReportMergeGo(issue, go, reason, by));
+    // A go or refusal at a merge gate (AC-1338) — routed to the run standing at its gate for `issue`, or to the epic's
+    // end gate when `issue` names the epic waiting there (AC-1341). Every coordinator checks the issue is its own, so
+    // trying each is safe; false when nothing waits for that issue.
+    public bool ReportMergeGo(string issue, bool go, string? reason, string by)
+    {
+        lock (_lock)
+        {
+            if (_epicGo is { } pending && string.Equals(_epicGoIssue, issue, StringComparison.OrdinalIgnoreCase))
+            {
+                return pending.TrySetResult(new AutopilotMergeGo(go, reason, by));
+            }
+        }
+
+        return _Route(coordinator => coordinator.ReportMergeGo(issue, go, reason, by));
+    }
+
+    // The epic whose end gate waits for a go (AC-1341), or null when none does.
+    public string? AwaitingEpicGo
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _epicGoIssue;
+            }
+        }
+    }
+
+    // Stands at the epic's end gate until ReportMergeGo answers for `epicId`, or `cancellationToken` cancels it (the
+    // workspace closed). One epic at a time: a second gate while one waits is refused rather than left hanging.
+    public async Task<AutopilotMergeGo> AwaitEpicGoAsync(string epicId, CancellationToken cancellationToken)
+    {
+        var pending = new TaskCompletionSource<AutopilotMergeGo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_lock)
+        {
+            if (_epicGo is not null)
+            {
+                return new AutopilotMergeGo(false, $"another epic's end gate ({_epicGoIssue}) is already waiting for a go", "Autopilot");
+            }
+
+            _epicGo = pending;
+            _epicGoIssue = epicId;
+        }
+
+        Changed?.Invoke();
+        try
+        {
+            return await pending.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _epicGo = null;
+                _epicGoIssue = null;
+            }
+
+            Changed?.Invoke();
+        }
+    }
 
     // Starts as many queued runs as there is capacity for, then returns. Called on submit and whenever a run frees a
     // slot. A reservation counter keeps the capacity check honest while a start runs outside the lock (starting a run

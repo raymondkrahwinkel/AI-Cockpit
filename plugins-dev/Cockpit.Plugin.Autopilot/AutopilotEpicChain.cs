@@ -3,12 +3,16 @@ namespace Cockpit.Plugin.Autopilot;
 // AC-1340: after a settled epic sub, the next Ready sub starts itself — strictly one at a time (D4) — or the chain
 // stops out loud: one comment on the epic and one note to the cockpit-assistant, never a silent end. The decision
 // reads structured facts (the run's record, the gate's landing) and never the text of a comment.
+//
+// `gate` (AC-1341) runs every `gateEverySubs` merged subs and at Complete; null in a graph without one, as before.
 internal sealed class AutopilotEpicChain(
     Func<CancellationToken, Task<AutopilotEpicOutcome>> resolveNext,
     Func<AutopilotRun, Task<string?>> startPlanning,
     Func<string, CancellationToken, Task> commentEpic,
     Func<string, Task<bool>> notifyAssistant,
-    int uncleanRunTolerance)
+    int uncleanRunTolerance,
+    Func<AutopilotEpicGateKind, IReadOnlyList<string>, CancellationToken, Task<AutopilotEpicGateVerdict>>? gate = null,
+    int gateEverySubs = 0)
 {
     // Starts the next sub when `settled` earned it, and says on the epic what happened either way. Returns the reason
     // the chain stopped, or null when the next sub's planning round was opened. Never throws past a failed comment.
@@ -29,6 +33,22 @@ internal sealed class AutopilotEpicChain(
         var next = await resolveNext(cancellationToken).ConfigureAwait(false);
         if (next is { Kind: AutopilotEpicOutcomeKind.Ready, Run: { } run })
         {
+            // EpicWorkflow §5: the full suite every K merged subs, while the sessions that broke it are still fresh.
+            // A finding holds the chain — the meter repairs nothing, and the choice is the assistant's, not the chain's.
+            //
+            // ponytail: keyed on the merged count hitting a multiple of K; a sub merged outside the chain shifts the
+            // schedule by one, and the end gate below runs regardless.
+            if (gate is not null && IsMidGateDue(next.MergedSubs.Count, gateEverySubs))
+            {
+                var verdict = await gate(AutopilotEpicGateKind.Mid, next.MergedSubs, cancellationToken).ConfigureAwait(false);
+                if (verdict.HasFindings)
+                {
+                    stop = $"the mid-epic gate after {next.MergedSubs.Count} merged subs found: {string.Join("; ", verdict.Findings)}";
+                    await _SayAsync($"Autopilot stopped this epic's chain after {settled.Ticket}: {stop}", cancellationToken).ConfigureAwait(false);
+                    return stop;
+                }
+            }
+
             // The sub that just landed reads as unmerged again (no commit subject on the collection branch starts
             // with its id): planning it once more would loop the chain on one sub, unattended, for as long as that holds.
             if (string.Equals(run.IssueId, settled.Ticket, StringComparison.OrdinalIgnoreCase))
@@ -53,6 +73,12 @@ internal sealed class AutopilotEpicChain(
         {
             case AutopilotEpicOutcomeKind.Complete:
                 await _SayAsync($"Autopilot finished this epic's chain after {settled.Ticket}: every sub is merged.", cancellationToken).ConfigureAwait(false);
+                if (gate is not null)
+                {
+                    // §14: the end gate — the same measurement, then the pull request to main only on an explicit go.
+                    _ = await gate(AutopilotEpicGateKind.End, next.MergedSubs, cancellationToken).ConfigureAwait(false);
+                }
+
                 return "every sub is merged";
             case AutopilotEpicOutcomeKind.Paused:
                 stop = next.Reason ?? "the next sub could not be resolved";
@@ -120,9 +146,16 @@ internal sealed class AutopilotEpicChain(
             : null;
     }
 
+    // Whether `merged` subs on the collection branch earn the mid-epic gate: every `every`-th one; never with the
+    // mid gate switched off (0), and never before the first sub landed.
+    internal static bool IsMidGateDue(int merged, int every) => every > 0 && merged > 0 && merged % every == 0;
+
+    private Task _SayAsync(string text, CancellationToken cancellationToken) => SayAsync(commentEpic, notifyAssistant, text, cancellationToken);
+
     // Said twice, like the merge gate's outcome: on the epic for the trail, and to the assistant so a stopped chain is
     // seen without anyone opening the epic. Both best-effort — a tracker that is down does not undo the decision.
-    private async Task _SayAsync(string text, CancellationToken cancellationToken)
+    // Shared with the epic gate (AC-1341), which speaks on the same two channels.
+    internal static async Task SayAsync(Func<string, CancellationToken, Task> commentEpic, Func<string, Task<bool>> notifyAssistant, string text, CancellationToken cancellationToken)
     {
         try
         {

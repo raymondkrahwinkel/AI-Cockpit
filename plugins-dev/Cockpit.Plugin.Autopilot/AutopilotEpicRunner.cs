@@ -20,9 +20,13 @@ internal enum AutopilotEpicOutcomeKind
     Complete,
 }
 
-// The result of resolving an epic click to its next sub (AC-346), or the reason it is not one.
+// The result of resolving an epic click to its next sub (AC-346), or the reason it is not one. `MergedSubs` (AC-1341)
+// is every sub already on the collection branch, in dependency order, on a Ready or Complete outcome — what the
+// epic gate counts and measures; empty on the outcomes that never walked the subs.
 internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, AutopilotRun? Run, string? PausedSubId, string? Reason)
 {
+    public IReadOnlyList<string> MergedSubs { get; init; } = [];
+
     public static AutopilotEpicOutcome NotEpic { get; } = new(AutopilotEpicOutcomeKind.NotEpic, null, null, null);
     public static AutopilotEpicOutcome Complete { get; } = new(AutopilotEpicOutcomeKind.Complete, null, null, null);
     public static AutopilotEpicOutcome Ready(AutopilotRun run) => new(AutopilotEpicOutcomeKind.Ready, run, null, null);
@@ -129,11 +133,13 @@ internal static class AutopilotEpicRunner
             return AutopilotEpicOutcome.Paused(null, $"the merge-gate build on {red.Branch} exited {red.ExitCode} at {red.Sha} and the branch still stands there. Fix the branch (or re-run the build green) before the next sub starts.");
         }
 
+        var merged = new List<string>();
         foreach (var subId in order)
         {
             switch (mergeChecker.IsMerged(subId))
             {
                 case true:
+                    merged.Add(subId);
                     continue;
                 case null:
                     // Cannot tell — never treat that as "not merged" and re-run a sub that may already be delivered.
@@ -178,9 +184,9 @@ internal static class AutopilotEpicRunner
                 EpicId = clicked.IssueId,
             };
 
-            return AutopilotEpicOutcome.Ready(run);
+            return AutopilotEpicOutcome.Ready(run) with { MergedSubs = merged };
         }
 
-        return AutopilotEpicOutcome.Complete;
+        return AutopilotEpicOutcome.Complete with { MergedSubs = merged };
     }
 }

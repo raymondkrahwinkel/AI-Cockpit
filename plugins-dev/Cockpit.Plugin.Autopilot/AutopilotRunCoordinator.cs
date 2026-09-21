@@ -55,6 +55,10 @@ internal sealed class AutopilotRunCoordinator(
     private AutopilotMergeResult? _mergeResult;
     private bool _strandedCommits;
 
+    // The run's own worktree (AC-1341), kept past the settle: after the merge gate it stands on the collection
+    // branch's tip, which is where the epic gate runs the suite. Null for a run that never had one.
+    private string? _runWorktreePath;
+
     // Replaces the run's validator with a fresh session briefed on the carry-over it is handed, returning it — or null
     // when the host refused to embed one (AC-253). Null in a bare test graph, and in a run whose surface cannot embed:
     // both simply never checkpoint. The app supplies the real swap through AutopilotRunContext.
@@ -118,6 +122,7 @@ internal sealed class AutopilotRunCoordinator(
             _ceoSession = ceo;
             _maxConsultsPerStep = settings.MaxConsultsPerStep();
             _ceoCheckpointEverySteps = settings.CeoCheckpointEverySteps();
+            _runWorktreePath = environment.RunWorktreePath;
         }
 
         // AC-202: the run has just started (the plan is Running after its single approval). Move the source issue to the
@@ -172,6 +177,18 @@ internal sealed class AutopilotRunCoordinator(
             lock (_lock)
             {
                 return _mergeResult;
+            }
+        }
+    }
+
+    // Where this run's worktree is (AC-1341), or null when it had none — what the epic gate measures in after a settle.
+    public string? RunWorktreePath
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _runWorktreePath;
             }
         }
     }
