@@ -131,7 +131,7 @@ public class AssistantSpawnProjectIsolationTests
         worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
         worktrees.DetectRepositoryAsync(Repository, Arg.Any<CancellationToken>())
             .Returns(new GitRepositoryInfo(Repository, "abc123", "main"));
-        worktrees.CreateForSessionAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        worktrees.CreateForSessionAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("fatal: could not create work tree"));
 
         var dialogs = Substitute.For<ISessionDialogService>();
@@ -400,7 +400,7 @@ public class AssistantSpawnProjectIsolationTests
         worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
         worktrees.DetectRepositoryAsync(Repository, Arg.Any<CancellationToken>())
             .Returns(new GitRepositoryInfo(Repository, "abc123", "main"));
-        worktrees.CreateForSessionAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        worktrees.CreateForSessionAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new WorktreeRecord("owner", Repository, "/repo-wt", "ac-719-branch", "abc123", DateTimeOffset.UnixEpoch)));
         return worktrees;
     }

@@ -181,7 +181,8 @@ internal sealed class AutopilotRunCoordinator(
                     environment.RunWorktreePath!,
                     environment.RunWorktreeBranch!,
                     _PullRequestTitle(),
-                    _PullRequestBody());
+                    _PullRequestBody(),
+                    environment.CollectionBranch);
 
                 // AC-453: a checkout the operator has gated gets no pull request while the local run is red or
                 // absent. The push still happens, and the reason travels into the run's outcome. Only asked when a

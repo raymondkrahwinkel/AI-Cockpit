@@ -35,7 +35,9 @@ internal interface IEpicSubMergeChecker
 // The real `IEpicSubMergeChecker` (AC-346): a sub counts as merged when a commit *subject line* (never its
 // body) in `origin/main`'s history starts with its exact ticket number, word-boundary matched in .NET rather
 // than via `git log --grep`. Checked against `origin/main`, never a local branch, with `git fetch` first (best-effort).
-internal sealed class GitEpicSubMergeChecker(string repositoryDirectory) : IEpicSubMergeChecker
+// AC-1337: `collectionBranch`, when given, checks that branch instead of `main` — an epic run whose subs land on a
+// collection branch reads "already delivered" against the branch they actually merge into.
+internal sealed class GitEpicSubMergeChecker(string repositoryDirectory, string? collectionBranch = null) : IEpicSubMergeChecker
 {
     private IReadOnlyList<string>? _subjects;
 
@@ -48,9 +50,10 @@ internal sealed class GitEpicSubMergeChecker(string repositoryDirectory) : IEpic
             return;
         }
 
-        _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", "main"], repositoryDirectory, cancellationToken);
+        var branch = string.IsNullOrWhiteSpace(collectionBranch) ? "main" : collectionBranch;
+        _ = await GitCommandLine.RunAsync("git", ["fetch", "origin", branch], repositoryDirectory, cancellationToken);
 
-        var result = await GitCommandLine.RunAsync("git", ["log", "origin/main", "--format=%s"], repositoryDirectory, cancellationToken);
+        var result = await GitCommandLine.RunAsync("git", ["log", $"origin/{branch}", "--format=%s"], repositoryDirectory, cancellationToken);
         if (!result.Ok)
         {
             return;

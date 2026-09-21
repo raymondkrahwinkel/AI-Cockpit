@@ -55,11 +55,15 @@ internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
             return new AutopilotPrPublishResult(true, null, null);
         }
 
-        var pr = await GitCommandLine.RunAsync(
-            "gh",
-            ["pr", "create", "--head", request.Branch, "--title", request.Title, "--body", request.Body],
-            path,
-            cancellationToken);
+        // AC-1337: an explicit base targets the epic run's collection branch instead of gh's default-branch guess.
+        List<string> arguments = ["pr", "create", "--head", request.Branch, "--title", request.Title, "--body", request.Body];
+        if (!string.IsNullOrWhiteSpace(request.Base))
+        {
+            arguments.Add("--base");
+            arguments.Add(request.Base);
+        }
+
+        var pr = await GitCommandLine.RunAsync("gh", arguments, path, cancellationToken);
 
         if (!pr.Ok)
         {

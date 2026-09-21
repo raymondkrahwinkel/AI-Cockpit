@@ -105,6 +105,26 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_WithACollectionBranch_ForksFromThatBranchsRemoteTip_NotTheCheckout()
+    {
+        // AC-1337: an epic run's collection branch is a different question than "is the checkout's own branch
+        // current" — it forks from that named branch's remote tip and never touches the checkout at all.
+        _AddRemote();
+        _Git(_repo, "checkout", "-b", "release/epic");
+        _Commit(_repo, "release-only.txt", "epic work");
+        _Git(_repo, "push", "-u", "origin", "release/epic");
+        var collectionTip = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "checkout", "main");
+        var mainHead = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo, baseRef: "release/epic");
+
+        Assert.Equal(collectionTip, record.BaseCommit);
+        Assert.Equal(collectionTip, _Git(record.Path, "rev-parse", "HEAD"));
+        Assert.Equal(mainHead, _Git(_repo, "rev-parse", "HEAD"));
+    }
+
+    [Fact]
     public async Task CreateAsync_BranchThatAlreadyExists_FailsLoudly_WithoutResettingIt()
     {
         const string branch = "already-here";

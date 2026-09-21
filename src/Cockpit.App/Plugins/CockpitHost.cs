@@ -958,6 +958,11 @@ internal sealed class CockpitHost(
             ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
             : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
 
+    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, string? baseRef, System.Threading.CancellationToken cancellationToken) =>
+        services.GetService<CockpitViewModel>() is { } cockpit
+            ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, baseRef, cancellationToken)
+            : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
+
     public async Task<Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, System.Threading.CancellationToken cancellationToken)
     {
         // No worktree manager (or no path) means the host cannot tell — Unknown, which the caller treats as needing

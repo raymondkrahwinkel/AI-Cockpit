@@ -96,6 +96,61 @@ public class AutopilotRunCoordinatorTests
         Assert.True(plan.PullRequestMissing);
     }
 
+    // AC-1337: an epic run's collection branch (environment.CollectionBranch) becomes the PR's base — unset opens
+    // against the default branch, exactly as v1 did, since AutopilotPrRequest.Base then stays null.
+    [Fact]
+    public async Task RunAsync_MergeReady_WithACollectionBranch_PublishesThePullRequestAgainstIt()
+    {
+        var plan = new AutopilotPlanController();
+        plan.BeginPlanning(new AutopilotPlan("goal", null, [_HardStep("1")]) { DeliversPullRequest = true });
+        plan.BindSession("ceo-pane");
+        Assert.True(plan.Approve());
+
+        var host = _Host();
+        var stepSession = _Session("step-pane");
+        var context = _Context(stepSession);
+        var publisher = new CapturingPrPublisher();
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var environment = new AutopilotRunEnvironment(
+            "/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", CollectionBranch: "release/epic");
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
+        await validationSent.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance"));
+
+        await run.WaitAsync(Timeout);
+        Assert.Equal("release/epic", publisher.LastRequest?.Base);
+    }
+
+    // Records what it was asked to publish, so a test can assert on the request instead of on what a real gh/git
+    // process would have done with it.
+    private sealed class CapturingPrPublisher : IAutopilotPrPublisher
+    {
+        public AutopilotPrRequest? LastRequest { get; private set; }
+
+        public Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotPrProbe(IsGitRun: true, HasRemote: true, GhAvailable: true));
+
+        public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default)
+        {
+            LastRequest = request;
+            return Task.FromResult(new AutopilotPrPublishResult(Pushed: true, PrUrl: "https://example/pr/1", Error: null));
+        }
+
+        public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+
+        public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(AutopilotStrayCommits.None);
+    }
+
     [Fact]
     public async Task RunAsync_CeoValidatesFail_WithNoAttemptsLeft_SettlesBlocked()
     {

@@ -101,16 +101,18 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
         bool isAgentCreated = false,
+        string? baseRef = null,
         CancellationToken cancellationToken = default)
     {
         var repository = await DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
                 $"'{directory}' is not inside a git repository with a commit, so it cannot be isolated in a worktree.");
 
-        // Fork from the latest the source branch can safely be brought to, not from whatever the operator's checkout
-        // last pulled (AC-349). Best-effort: everything this cannot do — offline, a dirty tree, a diverged branch —
-        // ends as the fork-from-local-HEAD this always did, with a sentence saying so.
-        var sourceRefresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, handling, cancellationToken).ConfigureAwait(false);
+        // AC-1337: an explicit base ref forks from that named branch's remote tip — a different question than
+        // "is the checkout's own branch current" below, and answered without touching the checkout at all.
+        var sourceRefresh = string.IsNullOrWhiteSpace(baseRef)
+            ? await WorktreeSourceUpdater.BringUpToDateAsync(repository, handling, cancellationToken).ConfigureAwait(false)
+            : await WorktreeSourceUpdater.ForkFromNamedBranchAsync(repository, baseRef, cancellationToken).ConfigureAwait(false);
         if (sourceRefresh.ForkCommit is { } forkAt)
         {
             repository = repository with { HeadCommit = forkAt };
@@ -186,8 +188,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
         bool isAgentCreated = false,
+        string? baseRef = null,
         CancellationToken cancellationToken = default) =>
-        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, handling, isAgentCreated, cancellationToken);
+        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, handling, isAgentCreated, baseRef, cancellationToken);
 
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);

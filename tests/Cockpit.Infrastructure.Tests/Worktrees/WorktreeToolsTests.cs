@@ -21,7 +21,7 @@ public class WorktreeToolsTests
     public async Task CreateAsync_AsksForTheSourceToBeLeftAlone()
     {
         var manager = Substitute.For<IWorktreeManager>();
-        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_Record("pane", "/wt/path"));
         var tools = new WorktreeTools(manager);
 
@@ -36,6 +36,7 @@ public class WorktreeToolsTests
             "/repo",
             WorktreeSourceHandling.LeaveSourceAlone,
             true,
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -71,7 +72,7 @@ public class WorktreeToolsTests
     {
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record("pane", "/wt/path");
-        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, true, Arg.Any<CancellationToken>()).Returns(record);
+        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, true, Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(record);
         var tools = new WorktreeTools(manager);
 
         using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));

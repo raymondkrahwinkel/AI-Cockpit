@@ -341,6 +341,43 @@ internal static class WorktreeSourceUpdater
             + (disturbed ? $" Your checkout at {root} now has changes in it — worth a look before you carry on." : string.Empty));
     }
 
+    // AC-1337: forks from a named branch's remote tip — an epic run's collection-branch setting — instead of the
+    // checkout's own branch. Best-effort like every other path here: an unreachable remote or an unresolvable
+    // branch falls back to the checkout's local HEAD, exactly as no base branch ever did anything else.
+    public static async Task<WorktreeSourceRefresh> ForkFromNamedBranchAsync(
+        GitRepositoryInfo repository,
+        string branchName,
+        CancellationToken cancellationToken)
+    {
+        var remote = await _DefaultRemoteAsync(repository.Root, cancellationToken).ConfigureAwait(false);
+        if (remote is null || !await _FetchAsync(repository.Root, remote, cancellationToken).ConfigureAwait(false))
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.FetchFailed,
+                0,
+                null,
+                $"Could not reach a remote to fetch '{branchName}', so this session forked from the checkout's local HEAD instead.");
+        }
+
+        var reference = $"{remote}/{branchName}";
+        var target = await _RevParseAsync(repository.Root, reference, cancellationToken).ConfigureAwait(false);
+        if (target is null)
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.CheckFailed,
+                0,
+                null,
+                $"'{reference}' does not exist, so this session forked from the checkout's local HEAD instead.");
+        }
+
+        return new WorktreeSourceRefresh(
+            WorktreeSourceOutcome.ForkedFromCollectionBranch,
+            0,
+            reference,
+            $"This session forked from the collection branch {reference}.",
+            target);
+    }
+
     private static WorktreeSourceRefresh _CouldNotCheck(string branch) => new(
         WorktreeSourceOutcome.CheckFailed,
         0,

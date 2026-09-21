@@ -526,6 +526,18 @@ public interface ICockpitHost
         Task.FromResult<Workspaces.PluginWorktreeInfo?>(null);
 
     /// <summary>
+    /// Same as <see cref="CreateRunWorktreeAsync(string, string?, CancellationToken)"/>, but forks the worktree from
+    /// <paramref name="baseRef"/>'s remote tip (AC-1337) instead of the checkout's own branch.
+    /// </summary>
+    /// <remarks>
+    /// A separate overload rather than a third parameter, for binary compatibility (AC-40): calling it raises the
+    /// manifest's minHostVersion. Null behaves exactly like the two-argument overload. Default forwards to it, so
+    /// an older host keeps compiling.
+    /// </remarks>
+    Task<Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, string? baseRef, CancellationToken cancellationToken = default) =>
+        CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken);
+
+    /// <summary>
     /// Reports whether <paramref name="directory"/> is a git repository (AC-174), so a plugin can decide up front
     /// whether work there can be isolated in a worktree.
     /// </summary>
