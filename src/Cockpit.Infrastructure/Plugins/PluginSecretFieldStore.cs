@@ -4,7 +4,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-internal sealed class PluginSecretFieldStore : IPluginSecretFieldStore, ISingletonService
+internal sealed class PluginSecretFieldStore : IPluginSecretFieldStore, ISingletonService, IAsyncDisposable
 {
     private readonly CockpitConfigFileAccess _configFile;
 
@@ -41,4 +41,8 @@ internal sealed class PluginSecretFieldStore : IPluginSecretFieldStore, ISinglet
                 file.PluginCredentialFields[pluginId] = declared;
             },
             cancellationToken);
+
+    // AC-1343: drains every UpdateAsync this instance fired as `_ = ...` (App.axaml.cs's plugin-storage
+    // callback, which IPluginStorage.Set's void contract forces) before the container releases this singleton.
+    public ValueTask DisposeAsync() => new(_configFile.FlushAsync());
 }

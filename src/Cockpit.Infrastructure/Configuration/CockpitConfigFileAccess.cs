@@ -26,6 +26,11 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
+    // AC-1343: what UpdateAsync chains non-batch writes behind, FIFO, so FlushAsync can wait out every one
+    // still in flight — see UpdateAsync's own comment for why that beats trusting the write gate's poll order.
+    private readonly Lock _tailLock = new();
+    private Task _tail = Task.CompletedTask;
+
     public string ConfigFilePath => configFilePath;
 
     // AC-1108: mid-batch, sees that batch's own not-yet-flushed copy instead of stale disk — GlobalHotkeyCoordinator
@@ -159,15 +164,46 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // Loads the file, mutates one section, and writes the whole document back, serialised against every other
     // writer on this machine (how a plugin's freshly pinned hash once disappeared) — or, AC-1108, joins the
     // ambient CockpitConfigWriteBatch when one is open instead of writing immediately.
-    public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
+    public Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
         if (CockpitConfigWriteBatch.TryApply(this, mutate, cancellationToken, out var applied))
         {
-            await applied.ConfigureAwait(false);
-            return;
+            return applied;
+        }
+
+        // AC-1343: dispatched onto the thread pool and chained FIFO behind whatever UpdateAsync queued before it
+        // — never run inline, so the task this returns (what FlushAsync waits on) exists the instant this method
+        // returns, not only once an uncontended write happens to finish synchronously first.
+        lock (_tailLock)
+        {
+            var previous = _tail;
+            return _tail = Task.Run(() => _ChainedUpdateAsync(previous, mutate, cancellationToken));
+        }
+    }
+
+    private async Task _ChainedUpdateAsync(Task previous, Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await previous.ConfigureAwait(false);
+        }
+        catch
+        {
+            // A prior write's failure is that write's own caller's problem to observe — it must not block this one.
         }
 
         await UpdateNowAsync(mutate, cancellationToken).ConfigureAwait(false);
+    }
+
+    // AC-1343: what a plugin store's IAsyncDisposable calls before the container releases it on exit, so a
+    // SaveDataAsync/DeclareAsync fired as `_ = ...` (IPluginStorage.Set is a void callback) lands before the
+    // process does. Non-batch writes only — CockpitConfigWriteBatch.TryApply never touches _tail.
+    internal Task FlushAsync()
+    {
+        lock (_tailLock)
+        {
+            return _tail;
+        }
     }
 
     // What UpdateAsync does outside a batch — never consults the ambient batch itself, or its own flush would

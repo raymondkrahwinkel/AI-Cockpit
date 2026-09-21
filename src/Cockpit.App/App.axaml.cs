@@ -205,6 +205,8 @@ public partial class App : Application
             if (!finished)
             {
                 e.Cancel = true;
+                // AC-1343: fire-and-forget is fine — Closing is a void event handler; the await lives inside
+                // FinishThenCloseAsync itself, which the cancel above buys time for.
                 _ = FinishThenCloseAsync();
             }
         };
@@ -330,9 +332,8 @@ public partial class App : Application
         // Changed event is already listening by the time a plugin registers a companion tool.
         Program.Services.GetRequiredService<CompanionWindowPresenter>();
 
-        // Render the default workspace immediately, then asynchronously load saved workspaces and their panes in
-        // sequence because pane restore reads Workspaces.Settings (AC-410).
-        _ = _RestoreCockpitAsync(cockpitViewModel);
+        // AC-1343: restoring saved workspaces and their panes is started further down, after usage thresholds
+        // load — see RestoreCockpitAsync's own comment for why.
 
         // The feature coordinators are resolved for their constructors: each subscribes to the hotkey
         // coordinator there, and a singleton nobody asks for is never built — so an unresolved one would
@@ -346,6 +347,7 @@ public partial class App : Application
         // Load assistant availability at startup so the first F10 does not use the stale off-by-default state.
         // Availability checks start no instance; the first hold or click still does that.
         var assistantHost = Program.Services.GetRequiredService<AssistantSessionHost>();
+        // AC-1343: fire-and-forget — reads only; the stale-read window before this resolves is accepted above.
         _ = assistantHost.ApplySettingsAsync();
 
         // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
@@ -363,6 +365,7 @@ public partial class App : Application
         // The broker reads the consent-bypass snapshot synchronously; refresh its singleton after Options saves so
         // disabled sources stop bypassing on the next request, not the next restart (AC-575).
         var consentBypass = Program.Services.GetRequiredService<AssistantConsentBypassPolicy>();
+        // AC-1343: fire-and-forget — reads only, with its own try/catch (AssistantConsentBypassPolicy.cs:31).
         cockpitViewModel.AssistantOptions.Saved += (_, _) => _ = consentBypass.ApplySettingsAsync();
 
         assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
@@ -392,12 +395,15 @@ public partial class App : Application
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
         screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() => _screenLockWindow?.TakeFocus());
+        // AC-1343: fire-and-forget — no persistence, no ordering dependency. An uncaught StartAsync failure here
+        // is a known, separate gap, out of this ticket's scope.
         _ = screenLock.StartAsync();
 
         // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
         // runtime, and resume listening at startup if it was left on. No-op when voice is off.
         var openMicCoordinator = Program.Services.GetRequiredService<OpenMicCoordinator>();
         cockpitViewModel.OpenMic = openMicCoordinator;
+        // AC-1343: fire-and-forget — the coordinator's own try/catch logs a start failure (OpenMicCoordinator.cs:96).
         _ = openMicCoordinator.StartAsync();
 
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
@@ -433,14 +439,17 @@ public partial class App : Application
         _InitializePlugins();
 
         // AC-237: reopen the companion window if it was left open, now that plugins have had their chance to
-        // register a tool — the first paint this way already shows them instead of an empty card.
+        // register a tool — the first paint this way already shows them instead of an empty card. AC-1343:
+        // fire-and-forget — RestoreAsync's own Show() re-saves the value it just read (:41), so a lost write is harmless.
         _ = Program.Services.GetRequiredService<CompanionWindowPresenter>().RestoreAsync();
 
         // Silent unless the operator is carrying a plugin this build has replaced, in which case they are told
-        // and asked — rather than having it cleaned out of their plugins folder behind their back.
+        // and asked — rather than having it cleaned out of their plugins folder behind their back. AC-1343: the
+        // check itself does not persist; its toast action's own removal does, behind a click, out of scope here.
         _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
 
         // After the plugins, so the servers they contribute (a Depot connection) are in the catalog to be asked about.
+        // AC-1343: fire-and-forget — reads only; token persistence happens behind a click, in the OAuth coordinator.
         _ = Program.Services.GetRequiredService<McpSignInNotice>().CheckAsync();
 
 #if DEBUG
@@ -531,10 +540,13 @@ public partial class App : Application
 
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
-        if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)
-        {
-            _ = _LoadUsageThresholdsAsync(cockpitViewModel, thresholdStore);
-        }
+        var thresholdsLoaded = Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore
+            ? _LoadUsageThresholdsAsync(cockpitViewModel, thresholdStore)
+            : Task.CompletedTask;
+
+        // AC-1343: started here, not at MainWindow.Show() above — a pane restored before UsageThresholds is set
+        // reads null and is never revisited (CockpitViewModel.cs sets it only once, from the load above).
+        _ = RestoreCockpitAsync(cockpitViewModel, thresholdsLoaded);
 
         // AC-1001: Options → Profiles, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -600,7 +612,7 @@ public partial class App : Application
 
             // A plugin's declared field names can turn a value the host did not recognise as a credential into one
             // it does, so the awareness banner (AC-41) has to re-evaluate now that the field set is complete —
-            // otherwise a plugin token in the clear would go unmentioned until the next save.
+            // otherwise a plugin token in the clear would go unmentioned until the next save (AC-1343: fire-and-forget, no persistence of its own).
             _ = cockpit.Security.RefreshAsync();
         }
 
@@ -717,6 +729,9 @@ public partial class App : Application
         const string ownerId = "first-party-companion-tools";
         return new PluginStorage(
             store.LoadDataAsync(ownerId).GetAwaiter().GetResult(),
+            // AC-1343: fire-and-forget by contract (IPluginStorage.Set is void) — safe because
+            // PluginRegistrationStore.DisposeAsync drains it through CockpitConfigFileAccess.FlushAsync
+            // before the container releases the store on exit.
             data => _ = store.SaveDataAsync(ownerId, data));
     }
 
@@ -731,6 +746,7 @@ public partial class App : Application
 
         return new PluginStorage(
             seed,
+            // AC-1343: same as _CreateFirstPartyCompanionToolStorage above — the store drains this at exit.
             data => _ = store.SaveDataAsync(discovered.FolderId, data),
             // A key a plugin calls SetSecret on is remembered for the next start too: the name is what tells the
             // host to decrypt that field on the way in, and it would otherwise only be known while the plugin that
@@ -738,6 +754,8 @@ public partial class App : Application
             key =>
             {
                 SecretKeyHolder.Shared.Declare([key]);
+                // AC-1343: PluginSecretFieldStore.DisposeAsync drains this the same way, on the same
+                // CockpitConfigFileAccess.FlushAsync as the registration store above.
                 _ = secretFieldStore.DeclareAsync(discovered.FolderId, [key]);
             });
     }
@@ -829,9 +847,11 @@ public partial class App : Application
     }
 
     // Load workspaces before restoring their AI-session panes (AC-410). InitializeAsync never throws, so a failed
-    // load continues safely with the in-memory default and nothing to restore.
-    private static async Task _RestoreCockpitAsync(CockpitViewModel cockpit)
+    // load continues safely with the in-memory default and nothing to restore. AC-1343: waits for thresholdsLoaded
+    // first — a restored pane reads CockpitViewModel.UsageThresholds once, at creation, null until then.
+    internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded)
     {
+        await thresholdsLoaded;
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();
     }

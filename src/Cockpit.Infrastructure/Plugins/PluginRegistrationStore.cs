@@ -8,7 +8,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // Persists the `plugins` section of `cockpit.json` (#14) via the shared read-modify-write, so it never
 // clobbers a sibling section. Also instantiable directly (default ctor) for the pre-container-build
 // load pass in `Program.Main`, besides its normal singleton registration.
-internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingletonService
+internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingletonService, IAsyncDisposable
 {
     private readonly CockpitConfigFileAccess _configFile;
 
@@ -121,4 +121,8 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             entry.Data = new Dictionary<string, string>(data);
             file.Plugins[folderId] = entry;
         }, cancellationToken);
+
+    // AC-1343: drains every UpdateAsync this instance fired as `_ = ...` (App.axaml.cs's plugin-storage
+    // callback, which IPluginStorage.Set's void contract forces) before the container releases this singleton.
+    public ValueTask DisposeAsync() => new(_configFile.FlushAsync());
 }
