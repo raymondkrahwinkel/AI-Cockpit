@@ -15,6 +15,7 @@ public class AutopilotEpicRunnerTests
     {
         private readonly Dictionary<string, List<TrackerLinkedIssue>> _links = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _unreadable = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, TrackerIssueSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
 
         public string TrackerId => "youtrack";
 
@@ -22,6 +23,14 @@ public class AutopilotEpicRunnerTests
 
         public void AddChild(string epicId, string childId, string title, string stage) =>
             _Add(epicId, new TrackerLinkedIssue("parent for", TrackerLinkDirection.Outward, childId, title, stage));
+
+        // AC-1339: what `GetIssueSnapshotAsync` answers for `issueId` — the epic-runner's one extra read for the
+        // sub it actually picks, since its link entry (AddChild above) carries only a title/stage.
+        public void AddSnapshot(string issueId, string description, string url) =>
+            _snapshots[issueId] = new TrackerIssueSnapshot(null, null, description, url);
+
+        public Task<TrackerIssueSnapshot> GetIssueSnapshotAsync(string issueId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_snapshots.TryGetValue(issueId, out var snapshot) ? snapshot : new TrackerIssueSnapshot(null, null));
 
         // Matches the real YouTrack shape (see YouTrackClientLinkedIssuesTests): reading a sub's OWN links reports
         // "depends on" targets under Direction.Inward, not Outward. Building the fake with the wrong (Outward)
@@ -320,5 +329,23 @@ public class AutopilotEpicRunnerTests
 
         Assert.Equal("AC-1", first.Run!.IssueId);
         Assert.Equal("AC-1", second.Run!.IssueId);
+    }
+
+    // MUTATION TEST (DoD): the picked sub's link entry never carries a description — only ResolveAsync's own extra
+    // GetIssueSnapshotAsync call does. Removing that call turns this red: Data["description"]/["url"] come back
+    // empty and Data["acceptance"] never gets a chance to extract anything, instead of the values asserted here.
+    [Fact]
+    public async Task ResolveAsync_ForTheReadySub_FetchesDescriptionUrlAndAcceptanceFromItsOwnSnapshot()
+    {
+        var provider = new FakeTrackerProvider();
+        provider.AddChild("AC-EPIC", "AC-1", "First", Ready);
+        provider.AddSnapshot("AC-1", "What the issue asks for.\n\n**Acceptance criteria:**\nDo the thing.", "https://example.test/issue/AC-1");
+
+        var outcome = await AutopilotEpicRunner.ResolveAsync(
+            provider, Clicked(), Ready, new FakeMergeChecker(), CancellationToken.None, ["Acceptance criteria"]);
+
+        Assert.Equal("What the issue asks for.\n\n**Acceptance criteria:**\nDo the thing.", outcome.Run!.Data["description"]);
+        Assert.Equal("https://example.test/issue/AC-1", outcome.Run.Data["url"]);
+        Assert.Equal("Do the thing.", outcome.Run.Data["acceptance"]);
     }
 }

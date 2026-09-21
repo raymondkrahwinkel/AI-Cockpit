@@ -19,6 +19,12 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
     private const string ExecutableStagePrefix = "executableStage:";
     private const string EpicDirectToMainKey = "epicDirectToMain";
+    private const string AcceptanceHeadingsKey = "acceptanceHeadings";
+
+    // The description-section heading(s) that count as "this ticket states its acceptance criteria" (AC-1339) —
+    // policy text, not a value baked into the code, so a differently-worded grooming convention is a settings
+    // change rather than a rollout everyone must pick up at once.
+    private static readonly IReadOnlyList<string> DefaultAcceptanceHeadings = ["Acceptatiecriteria", "Acceptance criteria"];
 
     // What "a person has judged this executable" is called on each tracker Autopilot ships with (AC-345) — a stage on
     // YouTrack, and on GitHub Issues, which has none, a label. A tracker with no default here gates on nothing
@@ -124,6 +130,14 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public bool EpicDirectToMain(string? projectId = null) => _ReadValue(projectId, EpicDirectToMainKey, false);
 
     public void SetEpicDirectToMain(bool directToMain, string? projectId = null) => _Write(projectId, EpicDirectToMainKey, directToMain);
+
+    // The heading(s) AutopilotEpicRunner looks for to decide a Ready sub states its own acceptance criteria
+    // (AC-1339). Global only, like AutonomyMode: the wording belongs to how tickets are groomed, not a
+    // per-project choice. No settings panel yet — set through plugin storage directly.
+    public IReadOnlyList<string> AcceptanceHeadings() =>
+        storage.Get<List<string>>(AcceptanceHeadingsKey) is { Count: > 0 } configured ? configured : DefaultAcceptanceHeadings;
+
+    public void SetAcceptanceHeadings(IReadOnlyList<string> headings) => _Write(null, AcceptanceHeadingsKey, headings);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 

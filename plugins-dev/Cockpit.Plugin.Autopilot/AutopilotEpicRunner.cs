@@ -48,7 +48,8 @@ internal static class AutopilotEpicRunner
         AutopilotRun clicked,
         string executableStage,
         IEpicSubMergeChecker mergeChecker,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? acceptanceHeadings = null)
     {
         IReadOnlyList<TrackerLinkedIssue> links;
         try
@@ -142,6 +143,12 @@ internal static class AutopilotEpicRunner
             }
 
             var stage = sub.Stage ?? string.Empty;
+
+            // AC-1339: the sub's link entry only ever carried its title/stage (the epic's own link read never
+            // fetches a child's description) — one extra read, only for the sub that actually wins, gets this run
+            // the same description/url a direct click already has, plus its own acceptance-criteria section.
+            var snapshot = await provider.GetIssueSnapshotAsync(sub.IssueId, cancellationToken).ConfigureAwait(false);
+            var description = snapshot.Description ?? string.Empty;
             var run = new AutopilotRun(
                 clicked.Tracker,
                 sub.IssueId,
@@ -153,6 +160,9 @@ internal static class AutopilotEpicRunner
                     ["issue"] = sub.IssueId,
                     ["title"] = sub.Title,
                     ["stage"] = stage,
+                    ["description"] = description,
+                    ["url"] = snapshot.Url ?? string.Empty,
+                    ["acceptance"] = AutopilotAcceptanceSection.Extract(description, acceptanceHeadings ?? []),
                 })
             {
                 EpicId = clicked.IssueId,

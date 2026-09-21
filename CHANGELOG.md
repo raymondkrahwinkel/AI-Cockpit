@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot epic run's next Ready sub now starts straight from its own ticket — its description
+  becomes the CEO's brief and its acceptance-criteria section becomes the plan's acceptance — and, once the plan
+  carries both required review gates, the run starts without waiting for a separate approval click: a ticket
+  with acceptance criteria already carries its human sign-off. A sub with no acceptance section still opens the
+  planning round as before. The heading(s) that count as an acceptance section are an Autopilot setting (default
+  "Acceptatiecriteria"/"Acceptance criteria"), not fixed in code.
+
 - added: an Autopilot epic run now forks its worktree from a collection branch derived from the epic itself,
   checks whether a sub already merged into that branch, and opens its pull request against it, instead of every
   sub going straight to main; an operator can opt back into the old behaviour globally in Autopilot's settings
@@ -574,6 +581,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an Autopilot epic run's next Ready sub now carries its own description and URL, on YouTrack and GitHub
+  Issues both — previously only its title and stage came along, so a template placeholder like `{{issue.url}}`
+  or `{{issue.description}}` resolved blank for an epic-picked sub even though the same placeholders fill in
+  fine for a directly clicked issue.
 - fixed: an assistant whose start cannot succeed on this machine — a provider plugin that is not installed, or a restored profile pointing at a CLI path from another OS — no longer restarts itself on every screen refresh until the cockpit freezes; it says why once under the Assistant label, and typing or saving the settings is what tries again
 - fixed: a session that ended its turn while a command it started through one of its MCP servers (a
   Codex `ctx_execute`, say) was still running no longer counts as finished — `list_sessions` reports

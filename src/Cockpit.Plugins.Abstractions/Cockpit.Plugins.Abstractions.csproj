@@ -424,7 +424,12 @@
          null default, like the three read callbacks before it, so an existing plugin binary keeps loading and
          reads as "cannot write". Additions only — a minor; major and abstractionsVersion stay 2. Consumed
          in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves to 0.31.0 with it. -->
-    <Version>1.61.0</Version>
+    <!-- 1.62.0 (AC-1339): added TrackerIssueSnapshot.Description/Url, both trailing optional parameters
+         defaulting to null, so an existing 2-arg `new TrackerIssueSnapshot(title, stage)` call keeps compiling.
+         Lets a caller that only holds an issue id (Autopilot's epic-runner, picking a sub off a link list that
+         carries no description) read the same fields a direct tracker click already gets. Additions only — a
+         minor; major and abstractionsVersion stay 2. -->
+    <Version>1.62.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

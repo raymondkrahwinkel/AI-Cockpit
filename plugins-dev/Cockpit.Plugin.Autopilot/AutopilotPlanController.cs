@@ -13,6 +13,7 @@ internal sealed class AutopilotPlanController
     private string? _sessionPaneId;
     private int _blockadeAnswers;
     private bool _pullRequestMissing;
+    private bool _autoSubmitted;
 
     // The current plan, or null before a planning round has begun.
     public AutopilotPlan? Plan
@@ -131,6 +132,7 @@ internal sealed class AutopilotPlanController
             _sessionPaneId = null;
             _blockadeAnswers = 0;
             _pullRequestMissing = false;
+            _autoSubmitted = false;
         }
 
         _Raise();
@@ -182,6 +184,22 @@ internal sealed class AutopilotPlanController
 
         _Raise();
         return true;
+    }
+
+    // AC-1339: claims this round's one auto-submit (a groomed epic-sub, grooming is the approval), so
+    // `AutopilotPlanTools.SetPlan` submits at most once even though the CEO re-emits the plan on every revision.
+    public bool TryClaimAutoSubmit()
+    {
+        lock (_lock)
+        {
+            if (_autoSubmitted)
+            {
+                return false;
+            }
+
+            _autoSubmitted = true;
+            return true;
+        }
     }
 
     // Marks the step with `stepId` as running and records the (re-)run attempt — the driver

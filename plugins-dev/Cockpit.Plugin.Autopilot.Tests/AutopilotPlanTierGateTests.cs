@@ -71,7 +71,8 @@ public class AutopilotPlanTierGateTests
 
         // Empty storage, so the run sits on the default Balanced strategy — the stand a plan is held to unless the
         // operator has moved it, which is the case the ceiling has to get right.
-        return new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage()));
+        var manager = new AutopilotRunManager(new AutopilotRunQueue(new FakeStorage()), new AutopilotSettings(new FakeStorage()));
+        return new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage()), manager);
     }
 
     private static bool _Ok(string result) =>
