@@ -33,7 +33,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini (OpenAI-compatible)",
-            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
+            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host),
             Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
@@ -47,7 +47,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "gemini-provider.openai",
             DisplayName: "OpenAI",
-            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
+            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host),
             Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
