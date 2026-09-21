@@ -4,12 +4,12 @@ namespace Cockpit.Plugin.Autopilot;
 
 // Pulls a ticket description's acceptance-criteria section (AC-1339): a Ready epic-sub's own sign-off, so a run
 // picked off the chain is judged against it directly. Recognises a bold line (`**Acceptance criteria:**`) or a
-// markdown heading (`## Acceptance criteria`); stops at the next heading of that same style, or the text's end.
+// markdown heading (`## Acceptance criteria`); stops at the next heading of either style, or the text's end.
 internal static partial class AutopilotAcceptanceSection
 {
-    // No trailing anchor: a single-line field like "**Testbudget:** 4." is still heading-style for stop-detection
-    // even with inline content after the closing `**` — only the leading bold span makes it one.
-    [GeneratedRegex(@"^\*\*(.+?)\*\*")]
+    // Captures inline content after the closing `**` too (group 2) — a single-line field like
+    // "**Acceptance criteria:** Must handle X." states its criteria right there, not on a following line.
+    [GeneratedRegex(@"^\*\*(.+?)\*\*(.*)$")]
     private static partial Regex BoldHeading();
 
     [GeneratedRegex(@"^#{1,6}\s+(.+?)\s*$")]
@@ -28,16 +28,20 @@ internal static partial class AutopilotAcceptanceSection
         var lines = description.ReplaceLineEndings("\n").Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
-            var heading = _MatchHeading(lines[i]);
-            if (heading is not { } found || !_MatchesAny(found.Text, headings))
+            if (_MatchHeading(lines[i]) is not { } found || !_MatchesAny(found.Text, headings))
             {
                 continue;
             }
 
             var body = new List<string>();
+            if (found.Inline.Length > 0)
+            {
+                body.Add(found.Inline);
+            }
+
             for (var j = i + 1; j < lines.Length; j++)
             {
-                if (_MatchHeading(lines[j]) is { } next && next.Bold == found.Bold)
+                if (_MatchHeading(lines[j]) is not null)
                 {
                     break;
                 }
@@ -54,17 +58,17 @@ internal static partial class AutopilotAcceptanceSection
     private static bool _MatchesAny(string text, IReadOnlyList<string> headings) =>
         headings.Any(heading => text.StartsWith(heading, StringComparison.OrdinalIgnoreCase));
 
-    private static (string Text, bool Bold)? _MatchHeading(string line)
+    private static (string Text, string Inline)? _MatchHeading(string line)
     {
         var trimmed = line.Trim();
         if (BoldHeading().Match(trimmed) is { Success: true } bold)
         {
-            return (bold.Groups[1].Value.Trim(), true);
+            return (bold.Groups[1].Value.Trim(), bold.Groups[2].Value.Trim());
         }
 
         if (MarkdownHeading().Match(trimmed) is { Success: true } markdown)
         {
-            return (markdown.Groups[1].Value.Trim(), false);
+            return (markdown.Groups[1].Value.Trim(), string.Empty);
         }
 
         return null;

@@ -204,15 +204,9 @@ public class AutopilotPlanToolsTests
     }
 
     // AC-1339: grooming is the approval — a ticket acceptance section needs no operator click once the CEO's
-    // plan carries both review gates; without it the plan waits for "Approve plan & start" as always. Same
-    // steps JSON both rows: what flips the outcome is only whether `Source.Acceptance` is set.
-    public static IEnumerable<object[]> GroomedSubmissions() =>
-    [
-        ["Meets the bar when X and Y hold.", 1],
-        ["", 0],
-    ];
-
-    private const string GroomedStepsJson = """
+    // plan carries both review gates; missing either one leaves the plan waiting for "Approve plan & start" as
+    // always. Steps JSON varies too, so a plan with only one review gate is exercised, not just the acceptance flag.
+    private const string BothGatesStepsJson = """
         [
           {"id":"1","title":"Build it","profile":"Claude","model":"sonnet","brief":"b","hard":true},
           {"id":"2","title":"Code review","profile":"Claude","model":"sonnet","brief":"b","reviewGate":true},
@@ -220,14 +214,28 @@ public class AutopilotPlanToolsTests
         ]
         """;
 
+    private const string OneGateStepsJson = """
+        [
+          {"id":"1","title":"Build it","profile":"Claude","model":"sonnet","brief":"b","hard":true},
+          {"id":"2","title":"Code review","profile":"Claude","model":"sonnet","brief":"b","reviewGate":true}
+        ]
+        """;
+
+    public static IEnumerable<object[]> GroomedSubmissions() =>
+    [
+        ["Meets the bar when X and Y hold.", BothGatesStepsJson, 1],
+        ["", BothGatesStepsJson, 0],
+        ["Meets the bar when X and Y hold.", OneGateStepsJson, 0],
+    ];
+
     [Theory]
     [MemberData(nameof(GroomedSubmissions))]
-    public async Task SetPlan_ForAReadyEpicSub_AutoSubmitsOnlyWhenTheTicketStatesItsOwnAcceptance(string acceptance, int expectedQueueCount)
+    public async Task SetPlan_ForAReadyEpicSub_AutoSubmitsOnlyWhenBothGatesAndAcceptanceArePresent(string acceptance, string stepsJson, int expectedQueueCount)
     {
         var source = new AutopilotPlanSource("youtrack", "AC-1", "First", EpicId: "AC-EPIC", Acceptance: acceptance);
         var (tools, queue) = _GroomedPlanningTools(source);
 
-        var result = await tools.SetPlan("Work the sub", GroomedStepsJson);
+        var result = await tools.SetPlan("Work the sub", stepsJson);
 
         Assert.True(_Ok(result));
         Assert.Equal(expectedQueueCount, queue.Items.Count);
@@ -241,8 +249,8 @@ public class AutopilotPlanToolsTests
         var source = new AutopilotPlanSource("youtrack", "AC-1", "First", EpicId: "AC-EPIC", Acceptance: "Meets the bar.");
         var (tools, queue) = _GroomedPlanningTools(source);
 
-        await tools.SetPlan("Work the sub", GroomedStepsJson);
-        await tools.SetPlan("Work the sub (revised)", GroomedStepsJson);
+        await tools.SetPlan("Work the sub", BothGatesStepsJson);
+        await tools.SetPlan("Work the sub (revised)", BothGatesStepsJson);
 
         Assert.Single(queue.Items);
     }

@@ -24,6 +24,12 @@ public class AutopilotAcceptanceSectionTests
             "Just a description with no structured sections at all.",
             "",
         ],
+        // Inline: the criteria sit right after the colon on the heading's own line, and a later heading of the
+        // OTHER style must still stop the section — a bold heading does not only stop at another bold one.
+        [
+            "**Acceptance criteria:** Must handle X and Y.\n\n## Notes\nIgnored.",
+            "Must handle X and Y.",
+        ],
     ];
 
     [Theory]
