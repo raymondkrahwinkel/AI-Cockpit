@@ -9,7 +9,7 @@ public sealed class AutopilotEpicGateTests : IDisposable
     private const string Collection = "epic/ac-epic";
     private const string AddedTestFile = "plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotEpicGateTests.cs";
 
-    // What origin/main stands at when the gate measures; a baseline recorded on it is usable, one on another commit is stale.
+    // What origin/main stands at when the gate measures; a baseline recorded on an older commit classifies under a caveat.
     private const string MainSha = "def5678abcdef0123456789abcdef0123456789a";
 
     private static readonly string[] FiveMerged = ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5"];
@@ -46,8 +46,8 @@ public sealed class AutopilotEpicGateTests : IDisposable
         [true, new[] { "Suite.Flaky" }, new[] { "Suite.Flaky" }, MainSha, true, new[] { "environment (also red on the baseline): Suite.Flaky", "ours (not red on the baseline): none", "AC-1: 1 added, all still on the tip", "Findings: none." }],
         // Red on the tip and not on the baseline is ours; the file is gone — two findings, and the chain holds.
         [false, new[] { "Suite.Broken" }, new[] { "Suite.Flaky" }, MainSha, false, new[] { "ours (not red on the baseline): Suite.Broken", "MISSING on the tip: " + AddedTestFile, "Findings (2):" }],
-        // §6b: a baseline recorded on another commit is stale — red is not classified as either, and that is a finding.
-        [true, new[] { "Suite.Flaky" }, new[] { "Suite.Flaky" }, "0ld0000000000000000000000000000000000000", false, new[] { "Baseline: no verdict — the baseline in", "is stale — recorded at 0ld0000, origin/main is def5678", "Red on the tip (1), unclassified: Suite.Flaky", "Findings (1):" }],
+        // A baseline recorded on an older main still classifies (§6d is sha-independent) — the caveat is named, not a finding.
+        [true, new[] { "Suite.Flaky" }, new[] { "Suite.Flaky" }, "0ld0000000000000000000000000000000000000", true, new[] { "recorded at 0ld0000, origin/main is now def5678 — environment classification is against an older main; a test fixed on main since then and red on the tip reads as environment here.", "environment (also red on the baseline): Suite.Flaky", "Findings: none." }],
     ];
 
     [Theory]

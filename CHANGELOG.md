@@ -41,8 +41,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the epic the pull request to main is opened only on an explicit go — the assistant's `autopilot_merge_go` named
   after the epic, or the button on the Autopilot surface — whatever the run's merge mode was. The baseline is a
   suite run you record on `origin/main` yourself: its TRX files plus a `baseline.json` beside them naming the commit
-  (`{"sha": "..."}`); a baseline that is missing, has no sha, or was recorded on another commit than the main the
-  gate just brought in gives "no verdict" and holds the chain rather than classifying anything. The suite command,
+  (`{"sha": "..."}`); a baseline that is missing or has no sha gives "no verdict" and holds the chain rather than
+  classifying anything, and one recorded on an older main still classifies under a caveat the report names. The suite command,
   its timeout, the baseline directory and the sub interval are Autopilot settings (settings storage, no panel yet).
 - added: an Autopilot epic chain now runs itself, strictly one sub at a time — once a sub has merged and the
   collection branch built green, the next Ready sub opens its own planning round in the same settle, so nobody has

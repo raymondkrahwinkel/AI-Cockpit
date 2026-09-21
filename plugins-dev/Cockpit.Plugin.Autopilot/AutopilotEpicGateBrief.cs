@@ -95,9 +95,9 @@ internal static partial class AutopilotEpicGateBrief
         }
     }
 
-    // EpicWorkflow §6d: the baseline is a suite run on the origin/main the gate just brought in — recorded, with its
-    // sha beside the TRX. Missing, sha-less or stale, the gate has no verdict on the red set and says so (§6b); it
-    // never falls back to reading every red as ours or as the environment. Returns the baseline when it is usable.
+    // EpicWorkflow §6d: the baseline is a recorded suite run on origin/main with its sha beside the TRX. Missing or
+    // sha-less, the gate has no verdict on the red set and says so (§6b). Recorded on an older main it still
+    // classifies — environment failures are sha-independent — under one named caveat; the reader decides.
     private static AutopilotTrxResults? _ValidBaseline(StringBuilder text, List<string> findings, string mainSha, AutopilotTrxResults? baseline, string? baselineDirectory)
     {
         var gap = baseline switch
@@ -105,19 +105,21 @@ internal static partial class AutopilotEpicGateBrief
             _ when string.IsNullOrWhiteSpace(baselineDirectory) => "no baseline directory is set",
             null => $"no TRX report in {baselineDirectory}",
             { Sha: null } => $"the baseline in {baselineDirectory} has no recorded sha ({AutopilotTrxResults.ManifestFileName})",
-            { Sha: { } sha } when !_SameCommit(sha, mainSha) => $"the baseline in {baselineDirectory} is stale — recorded at {_Short(sha)}, origin/main is {_Short(mainSha)}",
             _ => null,
         };
 
-        if (gap is null && baseline is not null)
+        if (gap is not null || baseline?.Sha is not { } sha)
         {
-            text.Append("Baseline: ").Append(baselineDirectory).Append(" recorded at ").Append(_Short(baseline.Sha ?? string.Empty)).Append(" (origin/main), ").Append(baseline.Total).Append(" tests, ").Append(baseline.FailedTests.Count).AppendLine(" red.");
-            return baseline;
+            text.Append("Baseline: no verdict — ").Append(gap).AppendLine(".");
+            findings.Add($"no verdict on the red set: {gap}");
+            return null;
         }
 
-        text.Append("Baseline: no verdict — ").Append(gap).AppendLine(".");
-        findings.Add($"no verdict on the red set: {gap}");
-        return null;
+        text.Append("Baseline: ").Append(baselineDirectory).Append(" recorded at ").Append(_Short(sha));
+        text.AppendLine(_SameCommit(sha, mainSha)
+            ? $" (origin/main), {baseline.Total} tests, {baseline.FailedTests.Count} red."
+            : $", origin/main is now {_Short(mainSha)} — environment classification is against an older main; a test fixed on main since then and red on the tip reads as environment here. {baseline.Total} tests, {baseline.FailedTests.Count} red.");
+        return baseline;
     }
 
     private static bool _SameCommit(string recorded, string current) =>
