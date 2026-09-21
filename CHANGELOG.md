@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot epic chain now runs itself, strictly one sub at a time — once a sub has merged and the
+  collection branch built green, the next Ready sub opens its own planning round in the same settle, so nobody has
+  to click the epic again between subs. The chain stops, and says so on the epic and in the cockpit-assistant's
+  inbox, when a run blocked or was stopped, a gate ran out of attempts, a step left commits stranded, nothing was
+  merged or the merge did not land, the build on the new tip was red or gave no verdict, the next sub is paused
+  or not Ready or cannot be told apart from an already-merged one, or more runs in a row needed a correction than
+  the configurable tolerance allows (default 0, in Autopilot's settings storage — no panel yet). An epic whose
+  subs are all merged ends the chain the same way.
 - added: an Autopilot epic run now stops at a merge gate once both review gates pass and its pull request is up:
   the branch is measured (its build, HEAD, and `git diff --stat` against the epic's collection branch — where a
   deletion of another sub's files shows up) and that evidence lands in the cockpit-assistant's inbox as a second
