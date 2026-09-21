@@ -594,6 +594,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     // does withhold the "session finished" notification — see HasOutstandingBackgroundShells (AC-276).
                     _hasOutstandingBackgroundShells = reading.OutstandingShells > 0;
                     OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                    OnPropertyChanged(nameof(SessionStatusLabel));
 
                     // AC-1013: Exposes the raw transcript line for substring-scanning read/observe consumers.
                     if (reading.RawLine is { } line)
