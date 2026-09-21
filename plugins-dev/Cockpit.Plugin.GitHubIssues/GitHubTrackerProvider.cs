@@ -77,7 +77,7 @@ internal sealed class GitHubTrackerProvider : ITrackerProvider
         try
         {
             var fetched = await _client.GetIssueAsync(issue, cancellationToken);
-            return new TrackerIssueSnapshot(fetched.Title, string.Join("\n", fetched.Labels));
+            return new TrackerIssueSnapshot(fetched.Title, string.Join("\n", fetched.Labels), fetched.Body, fetched.Url);
         }
         catch (Exception)
         {
