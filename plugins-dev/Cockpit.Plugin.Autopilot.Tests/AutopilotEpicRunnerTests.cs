@@ -81,6 +81,8 @@ public class AutopilotEpicRunnerTests
 
         public bool RefreshCalled { get; private set; }
 
+        public string? TipSha { get; init; }
+
         public Task RefreshAsync(CancellationToken cancellationToken = default)
         {
             RefreshCalled = true;
@@ -97,6 +99,7 @@ public class AutopilotEpicRunnerTests
     {
         public Task RefreshAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public bool? IsMerged(string issueId) => null;
+        public string? TipSha => null;
     }
 
     private static AutopilotRun Clicked(string issueId = "AC-EPIC") => new("youtrack", issueId, "The epic", Ready, new Dictionary<string, string>());
@@ -110,6 +113,27 @@ public class AutopilotEpicRunnerTests
 
         Assert.Equal(AutopilotEpicOutcomeKind.NotEpic, outcome.Kind);
         Assert.Null(outcome.Run);
+    }
+
+    // AC-1338: the merge gate's last build on the collection branch decides whether the chain may go on. Red at the
+    // tip the branch still stands on holds it; a green record, or a red one the tip has since moved past (a fix
+    // pushed by hand), lets the next sub through — the counter-proof rows guard against a pause that never lifts.
+    [Theory]
+    [InlineData(1, "tip-red", true)]
+    [InlineData(0, "tip-red", false)]
+    [InlineData(1, "tip-fixed", false)]
+    public async Task ResolveAsync_WithTheCollectionBranchRedAtItsCurrentTip_PausesTheChain(int exitCode, string currentTip, bool expectedPaused)
+    {
+        var provider = new FakeTrackerProvider();
+        provider.AddChild("AC-EPIC", "AC-1", "First", Ready);
+        var checker = new FakeMergeChecker { TipSha = currentTip };
+
+        var outcome = await AutopilotEpicRunner.ResolveAsync(
+            provider, Clicked(), Ready, checker, CancellationToken.None,
+            lastMergeBuild: new AutopilotMergeBuildRecord("epic/ac-epic", "tip-red", exitCode));
+
+        Assert.Equal(expectedPaused, outcome.Kind == AutopilotEpicOutcomeKind.Paused);
+        Assert.Equal(!expectedPaused, outcome.Kind == AutopilotEpicOutcomeKind.Ready);
     }
 
     [Fact]

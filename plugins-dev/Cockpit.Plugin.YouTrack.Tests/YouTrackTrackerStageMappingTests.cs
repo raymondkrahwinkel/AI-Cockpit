@@ -12,6 +12,7 @@ public class YouTrackTrackerStageMappingTests
     [Theory]
     [InlineData(TrackerWorkStage.InProgress, "Develop")]
     [InlineData(TrackerWorkStage.InReview, "Review")]
+    [InlineData(TrackerWorkStage.InTest, "Test")]
     [InlineData(TrackerWorkStage.Done, "Done")]
     public void SuggestStageName_MapsEachStage_ToTheBoardsOwnVocabulary(TrackerWorkStage stage, string expected) =>
         Assert.Equal(expected, _Provider().SuggestStageName(stage));

@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot epic run now stops at a merge gate once both review gates pass and its pull request is up:
+  the branch is measured (its build, HEAD, and `git diff --stat` against the epic's collection branch — where a
+  deletion of another sub's files shows up) and that evidence lands in the cockpit-assistant's inbox as a second
+  read. Per run you choose *explicit* (default: nothing is merged until a go from the "Merge go" button on the run
+  or from the assistant's new `autopilot_merge_go` tool) or *automatic* (it lands as soon as the gates pass and
+  the branch builds). On a go it rebases onto the collection branch, merges the pull request, builds the new tip
+  with the configurable merge-build command and writes the exit code on the epic; a red tip holds the epic's next
+  sub until the branch is fixed, and a green one moves the ticket to Test. Single-issue runs are unchanged.
+- added: plugins can now put a message in the cockpit-assistant's inbox (`NotifyAssistantAsync`), and tracker
+  plugins map a new "in test" work stage (YouTrack "Test", GitHub Issues label "in test").
 - added: an Autopilot plan step can now set its own reasoning-effort level, checked against whatever levels the
   step's profile actually declares — an unknown level is rejected before the operator can approve the plan, and
   a profile that declares none simply ignores the field.

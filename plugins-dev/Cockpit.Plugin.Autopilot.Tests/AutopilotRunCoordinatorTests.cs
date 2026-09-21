@@ -714,9 +714,12 @@ public class AutopilotRunCoordinatorTests
         {
             TrackerWorkStage.InProgress => "Develop",
             TrackerWorkStage.InReview => "Review",
+            TrackerWorkStage.InTest => "Test",
             TrackerWorkStage.Done => "Done",
             _ => null,
         };
+
+        public List<(string IssueId, string Comment)> Comments { get; } = [];
 
         public Task<bool> SetStageAsync(string issueId, string stage, CancellationToken cancellationToken = default)
         {
@@ -733,9 +736,131 @@ public class AutopilotRunCoordinatorTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default)
+        {
+            lock (Comments)
+            {
+                Comments.Add((issueId, comment));
+            }
+
+            return Task.FromResult(true);
+        }
+
         public Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<TrackerComment>>([]);
+    }
+
+    // AC-1338: the merge gate. An epic run's sub whose review gate passed and whose PR was pushed stands at the gate:
+    // the evidence package goes to the assistant, and only a go (explicit mode) or the mode itself (automatic) lands
+    // it. The counter-proofs are the rows: no go → nothing merged; refused → nothing merged; red build → nothing merged.
+
+    [Theory]
+    [InlineData(true, 1, 1, "Test")]
+    [InlineData(false, 0, 0, "Review")]
+    public async Task RunAsync_AtTheMergeGate_InExplicitMode_MergesOnlyOnAGo(bool go, int expectedMerges, int expectedLedgerWrites, string expectedLastStage)
+    {
+        var (plan, provider, host, storage, executor, coordinator, environment) = _AtTheGate(automatic: false, buildExit: 0);
+        var context = _Context(_Session("step-pane"));
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "reviewed"));
+        await validationSent.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "clean"));
+
+        await _Until(() => coordinator.AwaitingMergeGo);
+        // The package the assistant judges carries the PR, the HEAD, the gate's verdict and the three-dot diff-stat —
+        // with the deletion of a file another sub added, which is the failure this gate exists to catch.
+        await host.Received(1).NotifyAssistantAsync("merge-gate", Arg.Is<string>(body =>
+            body.Contains("https://example/pr/1") && body.Contains("abc1234") && body.Contains("Code review: Passed") && body.Contains("src/OtherSub.cs | 12 ------------")));
+        Assert.Equal(0, executor.MergeCalls);
+
+        // A go for another sub never lands on this one.
+        Assert.False(coordinator.ReportMergeGo("AC-2", go: true, reason: null, by: "a stranger"));
+        Assert.True(coordinator.ReportMergeGo("AC-1", go, reason: "read the diff", by: "the test"));
+
+        await run.WaitAsync(Timeout);
+        Assert.False(coordinator.AwaitingMergeGo);
+        Assert.Equal(expectedMerges, executor.MergeCalls);
+        storage.Received(expectedLedgerWrites).Set("mergeGate:lastBuild:epic/ac-epic", Arg.Is<AutopilotMergeBuildRecord>(record => record.Sha == "tip9999" && record.ExitCode == 0));
+        Assert.Equal(("AC-1", expectedLastStage), provider.StageCalls.Last());
+        // The trail on the epic (EpicWorkflow §3 step 6) names the sub and who answered, whichever way it went.
+        var epicComment = Assert.Single(provider.Comments);
+        Assert.Equal("AC-EPIC", epicComment.IssueId);
+        Assert.Contains("AC-1", epicComment.Comment);
+        Assert.Contains("the test", epicComment.Comment);
+    }
+
+    [Theory]
+    [InlineData(false, 0, true, 0, "Review")]
+    [InlineData(true, 0, false, 1, "Test")]
+    [InlineData(true, 1, false, 0, "Review")]
+    public async Task RunAsync_AtTheMergeGate_WithoutAGo_MergesOnlyInAutomaticMode_AndNeverARedBranch(bool automatic, int buildExit, bool expectedWaits, int expectedMerges, string expectedLastStage)
+    {
+        var (_, provider, host, _, executor, coordinator, environment) = _AtTheGate(automatic, buildExit);
+        var context = _Context(_Session("step-pane"));
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+        using var cancel = new CancellationTokenSource();
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cancel.Token);
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "reviewed"));
+        await validationSent.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "clean"));
+
+        await _Until(() => coordinator.AwaitingMergeGo || run.IsCompleted);
+        Assert.Equal(expectedWaits, coordinator.AwaitingMergeGo);
+
+        // The operator closes the run while it stands at the gate: nothing has moved, and nothing moves now.
+        cancel.Cancel();
+        await run.WaitAsync(Timeout);
+        Assert.Equal(expectedMerges, executor.MergeCalls);
+        await host.Received(1).NotifyAssistantAsync("merge-gate", Arg.Any<string>());
+        Assert.Equal(("AC-1", expectedLastStage), provider.StageCalls.Last());
+    }
+
+    // An epic run standing one passed review gate away from its merge gate: a source with an epic, a PR-delivering plan
+    // in explicit or automatic mode, a publisher that pushes and opens a PR, and an executor whose branch build exits `buildExit`.
+    private static (AutopilotPlanController Plan, FakeTrackerProvider Provider, ICockpitHost Host, IPluginStorage Storage, RecordingMergeExecutor Executor, AutopilotRunCoordinator Coordinator, AutopilotRunEnvironment Environment) _AtTheGate(bool automatic, int buildExit)
+    {
+        var mode = automatic ? AutopilotMergeMode.Automatic : AutopilotMergeMode.Explicit;
+        var gate = _HardStep("1") with { Title = "Code review", IsReviewGate = true };
+        var plan = new AutopilotPlanController();
+        plan.BeginPlanning(new AutopilotPlan("goal", new AutopilotPlanSource("youtrack", "AC-1", "Do it", EpicId: "AC-EPIC"), [gate]) { DeliversPullRequest = true, MergeMode = mode });
+        plan.BindSession("ceo-pane");
+        Assert.True(plan.Approve());
+
+        var provider = new FakeTrackerProvider("youtrack");
+        var host = _Host();
+        host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
+        var storage = Substitute.For<IPluginStorage>();
+        var executor = new RecordingMergeExecutor(buildExit);
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: new CapturingPrPublisher(), mergeExecutor: executor, mergeBuildLedger: new AutopilotMergeBuildLedger(storage));
+        var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", CollectionBranch: "epic/ac-epic");
+        return (plan, provider, host, storage, executor, coordinator, environment);
+    }
+
+    // Measures a fixed picture — a branch that deletes a file another sub added — and counts the merges it is asked
+    // for, so a test asserts on whether the gate reached for the merge rather than on git.
+    private sealed class RecordingMergeExecutor(int buildExit) : IAutopilotMergeExecutor
+    {
+        private int _mergeCalls;
+
+        public int MergeCalls => Volatile.Read(ref _mergeCalls);
+
+        public Task<AutopilotMergeEvidence> DescribeAsync(string worktreePath, string collectionBranch, string buildCommand, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotMergeEvidence("abc1234", " src/OtherSub.cs | 12 ------------\n 1 file changed, 12 deletions(-)", buildExit, "error CS0001" , null));
+
+        public Task<AutopilotMergeResult> MergeAsync(AutopilotMergeRequest request, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _mergeCalls);
+            return Task.FromResult(new AutopilotMergeResult(true, "merged the pull request", "tip9999", 0, string.Empty, null));
+        }
     }
 
     // AC-201 tiered blocker escalation: a worker's autopilot_blocked routes to ReportConsultAsync, which consults the run's
