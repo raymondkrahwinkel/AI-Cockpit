@@ -196,8 +196,8 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     }
 
     // AC-1343: what a plugin store's IAsyncDisposable calls before the container releases it on exit, so a
-    // SaveDataAsync/DeclareAsync fired as `_ = ...` (IPluginStorage.Set is a void callback — it cannot await)
-    // still lands before the process does.
+    // SaveDataAsync/DeclareAsync fired as `_ = ...` (IPluginStorage.Set is a void callback) lands before the
+    // process does. Non-batch writes only — CockpitConfigWriteBatch.TryApply never touches _tail.
     internal Task FlushAsync()
     {
         lock (_tailLock)
