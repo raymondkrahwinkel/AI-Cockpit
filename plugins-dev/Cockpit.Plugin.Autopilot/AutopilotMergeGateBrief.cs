@@ -29,6 +29,9 @@ internal static class AutopilotMergeGateBrief
         }
 
         text.Append("Build: ").AppendLine(_Build(evidence.BuildExitCode));
+
+        // How to answer comes before the diff-stat: the host bounds the message, so a long stat must never cut it off.
+        text.AppendLine(_HowToAnswer(issue, evidence, mode));
         text.Append("git diff --stat origin/").Append(collectionBranch).AppendLine("...HEAD:");
         text.AppendLine(string.IsNullOrWhiteSpace(evidence.DiffStat) ? "(empty — nothing differs from the collection branch)" : evidence.DiffStat);
         if (!string.IsNullOrWhiteSpace(evidence.Error))
@@ -36,21 +39,34 @@ internal static class AutopilotMergeGateBrief
             text.Append("Measurement error: ").AppendLine(evidence.Error);
         }
 
-        // The build tail comes last: the host bounds the message, and a cut-off must land here, not on the diff-stat.
+        // The build tail comes last: a cut-off must land here, not on the diff-stat or the answer line.
         if (!evidence.BuildPassed && !string.IsNullOrWhiteSpace(evidence.BuildOutputTail))
         {
-            text.Append("Build output (tail):").AppendLine().AppendLine(evidence.BuildOutputTail);
+            text.Append("Build output (tail):").AppendLine().Append(evidence.BuildOutputTail);
         }
 
-        text.Append(mode == AutopilotMergeMode.Automatic
-            ? "Mode: automatic — Autopilot merges now without waiting; this is for your record."
-            : $"Mode: explicit — nothing is merged until a go. Read the diff-stat for deletions of files another sub added, then answer with the {AutopilotMergeGateTools.EndpointName} tool autopilot_merge_go(issue: \"{issue}\", go: true|false, reason). The operator can also answer on the run itself.");
-        return text.ToString();
+        return text.ToString().TrimEnd();
     }
 
-    // The line on the run's surface while the gate waits, so the operator sees what the run is waiting for and on whom.
-    public static string Waiting(string collectionBranch) =>
-        $"Both review gates passed — waiting at the merge gate for a go (operator or cockpit-assistant) before landing on {collectionBranch}.";
+    // A gate that refused on its own (red build, unreadable measurement) asks nobody anything; otherwise the mode says
+    // whether a go is being waited for, and how to give one.
+    private static string _HowToAnswer(string issue, AutopilotMergeEvidence evidence, AutopilotMergeMode mode)
+    {
+        if (!evidence.BuildPassed || !string.IsNullOrWhiteSpace(evidence.Error))
+        {
+            return "Mode: the gate refused this on its own (the branch's build or the measurement failed) — nothing is merged and no answer is needed.";
+        }
+
+        return mode == AutopilotMergeMode.Automatic
+            ? "Mode: automatic — Autopilot merges now without waiting; this is for your record."
+            : $"Mode: explicit — nothing is merged until a go. Read the diff-stat for deletions of files another sub added, then answer with the {AutopilotMergeGateTools.EndpointName} tool autopilot_merge_go(issue: \"{issue}\", go: true|false, reason). The operator can also answer on the run itself.";
+    }
+
+    // The line on the run's surface while the gate waits, so the operator sees what the run is waiting for and on whom —
+    // and, when the assistant's inbox did not take the package, that the answer has to come from the run itself.
+    public static string Waiting(string collectionBranch, bool assistantNotified) =>
+        $"Both review gates passed — waiting at the merge gate for a go (operator or cockpit-assistant) before landing on {collectionBranch}."
+        + (assistantNotified ? string.Empty : " The assistant's inbox did not take the evidence package, so the go has to come from here.");
 
     // The epic comment for a gate that refused before anything moved: a red build of the branch, or a no from whoever read it.
     public static string Refused(AutopilotPlan? plan, string collectionBranch, string by, string? reason) =>
@@ -61,7 +77,7 @@ internal static class AutopilotMergeGateBrief
     {
         var build = result.BuildExitCode is { } exit
             ? $"`{buildCommand}` on that tip exited {exit}{(exit == 0 ? string.Empty : " — the collection branch is red; the next sub is held until it is fixed")}."
-            : $"the build did not run{_Reason(result.Error)}.";
+            : $"`{buildCommand}` gave no verdict{_Reason(result.Error ?? result.BuildOutputTail)} — the tip is unbuilt; build it by hand before the next sub.";
         return $"Autopilot merge gate: {_Issue(plan)} merged into {collectionBranch} on a go from {by} — {result.Route}; tip {result.TipSha ?? "unknown"}. Build: {build}";
     }
 

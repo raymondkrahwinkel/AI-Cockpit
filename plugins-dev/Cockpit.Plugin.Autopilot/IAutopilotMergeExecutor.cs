@@ -32,7 +32,7 @@ internal interface IAutopilotMergeExecutor
 
     /// <summary>
     /// Rebases the run branch onto the collection branch's remote tip, lands it there, brings the worktree to the new tip
-    /// and builds it. Nothing is ever force-pushed to the collection branch. Never throws.
+    /// and builds it. Nothing is ever force-pushed to the collection branch, and nothing here throws.
     /// </summary>
     Task<AutopilotMergeResult> MergeAsync(AutopilotMergeRequest request, CancellationToken cancellationToken = default);
 }

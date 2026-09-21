@@ -85,6 +85,9 @@ public sealed class GitCliMergeExecutorTests : IDisposable
         Assert.Equal(expectedMerged, result.TipSha == collectionAfter);
         Assert.Equal(expectedMerged, result.BuildExitCode == 0);
         Assert.Equal(expectedMerged, _Run(_clone, "log", "--format=%s", "-3").Contains("AC-3 - landed meanwhile", StringComparison.Ordinal));
+        // Either way the worktree is left clean and on the run branch — an aborted rebase leaves no half-applied state behind.
+        Assert.Equal(string.Empty, _Run(_clone, "status", "--porcelain").Trim());
+        Assert.Equal(RunBranch, _Run(_clone, "rev-parse", "--abbrev-ref", "HEAD").Trim());
     }
 
     public void Dispose()

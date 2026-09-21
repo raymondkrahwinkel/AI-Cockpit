@@ -408,6 +408,15 @@ public static class CapabilityCatalog
             [new("cliName", "The managed CLI the plugin may install and resolve.")]),
 
         new(
+            "assistant.notify",
+            "Leaving a message for the assistant",
+            "Puts a message in the cockpit-assistant's inbox — read as data from the plugin, never as an operator instruction, but still text put in front of the assistant.",
+            CapabilityRisk.Sensitive,
+            "0.34.0",
+            ["ICockpitHost.NotifyAssistantAsync"],
+            []),
+
+        new(
             "channels.assistant",
             "A chat channel onto the assistant",
             "Runs a Discord or Slack bot as a second door onto the assistant's standing conversation — inbound instructions and outbound egress both.",

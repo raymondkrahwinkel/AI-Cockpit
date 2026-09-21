@@ -197,19 +197,23 @@ internal sealed class AutopilotRunCoordinator(
         try
         {
             var evidence = await _mergeExecutor.DescribeAsync(worktree, collection, buildCommand, cancellationToken).ConfigureAwait(false);
-            await host.NotifyAssistantAsync("merge-gate", AutopilotMergeGateBrief.Evidence(current, collection, published.PrUrl, evidence, mode)).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var assistantNotified = await host.NotifyAssistantAsync("merge-gate", AutopilotMergeGateBrief.Evidence(current, collection, published.PrUrl, evidence, mode)).ConfigureAwait(false);
 
-            if (!evidence.BuildPassed)
+            if (!evidence.BuildPassed || !string.IsNullOrWhiteSpace(evidence.Error))
             {
-                // Nothing lands red, whatever the mode — a branch that does not build is not a go anyone gets to give.
-                var why = $"the branch's own build exited {evidence.BuildExitCode?.ToString() ?? "without running"}";
+                // Nothing lands red or unmeasured, whatever the mode — a branch that does not build, or whose diff
+                // against the collection branch could not be read, is not a go anyone gets to give here.
+                var why = string.IsNullOrWhiteSpace(evidence.Error)
+                    ? $"the branch's own build exited {evidence.BuildExitCode?.ToString() ?? "with no verdict"}"
+                    : $"the measurement failed ({evidence.Error})";
                 await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Refused(current, collection, "the merge gate", why), cancellationToken).ConfigureAwait(false);
                 return;
             }
 
             var go = mode == AutopilotMergeMode.Automatic
                 ? new AutopilotMergeGo(true, "automatic merge mode", "Autopilot")
-                : await _AwaitMergeGoAsync(lastStepId, collection, cancellationToken).ConfigureAwait(false);
+                : await _AwaitMergeGoAsync(lastStepId, collection, assistantNotified, cancellationToken).ConfigureAwait(false);
             if (!go.Go)
             {
                 await _CloseGateAsync(lastStepId, AutopilotMergeGateBrief.Refused(current, collection, go.By, go.Reason), cancellationToken).ConfigureAwait(false);
@@ -240,7 +244,9 @@ internal sealed class AutopilotRunCoordinator(
         }
         catch (OperationCanceledException)
         {
-            // The run was cancelled while at the gate (the surface closed, the operator stopped it): nothing was merged.
+            // The run was cancelled at the gate (the surface closed, the operator stopped it) before anything was
+            // merged; said on the step so the surface does not keep showing a gate that is still waiting.
+            _Note(lastStepId, "The run was cancelled at the merge gate — nothing was merged.");
         }
         catch (Exception failure)
         {
@@ -251,7 +257,7 @@ internal sealed class AutopilotRunCoordinator(
 
     // Explicit mode: stand at the gate until ReportMergeGo answers, or the run is cancelled. The note on the last step
     // is what tells the operator what the run waits for; the surface reads AwaitingMergeGo for its buttons.
-    private async Task<AutopilotMergeGo> _AwaitMergeGoAsync(string? lastStepId, string collection, CancellationToken cancellationToken)
+    private async Task<AutopilotMergeGo> _AwaitMergeGoAsync(string? lastStepId, string collection, bool assistantNotified, CancellationToken cancellationToken)
     {
         var pending = new TaskCompletionSource<AutopilotMergeGo>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
@@ -259,7 +265,7 @@ internal sealed class AutopilotRunCoordinator(
             _mergeGo = pending;
         }
 
-        _Note(lastStepId, AutopilotMergeGateBrief.Waiting(collection));
+        _Note(lastStepId, AutopilotMergeGateBrief.Waiting(collection, assistantNotified));
         try
         {
             return await pending.Task.WaitAsync(cancellationToken).ConfigureAwait(false);

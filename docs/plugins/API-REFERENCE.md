@@ -104,6 +104,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
+| `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 
 This table is verified against `CapabilityCatalog` by `CapabilityCatalogTests`; editing one without the other

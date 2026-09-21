@@ -755,11 +755,12 @@ public class AutopilotRunCoordinatorTests
     // it. The counter-proofs are the rows: no go → nothing merged; refused → nothing merged; red build → nothing merged.
 
     [Theory]
-    [InlineData(true, 1, 1, "Test")]
-    [InlineData(false, 0, 0, "Review")]
-    public async Task RunAsync_AtTheMergeGate_InExplicitMode_MergesOnlyOnAGo(bool go, int expectedMerges, int expectedLedgerWrites, string expectedLastStage)
+    [InlineData(true, 0, 1, 1, "Test")]
+    [InlineData(true, 1, 1, 1, "Review")]
+    [InlineData(false, 0, 0, 0, "Review")]
+    public async Task RunAsync_AtTheMergeGate_InExplicitMode_MergesOnlyOnAGo(bool go, int mergeBuildExit, int expectedMerges, int expectedLedgerWrites, string expectedLastStage)
     {
-        var (plan, provider, host, storage, executor, coordinator, environment) = _AtTheGate(automatic: false, buildExit: 0);
+        var (plan, provider, host, storage, executor, coordinator, environment) = _AtTheGate(automatic: false, buildExit: 0, mergeBuildExit);
         var context = _Context(_Session("step-pane"));
         var shown = new TaskCompletionSource();
         var validationSent = new TaskCompletionSource();
@@ -785,7 +786,8 @@ public class AutopilotRunCoordinatorTests
         await run.WaitAsync(Timeout);
         Assert.False(coordinator.AwaitingMergeGo);
         Assert.Equal(expectedMerges, executor.MergeCalls);
-        storage.Received(expectedLedgerWrites).Set("mergeGate:lastBuild:epic/ac-epic", Arg.Is<AutopilotMergeBuildRecord>(record => record.Sha == "tip9999" && record.ExitCode == 0));
+        // The ledger takes the tip's build as it came out — a red one is what holds the epic's next sub (see the epic runner's Theory).
+        storage.Received(expectedLedgerWrites).Set("mergeGate:lastBuild:epic/ac-epic", Arg.Is<AutopilotMergeBuildRecord>(record => record.Sha == "tip9999" && record.ExitCode == mergeBuildExit));
         Assert.Equal(("AC-1", expectedLastStage), provider.StageCalls.Last());
         // The trail on the epic (EpicWorkflow §3 step 6) names the sub and who answered, whichever way it went.
         var epicComment = Assert.Single(provider.Comments);
@@ -796,6 +798,7 @@ public class AutopilotRunCoordinatorTests
 
     [Theory]
     [InlineData(false, 0, true, 0, "Review")]
+    [InlineData(false, 1, false, 0, "Review")]
     [InlineData(true, 0, false, 1, "Test")]
     [InlineData(true, 1, false, 0, "Review")]
     public async Task RunAsync_AtTheMergeGate_WithoutAGo_MergesOnlyInAutomaticMode_AndNeverARedBranch(bool automatic, int buildExit, bool expectedWaits, int expectedMerges, string expectedLastStage)
@@ -826,7 +829,7 @@ public class AutopilotRunCoordinatorTests
 
     // An epic run standing one passed review gate away from its merge gate: a source with an epic, a PR-delivering plan
     // in explicit or automatic mode, a publisher that pushes and opens a PR, and an executor whose branch build exits `buildExit`.
-    private static (AutopilotPlanController Plan, FakeTrackerProvider Provider, ICockpitHost Host, IPluginStorage Storage, RecordingMergeExecutor Executor, AutopilotRunCoordinator Coordinator, AutopilotRunEnvironment Environment) _AtTheGate(bool automatic, int buildExit)
+    private static (AutopilotPlanController Plan, FakeTrackerProvider Provider, ICockpitHost Host, IPluginStorage Storage, RecordingMergeExecutor Executor, AutopilotRunCoordinator Coordinator, AutopilotRunEnvironment Environment) _AtTheGate(bool automatic, int buildExit, int mergeBuildExit = 0)
     {
         var mode = automatic ? AutopilotMergeMode.Automatic : AutopilotMergeMode.Explicit;
         var gate = _HardStep("1") with { Title = "Code review", IsReviewGate = true };
@@ -839,7 +842,7 @@ public class AutopilotRunCoordinatorTests
         var host = _Host();
         host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
         var storage = Substitute.For<IPluginStorage>();
-        var executor = new RecordingMergeExecutor(buildExit);
+        var executor = new RecordingMergeExecutor(buildExit, mergeBuildExit);
         var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: new CapturingPrPublisher(), mergeExecutor: executor, mergeBuildLedger: new AutopilotMergeBuildLedger(storage));
         var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", CollectionBranch: "epic/ac-epic");
         return (plan, provider, host, storage, executor, coordinator, environment);
@@ -847,7 +850,7 @@ public class AutopilotRunCoordinatorTests
 
     // Measures a fixed picture — a branch that deletes a file another sub added — and counts the merges it is asked
     // for, so a test asserts on whether the gate reached for the merge rather than on git.
-    private sealed class RecordingMergeExecutor(int buildExit) : IAutopilotMergeExecutor
+    private sealed class RecordingMergeExecutor(int buildExit, int mergeBuildExit) : IAutopilotMergeExecutor
     {
         private int _mergeCalls;
 
@@ -859,7 +862,7 @@ public class AutopilotRunCoordinatorTests
         public Task<AutopilotMergeResult> MergeAsync(AutopilotMergeRequest request, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _mergeCalls);
-            return Task.FromResult(new AutopilotMergeResult(true, "merged the pull request", "tip9999", 0, string.Empty, null));
+            return Task.FromResult(new AutopilotMergeResult(true, "merged the pull request", "tip9999", mergeBuildExit, string.Empty, null));
         }
     }
 
