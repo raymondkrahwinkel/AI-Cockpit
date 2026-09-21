@@ -109,6 +109,10 @@ internal sealed class AutopilotRunContext
     // Completes when the run settles or is cancelled — what the manager awaits to free the slot.
     public Task Completed { get; }
 
+    // Whether this run was cancelled (its workspace closed, the operator dropped it) — AC-1340's chain must not start
+    // the next sub on a surface that is going away, even when the run's own phase already read as settled.
+    public bool IsCancelled => _cts.IsCancellationRequested;
+
     // The running step's live view, or null between steps.
     public Control? StepView { get; private set; }
 

@@ -23,10 +23,15 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string MergeModeKey = "mergeMode";
     private const string MergeBuildCommandKey = "mergeBuildCommand";
     private const string MergeBuildTimeoutKey = "mergeBuildTimeoutMinutes";
+    private const string ChainUncleanRunToleranceKey = "chainUncleanRunTolerance";
 
     // How long the merge gate lets one build run (AC-1338) — a Release build of a whole solution outruns
     // GitCommandLine's two-minute default by a wide margin; the one named place for that number.
     public const int DefaultMergeBuildTimeoutMinutes = 20;
+
+    // How many non-clean runs in a row (AC-347) an epic's chain rides through before it stops (AC-1340); the one
+    // named place for that number. Zero: the first sub that needed a correction ends the chain.
+    public const int DefaultChainUncleanRunTolerance = 0;
 
     // The one named place the merge gate's default lives (AC-1338, D1): a run that never chose waits for a go.
     public const AutopilotMergeMode DefaultMergeMode = AutopilotMergeMode.Explicit;
@@ -171,6 +176,13 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
         _ReadValue(projectId, MergeBuildTimeoutKey, DefaultMergeBuildTimeoutMinutes) is > 0 and var minutes ? minutes : DefaultMergeBuildTimeoutMinutes;
 
     public void SetMergeBuildTimeoutMinutes(int minutes, string? projectId = null) => _Write(projectId, MergeBuildTimeoutKey, minutes);
+
+    // The chain's tolerance for non-clean runs in a row (AC-1340); a stored negative value reads as the default.
+    // No settings panel yet, like AcceptanceHeadings — set through plugin storage directly.
+    public int ChainUncleanRunTolerance(string? projectId = null) =>
+        _ReadValue(projectId, ChainUncleanRunToleranceKey, DefaultChainUncleanRunTolerance) is >= 0 and var tolerance ? tolerance : DefaultChainUncleanRunTolerance;
+
+    public void SetChainUncleanRunTolerance(int tolerance, string? projectId = null) => _Write(projectId, ChainUncleanRunToleranceKey, tolerance);
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 

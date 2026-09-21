@@ -1,11 +1,11 @@
 {
   "id": "autopilot",
   "name": "Autopilot",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "entryAssembly": "Cockpit.Plugin.Autopilot.dll",
   "entryType": "Cockpit.Plugin.Autopilot.AutopilotPlugin",
   "abstractionsVersion": 2,
   "minHostVersion": "0.34.0",
-  "description": "Operator-triggered \"issue → merge-ready PR\" pipeline. Start a YouTrack or GitHub issue into a visible, self-driving agent session in its own isolated worktree; it works the item behind a quality gate (visual verify, code review, security review, conventions), posts progress and questions back to the issue and moves its stage as it goes, and stops at a merge-ready PR — you approve the run before it starts; an epic run then waits at a merge gate for your (or the assistant's) go before it lands on the epic's collection branch, unless you set that run to merge automatically.",
+  "description": "Operator-triggered \"issue → merge-ready PR\" pipeline. Start a YouTrack or GitHub issue into a visible, self-driving agent session in its own isolated worktree; it works the item behind a quality gate (visual verify, code review, security review, conventions), posts progress and questions back to the issue and moves its stage as it goes, and stops at a merge-ready PR — you approve the run before it starts; an epic run then waits at a merge gate for your (or the assistant's) go before it lands on the epic's collection branch, unless you set that run to merge automatically; once a sub has merged and built green, the epic's next Ready sub starts itself, one at a time, until the chain stops and says why.",
   "author": "Cockpit"
 }
