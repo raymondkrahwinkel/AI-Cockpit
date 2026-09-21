@@ -342,8 +342,8 @@ internal static class WorktreeSourceUpdater
     }
 
     // AC-1337: forks from a named branch's remote tip — an epic run's collection-branch setting — instead of the
-    // checkout's own branch. Best-effort like every other path here: an unreachable remote or an unresolvable
-    // branch falls back to the checkout's local HEAD, exactly as no base branch ever did anything else.
+    // checkout's own branch. A remote that cannot be reached at all falls back to the checkout's local HEAD; a
+    // branch that does not exist yet there (an epic's first sub) falls back to the remote's default branch instead.
     public static async Task<WorktreeSourceRefresh> ForkFromNamedBranchAsync(
         GitRepositoryInfo repository,
         string branchName,
@@ -361,21 +361,38 @@ internal static class WorktreeSourceUpdater
 
         var reference = $"{remote}/{branchName}";
         var target = await _RevParseAsync(repository.Root, reference, cancellationToken).ConfigureAwait(false);
-        if (target is null)
+        if (target is not null)
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.ForkedFromCollectionBranch,
+                0,
+                reference,
+                $"This session forked from the collection branch {reference}.",
+                target);
+        }
+
+        // The branch itself does not exist on the remote yet — an epic's first sub, before any collection branch
+        // was ever pushed. That is not a reason to fork from whatever the operator's checkout happens to hold; the
+        // remote's own default branch is the same upstream path an ordinary session start already takes.
+        var defaultReference = await _DefaultBranchAsync(repository.Root, remote, cancellationToken).ConfigureAwait(false);
+        var defaultTarget = defaultReference is null
+            ? null
+            : await _RevParseAsync(repository.Root, defaultReference, cancellationToken).ConfigureAwait(false);
+        if (defaultReference is null || defaultTarget is null)
         {
             return new WorktreeSourceRefresh(
                 WorktreeSourceOutcome.CheckFailed,
                 0,
                 null,
-                $"'{reference}' does not exist, so this session forked from the checkout's local HEAD instead.");
+                $"'{reference}' does not exist and no default branch could be resolved, so this session forked from the checkout's local HEAD instead.");
         }
 
         return new WorktreeSourceRefresh(
-            WorktreeSourceOutcome.ForkedFromCollectionBranch,
+            WorktreeSourceOutcome.ForkedFromUpstream,
             0,
-            reference,
-            $"This session forked from the collection branch {reference}.",
-            target);
+            defaultReference,
+            $"'{branchName}' does not exist on the remote yet, so this session forked from {defaultReference} instead.",
+            defaultTarget);
     }
 
     private static WorktreeSourceRefresh _CouldNotCheck(string branch) => new(

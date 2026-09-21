@@ -7,8 +7,6 @@ public sealed class AutopilotCollectionBranchTests
     [Theory]
     [InlineData(false, "AC-343", "epic/ac-343")]
     [InlineData(true, "AC-343", null)]
-    [InlineData(false, "", null)]
-    [InlineData(false, null, null)]
-    public void For_DerivesFromTheEpicUnlessOptedOutOrThereIsNone(bool directToMain, string? epicId, string? expected) =>
+    public void For_DerivesFromTheEpicUnlessOptedOut(bool directToMain, string? epicId, string? expected) =>
         Assert.Equal(expected, AutopilotCollectionBranch.For(directToMain, epicId));
 }

@@ -104,23 +104,30 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal("main", Assert.Single((await _manager.ListAsync())).BaseBranch);
     }
 
-    [Fact]
-    public async Task CreateAsync_WithACollectionBranch_ForksFromThatBranchsRemoteTip_NotTheCheckout()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CreateAsync_WithACollectionBranch_ForksFromItsRemoteTip_OrTheDefaultBranchWhenItDoesNotExistYet(bool collectionBranchExists)
     {
-        // AC-1337: an epic run's collection branch is a different question than "is the checkout's own branch
-        // current" — it forks from that named branch's remote tip and never touches the checkout at all.
+        // AC-1337 (review): forks from the collection branch's remote tip, never the checkout — an epic's first
+        // sub has no collection branch on the remote yet, so that case forks from the remote's default (main)
+        // instead of whatever the operator's checkout happens to hold.
         _AddRemote();
-        _Git(_repo, "checkout", "-b", "release/epic");
-        _Commit(_repo, "release-only.txt", "epic work");
-        _Git(_repo, "push", "-u", "origin", "release/epic");
-        var collectionTip = _Git(_repo, "rev-parse", "HEAD");
-        _Git(_repo, "checkout", "main");
         var mainHead = _Git(_repo, "rev-parse", "HEAD");
+        if (collectionBranchExists)
+        {
+            _Git(_repo, "checkout", "-b", "release/epic");
+            _Commit(_repo, "release-only.txt", "epic work");
+            _Git(_repo, "push", "-u", "origin", "release/epic");
+            _Git(_repo, "checkout", "main");
+        }
+
+        var expectedTip = collectionBranchExists ? _Git(_repo, "rev-parse", "release/epic") : mainHead;
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo, baseRef: "release/epic");
 
-        Assert.Equal(collectionTip, record.BaseCommit);
-        Assert.Equal(collectionTip, _Git(record.Path, "rev-parse", "HEAD"));
+        Assert.Equal(expectedTip, record.BaseCommit);
+        Assert.Equal(expectedTip, _Git(record.Path, "rev-parse", "HEAD"));
         Assert.Equal(mainHead, _Git(_repo, "rev-parse", "HEAD"));
     }
 

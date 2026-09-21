@@ -56,9 +56,12 @@ internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
         }
 
         // AC-1337: an explicit base targets the epic run's collection branch instead of gh's default-branch guess.
+        // gh refuses a base that does not exist on the remote yet ("Base ref must be a branch") — an epic's first
+        // sub, before any collection branch was ever pushed — so create it there first, from the remote's default.
         List<string> arguments = ["pr", "create", "--head", request.Branch, "--title", request.Title, "--body", request.Body];
         if (!string.IsNullOrWhiteSpace(request.Base))
         {
+            await _EnsureRemoteBranchExistsAsync(path, request.Base, cancellationToken).ConfigureAwait(false);
             arguments.Add("--base");
             arguments.Add(request.Base);
         }
@@ -75,6 +78,50 @@ internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
         var url = pr.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .LastOrDefault(line => line.StartsWith("http", StringComparison.OrdinalIgnoreCase));
         return new AutopilotPrPublishResult(true, url, null);
+    }
+
+    // AC-1337 review: a collection branch nobody has pushed to yet does not exist on the remote, and gh refuses a
+    // PR whose base is not a branch there. A no-op when it already exists; best-effort otherwise — a push that
+    // fails here still lets `gh pr create` run and report its own, clearer error.
+    private static async Task _EnsureRemoteBranchExistsAsync(string worktreePath, string branch, CancellationToken cancellationToken)
+    {
+        var existing = await GitCommandLine.RunAsync("git", ["ls-remote", "--heads", "origin", branch], worktreePath, cancellationToken);
+        if (!existing.Ok || !string.IsNullOrWhiteSpace(existing.StdOut))
+        {
+            return;
+        }
+
+        // Populates the remote-tracking refs `_RemoteDefaultBranchAsync` resolves against — a fresh worktree's
+        // `origin/*` refs may already be stale by the time a run reaches merge-ready.
+        _ = await GitCommandLine.RunAsync("git", ["fetch", "origin"], worktreePath, cancellationToken);
+
+        if (await _RemoteDefaultBranchAsync(worktreePath, cancellationToken).ConfigureAwait(false) is { } defaultBranch)
+        {
+            await GitCommandLine.RunAsync("git", ["push", "origin", $"origin/{defaultBranch}:refs/heads/{branch}"], worktreePath, cancellationToken);
+        }
+    }
+
+    // The remote's own idea of its default branch: `origin/HEAD`'s symbolic ref when set (only `clone` sets it — a
+    // plain `fetch` does not), else the first of `main`/`master` that actually resolves.
+    private static async Task<string?> _RemoteDefaultBranchAsync(string worktreePath, CancellationToken cancellationToken)
+    {
+        var originHead = await GitCommandLine.RunAsync("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], worktreePath, cancellationToken);
+        var trimmed = originHead.StdOut.Trim();
+        if (originHead.Ok && trimmed.StartsWith("origin/", StringComparison.Ordinal))
+        {
+            return trimmed["origin/".Length..];
+        }
+
+        string[] candidates = ["main", "master"];
+        foreach (var candidate in candidates)
+        {
+            if ((await GitCommandLine.RunAsync("git", ["rev-parse", "--verify", "--quiet", $"origin/{candidate}"], worktreePath, cancellationToken)).Ok)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     public async Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default)
