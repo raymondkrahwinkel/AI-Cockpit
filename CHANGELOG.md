@@ -584,6 +584,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a plugin's saved setting or declared credential field name could be lost if you quit right after it was
+  written — the write now finishes before the process closes instead of racing it.
+- fixed: a session pane restored from your last run could briefly use the default usage-threshold settings
+  instead of your saved ones, if restore happened to finish before those settings had loaded — restore now
+  always waits for them first.
 - fixed: an Autopilot epic run's next Ready sub now carries its own description and URL, on YouTrack and GitHub
   Issues both — previously only its title and stage came along, so a template placeholder like `{{issue.url}}`
   or `{{issue.description}}` resolved blank for an epic-picked sub even though the same placeholders fill in
