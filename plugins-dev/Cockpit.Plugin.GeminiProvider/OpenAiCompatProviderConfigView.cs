@@ -78,7 +78,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        if (!TryParseTimeoutSeconds(_timeoutSeconds.Text ?? string.Empty, out var timeoutSeconds))
+        if (!TimeoutSecondsField.TryParse(_timeoutSeconds.Text ?? string.Empty, out var timeoutSeconds))
         {
             _timeoutStatus.IsVisible = true;
             ProviderConfigStatus.Set(_timeoutStatus, "Timeout (seconds) must be a positive number.", isOk: false);
@@ -89,27 +89,6 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         _timeoutStatus.IsVisible = false;
         configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
         return true;
-    }
-
-    // AC-1345: split out so a Theory can exercise the four validation outcomes without touching Avalonia —
-    // blank keeps the SDK default, a positive number is accepted, zero/negative are rejected.
-    internal static bool TryParseTimeoutSeconds(string text, out int? timeoutSeconds)
-    {
-        var trimmed = text.Trim();
-        if (trimmed.Length == 0)
-        {
-            timeoutSeconds = null;
-            return true;
-        }
-
-        if (int.TryParse(trimmed, out var seconds) && seconds > 0)
-        {
-            timeoutSeconds = seconds;
-            return true;
-        }
-
-        timeoutSeconds = null;
-        return false;
     }
 
     private Control _ModelRow()
