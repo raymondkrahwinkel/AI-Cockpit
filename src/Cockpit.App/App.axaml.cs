@@ -189,8 +189,25 @@ public partial class App : Application
             [.. Program.Services.GetServices<IFirstRunWizardStep>()],
             FirstRunWizardViewModel.EpicPlan);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
+        var finished = false;
 
-        window.Closing += (_, _) => viewModel.FinishFromStartup(stateStore, () => _StartCockpit(desktop));
+        async Task FinishThenCloseAsync()
+        {
+            await viewModel.FinishFromStartupAsync(stateStore, () => _StartCockpit(desktop));
+            finished = true;
+            window.Close();
+        }
+
+        // AC-1336: cancel the close first so MarkCompletedAsync can be awaited — Avalonia does not hold a
+        // window open across an await on its own, the same shape OptionsDialog's OnClosingDialog already uses.
+        window.Closing += (_, e) =>
+        {
+            if (!finished)
+            {
+                e.Cancel = true;
+                _ = FinishThenCloseAsync();
+            }
+        };
 
         desktop.MainWindow = window;
 
