@@ -3151,6 +3151,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
                 _backgroundTasks = [];
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                OnPropertyChanged(nameof(SessionStatusLabel));
                 _RebuildBackgroundTaskRows();
                 // AC-532: same reasoning as the background-task list above — a crashed driver never sends the
                 // ToolResult that would otherwise have cleared this, so the composer must not go on showing a
@@ -3170,6 +3171,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case BackgroundTasksChanged backgroundTasks:
                 _backgroundTasks = backgroundTasks.Tasks;
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                OnPropertyChanged(nameof(SessionStatusLabel));
                 _RebuildBackgroundTaskRows();
                 _RecomputeStatus();
                 break;

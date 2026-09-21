@@ -474,20 +474,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _hasOutstandingProcesses = hasOutstanding;
             OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+            OnPropertyChanged(nameof(SessionStatusLabel));
         }
     }
 
     // Short human-readable label for `SessionStatus`, for the sidebar status row. AC-1311: three visual classes
     // reach the operator (needs-eyes-on-it, working, quiet — see `RequestsAttention`/`SessionStatusBrushKey`),
     // but the exact wording stays per-status here and in the tooltip, next to `ProcessActivityLabel`.
+
+    // AC-1334: Idle and Done are the two words that otherwise claim nothing is happening while
+    // `HasOutstandingBackgroundShells` says a shell the status machine deliberately does not hold (AC-276) is
+    // still running — Busy/WorkingBackground/NeedsAttention/Failed already say enough on their own.
     public string SessionStatusLabel => SessionStatus switch
     {
         SessionStatus.Busy => "Busy",
         SessionStatus.WorkingBackground => "Working (background)",
         SessionStatus.NeedsAttention => "Needs attention",
-        SessionStatus.Done => "Done",
+        SessionStatus.Done => HasOutstandingBackgroundShells ? "Done · background work" : "Done",
         SessionStatus.Failed => "Failed",
-        _ => "Idle",
+        _ => HasOutstandingBackgroundShells ? "Idle · background work" : "Idle",
     };
 
     // What the running session's driver supports (#26), so the view hides controls a local provider does not offer instead of showing dead ones. Defaults to the full Claude-CLI set until a session starts.
