@@ -72,6 +72,10 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public bool TryGetConfigJson(out string configJson)
     {
+        // Cleared up front, not only on the success path — otherwise a timeout error from a previous attempt
+        // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
+        _timeoutStatus.IsVisible = false;
+
         if (string.IsNullOrWhiteSpace(_apiKey.Text) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
@@ -86,7 +90,6 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        _timeoutStatus.IsVisible = false;
         configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
         return true;
     }
