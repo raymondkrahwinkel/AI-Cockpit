@@ -19,9 +19,17 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDri
         var config = JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions)
             ?? throw new InvalidOperationException("The Gemini/OpenAI provider config JSON did not deserialize.");
 
-        var options = new OpenAIClientOptions { Endpoint = new Uri(config.BaseUrl) };
+        var options = BuildClientOptions(config);
         var credential = new ApiKeyCredential(config.ApiKey);
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
-        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model);
+        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout);
     }
+
+    // AC-1344: split out so a test can assert the configured (or default) TimeoutSeconds actually lands on
+    // the pipeline option the OpenAI SDK reads, rather than only on the record it was parsed into.
+    internal static OpenAIClientOptions BuildClientOptions(OpenAiCompatConfig config) => new()
+    {
+        Endpoint = new Uri(config.BaseUrl),
+        NetworkTimeout = TimeSpan.FromSeconds(config.TimeoutSeconds ?? OpenAiCompatConfig.DefaultTimeoutSeconds),
+    };
 }
