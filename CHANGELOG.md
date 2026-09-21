@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an Autopilot plan step can now set its own reasoning-effort level, checked against whatever levels the
+  step's profile actually offers (the same list the profile picker shows) — an unknown level is rejected before
+  the operator can approve the plan, and a profile that offers none simply ignores the field.
 - added: an Autopilot epic run's next Ready sub now starts straight from its own ticket — its description
   becomes the CEO's brief and its acceptance-criteria section becomes the plan's acceptance — and, once the plan
   carries both required review gates, the run starts without waiting for a separate approval click: a ticket

@@ -8,7 +8,15 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.32.0: a run worktree can now fork from a named branch's remote tip instead of the checkout's own
+    <!-- 0.33.0: an embedded session request can now carry a reasoning-effort choice (AC-1342) —
+         EmbeddedSessionRequest.Effort, read by the host when it assembles an embedded session's launch options
+         (CockpitViewModel._EmbeddedLaunchOptions) and put on the options map under the well-known "effort" key —
+         and a plugin can read what a profile's provider declares as its own effort levels via the new
+         PluginProfileInfo.EffortSuggestions. Both are trailing init-properties with safe defaults (null, empty),
+         so an already-compiled plugin loads and behaves exactly as before; the bump is for the other direction.
+         Autopilot sets Effort on a step's embed request and reads EffortSuggestions to validate a step's plan-time
+         choice, so it sets minHostVersion 0.33.0. Minor because it is additive; still 0.x.
+         0.32.0: a run worktree can now fork from a named branch's remote tip instead of the checkout's own
          branch (AC-1337) — a fourth-argument ICockpitHost.CreateRunWorktreeAsync overload taking `baseRef`.
          Default-implemented, forwarding to the existing three-argument overload, so an already-compiled plugin
          loads and behaves exactly as before; the bump is for the other direction. A plugin that calls the new
@@ -246,7 +254,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.32.0</VersionPrefix>
+    <VersionPrefix>0.33.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

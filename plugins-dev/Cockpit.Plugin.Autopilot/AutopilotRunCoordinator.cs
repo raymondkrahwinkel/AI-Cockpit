@@ -618,6 +618,9 @@ internal sealed class AutopilotRunCoordinator(
                     RunLabel = environment.RunLabel,
                     ProfileId = step.ProfileLabel,
                     Model = step.Model,
+                    // AC-1342: the plan's own choice, validated at emit time against the profile's declared effort
+                    // levels (AutopilotPlanTools.ValidateStepEffort) — a provider with none simply ignores it.
+                    Effort = step.Effort,
                     McpServers = _StepMcpServers(step),
                     // Pre-authorize the step worker's own control tools (AC-215) — report-done and consult-CEO — so an
                     // autonomous step never stops mid-run to ask the operator to allow autopilot_step_done.

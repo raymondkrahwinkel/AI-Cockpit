@@ -83,11 +83,14 @@ internal static class AutopilotCeoBrief
             array. When you can resolve the folder the run should work in from the item — the repository the issue is
             about — pass it as workingDirectory too; it pre-fills the operator's field for them to confirm or override (a
             git repository isolates each step in a worktree, a plain folder runs without isolation). Each step: {id,
-            title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}.
+            title, description, profile, model, effort, brief, acceptance, hard, reviewGate, mcp, agents, issueId}.
             - profile: the session profile the step runs on — use one of the exact profile labels listed above. model:
               MUST be exactly one of the models that profile lists above; omit it entirely for a local profile that lists
               no models (it pins its own). A model that is not on the chosen profile's list — or any model on a local
               profile — is rejected and you are asked to fix the plan before the operator can approve it.
+            - effort: optional reasoning-effort for the step's session. Where the roster above lists effort levels for
+              the chosen profile, this must be one of those; omit it to run at the profile's own default. A profile
+              listed with no effort levels takes none — leave this out there too.
             - brief: the context that step's agent is handed. acceptance: what "done" means for the step — you validate
               the step's output against it, and a step that fails goes back to rework within its attempt cap.
             - hard: true for a required gate that must pass (a security review); false or omitted for a skippable step.
@@ -215,7 +218,7 @@ internal static class AutopilotCeoBrief
             return string.Empty;
         }
 
-        var lines = profiles.Select(profile => $"- {profile.Label} ({(profile.RunsLocally ? "runs locally, free" : "hosted API, paid")}{_Models(profile)})");
+        var lines = profiles.Select(profile => $"- {profile.Label} ({(profile.RunsLocally ? "runs locally, free" : "hosted API, paid")}{_Models(profile)}{_Efforts(profile)})");
 
         return "\nProfiles you can assign steps to (a step's model must be one the profile lists here, or empty for a "
             + "profile that pins its own):\n"
@@ -244,6 +247,14 @@ internal static class AutopilotCeoBrief
             ? $"; models, in no particular order: {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
             : "; pins its own model — leave a step's model empty on this profile";
     }
+
+    // AC-1342: what a step may set 'effort' to on this profile, mirroring _Models above. Empty means the provider
+    // declares no effort option (or resolves it only once a session is live) — nothing added, since there is
+    // nothing here for the CEO to pick from.
+    private static string _Efforts(PluginProfileInfo profile) =>
+        profile.EffortSuggestions is { Count: > 0 } levels
+            ? $"; effort levels: {string.Join(", ", levels)} — a step on this profile may set 'effort' to one of these"
+            : string.Empty;
 
     // Invariant culture on purpose: the brief is English prose read by a model, and a machine set to a comma decimal
     // separator would otherwise render "$1,5" into it.

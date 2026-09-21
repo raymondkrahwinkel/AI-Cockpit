@@ -544,6 +544,7 @@ internal sealed class CockpitHost(
             .Select(profile =>
             {
                 var model = _DeclaredModelOption(registry, profile);
+                var effort = _DeclaredEffortOption(registry, profile);
                 return new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
                 {
                     // AC-256: asks the provider for its models instead of keeping the host's own copy of the
@@ -552,6 +553,11 @@ internal sealed class CockpitHost(
                     ModelSuggestions = model?.Choices ?? (profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : []),
                     // Cost is the provider's own estimate or nothing at all; the host never ranks or prices a model.
                     ModelCostEstimatesCheapestFirst = model?.CostEstimatesCheapestFirst ?? [],
+                    // AC-1342: the same declared schema list_profiles and start_agent's option check read — a
+                    // provider's own KnownValues for "effort", not a host-owned list. Null KnownValues (free-form or
+                    // resolved only once live, Codex's own) reports empty, same as declaring no effort option at all.
+                    EffortSuggestions = effort?.KnownValues?.Select(value => value.Value).ToList()
+                        ?? (profile.Claude is not null ? ClaudeEffortSuggestions : []),
                     // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
                     RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
                 };
@@ -559,12 +565,25 @@ internal sealed class CockpitHost(
             .ToList();
     }
 
+    // AC-1342: the native/legacy-typed Claude profile's own effort levels — SessionOptionCatalog.Efforts mirrors
+    // ClaudeOptionChoices.EffortLevels (the plugin-declared list `_DeclaredEffortOption` reads for a plugin-routed
+    // profile), so a profile still on the pre-plugin typed config reports the same levels either way.
+    private static readonly IReadOnlyList<string> ClaudeEffortSuggestions = [.. SessionOptionCatalog.Efforts.Select(effort => effort.Value)];
+
     // The profile's model launch option, if its provider declares one, found via the well-known `Model`
     // key. Reads only statically declared options, not `ResolveOptionsAsync` — that hits a CLI, and this
     // runs on every plan emission and step start, where a stall would be felt.
     private static PluginSessionLaunchOption? _DeclaredModelOption(IPluginProviderRegistry registry, Core.Profiles.SessionProfile profile) =>
         profile.ProviderConfig is Core.Profiles.PluginProviderConfig plugin
             ? registry.Resolve(plugin.ProviderId)?.Options.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Model)
+            : null;
+
+    // The profile's declared effort option (AC-1342), if its provider states one — the driver-capability schema
+    // (`Capabilities.DeclaredOptions`), the same source `list_profiles` and `start_agent`'s option validation read,
+    // not the New-session dialog's launch-option list `_DeclaredModelOption` reads above.
+    private static PluginSessionOptionDescriptor? _DeclaredEffortOption(IPluginProviderRegistry registry, Core.Profiles.SessionProfile profile) =>
+        profile.ProviderConfig is Core.Profiles.PluginProviderConfig plugin
+            ? registry.Resolve(plugin.ProviderId)?.Capabilities.DeclaredOptions.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Effort)
             : null;
 
     // Idempotent upsert-by-name into `IMcpServerStore` (#60), refreshing only plugin-owned connection

@@ -89,15 +89,19 @@ public class AutopilotPlanToolsTests
         Assert.Contains(expectedReason, error);
     }
 
-    // AC-210: the (profile, model) validity check the CEO's plan is held to.
+    // AC-210: the (profile, model) validity check the CEO's plan is held to. AC-1342: Claude also declares effort
+    // levels, Qwen (local) declares none — the two shapes ValidateStepEffort has to tell apart.
     private static readonly IReadOnlyList<PluginProfileInfo> Roster =
     [
-        new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet", "haiku"] },
+        new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet", "haiku"], EffortSuggestions = ["low", "medium", "high"] },
         new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
     ];
 
     private static AutopilotStep _Step(string profile, string? model) =>
         new("1", "Code", "do it", profile, model, "brief", "compiles", GateMode.Hard);
+
+    private static AutopilotStep _StepWithEffort(string profile, string? model, string? effort) =>
+        _Step(profile, model) with { Effort = effort };
 
     [Theory]
     [InlineData("Claude", "opus")]
@@ -124,6 +128,20 @@ public class AutopilotPlanToolsTests
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step(profile, model)], Roster);
 
         Assert.All(expected, fragment => Assert.Contains(fragment, error));
+    }
+
+    // AC-1342: a step's effort is validated against a profile's declared levels the same way its model is validated
+    // against ModelSuggestions — a known level is accepted, an unknown one is refused and named; a profile that
+    // declares no levels at all (Qwen (local)) validates nothing, so any value is accepted there too.
+    [Theory]
+    [InlineData("Claude", "sonnet", "high", true)]
+    [InlineData("Claude", "sonnet", "hyperspeed", false)]
+    [InlineData("Qwen (local)", null, "whatever", true)]
+    public void ValidateStepProfiles_ChecksEffortAgainstTheProfilesDeclaredLevels(string profile, string? model, string effort, bool accepted)
+    {
+        var error = AutopilotPlanTools.ValidateStepProfiles([_StepWithEffort(profile, model, effort)], Roster);
+
+        Assert.Equal(accepted, error is null);
     }
 
     [Fact]
