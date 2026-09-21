@@ -52,7 +52,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, pane-scoped so
         // only the bound CEO session may set the plan. Internal-only (AC-204): the run's own agents scope to it
         // by name, but a normal operator must never see or tick it in the New-session/profile MCP selection.
-        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController, settings), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
+        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController, settings, manager), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
 
         // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports
         // its verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while
@@ -101,7 +101,8 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                     run,
                     settings.ExecutableStage(run.Tracker),
                     new GitEpicSubMergeChecker(repositoryDirectory, collectionBranch),
-                    CancellationToken.None);
+                    CancellationToken.None,
+                    settings.AcceptanceHeadings());
 
                 switch (epicOutcome.Kind)
                 {

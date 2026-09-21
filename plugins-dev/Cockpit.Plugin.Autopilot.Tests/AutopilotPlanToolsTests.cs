@@ -177,7 +177,74 @@ public class AutopilotPlanToolsTests
         controller.BeginPlanning(AutopilotPlan.Empty(source, goal: "Ship it"));
         controller.BindSession("pane-1");
 
-        return (new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage())), controller);
+        return (new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage()), _Manager()), controller);
+    }
+
+    // A manager backed by its own in-memory storage, with no runner wired — Submit just enqueues, so the
+    // auto-submit test below can assert on the queue without a live session or a running pump.
+    private static AutopilotRunManager _Manager() =>
+        new(new AutopilotRunQueue(new FakeStorage()), new AutopilotSettings(new FakeStorage()));
+
+    // AC-1339: `manager` exposed alongside the tools, for the auto-submit test to read `queue.Items` off of —
+    // `_PlanningTools` above hides it because no other test needs to see it.
+    private static (AutopilotPlanTools Tools, AutopilotRunQueue Queue) _GroomedPlanningTools(AutopilotPlanSource source)
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.GetProfilesAsync().Returns(Task.FromResult(Roster));
+        host.CurrentMcpCallerPaneId.Returns("pane-1");
+        host.TrackerProviders.Returns([]);
+
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(AutopilotPlan.Empty(source, goal: "Ship it"));
+        controller.BindSession("pane-1");
+
+        var queue = new AutopilotRunQueue(new FakeStorage());
+        var manager = new AutopilotRunManager(queue, new AutopilotSettings(new FakeStorage()));
+        return (new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage()), manager), queue);
+    }
+
+    // AC-1339: grooming is the approval — a ticket acceptance section needs no operator click once the CEO's
+    // plan carries both review gates; without it the plan waits for "Approve plan & start" as always. Same
+    // steps JSON both rows: what flips the outcome is only whether `Source.Acceptance` is set.
+    public static IEnumerable<object[]> GroomedSubmissions() =>
+    [
+        ["Meets the bar when X and Y hold.", 1],
+        ["", 0],
+    ];
+
+    private const string GroomedStepsJson = """
+        [
+          {"id":"1","title":"Build it","profile":"Claude","model":"sonnet","brief":"b","hard":true},
+          {"id":"2","title":"Code review","profile":"Claude","model":"sonnet","brief":"b","reviewGate":true},
+          {"id":"3","title":"Security review","profile":"Claude","model":"sonnet","brief":"b","reviewGate":true}
+        ]
+        """;
+
+    [Theory]
+    [MemberData(nameof(GroomedSubmissions))]
+    public async Task SetPlan_ForAReadyEpicSub_AutoSubmitsOnlyWhenTheTicketStatesItsOwnAcceptance(string acceptance, int expectedQueueCount)
+    {
+        var source = new AutopilotPlanSource("youtrack", "AC-1", "First", EpicId: "AC-EPIC", Acceptance: acceptance);
+        var (tools, queue) = _GroomedPlanningTools(source);
+
+        var result = await tools.SetPlan("Work the sub", GroomedStepsJson);
+
+        Assert.True(_Ok(result));
+        Assert.Equal(expectedQueueCount, queue.Items.Count);
+    }
+
+    [Fact]
+    public async Task SetPlan_ForAReadyEpicSub_ReSubmittingTheRevisedPlanDoesNotQueueASecondRun()
+    {
+        // The CEO re-emits the plan on every revision (its brief says so) — a second qualifying SetPlan call in
+        // the same round must not queue the sub twice.
+        var source = new AutopilotPlanSource("youtrack", "AC-1", "First", EpicId: "AC-EPIC", Acceptance: "Meets the bar.");
+        var (tools, queue) = _GroomedPlanningTools(source);
+
+        await tools.SetPlan("Work the sub", GroomedStepsJson);
+        await tools.SetPlan("Work the sub (revised)", GroomedStepsJson);
+
+        Assert.Single(queue.Items);
     }
 
     private static ITrackerProvider _TrackerWith(string childTitle, string childStage)

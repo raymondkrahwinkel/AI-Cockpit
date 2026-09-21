@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.Autopilot;
 // The in-process MCP tool (`mcp__cockpit-autopilot-plan__autopilot_plan`) the CEO uses during the planning round
 // (AC-174) to emit and revise the plan. Pane-scoped like `AutopilotRunTools`: only the planning session bound
 // to this controller may set the plan. The operator approves it through the host UI to freeze it and start the run.
-internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan, AutopilotSettings settings)
+internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan, AutopilotSettings settings, AutopilotRunManager manager)
 {
     // The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.
     internal const string EndpointName = "cockpit-autopilot-plan";
@@ -80,6 +80,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         // re-emit that omits it keeps the current one rather than wiping a folder the operator already picked.
         var effectiveWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? plan.Plan?.WorkingDirectory ?? string.Empty : workingDirectory.Trim();
         plan.UpdatePlan(new AutopilotPlan(effectiveGoal, plan.Plan?.Source, steps) { Name = effectiveName, WorkingDirectory = effectiveWorkingDirectory });
+        _AutoSubmitIfGroomed(steps);
         return JsonSerializer.Serialize(new { ok = true, steps = steps.Count }, Serializer);
     }
 
@@ -241,6 +242,19 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         }
 
         return null;
+    }
+
+    // AC-1339: grooming is the approval. A Ready epic-sub whose ticket already states its acceptance criteria,
+    // once the CEO's plan also carries both review gates (AC-434), submits straight to the run manager instead
+    // of waiting for the operator's own click; anything else opens the planning round as it does today.
+    private void _AutoSubmitIfGroomed(IReadOnlyList<AutopilotStep> steps)
+    {
+        if (plan.Plan is { Source.EpicId.Length: > 0, Source.Acceptance.Length: > 0 } groomed
+            && steps.Count(step => step.IsReviewGate) >= 2
+            && plan.TryClaimAutoSubmit())
+        {
+            manager.Submit(groomed.WithDeliversPullRequest(true));
+        }
     }
 
     private bool _IsThisPlanningSession() =>
