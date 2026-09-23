@@ -320,8 +320,8 @@ public class ClusterAccessGateTests
     }
 
     // AC-1349: a cluster's consent mode pre-approves a call by routing PreApprovedBy to the host instead of
-    // asking. Counter-check rows: a change under ReadFree, an unlisted tool, a secret, a change outside the allowed
-    // namespaces under AllFree, and a re-pointed context all still ask. The default mode is the tests above.
+    // asking. Counter-check rows: a change under ReadFree, an unlisted tool, a secret, a change outside or reaching
+    // past the allowed namespaces under AllFree, exec, and a re-pointed context all still ask. Default: tests above.
     public static IEnumerable<object[]> ConsentModeCases()
     {
         yield return
@@ -364,6 +364,27 @@ public class ClusterAccessGateTests
             "AC4 counter-check: AllFree still asks for scale_resource in production, off the allowed list",
             _Jita(ClusterConsentMode.AllFree),
             (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "scale_resource", "production", "scale deployments/web to 2 replica(s)", PaneId)),
+            false,
+        ];
+        yield return
+        [
+            "H1: AllFree still asks for helm_upgrade in staging when its plan holds a cluster-scoped document",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "helm_upgrade", "staging", "upgrade Helm release \"web\"", PaneId, reachesBeyondNamespace: true)),
+            false,
+        ];
+        yield return
+        [
+            "H2: AllFree still asks for argo_sync of an Application living in an allowed namespace",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "argo_sync", "staging", "sync Argo CD Application \"web\"", PaneId, reachesBeyondNamespace: true)),
+            false,
+        ];
+        yield return
+        [
+            "AllFree still asks for exec in staging with exec turned on — a shell reaches other namespaces",
+            _Jita(ClusterConsentMode.AllFree) with { AllowExec = true },
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeDangerAsync(cluster, "exec", DangerCapability.Exec, "staging", "exec in pod \"web\": /bin/sh -c ls", PaneId)),
             false,
         ];
         yield return

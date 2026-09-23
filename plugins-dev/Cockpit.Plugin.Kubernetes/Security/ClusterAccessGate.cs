@@ -72,7 +72,8 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             return GateResult.Deny($"{capability} is off for cluster \"{cluster.Label}\". Turn it on for this cluster in the Kubernetes plugin settings first — it is off by default because it can reach past the namespace boundary.");
         }
 
-        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace);
+        // A shell or tunnel in an allowed pod can reach services in any namespace, so AllFree never frees it (AC-1349).
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace: null);
         var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
         if (!namespaced.IsAllowed)
         {
