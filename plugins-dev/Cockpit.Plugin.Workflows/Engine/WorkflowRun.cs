@@ -20,6 +20,10 @@ public sealed class WorkflowRun
     // Why the run failed, when it did — the message the operator reads.
     public string? Error { get; set; }
 
+    // A note about the run itself rather than any one step — a schedule catching up late, or not running at all
+    // because a slot fell outside the grace (#AC-1359). Separate from `Error`: a late run still succeeded.
+    public string? Note { get; set; }
+
     public List<StepRun> Steps { get; init; } = [];
 
     public TimeSpan Duration => (FinishedAt ?? DateTimeOffset.UtcNow) - StartedAt;

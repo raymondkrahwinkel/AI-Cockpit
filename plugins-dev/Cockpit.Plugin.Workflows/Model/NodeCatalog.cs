@@ -37,12 +37,14 @@ public static class NodeCatalog
         new(
             "cockpit.schedule",
             "Schedule",
-            "Every day at a time you pick, or on an interval.",
+            "Every day at a time you pick, on a weekday, once, or on an interval. \"mon 09:00\", \"mon,fri 09:00\", "
+                + "\"once 2026-10-01 09:00\" or \"every 15m\". Time zone is an IANA id (\"Europe/Amsterdam\") — leave "
+                + "it blank to use this cockpit's own.",
             "",
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
-            ["When"],
+            ["When", "Time zone"],
             new Dictionary<string, string> { ["at"] = "2026-07-13T09:00:00+02:00" })
         {
             IconKind = MaterialIconKind.ClockOutline,

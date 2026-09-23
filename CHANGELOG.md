@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Workflows schedule trigger now understands a weekday ("mon 09:00", "mon,fri 09:00"), a single date
+  ("once 2026-10-01 09:00" — the flow switches itself off once it has run), and a time zone (an IANA id such as
+  "Europe/Amsterdam"; left blank it keeps using this cockpit's own, so existing flows are unaffected). A flow
+  the cockpit was not running to fire — a restart, a sleeping laptop — now runs once, late, within a settings
+  window (default 60 minutes) and says so in its run; further outside that window it is logged as missed rather
+  than run, and two restarts in a row never produce two runs for the same slot. A slot found while the previous
+  run of that flow is still going is logged as skipped instead of silently dropped. The schedule's clock no
+  longer depends on the desktop UI, so it keeps working headless.
 - added: a network node can now be reached with a connect key instead of a pairing, so a node nobody sits at
   (a headless cockpit) can be connected to without anyone approving a request there. The first key comes from a
   secret at startup (`COCKPIT_CONNECT_KEY_FILE`, or `COCKPIT_CONNECT_KEY` as a fallback), must be `ck_` followed
