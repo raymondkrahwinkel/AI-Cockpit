@@ -15,7 +15,8 @@ namespace Cockpit.Plugin.Docker.Mcp;
 // Policy: reads (`daemon_info`, `list_containers`, `compose_config`) need only the one-time
 // daemon-connection consent. Changes (start/stop/restart/remove, compose up/down/build) are always Dangerous and
 // never remembered. `exec` and `run` execute arbitrary code, so they sit behind the exec capability
-// (off by default) and show the literal command in the consent.
+// (off by default) and show the literal command in the consent. The MCP tool name (matching `Name =` below) is
+// passed to the gate so a daemon consent mode (AC-1348) can pre-approve the call per `DockerToolAccess`.
 internal sealed class DockerMcpTools(
     DockerSettings settings,
     DockerAccessGate gate,
@@ -32,7 +33,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync("read the Docker daemon version", session);
+        var decision = await gate.AuthorizeConnectionAsync("daemon_info", "read the Docker daemon version", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -49,7 +50,7 @@ internal sealed class DockerMcpTools(
                 os = info.Os,
                 arch = info.Arch,
                 execEnabled = settings.AllowExec,
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -68,7 +69,7 @@ internal sealed class DockerMcpTools(
         [Description("Include stopped containers too. Default true.")] bool all = true,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"list containers (all={all})", session);
+        var decision = await gate.AuthorizeConnectionAsync("list_containers", $"list containers (all={all})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -96,7 +97,7 @@ internal sealed class DockerMcpTools(
                         ip = port.Ip,
                     }),
                 }),
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -116,7 +117,7 @@ internal sealed class DockerMcpTools(
         [Description("How many lines from the end to return. Default 200; 0 means all.")] int tail = 200,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"read logs of container \"{container}\" (tail={tail})", session);
+        var decision = await gate.AuthorizeConnectionAsync("logs", $"read logs of container \"{container}\" (tail={tail})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -125,7 +126,7 @@ internal sealed class DockerMcpTools(
         try
         {
             var logs = await engine.GetContainerLogsAsync(container, tail, cancellationToken);
-            return McpText.Ok(new { ok = true, container, stdout = logs.Stdout, stderr = logs.Stderr });
+            return McpText.Ok(new { ok = true, container, stdout = logs.Stdout, stderr = logs.Stderr }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -143,7 +144,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync("list local images", session);
+        var decision = await gate.AuthorizeConnectionAsync("list_images", "list local images", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -157,7 +158,7 @@ internal sealed class DockerMcpTools(
                 ok = true,
                 count = images.Count,
                 images = images.Select(image => new { id = image.Id, tags = image.Tags, sizeBytes = image.SizeBytes }),
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -176,7 +177,7 @@ internal sealed class DockerMcpTools(
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"inspect container \"{container}\"", session);
+        var decision = await gate.AuthorizeConnectionAsync("inspect", $"inspect container \"{container}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -197,7 +198,7 @@ internal sealed class DockerMcpTools(
                 env = c.Env,
                 mounts = c.Mounts.Select(mount => new { type = mount.Type, source = mount.Source, destination = mount.Destination, readWrite = mount.ReadWrite }),
                 networks = c.Networks.Select(network => new { name = network.Name, ip = network.IpAddress }),
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -216,7 +217,7 @@ internal sealed class DockerMcpTools(
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"read stats of container \"{container}\"", session);
+        var decision = await gate.AuthorizeConnectionAsync("stats", $"read stats of container \"{container}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -236,7 +237,7 @@ internal sealed class DockerMcpTools(
                 networkTxBytes = s.NetworkTxBytes,
                 blockReadBytes = s.BlockReadBytes,
                 blockWriteBytes = s.BlockWriteBytes,
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -255,7 +256,7 @@ internal sealed class DockerMcpTools(
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"list processes in container \"{container}\"", session);
+        var decision = await gate.AuthorizeConnectionAsync("top", $"list processes in container \"{container}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -264,7 +265,7 @@ internal sealed class DockerMcpTools(
         try
         {
             var top = await engine.TopContainerAsync(container, cancellationToken);
-            return McpText.Ok(new { ok = true, container, titles = top.Titles, processes = top.Processes });
+            return McpText.Ok(new { ok = true, container, titles = top.Titles, processes = top.Processes }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -282,7 +283,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync("list volumes", session);
+        var decision = await gate.AuthorizeConnectionAsync("list_volumes", "list volumes", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -296,7 +297,7 @@ internal sealed class DockerMcpTools(
                 ok = true,
                 count = volumes.Count,
                 volumes = volumes.Select(volume => new { name = volume.Name, driver = volume.Driver, mountpoint = volume.Mountpoint }),
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -314,7 +315,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync("list networks", session);
+        var decision = await gate.AuthorizeConnectionAsync("list_networks", "list networks", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -328,7 +329,7 @@ internal sealed class DockerMcpTools(
                 ok = true,
                 count = networks.Count,
                 networks = networks.Select(network => new { id = network.Id, name = network.Name, driver = network.Driver, scope = network.Scope }),
-            });
+            }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -348,7 +349,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The image reference to pull, e.g. \"nginx:latest\" or \"ghcr.io/owner/app:1.2\".")] string image,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"pull image \"{image}\"", session,
+        _MutateAsync("pull_image", $"pull image \"{image}\"", session,
             token => engine.PullImageAsync(image, token),
             new { ok = true, pulled = image }, cancellationToken);
 
@@ -360,7 +361,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"start container \"{container}\"", session,
+        _MutateAsync("start_container", $"start container \"{container}\"", session,
             token => engine.StartContainerAsync(container, token),
             new { ok = true, started = container }, cancellationToken);
 
@@ -370,7 +371,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"stop container \"{container}\"", session,
+        _MutateAsync("stop_container", $"stop container \"{container}\"", session,
             token => engine.StopContainerAsync(container, token),
             new { ok = true, stopped = container }, cancellationToken);
 
@@ -380,7 +381,7 @@ internal sealed class DockerMcpTools(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The container id or name.")] string container,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"restart container \"{container}\"", session,
+        _MutateAsync("restart_container", $"restart container \"{container}\"", session,
             token => engine.RestartContainerAsync(container, token),
             new { ok = true, restarted = container }, cancellationToken);
 
@@ -391,7 +392,7 @@ internal sealed class DockerMcpTools(
         [Description("The container id or name.")] string container,
         [Description("Force-remove a running container. Default false.")] bool force = false,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"remove container \"{container}\" (force={force})", session,
+        _MutateAsync("remove_container", $"remove container \"{container}\" (force={force})", session,
             token => engine.RemoveContainerAsync(container, force, token),
             new { ok = true, removed = container }, cancellationToken);
 
@@ -406,7 +407,7 @@ internal sealed class DockerMcpTools(
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Exec, settings.AllowExec,
+            "exec", DangerCapability.Exec, settings.AllowExec,
             $"exec in container \"{container}\": /bin/sh -c {command}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
@@ -416,7 +417,7 @@ internal sealed class DockerMcpTools(
         try
         {
             var result = await engine.ExecAsync(container, ["/bin/sh", "-c", command], cancellationToken);
-            return McpText.Ok(new { ok = true, exitCode = result.ExitCode, stdout = result.Stdout, stderr = result.Stderr });
+            return McpText.Ok(new { ok = true, exitCode = result.ExitCode, stdout = result.Stdout, stderr = result.Stderr }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -444,7 +445,7 @@ internal sealed class DockerMcpTools(
         var spec = new RunSpec(image, name, command, env, publish, volumes, privileged);
 
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Exec, settings.AllowExec, _RunCommandLine(spec), session);
+            "run_container", DangerCapability.Exec, settings.AllowExec, _RunCommandLine(spec), session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -454,7 +455,7 @@ internal sealed class DockerMcpTools(
         {
             var id = await engine.RunContainerAsync(spec, cancellationToken);
             running.Track(id, name ?? string.Empty, image, string.Join(", ", publish ?? []), session);
-            return McpText.Ok(new { ok = true, id, image });
+            return McpText.Ok(new { ok = true, id, image }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -481,7 +482,7 @@ internal sealed class DockerMcpTools(
         [Description("The existing image id or reference to tag, e.g. \"myapp:latest\".")] string source,
         [Description("The new reference to give it, e.g. \"registry.example.com/myapp:1.2\".")] string target,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"tag image \"{source}\" as \"{target}\"", session,
+        _MutateAsync("tag", $"tag image \"{source}\" as \"{target}\"", session,
             token => engine.TagImageAsync(source, target, token),
             new { ok = true, tagged = target }, cancellationToken);
 
@@ -492,13 +493,13 @@ internal sealed class DockerMcpTools(
         [Description("The image reference to push, e.g. \"registry.example.com/myapp:1.2\".")] string image,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeMutationAsync($"push image \"{image}\" to its registry (publishes it outside this machine)", session);
+        var decision = await gate.AuthorizeMutationAsync("push", $"push image \"{image}\" to its registry (publishes it outside this machine)", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunDockerCliAsync(["push", image], cancellationToken);
+        return await _RunDockerCliAsync(["push", image], cancellationToken, decision.BypassNote);
     }
 
     // ---- Volumes ----------------------------------------------------------------------------------------------
@@ -510,7 +511,7 @@ internal sealed class DockerMcpTools(
         [Description("The volume name.")] string volume,
         [Description("Force removal even if still referenced. Default false.")] bool force = false,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"remove volume \"{volume}\" (force={force}) — this deletes its data", session,
+        _MutateAsync("remove_volume", $"remove volume \"{volume}\" (force={force}) — this deletes its data", session,
             token => engine.RemoveVolumeAsync(volume, force, token),
             new { ok = true, removed = volume }, cancellationToken);
 
@@ -526,7 +527,7 @@ internal sealed class DockerMcpTools(
             return McpText.Error("target must be one of \"containers\", \"images\" or \"volumes\".");
         }
 
-        var decision = await gate.AuthorizeMutationAsync($"prune {pruneTarget.ToString().ToLowerInvariant()} — this permanently removes the unused ones", session);
+        var decision = await gate.AuthorizeMutationAsync("prune", $"prune {pruneTarget.ToString().ToLowerInvariant()} — this permanently removes the unused ones", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -535,7 +536,7 @@ internal sealed class DockerMcpTools(
         try
         {
             var result = await engine.PruneAsync(pruneTarget, cancellationToken);
-            return McpText.Ok(new { ok = true, spaceReclaimedBytes = result.SpaceReclaimedBytes, deleted = result.Deleted });
+            return McpText.Ok(new { ok = true, spaceReclaimedBytes = result.SpaceReclaimedBytes, deleted = result.Deleted }, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -568,13 +569,13 @@ internal sealed class DockerMcpTools(
         args.Add(context);
 
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Exec, settings.AllowExec, $"docker {string.Join(' ', args)}", session);
+            "build_image", DangerCapability.Exec, settings.AllowExec, $"docker {string.Join(' ', args)}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunDockerCliAsync(args, cancellationToken);
+        return await _RunDockerCliAsync(args, cancellationToken, decision.BypassNote);
     }
 
     [McpServerTool(Name = "cp", ReadOnly = false, Destructive = true)]
@@ -586,13 +587,13 @@ internal sealed class DockerMcpTools(
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Exec, settings.AllowExec, $"docker cp {source} {destination}", session);
+            "cp", DangerCapability.Exec, settings.AllowExec, $"docker cp {source} {destination}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunDockerCliAsync(["cp", source, destination], cancellationToken);
+        return await _RunDockerCliAsync(["cp", source, destination], cancellationToken, decision.BypassNote);
     }
 
     // ---- Compose (docker compose CLI) --------------------------------------------------------------------------
@@ -605,13 +606,13 @@ internal sealed class DockerMcpTools(
         [Description("Optional compose file name/path, relative to the directory. Default: docker-compose.yml auto-detected.")] string? file = null,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"docker compose config (in {directory})", session);
+        var decision = await gate.AuthorizeConnectionAsync("compose_config", $"docker compose config (in {directory})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunComposeAsync(directory, _ComposeArgs(file, "config"), cancellationToken);
+        return await _RunComposeAsync(directory, _ComposeArgs(file, "config"), cancellationToken, decision.BypassNote);
     }
 
     [McpServerTool(Name = "compose_logs", ReadOnly = true)]
@@ -624,7 +625,7 @@ internal sealed class DockerMcpTools(
         [Description("How many lines from the end to return. Default 200; 0 means all.")] int tail = 200,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"docker compose logs (in {directory})", session);
+        var decision = await gate.AuthorizeConnectionAsync("compose_logs", $"docker compose logs (in {directory})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -632,7 +633,7 @@ internal sealed class DockerMcpTools(
 
         var args = _ComposeArgs(file, "logs", "--no-color", "--no-log-prefix", "--tail", tail <= 0 ? "all" : tail.ToString());
         _AppendServices(args, services);
-        return await _RunComposeAsync(directory, args, cancellationToken);
+        return await _RunComposeAsync(directory, args, cancellationToken, decision.BypassNote);
     }
 
     [McpServerTool(Name = "compose_up", ReadOnly = false, Destructive = true)]
@@ -646,7 +647,7 @@ internal sealed class DockerMcpTools(
     {
         var args = _ComposeArgs(file, "up", "-d");
         _AppendServices(args, services);
-        return _ComposeMutateAsync(directory, args, session, cancellationToken);
+        return _ComposeMutateAsync("compose_up", directory, args, session, cancellationToken);
     }
 
     [McpServerTool(Name = "compose_down", ReadOnly = false, Destructive = true)]
@@ -656,7 +657,7 @@ internal sealed class DockerMcpTools(
         [Description("The project directory that holds the compose file.")] string directory,
         [Description("Optional compose file name/path, relative to the directory.")] string? file = null,
         CancellationToken cancellationToken = default) =>
-        _ComposeMutateAsync(directory, _ComposeArgs(file, "down"), session, cancellationToken);
+        _ComposeMutateAsync("compose_down", directory, _ComposeArgs(file, "down"), session, cancellationToken);
 
     [McpServerTool(Name = "compose_build", ReadOnly = false, Destructive = true)]
     [Description("Builds (or rebuilds) a Compose project's service images (docker compose build). A change, so it asks the operator afresh with the literal command shown, and is never remembered.")]
@@ -669,7 +670,7 @@ internal sealed class DockerMcpTools(
     {
         var args = _ComposeArgs(file, "build");
         _AppendServices(args, services);
-        return _ComposeMutateAsync(directory, args, session, cancellationToken);
+        return _ComposeMutateAsync("compose_build", directory, args, session, cancellationToken);
     }
 
     [McpServerTool(Name = "compose_ps", ReadOnly = true)]
@@ -680,13 +681,13 @@ internal sealed class DockerMcpTools(
         [Description("Optional compose file name/path, relative to the directory.")] string? file = null,
         CancellationToken cancellationToken = default)
     {
-        var decision = await gate.AuthorizeConnectionAsync($"docker compose ps (in {directory})", session);
+        var decision = await gate.AuthorizeConnectionAsync("compose_ps", $"docker compose ps (in {directory})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunComposeAsync(directory, _ComposeArgs(file, "ps"), cancellationToken);
+        return await _RunComposeAsync(directory, _ComposeArgs(file, "ps"), cancellationToken, decision.BypassNote);
     }
 
     [McpServerTool(Name = "compose_restart", ReadOnly = false, Destructive = true)]
@@ -700,12 +701,12 @@ internal sealed class DockerMcpTools(
     {
         var args = _ComposeArgs(file, "restart");
         _AppendServices(args, services);
-        return _ComposeMutateAsync(directory, args, session, cancellationToken);
+        return _ComposeMutateAsync("compose_restart", directory, args, session, cancellationToken);
     }
 
     // ---- Helpers -----------------------------------------------------------------------------------------------
 
-    private async Task<string> _RunDockerCliAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    private async Task<string> _RunDockerCliAsync(IReadOnlyList<string> args, CancellationToken cancellationToken, string? bypassNote = null)
     {
         try
         {
@@ -716,7 +717,7 @@ internal sealed class DockerMcpTools(
                 exitCode = result.ExitCode,
                 stdout = result.Stdout,
                 stderr = result.Stderr,
-            });
+            }, bypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -739,9 +740,9 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    private async Task<string> _MutateAsync(string operation, string session, Func<CancellationToken, Task> action, object success, CancellationToken cancellationToken)
+    private async Task<string> _MutateAsync(string toolName, string operation, string session, Func<CancellationToken, Task> action, object success, CancellationToken cancellationToken)
     {
-        var decision = await gate.AuthorizeMutationAsync(operation, session);
+        var decision = await gate.AuthorizeMutationAsync(toolName, operation, session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -750,7 +751,7 @@ internal sealed class DockerMcpTools(
         try
         {
             await action(cancellationToken);
-            return McpText.Ok(success);
+            return McpText.Ok(success, decision.BypassNote);
         }
         catch (OperationCanceledException)
         {
@@ -762,18 +763,18 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    private async Task<string> _ComposeMutateAsync(string directory, List<string> args, string session, CancellationToken cancellationToken)
+    private async Task<string> _ComposeMutateAsync(string toolName, string directory, List<string> args, string session, CancellationToken cancellationToken)
     {
-        var decision = await gate.AuthorizeMutationAsync($"docker compose {string.Join(' ', args)} (in {directory})", session);
+        var decision = await gate.AuthorizeMutationAsync(toolName, $"docker compose {string.Join(' ', args)} (in {directory})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
         }
 
-        return await _RunComposeAsync(directory, args, cancellationToken);
+        return await _RunComposeAsync(directory, args, cancellationToken, decision.BypassNote);
     }
 
-    private async Task<string> _RunComposeAsync(string directory, IReadOnlyList<string> args, CancellationToken cancellationToken)
+    private async Task<string> _RunComposeAsync(string directory, IReadOnlyList<string> args, CancellationToken cancellationToken, string? bypassNote = null)
     {
         try
         {
@@ -784,7 +785,7 @@ internal sealed class DockerMcpTools(
                 exitCode = result.ExitCode,
                 stdout = result.Stdout,
                 stderr = result.Stderr,
-            });
+            }, bypassNote);
         }
         catch (OperationCanceledException)
         {

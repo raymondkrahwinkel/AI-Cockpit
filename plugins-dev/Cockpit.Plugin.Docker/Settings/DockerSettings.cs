@@ -27,4 +27,20 @@ internal sealed class DockerSettings(IPluginStorage storage)
         get => storage.Get<string>("daemonEndpoint") ?? string.Empty;
         set => storage.Set("daemonEndpoint", value);
     }
+
+    // AC-1348: stored together with the endpoint it was chosen for. A DaemonEndpoint that has since moved on
+    // (compared normalized — trimmed) reads back as AlwaysAsk rather than the stored mode.
+    public DockerConsentMode ConsentMode
+    {
+        get => storage.Get<string>("consentModeEndpoint") == _NormalizedEndpoint
+            ? storage.Get<DockerConsentMode?>("consentMode") ?? DockerConsentMode.AlwaysAsk
+            : DockerConsentMode.AlwaysAsk;
+        set
+        {
+            storage.Set("consentMode", value);
+            storage.Set("consentModeEndpoint", _NormalizedEndpoint);
+        }
+    }
+
+    private string _NormalizedEndpoint => DaemonEndpoint.Trim();
 }

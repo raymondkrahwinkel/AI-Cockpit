@@ -12,6 +12,8 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _mcpEnabled;
     private readonly CheckBox _allowExec;
     private readonly TextBox _endpoint;
+    private readonly ComboBox _consentMode;
+    private readonly string _originalEndpoint;
 
     public DockerSettingsControl(ICockpitHost host, DockerSettings settings)
     {
@@ -29,6 +31,7 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             IsChecked = settings.AllowExec,
         };
 
+        _originalEndpoint = settings.DaemonEndpoint;
         _endpoint = new TextBox
         {
             PlaceholderText = "Blank = local default socket",
@@ -44,6 +47,23 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             Children = { new TextBlock { Text = "Docker daemon endpoint" }, host.CreateHelpHint("docker", "endpoint") },
         };
 
+        // AC-1348: index matches DockerConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree).
+        _consentMode = new ComboBox
+        {
+            ItemsSource = new[] { "Always ask", "Read-free (reads skip the card; changes still ask)", "All-free (nothing asks on this daemon)" },
+            SelectedIndex = (int)settings.ConsentMode,
+        };
+
+        // Mirrors DockerSettings.ConsentMode's own endpoint tie live: editing the endpoint in this same dialog,
+        // before Save, must not let a mode chosen for the old endpoint ride along to a new one.
+        _endpoint.TextChanged += (_, _) =>
+        {
+            if ((_endpoint.Text ?? string.Empty).Trim() != _originalEndpoint)
+            {
+                _consentMode.SelectedIndex = (int)DockerConsentMode.AlwaysAsk;
+            }
+        };
+
         Content = new StackPanel
         {
             Spacing = 8,
@@ -56,6 +76,14 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
                 new TextBlock
                 {
                     Text = "e.g. npipe://./pipe/docker_engine (Windows) or unix:///var/run/docker.sock. Leave blank to use the local default.",
+                    Opacity = 0.7,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                },
+                new TextBlock { Text = "Consent mode for this daemon", Margin = new(0, 8, 0, 0) },
+                _consentMode,
+                new TextBlock
+                {
+                    Text = "Tied to the endpoint above — changing it resets this daemon to Always ask.",
                     Opacity = 0.7,
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 },
@@ -79,5 +107,8 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
         _settings.AllowExec = _allowExec.IsChecked ?? false;
         _settings.DaemonEndpoint = (_endpoint.Text ?? string.Empty).Trim();
+
+        // Must follow DaemonEndpoint: ConsentMode's setter stamps the endpoint it was chosen for (AC-1348).
+        _settings.ConsentMode = (DockerConsentMode)_consentMode.SelectedIndex;
     }
 }
