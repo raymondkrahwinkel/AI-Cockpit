@@ -565,6 +565,108 @@ public class SecretProtectionTests : IDisposable
         Assert.False(File.Exists(backup), "an encrypted config makes a plaintext backup pure exposure, so it is removed");
     }
 
+    [Theory]
+    [MemberData(nameof(UnlockFromFileScenarios))]
+    public async Task UnlockFromFile_OpensOnlyWithTheRightPassword_AndOtherwiseStaysLocked(
+        string scenario, bool securityEnabled, Action<string>? writeFile, bool setVariable,
+        UnlockFromFileResult expectedResult, bool expectedUnlocked)
+    {
+        await Store().SaveAsync([Server(Token)]);
+        if (securityEnabled)
+        {
+            await Service().EnableAsync(Password);
+        }
+
+        // A fresh key holder, as a fresh process would start: unlocking from the file must prove the
+        // password, not ride along on an already-unlocked key.
+        var service = new SecretProtectionService(_configPath, new SecretKeyHolder());
+
+        var passwordFilePath = Path.Combine(_directory, "unlock-password");
+        writeFile?.Invoke(passwordFilePath);
+        Environment.SetEnvironmentVariable(UnlockFromFile.Variable, setVariable ? passwordFilePath : null);
+
+        try
+        {
+            var outcome = await UnlockFromFile.RunAsync(service, new CapturingLogger<SecretProtectionTests>());
+
+            Assert.Equal(expectedResult, outcome.Result);
+            Assert.Equal(expectedUnlocked, (await service.GetStatusAsync()).Unlocked);
+            Assert.True(expectedResult != UnlockFromFileResult.Refused || outcome.Reason is not null, scenario);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(UnlockFromFile.Variable, null);
+        }
+    }
+
+    public static IEnumerable<object?[]> UnlockFromFileScenarios()
+    {
+        yield return
+        [
+            "the right password", true, (Action<string>)(path => File.WriteAllText(path, Password)), true,
+            UnlockFromFileResult.Unlocked, true,
+        ];
+        yield return
+        [
+            "the right password with a trailing \\n", true, (Action<string>)(path => File.WriteAllText(path, Password + "\n")), true,
+            UnlockFromFileResult.Unlocked, true,
+        ];
+        yield return
+        [
+            "the right password with a trailing \\r\\n", true, (Action<string>)(path => File.WriteAllText(path, Password + "\r\n")), true,
+            UnlockFromFileResult.Unlocked, true,
+        ];
+        yield return ["no variable set", true, null, false, UnlockFromFileResult.Refused, false];
+        yield return ["no file at the path", true, null, true, UnlockFromFileResult.Refused, false];
+        yield return
+        [
+            "the path is a directory", true, (Action<string>)(path => Directory.CreateDirectory(path)), true,
+            UnlockFromFileResult.Refused, false,
+        ];
+        yield return
+        [
+            "an empty file", true, (Action<string>)(path => File.WriteAllText(path, string.Empty)), true,
+            UnlockFromFileResult.Refused, false,
+        ];
+        yield return
+        [
+            "the wrong password", true, (Action<string>)(path => File.WriteAllText(path, "not the password")), true,
+            UnlockFromFileResult.Refused, false,
+        ];
+        yield return
+        [
+            "encryption is off", false, (Action<string>)(path => File.WriteAllText(path, Password)), true,
+            UnlockFromFileResult.NotNeeded, false,
+        ];
+    }
+
+    [Fact]
+    public async Task UnlockFromFile_LeavesThePasswordOutOfTheLog_AndTheVariableOutOfTheEnvironment()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
+
+        var passwordFilePath = Path.Combine(_directory, "unlock-password-ac4");
+        await File.WriteAllTextAsync(passwordFilePath, Password);
+        Environment.SetEnvironmentVariable(UnlockFromFile.Variable, passwordFilePath);
+
+        var logger = new CapturingLogger<SecretProtectionTests>();
+        try
+        {
+            var service = new SecretProtectionService(_configPath, new SecretKeyHolder());
+            var outcome = await UnlockFromFile.RunAsync(service, logger);
+
+            Assert.Equal(UnlockFromFileResult.Unlocked, outcome.Result);
+            Assert.DoesNotContain(logger.Messages, message => message.Contains(Password));
+            Assert.Contains(logger.Messages, message => message.Contains("Unlocked the credentials from the password file"));
+            Assert.Null(Environment.GetEnvironmentVariable(UnlockFromFile.Variable));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(UnlockFromFile.Variable, null);
+        }
+    }
+
     private async Task WriteRawSecretsAsync(params (string Key, string Value)[] fields)
     {
         var document = new JsonObject();
