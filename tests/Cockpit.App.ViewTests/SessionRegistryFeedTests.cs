@@ -72,6 +72,8 @@ public class SessionRegistryFeedTests
         {
             var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             var sdk = new SessionViewModel();
+            // The parameterless constructor seeds design-time rows; this test counts its own.
+            sdk.Transcript.Clear();
             sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "first"));
             sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "second"));
             sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "third"));
