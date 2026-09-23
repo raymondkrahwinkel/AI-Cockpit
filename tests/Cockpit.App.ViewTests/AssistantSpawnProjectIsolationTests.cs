@@ -217,8 +217,9 @@ public class AssistantSpawnProjectIsolationTests
 
         const string AssistantMadeWorktree = "/repo-wt";
         var worktrees = Substitute.For<IWorktreeManager>();
+        var sessions = new SessionRegistry();
         var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() =>
-            _Gateway(profile, project, worktrees, liveSessions: new LiveSessionRegistry([])));
+            _Gateway(profile, project, worktrees, liveSessions: new LiveSessionRegistry(sessions, []), sessionRegistry: sessions));
 
         // Path distinct from the repository itself — a real worktree never shares the source checkout's folder —
         // so EmbeddedSessionProject.Resolve can trace it back to the project through its RepositoryRoot, the same
@@ -410,7 +411,8 @@ public class AssistantSpawnProjectIsolationTests
 
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail, string WorkspaceId) _Gateway(
         SessionProfile profile, Project project, IWorktreeManager worktreeManager, ISessionDialogService? dialogService = null,
-        LiveSessionRegistry? liveSessions = null)
+        LiveSessionRegistry? liveSessions = null,
+        SessionRegistry? sessionRegistry = null)
     {
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
@@ -458,7 +460,8 @@ public class AssistantSpawnProjectIsolationTests
             worktreeManager: worktreeManager,
             projects: projects,
             projectQuickStart: quickStart,
-            liveSessions: liveSessions);
+            liveSessions: liveSessions,
+            sessionRegistry: sessionRegistry);
         cockpit.Workspaces.Settings = settings;
 
         var trail = new RecordingSpawnTrail();

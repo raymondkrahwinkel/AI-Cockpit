@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
@@ -7,7 +7,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Plugins;
+namespace Cockpit.Backend.Tests.Mcp;
 
 /// <summary>
 /// <see cref="McpServerCatalog.GetServersForProjectAsync"/> passing <c>projectId</c> to each plugin's own

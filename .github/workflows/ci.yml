@@ -26,6 +26,7 @@ jobs:
       run_core_tests: ${{ steps.filter.outputs.run_core_tests }}
       run_infrastructure_tests: ${{ steps.filter.outputs.run_infrastructure_tests }}
       run_view_tests: ${{ steps.filter.outputs.run_view_tests }}
+      run_backend_tests: ${{ steps.filter.outputs.run_backend_tests }}
       plugins: ${{ steps.filter.outputs.plugins }}
 
     steps:
@@ -89,6 +90,11 @@ jobs:
       - name: Infrastructure tests
         if: needs.changes.outputs.run_infrastructure_tests == 'true'
         run: dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
+      # AC-1373: the backend suite, Core and Infrastructure without the desktop. Its own step for the same reason.
+      - name: Backend tests
+        if: needs.changes.outputs.run_backend_tests == 'true'
+        run: dotnet test tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       # The view tests run in their own process: Avalonia's dispatcher is global and belongs to one thread, so a
       # headless platform in the same process as everything else kills the test host rather than failing a test.

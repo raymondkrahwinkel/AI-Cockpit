@@ -1,6 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 

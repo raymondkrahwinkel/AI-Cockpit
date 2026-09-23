@@ -1,6 +1,6 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
-using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Converters;
 

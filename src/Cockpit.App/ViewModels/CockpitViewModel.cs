@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Collections.Specialized;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
@@ -68,6 +69,7 @@ using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
@@ -107,6 +109,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAgentLineBudget? _agentLineBudget;
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
+    private readonly SessionRegistry? _sessionRegistry;
     private readonly ISessionDialogService? _dialogService;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
@@ -2915,8 +2918,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context — seeds three sample
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
-    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null)
+    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, SessionRegistry? sessionRegistry = null)
     {
+        // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
+        _sessionRegistry = sessionRegistry;
+        Sessions.CollectionChanged += _FeedSessionRegistry;
+
         // AC-951: without a registry the dock rail's tab strip renders empty in the previewer/screenshotter — the
         // same reason the shortcut rows above are seeded by hand here. A caller passes one when the scene needs a
         // panel that actually opens (AC-953's docked assistant).
@@ -3125,7 +3132,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NodeInboxRelay? nodeInboxRelay = null,
         // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
         // design-time/unit-test graph like the relay above.
-        BehaviourMemorySync? behaviourSync = null)
+        BehaviourMemorySync? behaviourSync = null,
+        SessionRegistry? sessionRegistry = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3222,6 +3230,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _diagrams = diagrams;
         _whiteboards = whiteboards;
         _liveSessions = liveSessions;
+        _sessionRegistry = sessionRegistry;
+        // AC-1373: the grid feeds the registry from the collection itself, so every way a pane enters or leaves it
+        // (AddSession, a restore, CloseSessionAsync, teardown) reaches the registry. Embedded panes are fed in Embed.
+        Sessions.CollectionChanged += _FeedSessionRegistry;
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
@@ -3250,7 +3262,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The panes are one source of "which sessions are live" (their pane ids, what worktrees are keyed on); the
         // shared registry adds the ones that run without a pane, today the delegated tasks (AC-106) (AC-654).
         IReadOnlySet<string> LivePaneIds() => _AllSessions().Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
-        liveSessions?.SetSource(LivePaneIds);
         Worktrees.LiveSessionIds = liveSessions is { } registry ? () => registry.LiveSessionIds : LivePaneIds;
         Worktrees.SessionNames = _SessionNames;
         Worktrees.RestoreOfferPaneIds = _RestoreOfferPaneIds;
@@ -7503,6 +7514,41 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // caller enumerating "every agent" — the workspace-presence roster, say — must not miss it the way iterating
     public IEnumerable<SessionPanelViewModel> AllSessions() => _AllSessions();
 
+    // Keeps the registry's grid panes equal to `Sessions`. A reset (teardown's Clear) carries no old items, so it
+    // drops every grid pane the collection no longer holds.
+    private void _FeedSessionRegistry(object? sender, NotifyCollectionChangedEventArgs change)
+    {
+        // A move (Move up/down in the sidebar) reorders the grid; the same panes stay live.
+        if (_sessionRegistry is not { } registry || change.Action == NotifyCollectionChangedAction.Move)
+        {
+            return;
+        }
+
+        if (change.Action == NotifyCollectionChangedAction.Reset)
+        {
+            var remaining = Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
+            foreach (var gone in registry.All.Where(handle => !handle.IsEmbedded && !remaining.Contains(handle.PaneId)))
+            {
+                registry.Unregister(gone.PaneId);
+            }
+
+            return;
+        }
+
+        foreach (var removed in change.OldItems?.OfType<SessionPanelViewModel>() ?? [])
+        {
+            registry.Unregister(removed.PaneId);
+        }
+
+        foreach (var added in change.NewItems?.OfType<SessionPanelViewModel>() ?? [])
+        {
+            registry.Register(new SessionPanelHandle(added, isEmbedded: false, _FirstSessionsWorkspaceId));
+        }
+    }
+
+    // Read by a registry handle off the UI thread; `Workspaces.Settings` is an immutable record swapped whole.
+    private string? _FirstSessionsWorkspaceId() => SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+
     // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
     // the pane-id lookup searches, so an embedded pane is never half-reached. The assistant is *not* in here; consent
     // routing therefore reads <see cref="_ConsentPanes"/> instead, which adds it.
@@ -8642,6 +8688,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         owned.Add(session);
+        _sessionRegistry?.Register(new SessionPanelHandle(session, isEmbedded: true, _FirstSessionsWorkspaceId));
         _agentCoordinator?.Enroll(session.PaneId);
 
         // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason
@@ -9097,6 +9144,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
+        _sessionRegistry?.Unregister(session.PaneId);
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnEmbeddedSessionCloseRequested;
         _lastStatus.Remove(session);
@@ -9258,6 +9306,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (_worktreeManager is not null)
         {
             await Task.WhenAll(panes.Concat(embedded).Select(session => _worktreeManager.CleanupDockerNetworksAsync(session.PaneId)));
+        }
+
+        foreach (var session in embedded)
+        {
+            _sessionRegistry?.Unregister(session.PaneId);
         }
 
         _embeddedSessions.Clear();

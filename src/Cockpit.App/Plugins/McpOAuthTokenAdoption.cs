@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.App.Plugins;
 

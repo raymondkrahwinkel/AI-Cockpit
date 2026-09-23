@@ -2,18 +2,15 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Sessions;
 
 // The cockpit's answer to "which sessions are alive?" (AC-85), so neither the managed-worktrees panel nor
-// `worktree_remove` can pull a running session's checkout out from under it. Fed by the cockpit's panes
-// and every headless `ILiveSessionSource` (e.g. the delegation engine, AC-106), as one shared truth.
-public sealed class LiveSessionRegistry : ILiveSessionRegistry, ISingletonService
+// `worktree_remove` can pull a running session's checkout out from under it. Fed by the session registry's panes
+// (AC-1373) and every headless `ILiveSessionSource` (e.g. the delegation engine, AC-106), as one shared truth.
+public sealed class LiveSessionRegistry(ISessionRegistry panes, IEnumerable<ILiveSessionSource> sources)
+    : ILiveSessionRegistry, ISingletonService
 {
-    private readonly IReadOnlyList<ILiveSessionSource> _sources;
-
-    private Func<IReadOnlySet<string>>? _panes;
-
-    public LiveSessionRegistry(IEnumerable<ILiveSessionSource> sources) => _sources = [.. sources];
+    private readonly IReadOnlyList<ILiveSessionSource> _sources = [.. sources];
 
     public IReadOnlySet<string> LiveSessionIds
     {
@@ -28,10 +25,7 @@ public sealed class LiveSessionRegistry : ILiveSessionRegistry, ISingletonServic
                 // as an orphan or removed by another session as "not live".
                 AssistantIdentity.PaneId,
             };
-            if (_panes is { } panes)
-            {
-                live.UnionWith(panes());
-            }
+            live.UnionWith(panes.All.Select(pane => pane.PaneId));
 
             foreach (var source in _sources)
             {
@@ -41,7 +35,4 @@ public sealed class LiveSessionRegistry : ILiveSessionRegistry, ISingletonServic
             return live;
         }
     }
-
-    // Points the registry at the cockpit's live pane ids; called once as the cockpit view model is built.
-    public void SetSource(Func<IReadOnlySet<string>> source) => _panes = source;
 }

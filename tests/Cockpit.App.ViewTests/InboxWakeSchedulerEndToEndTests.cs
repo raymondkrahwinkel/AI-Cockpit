@@ -4,6 +4,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 

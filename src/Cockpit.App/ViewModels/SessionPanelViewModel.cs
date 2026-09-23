@@ -13,6 +13,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 

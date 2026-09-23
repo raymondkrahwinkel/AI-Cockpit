@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 

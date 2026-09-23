@@ -27,6 +27,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
