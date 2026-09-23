@@ -1293,7 +1293,9 @@ internal static class Screenshotter
         security.RefreshAsync().GetAwaiter().GetResult();
         security.NodeEndpointEnabled = true;
 
-        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1000 };
+        // AC-1352: taller than before (1000) — the connect block sits between the pairing panel and the
+        // paired-node cards, and a render that crops it proves nothing about the part this change touched.
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
         dialog.SelectCategory("nodes");
         return dialog;
     }

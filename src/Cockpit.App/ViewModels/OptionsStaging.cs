@@ -94,6 +94,12 @@ internal static class OptionsStaging
         "BackupIncludesCredentials",
         "BackupIncludesProfiles",
         "Security.PairWithNodeAddress",
+        // AC-1352: the same shape as PairWithNodeAddress above — inputs to a one-shot connect action, not a
+        // setting Apply persists or Cancel should put back.
+        "Security.ConnectNodeName",
+        "Security.ConnectAddress",
+        "Security.ConnectKey",
+        "Security.ConnectFingerprint",
         // AC-1292: written straight through to the pairing, like the scope ticks beside them — the controller's
         // reach must narrow on the spot, not at the next Apply, and Cancel does not put it back.
         "Security.AllowAllProfiles",

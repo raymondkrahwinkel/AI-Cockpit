@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Net.Sockets;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -20,9 +19,9 @@ internal sealed class NodeSessionsClient(
     INodeDiscoveryClient discovery,
     ILogger<NodeSessionsClient> logger) : INodeSessionsClient, ISingletonService
 {
-    // A node on a local network answers in milliseconds or it is not there. Long enough to survive a busy machine,
-    // short enough that a button does not appear to hang.
-    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
+    // Shared with NodeConnectionFailure.Describe, so the "did not answer within Xs" wording it produces always
+    // matches the timeout this client actually used.
+    private static readonly TimeSpan Budget = NodeConnectionFailure.DefaultBudget;
 
     // AC-1284: the listening window for the one re-resolve below. Shorter than the Security tab's own discover,
     // because this one runs behind a 20s poll and costs its whole length every time the node is simply off.
@@ -111,6 +110,31 @@ internal sealed class NodeSessionsClient(
             logger.LogInformation(exception, "Could not read the sessions on node {Node}.", nodeName);
             return new NodeSessionsSnapshot(nodeName, [], [], [], Classify(nodeName, exception));
         }
+    }
+
+    // AC-1352: the connect dialog's own call, on a row not in the registry yet — straight through `_OpenAsync`,
+    // no `_ConnectAsync` lookup and no moved-node re-resolve. Unlike every read above, a failure is thrown rather
+    // than caught into a snapshot: the caller decides what a refusal means, not just displays it.
+    public async Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default)
+    {
+        await using var client = await _OpenAsync(row, cancellationToken).ConfigureAwait(false);
+        var sessions = await _CallAsync(client, "list_node_sessions", null, cancellationToken).ConfigureAwait(false);
+
+        if (_ErrorIn(sessions) is { } refusal)
+        {
+            throw new InvalidOperationException(refusal);
+        }
+
+        return new NodeSessionsSnapshot(
+            row.Name,
+            [.. _Array(sessions, "sessions").Select(entry => new NodeSessionRow(
+                _Text(entry, "paneId"),
+                _Text(entry, "name"),
+                _Text(entry, "profile"),
+                _Text(entry, "statusline")))],
+            [],
+            [],
+            DiscoveryId: _Text(sessions, "discoveryId"));
     }
 
     public async Task<NodeStartResult> StartAsync(
@@ -508,43 +532,9 @@ internal sealed class NodeSessionsClient(
             ? value.GetString() ?? ""
             : "";
 
-    // AC-796 criterion 2: distinct wording for a refused connection, an untrusted certificate and a timeout,
-    // classified by unwrapping the real exception shape (SocketException, NodeCertificatePin.Require's wrapper,
-    // OperationCanceledException) rather than parsing exception.Message, which isn't a stable contract.
-    internal static string Classify(string nodeName, Exception exception)
-    {
-        if (_Find<NodeCertificatePinMismatchException>(exception) is not null)
-        {
-            return $"{nodeName} answered with a certificate this cockpit did not pin. That is not the machine you "
-                + "paired with, or it was reinstalled — pair again from Options → Security if that is expected.";
-        }
-
-        if (_Find<SocketException>(exception) is { SocketErrorCode: SocketError.ConnectionRefused })
-        {
-            return $"{nodeName} refused the connection — nothing is listening there. It looks stopped, not merely out of reach.";
-        }
-
-        if (_Find<OperationCanceledException>(exception) is not null)
-        {
-            return $"{nodeName} did not answer within {Budget.TotalSeconds:0}s. The connection may be down, or the "
-                + "node may simply be asleep or busy — there is no way to tell which from here.";
-        }
-
-        // Real, but not one of the shapes above — the honest "could not reach" rather than picking the
-        // closest-sounding category.
-        return $"Could not reach {nodeName}: {exception.Message}";
-    }
-
-    private static T? _Find<T>(Exception exception) where T : Exception
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is T match)
-            {
-                return match;
-            }
-        }
-
-        return null;
-    }
+    // AC-796 criterion 2: distinct wording for a refused connection, an untrusted certificate and a timeout. The
+    // classification itself lives in NodeConnectionFailure (Core), so the connect dialog in App reads the exact
+    // same sentence for the exact same failure without a friend-assembly grant onto this internal type.
+    internal static string Classify(string nodeName, Exception exception) =>
+        NodeConnectionFailure.Describe(nodeName, exception, Budget);
 }

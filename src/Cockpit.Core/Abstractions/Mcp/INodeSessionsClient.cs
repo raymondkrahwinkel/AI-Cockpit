@@ -103,6 +103,15 @@ public interface INodeSessionsClient
     /// scope. Null when written, else the node's own refusal or the reason it was not reached.
     /// </summary>
     Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1352: opens a connection to <paramref name="row"/> exactly as an ordinary read would, but on a row that
+    /// is not in the MCP registry yet and without the moved-node re-resolve — the connect dialog's own proof that
+    /// an address, key and pin actually work together before anything is saved. Unlike every method above, a
+    /// failure here is thrown rather than folded into a snapshot's <c>Error</c>: the caller decides what a
+    /// rejection means, including telling a pin mismatch apart from a refused key.
+    /// </summary>
+    Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default);
 }
 
 // AC-1329: one memory read on a node. A non-null Error means nothing was read; Text is empty (never null) rather
