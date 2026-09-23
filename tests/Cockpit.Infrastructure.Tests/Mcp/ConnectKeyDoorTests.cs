@@ -31,53 +31,68 @@ public sealed class ConnectKeyDoorTests
 
     private const string UnknownKey = "ck_unknownKeyThatNoNodeEverIssued0123456789abc";
 
+    private const string ShortBootstrap = "ck_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    private const string MonotonousBootstrap = "ck_abababababababababababababababababababababab";
+
     private const string SessionProfile = "Laptop Sonnet";
 
     private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
 
     // Criterion 1: a bootstrap key from a file, or from the variable as fallback, opens the door with no pairing and
-    // nothing done on the node; with neither, the same call is the one refusal every failure gets.
+    // nothing done on the node; with neither, or a key too short or too monotonous to be random, the same call is the
+    // one refusal every failure gets. Either way the node lets go of both variables once it has read them.
     [Theory]
-    [InlineData(ConnectKeyVerifier.BootstrapFileVariable, HttpStatusCode.OK)]
-    [InlineData(ConnectKeyVerifier.BootstrapVariable, HttpStatusCode.OK)]
-    [InlineData("NO_BOOTSTRAP_KEY_SET", HttpStatusCode.Unauthorized)]
-    public async Task BootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesIt(string suppliedBy, HttpStatusCode expected)
+    [InlineData(new[] { ConnectKeyVerifier.BootstrapFileVariable }, Bootstrap, HttpStatusCode.OK)]
+    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, Bootstrap, HttpStatusCode.OK)]
+    [InlineData(new string[0], Bootstrap, HttpStatusCode.Unauthorized)]
+    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, ShortBootstrap, HttpStatusCode.Unauthorized)]
+    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, MonotonousBootstrap, HttpStatusCode.Unauthorized)]
+    public async Task BootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOne(string[] suppliedBy, string key, HttpStatusCode expected)
     {
         await using var door = new _Door();
         var keyFile = Path.Combine(door.Directory, "connect-key");
-        await File.WriteAllTextAsync(keyFile, Bootstrap + "\n");
-        var environment = new Dictionary<string, string>
+        await File.WriteAllTextAsync(keyFile, key + "\n");
+        var values = new Dictionary<string, string>
         {
             [ConnectKeyVerifier.BootstrapFileVariable] = keyFile,
-            [ConnectKeyVerifier.BootstrapVariable] = Bootstrap,
+            [ConnectKeyVerifier.BootstrapVariable] = key,
         };
-        await door.StartAsync(name => name == suppliedBy ? environment.GetValueOrDefault(name) : null);
+        var environment = suppliedBy.ToDictionary(name => name, name => values[name]);
+        await door.StartAsync(environment);
 
-        using var answer = await door.InitializeAsync(Bootstrap);
+        using var answer = await door.InitializeAsync(key);
 
         Assert.Equal(expected, answer.StatusCode);
+        Assert.DoesNotContain(ConnectKeyVerifier.BootstrapFileVariable, environment.Keys);
+        Assert.DoesNotContain(ConnectKeyVerifier.BootstrapVariable, environment.Keys);
     }
 
     // Criterion 2: every way a credential can fail answers byte for byte like a key nobody ever issued. The revoked
-    // bootstrap row runs after a restart with the same secret, so it only passes if the revocation was persisted.
+    // bootstrap row runs after a restart with the same secret, so it only passes if the revocation was persisted. The
+    // unsaved-revocation row is a key whose revoke failed to save: loud then, and still revoked after a restart.
     [Theory]
     [InlineData("unknown key")]
     [InlineData("wrong key with a known prefix")]
     [InlineData("expired key")]
     [InlineData("revoked key")]
     [InlineData("revoked bootstrap key after a restart")]
+    [InlineData("key whose revocation could not be saved, after a restart")]
     [InlineData("wrong pairing secret")]
     public async Task EveryFailedCredential_GetsTheSameAnswerAsAnUnknownKey(string credential)
     {
         await using var door = new _Door();
-        var beforeRestart = door.Verifier(_BootstrapFromVariable);
+        var beforeRestart = door.Verifier(_Environment());
         var live = await beforeRestart.IssueAsync("live", ConnectKeyCapability.Operate, 30, Operator);
         var expiring = await beforeRestart.IssueAsync("expiring", ConnectKeyCapability.Operate, 1, Operator);
         var revoked = await beforeRestart.IssueAsync("revoked", ConnectKeyCapability.Operate, 30, Operator);
         await beforeRestart.RevokeAsync(revoked.Key.Prefix, Operator);
         await beforeRestart.RevokeAsync("bootstra", Operator);
+        var unsaved = await beforeRestart.IssueAsync("unsaved", ConnectKeyCapability.Operate, 30, Operator);
+        var failedRevoke = await door.WithConfigUnwritableAsync(() => beforeRestart.RevokeAsync(unsaved.Key.Prefix, Operator));
+        await beforeRestart.IssueAsync("after", ConnectKeyCapability.Operate, 30, Operator);
         door.Clock.Advance(TimeSpan.FromDays(2));
-        await door.StartAsync(_BootstrapFromVariable);
+        await door.StartAsync(_Environment());
         var tokens = new Dictionary<string, string>
         {
             ["unknown key"] = UnknownKey,
@@ -85,12 +100,15 @@ public sealed class ConnectKeyDoorTests
             ["expired key"] = expiring.Secret,
             ["revoked key"] = revoked.Secret,
             ["revoked bootstrap key after a restart"] = Bootstrap,
+            ["key whose revocation could not be saved, after a restart"] = unsaved.Secret,
             ["wrong pairing secret"] = "not-the-pairing-secret",
         };
 
         var baseline = await door.AnswerAsync(UnknownKey);
         var answer = await door.AnswerAsync(tokens[credential]);
 
+        Assert.IsType<InvalidOperationException>(failedRevoke);
+        Assert.Contains("WARNING revoked for this run only", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.Unauthorized, baseline.Status);
         Assert.Equal(baseline, answer);
     }
@@ -111,7 +129,7 @@ public sealed class ConnectKeyDoorTests
             return heldProfiles.Task;
         });
         door.Read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", SessionProfile, "running", null, null));
-        await door.StartAsync(_BootstrapFromVariable);
+        await door.StartAsync(_Environment());
         await using var admin = await door.ClientAsync(Bootstrap);
         var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "laptop", ["capability"] = "operate", ["expiresInDays"] = 7 });
         var key = issued["key"]?.GetValue<string>() ?? "";
@@ -146,7 +164,7 @@ public sealed class ConnectKeyDoorTests
     public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
     {
         await using var door = new _Door();
-        var verifier = await door.StartAsync(_BootstrapFromVariable, new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
+        var verifier = await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
         var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
         var spare = await verifier.IssueAsync("spare", ConnectKeyCapability.Operate, 30, Operator);
         var tokens = new Dictionary<string, string>
@@ -174,7 +192,7 @@ public sealed class ConnectKeyDoorTests
     public async Task AnIssuedUsedAndRevokedKey_LeavesItsPrefixButNeverItselfInConfigLogOrAudit()
     {
         await using var door = new _Door();
-        await door.StartAsync(_BootstrapFromVariable);
+        await door.StartAsync(_Environment());
         await using var admin = await door.ClientAsync(Bootstrap);
         var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "laptop", ["capability"] = "operate" });
         var key = issued["key"]?.GetValue<string>() ?? "";
@@ -198,34 +216,36 @@ public sealed class ConnectKeyDoorTests
         Assert.Contains(prefix, audit, StringComparison.Ordinal);
     }
 
-    // Criterion 6: ten failures lock the address out, so the eleventh attempt is refused even with the right key and
-    // with the same answer; once the lockout has run out on the clock, the right key works again. The next ten
-    // failures lock it out twice as long: still refused after one lockout's time, let in after two.
+    // Criterion 6: ten failed attempts — empty requests, as from a NAT neighbour — lock the address out, so the right
+    // pairing secret is refused with the same answer; a valid connect key is not, since only failures are locked out.
+    // Once the lockout has run out the pairing secret works again, and the next ten lock it out twice as long.
     [Fact]
-    public async Task TenFailures_LockTheAddressOutEvenForTheRightKey_UntilTheLockoutRunsOut()
+    public async Task TenFailures_LockOutThePairingSecretButNotAValidKey_UntilTheLockoutRunsOut()
     {
         await using var door = new _Door();
-        await door.StartAsync(_BootstrapFromVariable);
+        await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true });
         var failures = ConnectKeyPolicy.Default.FailuresBeforeLockout;
-        var refusal = await door.AnswerAsync(UnknownKey);
-        await Task.WhenAll(Enumerable.Range(0, failures - 1).Select(_ => door.AnswerAsync(UnknownKey)));
+        var refusal = await door.AnswerAsync(null);
+        await Task.WhenAll(Enumerable.Range(0, failures - 1).Select(_ => door.AnswerAsync(null)));
 
-        var lockedOut = await door.AnswerAsync(Bootstrap);
+        var lockedOut = await door.AnswerAsync(PairingSecret);
+        var keyDuringLockout = await door.AnswerAsync(Bootstrap);
         door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var afterLockout = await door.AnswerAsync(Bootstrap);
-        await Task.WhenAll(Enumerable.Range(0, failures).Select(_ => door.AnswerAsync(UnknownKey)));
+        var afterLockout = await door.AnswerAsync(PairingSecret);
+        await Task.WhenAll(Enumerable.Range(0, failures).Select(_ => door.AnswerAsync(null)));
         door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var stillLockedOut = await door.AnswerAsync(Bootstrap);
+        var stillLockedOut = await door.AnswerAsync(PairingSecret);
         door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var afterDoubleLockout = await door.AnswerAsync(Bootstrap);
+        var afterDoubleLockout = await door.AnswerAsync(PairingSecret);
 
         Assert.Equal(refusal, lockedOut);
+        Assert.Equal(HttpStatusCode.OK, keyDuringLockout.Status);
         Assert.Equal(HttpStatusCode.OK, afterLockout.Status);
         Assert.Equal(refusal, stillLockedOut);
         Assert.Equal(HttpStatusCode.OK, afterDoubleLockout.Status);
     }
 
-    private static string? _BootstrapFromVariable(string name) => name == ConnectKeyVerifier.BootstrapVariable ? Bootstrap : null;
+    private static Dictionary<string, string> _Environment() => new() { [ConnectKeyVerifier.BootstrapVariable] = Bootstrap };
 
     private static async Task<JsonNode> _CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
     {
@@ -264,7 +284,7 @@ public sealed class ConnectKeyDoorTests
 
         public string Directory { get; }
 
-        public string ConfigPath => Path.Combine(Directory, "cockpit.json");
+        public string ConfigPath => Path.Combine(Directory, "state", "cockpit.json");
 
         public string AuditPath => Path.Combine(Directory, "node-access-audit.jsonl");
 
@@ -278,11 +298,25 @@ public sealed class ConnectKeyDoorTests
 
         public string NodeUrl { get; private set; } = "";
 
-        public ConnectKeyVerifier Verifier(Func<string, string?> environment) =>
-            new(ConfigPath, environment, Clock, Audit, _loggerFactory.CreateLogger<ConnectKeyVerifier>());
+        // The environment as the node sees it at startup; what the verifier lets go of disappears from it.
+        public ConnectKeyVerifier Verifier(Dictionary<string, string> environment) =>
+            new(ConfigPath, name => environment.GetValueOrDefault(name), name => environment.Remove(name), Clock, Audit, _loggerFactory.CreateLogger<ConnectKeyVerifier>());
+
+        // Runs `act` while cockpit.json cannot be written — a file where its directory should be — and hands back
+        // what it threw. A file, not a missing directory: the writer would just create that.
+        public async Task<Exception?> WithConfigUnwritableAsync(Func<Task> act)
+        {
+            var state = Path.GetDirectoryName(ConfigPath) ?? "";
+            System.IO.Directory.Move(state, state + "-away");
+            await File.WriteAllTextAsync(state, "");
+            var thrown = await Record.ExceptionAsync(act);
+            File.Delete(state);
+            System.IO.Directory.Move(state + "-away", state);
+            return thrown;
+        }
 
         // The verifier the started host answers with, for a test that needs a key issued before a client connects.
-        public async Task<ConnectKeyVerifier> StartAsync(Func<string, string?> environment, NodePairing? pairing = null)
+        public async Task<ConnectKeyVerifier> StartAsync(Dictionary<string, string> environment, NodePairing? pairing = null)
         {
             await new NodeEndpointSettingsStore(ConfigPath).SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = PairingSecret, Port = 0 });
             var verifier = Verifier(environment);
@@ -338,10 +372,10 @@ public sealed class ConnectKeyDoorTests
             return await McpClient.CreateAsync(transport);
         }
 
-        public Task<HttpResponseMessage> InitializeAsync(string bearer) =>
+        public Task<HttpResponseMessage> InitializeAsync(string? bearer) =>
             _PostAsync(bearer, """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"door-test","version":"1"}}}""");
 
-        public async Task<_Answer> AnswerAsync(string bearer)
+        public async Task<_Answer> AnswerAsync(string? bearer)
         {
             using var response = await InitializeAsync(bearer);
             return new _Answer(
@@ -364,10 +398,15 @@ public sealed class ConnectKeyDoorTests
             System.IO.Directory.Delete(Directory, recursive: true);
         }
 
-        private Task<HttpResponseMessage> _PostAsync(string bearer, string body)
+        // A null bearer sends no Authorization header at all — the empty request a scanner or a NAT neighbour makes.
+        private Task<HttpResponseMessage> _PostAsync(string? bearer, string body)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, NodeUrl) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (bearer is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
+
             request.Headers.Accept.ParseAdd("application/json");
             request.Headers.Accept.ParseAdd("text/event-stream");
             return _http.SendAsync(request);

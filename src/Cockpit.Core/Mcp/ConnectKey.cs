@@ -35,5 +35,8 @@ public sealed record ConnectKeyPolicy
     public int DefaultExpiryDays { get; init; } = 30;
     public int MaxExpiryDays { get; init; } = 365;
 
+    // How many addresses (an IPv6 /64 counts as one) the lockout tracks at once; past it the least recent is evicted.
+    public int MaxTrackedAddresses { get; init; } = 4096;
+
     public static ConnectKeyPolicy Default { get; } = new();
 }

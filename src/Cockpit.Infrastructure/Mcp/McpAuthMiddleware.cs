@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Cockpit.Core.Mcp;
@@ -100,7 +98,6 @@ internal static class McpAuthMiddleware
     }
 
     // Constant-time for the same reason McpAuthKey.IsAuthorized is — this credential crosses a real network, not
-    // just a local socket, so a timing side-channel is a real leak here rather than a theoretical one.
-    private static bool _ConstantTimeEquals(string a, string b) =>
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+    // just a local socket. AC-1351: over both sides' hashes, so the length of the secret does not leak either.
+    private static bool _ConstantTimeEquals(string a, string b) => ConnectKeyVerifier.ConstantTimeEquals(a, b);
 }

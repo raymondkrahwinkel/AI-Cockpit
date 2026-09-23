@@ -1,4 +1,6 @@
 using System.Buffers.Text;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -23,11 +25,15 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     // matter for guessing the rest (48 of 256 bits).
     private const int PrefixLength = 8;
 
-    // A bootstrap key is chosen by whoever sets up the container, so it gets a floor; an issued one is always 43.
-    private const int MinimumBootstrapLength = 32;
+    // A bootstrap key is chosen by whoever sets up the container, so it gets the length of an issued one (256 bits
+    // in base64url) and a floor on distinct characters, which a random key clears by far and `aaaa…` does not.
+    private const int MinimumBootstrapLength = 43;
+
+    private const int MinimumBootstrapDistinctCharacters = 16;
 
     private readonly CockpitConfigFileAccess _configFile;
     private readonly Func<string, string?> _environment;
+    private readonly Action<string> _forgetEnvironment;
     private readonly TimeProvider _time;
     private readonly NodeAccessAuditLog _audit;
     private readonly ILogger _logger;
@@ -35,8 +41,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
-    // ponytail: in memory and per address, so a restart forgets every lockout and an IPv6 /64 gets a budget per
-    // address. Persist it, or bucket by /64, once the node faces more than LAN/Tailscale (B2).
+    // Per address, an IPv6 /64 as one. ponytail: in memory, so a restart forgets every lockout, and past
+    // `MaxTrackedAddresses` an attacker with that many /64s can push a locked one out. Persist it past LAN/Tailscale (B2).
     private readonly Dictionary<string, _AddressState> _addresses = new(StringComparer.Ordinal);
 
     // Per key, what its in-flight requests are aborted by. The MCP transport is stateless, so that is all it has open.
@@ -53,15 +59,16 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private bool _loaded;
 
     public ConnectKeyVerifier(NodeAccessAuditLog audit, ILogger<ConnectKeyVerifier> logger)
-        : this(CockpitConfigPath.Default, Environment.GetEnvironmentVariable, TimeProvider.System, audit, logger)
+        : this(CockpitConfigPath.Default, ConnectKeyBootstrapEnvironment.Get, ConnectKeyBootstrapEnvironment.Forget, TimeProvider.System, audit, logger)
     {
     }
 
     // Test seam: another config file, environment and clock.
-    internal ConnectKeyVerifier(string configFilePath, Func<string, string?> environment, TimeProvider time, NodeAccessAuditLog audit, ILogger logger)
+    internal ConnectKeyVerifier(string configFilePath, Func<string, string?> environment, Action<string> forgetEnvironment, TimeProvider time, NodeAccessAuditLog audit, ILogger logger)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);
         _environment = environment;
+        _forgetEnvironment = forgetEnvironment;
         _time = time;
         _audit = audit;
         _logger = logger;
@@ -80,6 +87,10 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             var section = (await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false))?.NodeConnectKeys;
             var persisted = (section?.Keys ?? []).Where(_IsWellFormed).ToList();
             var bootstrap = await _LoadBootstrapAsync(persisted, cancellationToken).ConfigureAwait(false);
+
+            // Read once and let go, whether it was usable or not: the secret has no business outliving this.
+            _forgetEnvironment(BootstrapFileVariable);
+            _forgetEnvironment(BootstrapVariable);
 
             lock (_gate)
             {
@@ -102,53 +113,62 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
         var now = _time.GetUtcNow();
+        var bucket = _BucketOf(remoteAddress);
         NodeCaller? caller = null;
-        string credential;
-        string? keyPrefix = null;
-        string refusal;
+        List<NodeAccessAuditEntry> audit = [];
         lock (_gate)
         {
-            // Checked before the credential, so a locked-out address cannot use the answer as an oracle.
-            if (_addresses.TryGetValue(remoteAddress, out var state) && state.LockedUntil > now)
+            var found = token.StartsWith(KeyPrefix, StringComparison.Ordinal) ? _Find(token) : null;
+            _addresses.TryGetValue(bucket, out var state);
+
+            // A usable key passes a lockout: its 256 bits are not what a lockout protects, and a neighbour behind the
+            // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
+            if (found is { } key && key.IsUsableAt(now))
             {
-                credential = "not checked";
-                refusal = "refused: locked out";
+                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix));
+                _lastUsed[key.Prefix] = now;
+            }
+            else if (state is not null && state.LockedUntil > now)
+            {
+                // Counted, not audited one by one: a flood during a lockout would otherwise grow the trail unbounded.
+                state.RefusedWhileLockedOut++;
             }
             else
             {
-                var found = token.StartsWith(KeyPrefix, StringComparison.Ordinal) ? _Find(token) : null;
-                var pairing = pairingSecret is { Length: > 0 } secret && _ConstantTimeEquals(token, secret);
-                if (found is { } key && key.IsUsableAt(now))
+                if (state is { RefusedWhileLockedOut: > 0 })
                 {
-                    caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix));
-                    _lastUsed[key.Prefix] = now;
+                    audit.Add(new NodeAccessAuditEntry(now, "not checked", null, remoteAddress, null, $"lockout ended: {state.RefusedWhileLockedOut} attempts refused during it"));
+                    state.RefusedWhileLockedOut = 0;
                 }
-                else if (pairing)
+
+                if (pairingSecret is { Length: > 0 } secret && ConstantTimeEquals(token, secret))
                 {
                     caller = NodeCaller.ForPairing(remoteAddress);
                 }
-
-                keyPrefix = found?.Prefix;
-                credential = found is not null ? "connect key" : token.Length == 0 ? "none" : "unknown";
-                refusal = found switch
+                else
                 {
-                    { RevokedAt: not null } => "refused: revoked key",
-                    { } => "refused: expired key",
-                    null => "refused: unknown credential",
-                };
+                    var credential = found is not null ? "connect key" : token.Length == 0 ? "none" : "unknown";
+                    var refusal = found switch
+                    {
+                        { RevokedAt: not null } => "refused: revoked key",
+                        { } => "refused: expired key",
+                        null => "refused: unknown credential",
+                    };
+                    audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, refusal));
 
-                // A success leaves the address's failures standing: a controller polling from behind the same NAT
-                // must not wipe an attacker's count every 20 s.
-                if (caller is null)
-                {
-                    _RecordFailure(remoteAddress, now);
+                    // A success leaves the failures standing: a controller polling from behind the same NAT must not
+                    // wipe an attacker's count every 20 s.
+                    if (_RecordFailure(bucket, now) is { } lockedUntil)
+                    {
+                        audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, $"lockout started until {lockedUntil:O}"));
+                    }
                 }
             }
         }
 
-        if (caller is null)
+        foreach (var entry in audit)
         {
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, credential, keyPrefix, remoteAddress, null, refusal), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
         }
 
         return caller;
@@ -201,8 +221,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         }
     }
 
-    // False when no live key carries this prefix. The key stops working in memory before the save, so a failed
-    // write still revokes it for this run — the exception tells the caller it will not survive a restart.
+    // False when no live key carries this prefix. The key stops working in memory before the save; a failed save
+    // is never silent — logged, audited and thrown — and the next save that does succeed carries the revocation.
     public async Task<bool> RevokeAsync(string prefix, NodeCaller revokedBy, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
@@ -234,7 +254,19 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             // Not disposed: a request that authenticated just before this still registers on its token.
             inFlight?.Cancel();
 
-            await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Revoked connect key {Prefix} for this run only: the revocation could not be saved.", prefix);
+                await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "WARNING revoked for this run only: not saved, the key returns after a restart unless revoked again", prefix), CancellationToken.None).ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    "The key is refused from now on, but the revocation could not be saved to cockpit.json, so it would work again after a restart. Revoke it again once the configuration can be written.",
+                    exception);
+            }
+
             _logger.LogInformation("Revoked connect key {Prefix}.", prefix);
             await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
             return true;
@@ -282,38 +314,63 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         return source.Token;
     }
 
-    private void _RecordFailure(string remoteAddress, DateTimeOffset now)
+    // When this failure starts a lockout, until when; otherwise null.
+    private DateTimeOffset? _RecordFailure(string bucket, DateTimeOffset now)
     {
-        _SweepQuietAddresses(now);
-
-        if (!_addresses.TryGetValue(remoteAddress, out var state))
+        if (!_addresses.TryGetValue(bucket, out var state))
         {
+            _MakeRoom(now);
             state = new _AddressState();
-            _addresses[remoteAddress] = state;
+            _addresses[bucket] = state;
         }
 
         state.Failures.RemoveAll(at => at <= now - _policy.FailureWindow);
         state.Failures.Add(now);
         if (state.Failures.Count < _policy.FailuresBeforeLockout)
         {
-            return;
+            return null;
         }
 
         state.Lockouts++;
         var ticks = Math.Min(_policy.FirstLockout.Ticks * Math.Pow(2, state.Lockouts - 1), _policy.MaxLockout.Ticks);
         state.LockedUntil = now + TimeSpan.FromTicks((long)ticks);
         state.Failures.Clear();
-        _logger.LogWarning("Locked {RemoteAddress} out of the node endpoint until {LockedUntil} after repeated failed attempts.", remoteAddress, state.LockedUntil);
+        _logger.LogWarning("Locked {RemoteAddress} out of the node endpoint until {LockedUntil} after repeated failed attempts.", bucket, state.LockedUntil);
+        return state.LockedUntil;
     }
 
-    // An address with no failure in the window and no lockout for a whole max lockout is forgotten, escalation
-    // included — not sooner, or the doubling would reset the moment each lockout ran out.
-    private void _SweepQuietAddresses(DateTimeOffset now)
+    // Only when a new address would pass the cap, so an ordinary failure costs no scan. Quiet addresses go first —
+    // no failure in the window, no lockout for a whole max lockout, so the doubling survives between lockouts — and
+    // then the least recently active, until there is room.
+    private void _MakeRoom(DateTimeOffset now)
     {
+        if (_addresses.Count < _policy.MaxTrackedAddresses)
+        {
+            return;
+        }
+
         foreach (var quiet in _addresses.Where(pair => pair.Value.LockedUntil <= now - _policy.MaxLockout && pair.Value.Failures.All(at => at <= now - _policy.FailureWindow)).Select(pair => pair.Key).ToList())
         {
             _addresses.Remove(quiet);
         }
+
+        while (_addresses.Count >= _policy.MaxTrackedAddresses && _addresses.Count > 0)
+        {
+            _addresses.Remove(_addresses.MinBy(pair => pair.Value.LastActive).Key);
+        }
+    }
+
+    // IPv6 hands one holder a whole /64, so the lockout counts the /64 and not each address in it.
+    private static string _BucketOf(string remoteAddress)
+    {
+        if (!IPAddress.TryParse(remoteAddress, out var address) || address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return remoteAddress;
+        }
+
+        var bytes = address.GetAddressBytes();
+        Array.Clear(bytes, 8, 8);
+        return $"{new IPAddress(bytes)}/64";
     }
 
     private async Task<ConnectKey?> _LoadBootstrapAsync(List<ConnectKey> persisted, CancellationToken cancellationToken)
@@ -344,9 +401,15 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             return null;
         }
 
-        if (!raw.StartsWith(KeyPrefix, StringComparison.Ordinal) || raw.Length < KeyPrefix.Length + MinimumBootstrapLength)
+        if (!raw.StartsWith(KeyPrefix, StringComparison.Ordinal)
+            || raw.Length < KeyPrefix.Length + MinimumBootstrapLength
+            || raw[KeyPrefix.Length..].Distinct().Count() < MinimumBootstrapDistinctCharacters)
         {
-            _logger.LogError("The bootstrap connect key was ignored: it must start with {KeyPrefix} and carry at least {MinimumLength} characters after it.", KeyPrefix, MinimumBootstrapLength);
+            _logger.LogError(
+                "The bootstrap connect key was ignored: it must start with {KeyPrefix} followed by at least {MinimumLength} random characters, at least {MinimumDistinct} of them different — 32 random bytes in base64url qualify.",
+                KeyPrefix,
+                MinimumBootstrapLength,
+                MinimumBootstrapDistinctCharacters);
             return null;
         }
 
@@ -393,8 +456,10 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
     private static string _Hash(string key) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    private static bool _ConstantTimeEquals(string a, string b) =>
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+    // Over the SHA-256 of each side, so the comparison runs on 32 bytes whatever either length is — comparing the raw
+    // strings returns early on a length mismatch and tells a caller how long the secret is.
+    internal static bool ConstantTimeEquals(string a, string b) =>
+        CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(a)), SHA256.HashData(Encoding.UTF8.GetBytes(b)));
 
     private sealed class _AddressState
     {
@@ -403,6 +468,10 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         public int Lockouts { get; set; }
 
         public DateTimeOffset LockedUntil { get; set; }
+
+        public int RefusedWhileLockedOut { get; set; }
+
+        public DateTimeOffset LastActive => Failures.Count > 0 && Failures[^1] > LockedUntil ? Failures[^1] : LockedUntil;
     }
 }
 
