@@ -28,14 +28,15 @@ internal static class McpAuthMiddleware
 
             if (context.Request.IsHttps)
             {
+                // IPv4 over a dual-stack socket arrives mapped into IPv6; unmapped, one machine is one lockout bucket.
+                var remoteIp = context.Connection.RemoteIpAddress;
+                var remoteAddress = (remoteIp is { IsIPv4MappedToIPv6: true } ? remoteIp.MapToIPv4() : remoteIp)?.ToString() ?? "unknown";
+
                 // The node's own persistent shared secret (AC-790) or a connect key (AC-1351), and nothing else:
                 // this socket is reachable off this machine, so a loopback-scoped credential must not work here even
                 // if it happens to match. Read now rather than closed over, so the answer follows the current pairing.
-                var remoteAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 var caller = connectKeys is null
-                    ? (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret)
-                        ? new NodeCaller("pairing", "", ConnectKeyCapability.Operate, remoteAddress, ByConnectKey: false, CancellationToken.None)
-                        : null)
+                    ? (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret) ? NodeCaller.ForPairing(remoteAddress) : null)
                     : await connectKeys.AuthenticateAsync(token, nodeSharedSecret?.Value, remoteAddress).ConfigureAwait(false);
 
                 // One refusal for every way in which this failed — see `ConnectKeyVerifier`.

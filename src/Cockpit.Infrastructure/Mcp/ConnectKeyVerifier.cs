@@ -35,10 +35,13 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
-    // ponytail: in memory, so a restart forgets every failure and lockout. Persist it once someone abuses that.
+    // ponytail: in memory and per address, so a restart forgets every lockout and an IPv6 /64 gets a budget per
+    // address. Persist it, or bucket by /64, once the node faces more than LAN/Tailscale (B2).
     private readonly Dictionary<string, _AddressState> _addresses = new(StringComparer.Ordinal);
 
     // Per key, what an in-flight request of that key is aborted by — so revoking also ends an open SSE stream.
+    // ponytail: expiry does not fire it, so an expired key's already-open stream lives until it reconnects (new
+    // requests are refused). Cancel on ExpiresAt too if a stream ever carries more than notifications.
     private readonly Dictionary<string, CancellationTokenSource> _revocations = new(StringComparer.Ordinal);
 
     // Not persisted: the controller polls every 20 s, and that would be a cockpit.json write every 20 s.
@@ -101,6 +104,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         var now = _time.GetUtcNow();
         NodeCaller? caller = null;
         string credential;
+        string? keyPrefix = null;
         string refusal;
         lock (_gate)
         {
@@ -116,15 +120,16 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                 var pairing = pairingSecret is { Length: > 0 } secret && _ConstantTimeEquals(token, secret);
                 if (found is { } key && key.IsUsableAt(now))
                 {
-                    caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, ByConnectKey: true, _RevocationOf(key.Prefix));
+                    caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix));
                     _lastUsed[key.Prefix] = now;
                 }
                 else if (pairing)
                 {
-                    caller = new NodeCaller("pairing", "", ConnectKeyCapability.Operate, remoteAddress, ByConnectKey: false, CancellationToken.None);
+                    caller = NodeCaller.ForPairing(remoteAddress);
                 }
 
-                credential = found?.Prefix ?? (token.Length == 0 ? "none" : "unknown");
+                keyPrefix = found?.Prefix;
+                credential = found is not null ? "connect key" : token.Length == 0 ? "none" : "unknown";
                 refusal = found switch
                 {
                     { RevokedAt: not null } => "refused: revoked key",
@@ -132,20 +137,18 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                     null => "refused: unknown credential",
                 };
 
+                // A success leaves the address's failures standing: a controller polling from behind the same NAT
+                // must not wipe an attacker's count every 20 s.
                 if (caller is null)
                 {
                     _RecordFailure(remoteAddress, now);
-                }
-                else
-                {
-                    _addresses.Remove(remoteAddress);
                 }
             }
         }
 
         if (caller is null)
         {
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, credential, remoteAddress, null, refusal), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(new NodeAccessAuditEntry(now, credential, keyPrefix, remoteAddress, null, refusal), cancellationToken).ConfigureAwait(false);
         }
 
         return caller;
@@ -189,7 +192,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             }
 
             _logger.LogInformation("Issued connect key {Prefix} ({Capability}), expiring {ExpiresAt}.", key.Prefix, key.Capability, key.ExpiresAt);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, issuedBy.Credential, issuedBy.RemoteAddress, "issue_connect_key", "issued", key.Prefix), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(new NodeAccessAuditEntry(now, issuedBy.Credential, issuedBy.KeyPrefix, issuedBy.RemoteAddress, "issue_connect_key", "issued", key.Prefix), cancellationToken).ConfigureAwait(false);
             return (key, secret);
         }
         finally
@@ -233,7 +236,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
             await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Revoked connect key {Prefix}.", prefix);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.RemoteAddress, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally
@@ -303,11 +306,11 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         _logger.LogWarning("Locked {RemoteAddress} out of the node endpoint until {LockedUntil} after repeated failed attempts.", remoteAddress, state.LockedUntil);
     }
 
-    // An address with no failure left in the window and no lockout running is forgotten, escalation included, so
-    // the map holds only addresses that are misbehaving now.
+    // An address with no failure in the window and no lockout for a whole max lockout is forgotten, escalation
+    // included — not sooner, or the doubling would reset the moment each lockout ran out.
     private void _SweepQuietAddresses(DateTimeOffset now)
     {
-        foreach (var quiet in _addresses.Where(pair => pair.Value.LockedUntil <= now && pair.Value.Failures.All(at => at <= now - _policy.FailureWindow)).Select(pair => pair.Key).ToList())
+        foreach (var quiet in _addresses.Where(pair => pair.Value.LockedUntil <= now - _policy.MaxLockout && pair.Value.Failures.All(at => at <= now - _policy.FailureWindow)).Select(pair => pair.Key).ToList())
         {
             _addresses.Remove(quiet);
         }
@@ -322,7 +325,9 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             {
                 raw = (await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false)).Trim();
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            // Anything, a malformed path included: a bootstrap key that cannot be read is no key, not a door that
+            // throws on every request.
+            catch (Exception exception)
             {
                 _logger.LogError(exception, "The bootstrap connect key file named by {Variable} could not be read.", BootstrapFileVariable);
                 return null;
@@ -350,6 +355,13 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         if (persisted.Any(key => string.Equals(key.Hash, hash, StringComparison.Ordinal)))
         {
             _logger.LogWarning("The bootstrap connect key {Prefix} was revoked earlier and stays revoked; supply a new one to connect with a bootstrap key.", prefix);
+            return null;
+        }
+
+        // A prefix is how a key is revoked, so two keys sharing one would make revoking either ambiguous.
+        if (persisted.Any(key => string.Equals(key.Prefix, prefix, StringComparison.Ordinal)))
+        {
+            _logger.LogError("The bootstrap connect key was ignored: its prefix {Prefix} already belongs to a stored key. Supply a different one.", prefix);
             return null;
         }
 
@@ -394,6 +406,14 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     }
 }
 
-// AC-1351: who came in over the node listener — a connect key (by its prefix) or the pairing secret. Stamped next
-// to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
-internal sealed record NodeCaller(string Credential, string Label, ConnectKeyCapability Capability, string RemoteAddress, bool ByConnectKey, CancellationToken Revoked);
+// AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
+// Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
+internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked)
+{
+    public bool ByConnectKey => KeyPrefix is not null;
+
+    public string Credential => ByConnectKey ? "connect key" : "pairing";
+
+    public static NodeCaller ForPairing(string remoteAddress) =>
+        new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None);
+}

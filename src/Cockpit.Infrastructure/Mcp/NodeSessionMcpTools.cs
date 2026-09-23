@@ -42,6 +42,8 @@ internal sealed class NodeSessionMcpTools(
 
     private const string NoConnectKeys = "Connect keys are not available on this node.";
 
+    internal const string AdminRefusal = "Managing connect keys needs a connect key with the admin capability.";
+
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
     [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so. pendingPermissions lists the Allow/Deny questions a session is stopped on; they are for the operator's own screen on the controller, never for you to answer.")]
     public async Task<string> ListNodeSessionsAsync()
@@ -685,7 +687,7 @@ internal sealed class NodeSessionMcpTools(
     private static string? _RefuseIfNotAdmin() =>
         McpRequestContext.CurrentNodeCaller is { Capability: ConnectKeyCapability.Admin }
             ? null
-            : _Serialize(new { ok = false, error = "Managing connect keys needs a connect key with the admin capability." });
+            : _Serialize(new { ok = false, error = AdminRefusal });
 
     // AC-1351: a connect key reaches everything on this node, the default a fresh pairing gets too; per-key scope is
     // S8's. A pairing caller stays inside what its operator ticked.

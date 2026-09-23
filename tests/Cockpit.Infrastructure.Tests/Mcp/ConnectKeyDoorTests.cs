@@ -32,7 +32,7 @@ public sealed class ConnectKeyDoorTests
 
     private const string SessionProfile = "Laptop Sonnet";
 
-    private static readonly NodeCaller Operator = new("test", "", ConnectKeyCapability.Admin, "127.0.0.1", ByConnectKey: true, CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
 
     // Criterion 1: a bootstrap key from a file, or from the variable as fallback, opens the door with no pairing and
     // nothing done on the node; with neither, the same call is the one refusal every failure gets.
@@ -118,28 +118,41 @@ public sealed class ConnectKeyDoorTests
         await Assert.ThrowsAnyAsync<Exception>(() => controller.CallToolAsync("list_node_sessions").AsTask());
     }
 
-    // Criterion 4: managing keys is admin's alone. An operate key and the pairing secret are refused; only admin
-    // gets a key issued.
+    // Criterion 4: managing keys is admin's alone. An operate key and the pairing secret get the admin refusal on
+    // each of the three key tools; an admin key gets no error on any of them.
     [Theory]
-    [InlineData("operate key", false)]
-    [InlineData("pairing secret", false)]
-    [InlineData("admin key", true)]
-    public async Task IssueConnectKey_IsForAnAdminKeyOnly(string credential, bool issued)
+    [InlineData("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("pairing secret", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("pairing secret", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("pairing secret", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("admin key", "issue_connect_key", null)]
+    [InlineData("admin key", "revoke_connect_key", null)]
+    [InlineData("admin key", "list_connect_keys", null)]
+    public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync(_BootstrapFromVariable, new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
         var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
+        var spare = await verifier.IssueAsync("spare", ConnectKeyCapability.Operate, 30, Operator);
         var tokens = new Dictionary<string, string>
         {
             ["operate key"] = operate.Secret,
             ["pairing secret"] = PairingSecret,
             ["admin key"] = Bootstrap,
         };
+        var arguments = new Dictionary<string, Dictionary<string, object?>>
+        {
+            ["issue_connect_key"] = new() { ["label"] = "another", ["capability"] = "admin" },
+            ["revoke_connect_key"] = new() { ["prefix"] = spare.Key.Prefix },
+            ["list_connect_keys"] = new(),
+        };
         await using var client = await door.ClientAsync(tokens[credential]);
 
-        var answer = await _CallAsync(client, "issue_connect_key", new() { ["label"] = "another", ["capability"] = "admin" });
+        var answer = await _CallAsync(client, tool, arguments[tool]);
 
-        Assert.Equal(issued, answer["ok"]?.GetValue<bool>());
+        Assert.Equal(refusal, answer["error"]?.GetValue<string>());
     }
 
     // Criterion 5: after issuing, using and revoking a key, the key itself is in none of cockpit.json, the log and
@@ -173,21 +186,30 @@ public sealed class ConnectKeyDoorTests
     }
 
     // Criterion 6: ten failures lock the address out, so the eleventh attempt is refused even with the right key and
-    // with the same answer; once the lockout has run out on the clock, the right key works again.
+    // with the same answer; once the lockout has run out on the clock, the right key works again. The next ten
+    // failures lock it out twice as long: still refused after one lockout's time, let in after two.
     [Fact]
     public async Task TenFailures_LockTheAddressOutEvenForTheRightKey_UntilTheLockoutRunsOut()
     {
         await using var door = new _Door();
         await door.StartAsync(_BootstrapFromVariable);
+        var failures = ConnectKeyPolicy.Default.FailuresBeforeLockout;
         var refusal = await door.AnswerAsync(UnknownKey);
-        await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout - 1).Select(_ => door.AnswerAsync(UnknownKey)));
+        await Task.WhenAll(Enumerable.Range(0, failures - 1).Select(_ => door.AnswerAsync(UnknownKey)));
 
         var lockedOut = await door.AnswerAsync(Bootstrap);
         door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
         var afterLockout = await door.AnswerAsync(Bootstrap);
+        await Task.WhenAll(Enumerable.Range(0, failures).Select(_ => door.AnswerAsync(UnknownKey)));
+        door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
+        var stillLockedOut = await door.AnswerAsync(Bootstrap);
+        door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
+        var afterDoubleLockout = await door.AnswerAsync(Bootstrap);
 
         Assert.Equal(refusal, lockedOut);
         Assert.Equal(HttpStatusCode.OK, afterLockout.Status);
+        Assert.Equal(refusal, stillLockedOut);
+        Assert.Equal(HttpStatusCode.OK, afterDoubleLockout.Status);
     }
 
     private static string? _BootstrapFromVariable(string name) => name == ConnectKeyVerifier.BootstrapVariable ? Bootstrap : null;

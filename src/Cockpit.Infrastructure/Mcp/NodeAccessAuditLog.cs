@@ -4,10 +4,9 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// AC-1351: one line per refused attempt, tool call, or key issued/revoked at the node door. `Credential` is a
-// key's prefix, "pairing", "unknown" or "none" — never part of a secret that matched no known key. `Subject` is the
-// prefix of the key an issue or revoke acted on.
-internal sealed record NodeAccessAuditEntry(DateTimeOffset At, string Credential, string RemoteAddress, string? Tool, string Outcome, string? Subject = null);
+// AC-1351: one line per refused attempt, tool call, or key issued/revoked at the node door. A prefix goes only in
+// `KeyPrefix` (the caller's key) and `SubjectPrefix` (the key issued or revoked), never part of an unmatched secret.
+internal sealed record NodeAccessAuditEntry(DateTimeOffset At, string Credential, string? KeyPrefix, string RemoteAddress, string? Tool, string Outcome, string? SubjectPrefix = null);
 
 internal sealed class NodeAccessAuditLog : JsonlAuditLog<NodeAccessAuditEntry>, ISingletonService
 {

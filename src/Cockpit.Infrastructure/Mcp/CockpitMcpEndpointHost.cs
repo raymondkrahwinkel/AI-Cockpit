@@ -335,6 +335,8 @@ internal sealed class CockpitMcpEndpointHost
         // every such call passes, and only once it is through it: a pairing with no scope controls nothing.
         if (allowed && nodeScopeGranted && _services.GetService<NodeControllerPresence>() is { } presence)
         {
+            // ponytail: every key caller and the pairing are one controller, so two connected at once share one
+            // inbox — who reads first gets the message. A lease per credential once a second controller exists (B3).
             presence.Seen(byConnectKey && McpRequestContext.CurrentNodeCaller is { } caller
                 ? caller.Label
                 : _services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");
@@ -376,7 +378,7 @@ internal sealed class CockpitMcpEndpointHost
         }
 
         var outcome = result.IsError == true ? "tool error" : "called";
-        await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.RemoteAddress, tool, outcome)).ConfigureAwait(false);
+        await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, tool, outcome)).ConfigureAwait(false);
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference
