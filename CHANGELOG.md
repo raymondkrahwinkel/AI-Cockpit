@@ -34,8 +34,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: a network node can now be reached with a connect key instead of a pairing, so a node nobody sits at
   (a headless cockpit) can be connected to without anyone approving a request there. The first key comes from a
-  secret at startup (`COCKPIT_CONNECT_KEY_FILE`, or `COCKPIT_CONNECT_KEY` as a fallback) and must start with
-  `ck_`; with an admin key a controller can issue further keys (operate or admin, always with an expiry), list
+  secret at startup (`COCKPIT_CONNECT_KEY_FILE`, or `COCKPIT_CONNECT_KEY` as a fallback), must be `ck_` followed
+  by at least 43 random characters, and is never passed on to a session; with an admin key a controller can issue further keys (operate or admin, always with an expiry), list
   them and revoke them. Keys are stored only as a hash and a short prefix, a revoked key is refused on its next
   call and any call it has in flight is cut off, and a revoked bootstrap key stays revoked across restarts. Every
   failed attempt gets the same answer, an address that keeps failing is locked out for a while, and attempts,
