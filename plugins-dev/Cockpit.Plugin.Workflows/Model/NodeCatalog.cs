@@ -212,12 +212,12 @@ public static class NodeCatalog
         new(
             "cockpit.approve",
             "Ask me first",
-            "Stops and waits for you. For the steps that are not free to undo.",
+            "Stops and waits for you — on the banner, or as buttons in a chat channel. No answer in time counts as no. For the steps that are not free to undo.",
             "",
             NodeCategory.Flow,
             WorkflowNodeKind.Action,
             [""],
-            ["Question"])
+            ["Question", "Wait (minutes)"])
         {
             IconKind = MaterialIconKind.HandBackLeftOutline,
         },
