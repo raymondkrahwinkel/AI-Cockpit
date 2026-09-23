@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Agents;
@@ -31,6 +32,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     private const string AllowedProfile = "Laptop Sonnet";
 
     private const string AllowedProject = "project-allowed";
+
+    private const string UnattendedProfile = "Unattended Opus";
 
     private readonly RecordingAgentGateway _gateway = new();
 
@@ -139,20 +142,25 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Null(spawn.WorkingDirectory);
     }
 
-    [Fact]
-    public async Task ListProfiles_ShowsOnlyTheTickedOnes_AndOnlyThreeFieldsOfEach()
+    // AC-1351 (gap E of AC-1283): skipsApprovals is the fourth field, true for a profile that starts past its own
+    // approval gate and false for an ordinary one — without it the two rows cannot be told apart.
+    [Theory]
+    [InlineData(AllowedProfile, false)]
+    [InlineData(UnattendedProfile, true)]
+    public async Task ListProfiles_ShowsOnlyTheTickedOnes_AndOnlyFourFieldsOfEach(string ticked, bool skipsApprovals)
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
+        _pairing.Profiles.Add(ticked);
 
         var answer = _Json(await _Tools().ListNodeProfilesAsync());
 
-        var profiles = answer["profiles"]!.AsArray();
+        var profiles = answer["profiles"]?.AsArray() ?? new JsonArray();
         var only = Assert.Single(profiles);
-        Assert.Equal(AllowedProfile, only!["label"]!.GetValue<string>());
+        Assert.Equal(ticked, only?["label"]?.GetValue<string>());
         // The provider crosses as its name, not as whatever number the enum happens to carry today.
-        Assert.Equal(nameof(SessionProvider.ClaudeCli), only["provider"]!.GetValue<string>());
-        Assert.Equal(["label", "provider", "purpose"], only.AsObject().Select(field => field.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(nameof(SessionProvider.ClaudeCli), only?["provider"]?.GetValue<string>());
+        Assert.Equal(skipsApprovals, only?["skipsApprovals"]?.GetValue<bool>());
+        Assert.Equal(["label", "provider", "purpose", "skipsApprovals"], only?.AsObject().Select(field => field.Key).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -384,6 +392,10 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             [
                 new SessionProfile(AllowedProfile, new ClaudeConfig("/fake/.claude"), "the laptop's own key"),
                 new SessionProfile("Something Expensive", new ClaudeConfig("/fake/.claude")),
+                new SessionProfile(UnattendedProfile, new ClaudeConfig("/fake/.claude"), Defaults: new ProfileDefaults("", "", "")
+                {
+                    OptionDefaults = new Dictionary<string, string> { [TtyLaunchOption.PermissionMode] = "bypassPermissions" },
+                }),
             ]);
 
         public Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default) =>
