@@ -12,19 +12,21 @@ public class DiscordChannelBridgeTests
         AssistantChannelAccess.ForSingleUser(userId).Access!;
 
     private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink) _Build(
-        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything,
+        Action<string>? logRefusal = null)
     {
-        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity);
+        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity, logRefusal);
         return (bridge, gateway, sink);
     }
 
     private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink, FakeDiscordFileFetcher Files) _BuildWithFiles(
-        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything,
+        Action<string>? logRefusal = null)
     {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeDiscordChannelSink();
         var files = new FakeDiscordFileFetcher();
-        var bridge = new DiscordChannelBridge(gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity);
+        var bridge = new DiscordChannelBridge(gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity, logRefusal: logRefusal);
         return (bridge, gateway, sink, files);
     }
 
@@ -129,11 +131,13 @@ public class DiscordChannelBridgeTests
     }
 
     // Not covered by the host's own SendAsync identity check (AC-1023 §3), since RespondToConsent takes no
-    // identity at all — this is the plugin's own gap to close, and this test is what proves it does.
+    // identity at all — this is the plugin's own gap to close, and this test is what proves it does. AC-1360: the
+    // prompt stays open, and the refused click is logged with who made it.
     [Fact]
     public async Task ButtonClick_FromAStranger_IsIgnored()
     {
-        var (bridge, gateway, sink) = _Build();
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
         var prompt = _ConsentPrompt("do the thing");
         gateway.RaisePromptOpened(prompt);
 
@@ -142,6 +146,7 @@ public class DiscordChannelBridgeTests
         Assert.Empty(gateway.Responses);
         Assert.Single(sink.Posted); // only the original prompt post — no edit followed.
         Assert.Empty(sink.Edited);
+        Assert.Contains(_StrangerUserId, Assert.Single(refusals), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -32,6 +32,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Discord plugin now talks to you in direct messages by default: leave the channel id blank and a DM
+  from the one allowed account reaches the assistant and is answered in that DM. A channel stays available as an
+  explicit choice (existing setups keep theirs), and a list of accounts or everyone still needs one. A message
+  from anyone else is ignored and logged before any of its attachments is downloaded, and a refused button click
+  is logged too. A new **Send me a Discord DM** flow step writes to that one account only — there is no recipient
+  to fill in — and splits a long message at line breaks instead of cutting it off (length configurable up to
+  Discord's 2000).
+- added: a workflow's **Ask me first** step now asks through the same consent prompt as everything else, so it
+  shows as a banner in the cockpit and as Approve/Deny buttons in a connected Discord or Slack channel. It waits
+  60 minutes by default (a **Wait (minutes)** setting on the step); no answer in that time counts as no and the
+  flow stops there, marked skipped. A chat channel relays such flow prompts now as well — never another
+  session's.
+
 - added: a Workflows schedule trigger now understands a weekday ("mon 09:00", "mon,fri 09:00"), a single date
   ("once 2026-10-01 09:00" — the flow switches itself off once it has run), and a time zone (an IANA id such as
   "Europe/Amsterdam"; left blank it keeps using this cockpit's own, so existing flows are unaffected). A flow

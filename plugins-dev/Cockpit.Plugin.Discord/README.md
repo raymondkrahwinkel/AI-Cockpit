@@ -4,14 +4,16 @@ Adds Discord as a second door onto the assistant's own conversation (AC-1024), t
 `AssistantChannelContribution` seam that also backs the Slack plugin — the host owns identity and consent
 filtering, this plugin supplies the Discord-specific transport: a **Discord.NET** gateway connection, and
 consent prompts relayed as Approve/Deny buttons (Discord's Components API) with a "type JA/NEE" text
-fallback.
+fallback. A workflow's **Ask me first** step is relayed the same way, and the plugin adds a **Send me a Discord
+DM** flow step that writes to the one allowed account, split at line breaks rather than cut off.
 
 ## What you need
 
 - A Discord account with a server you can install a bot into (or **Manage Server** permission on one).
 - Five things done in the [Discord Developer Portal](https://discord.com/developers/applications) before a
   token works below: an application, a bot, its **Message Content Intent** turned on, the bot invited into
-  your server, and the channel's id. See **Setup** below.
+  your server, and — only if you want a channel instead of direct messages — the channel's id. See **Setup**
+  below.
 
 ## Setup
 
@@ -29,8 +31,10 @@ from its settings — the **?** beside the token field.
    enable **Guild Install** → under **Default Install Settings**, add the **bot** scope plus **Send Messages**,
    **Read Message History**, and **Use Slash Commands** → copy the **Install Link**.
 4. **Invite the bot to your server.** Open that link, select **Add to server**, pick the server, confirm.
-5. **Find the channel id.** Turn on **Developer Mode** (**User Settings → Advanced**), then right-click the
-   channel → **Copy Channel ID**.
+5. **Direct messages, or a channel.** Leave the channel id blank and the bot talks to you in direct messages —
+   the default, and only for a single allowed account. For a channel instead, turn on **Developer Mode**
+   (**User Settings → Advanced**), then right-click the channel → **Copy Channel ID**. Messages anywhere else
+   are ignored.
 
 ## Settings
 
@@ -39,7 +43,7 @@ from its settings — the **?** beside the token field.
 | Who may talk to the assistant here | The AC-1023 three-level access model: one Discord account, a named list, or everyone in the channel — widening past one account requires acknowledging a warning. |
 | How much of the conversation to relay | Final answer only, everything including tool use, or short status lines instead of full tool traffic. |
 | Bot token | From step 1 above. Stored encrypted at rest, like every other plugin secret. |
-| Channel id | From step 5 above — the numeric id, not the channel name. |
+| Channel id | Blank for direct messages with the one allowed account (the default). Otherwise from step 5 above — the numeric id, not the channel name; a list of accounts or everyone needs one. |
 
 ## Your responsibility, not this plugin's
 

@@ -126,18 +126,28 @@ public class DiscordChannelBridgeImageTests
         Assert.Contains((1UL, "⚠️"), sink.Reactions);
     }
 
-    // A stranger stays answered with silence (AC-1023 §3), even when there is something to complain about.
-    [Fact]
-    public async Task AStrangerGetsNoReactionEvenWhenTheirFileWasRefused()
+    // A stranger stays answered with silence (AC-1023 §3), even when there is something to complain about. And
+    // AC-1360: nothing of theirs is downloaded — the allowlist is checked before any attachment is fetched.
+    [Theory]
+    [InlineData("report.pdf", "application/pdf")]
+    [InlineData("photo.png", "image/png")]
+    public async Task AStranger_GetsNoReaction_AndNothingOfTheirsIsDownloaded(string name, string mimeType)
     {
-        var (bridge, gateway, sink, _) = _Build();
-        gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
-        var pdf = new DiscordInboundFile("report.pdf", "application/pdf", 4, "https://cdn.discordapp.com/attachments/1/2/report.pdf");
+        var refusals = new List<string>();
+        var gateway = new FakeAssistantChannelGateway();
+        var sink = new FakeDiscordChannelSink();
+        var files = new FakeDiscordFileFetcher();
+        files.Files[_Url] = _Bytes;
+        var bridge = new DiscordChannelBridge(
+            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => AssistantChannelVerbosity.Everything, logRefusal: refusals.Add);
 
-        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", 1, [pdf]);
+        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", 1, [new DiscordInboundFile(name, mimeType, 4, _Url)]);
 
+        Assert.Empty(files.Fetched);
+        Assert.Empty(gateway.SentMessages);
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
+        Assert.Contains(_StrangerUserId, Assert.Single(refusals), StringComparison.Ordinal);
     }
 
     // AC-1074: a dropped attachment is a dropped piece of the message, so it says so through the host. It used
