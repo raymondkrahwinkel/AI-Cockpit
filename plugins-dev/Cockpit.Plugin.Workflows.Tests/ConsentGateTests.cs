@@ -94,6 +94,49 @@ public class ConsentGateTests
         Assert.Empty(asked);
         Assert.True(unattended.Ran);
     }
+
+    // AC-1360: "Ask me first" goes through the broker, so a chat channel can answer it too. A yes goes on, a no is
+    // Skipped, and a question nobody answers is a no once its wait runs out — never a silent yes.
+    [Theory]
+    [InlineData(ConsentOutcome.Approved, "", RunStatus.Succeeded, true, "You approved: Deploy?")]
+    [InlineData(ConsentOutcome.Denied, "", RunStatus.Skipped, false, "Not approved")]
+    [InlineData(null, "0.001", RunStatus.Skipped, false, "Nobody answered within 0.001 minutes")]
+    public async Task AskMeFirst_IsPutToTheBroker_AndNoAnswerInTimeIsANo(
+        ConsentOutcome? answer, string wait, RunStatus expectedStatus, bool continues, string expectedText)
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var asked = new List<ConsentRequest>();
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
+            .Returns(call => _Broker(answer, call.Arg<CancellationToken>()));
+
+        var trigger = new WorkflowNode { Id = "t", TypeId = "cockpit.manual", Name = "Start" };
+        var approve = new WorkflowNode
+        {
+            Id = "q",
+            TypeId = "cockpit.approve",
+            Name = "Ask me first",
+            Parameters = { ["Question"] = "Deploy?", [ApproveRunner.TimeoutParameter] = wait },
+        };
+        var after = new WorkflowNode { Id = "a", TypeId = "cockpit.notify", Name = "After" };
+        var flow = new Workflow { Id = "w", Name = "Flow", Nodes = { trigger, approve, after }, RunUnattended = true };
+        flow.Connect(trigger.Id, 0, approve.Id);
+        flow.Connect(approve.Id, 0, after.Id);
+
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), new ApproveRunner(host), new RecordingRunner("cockpit.notify")], host)
+            .RunAsync(flow, trigger.Id, RunOrigin.Trigger);
+
+        var step = run.Steps.Single(s => s.NodeId == "q");
+        Assert.Equal(expectedStatus, step.Status);
+        Assert.Contains(expectedText, step.Output + step.Note, StringComparison.Ordinal);
+        Assert.Equal(continues, run.Steps.Any(s => s.NodeId == "a"));
+        Assert.Equal(("Deploy?", ConsentRisk.Dangerous, (string?)null), (asked[0].Action, asked[0].Risk, asked[0].Source.PaneId));
+    }
+
+    // The broker's own contract (ConsentService): an answer when there is one, and Denied once the token is cancelled.
+    private static Task<ConsentDecision> _Broker(ConsentOutcome? answer, CancellationToken cancellationToken) =>
+        answer is { } given
+            ? Task.FromResult(new ConsentDecision(given))
+            : Task.Delay(Timeout.Infinite, cancellationToken).ContinueWith(_ => ConsentDecision.Denied, TaskScheduler.Default);
 }
 
 // A runner that declares it needs consent and records whether it actually ran — enough to prove the gate.

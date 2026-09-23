@@ -287,9 +287,9 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     private void _OnPromptOpened(object? sender, ConsentPrompt prompt)
     {
-        // Only the assistant's own: a channel is a door onto that one conversation, and relaying another session's
-        // prompt would let whoever is on the other end approve work they were never shown.
-        if (_disposed || prompt.Request.Source.PaneId != AssistantIdentity.PaneId)
+        // The assistant's own, or a workflow's that no session owns ("Ask me first", AC-1360), whose Action carries
+        // the literal step. Everything else stays off: the other end would approve work it was never shown.
+        if (_disposed || !_IsRelayable(prompt.Request.Source))
         {
             return;
         }
@@ -301,6 +301,13 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 
         ConsentPromptOpened?.Invoke(this, new AssistantChannelConsentPrompt(prompt.Id, prompt.Request, prompt.CanRemember));
     }
+
+    // Least privilege: only the Workflows plugin opts in for now. PluginId is stamped by the host, so another plugin
+    // cannot pass its prompt off as a workflow's.
+    private const string _WorkflowsPluginId = "workflows";
+
+    private static bool _IsRelayable(ConsentSource source) =>
+        source.PaneId == AssistantIdentity.PaneId || (source.PaneId is null && source.PluginId == _WorkflowsPluginId);
 
     private void _OnPromptClosed(object? sender, Guid promptId)
     {

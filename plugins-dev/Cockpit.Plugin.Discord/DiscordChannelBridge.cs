@@ -22,6 +22,9 @@ internal sealed class DiscordChannelBridge : IDisposable
     // in this app listens to, so the reason went nowhere at all.
     private readonly Action<string> _reportError;
 
+    // AC-1360: a refused sender goes to the log, never to the sender — the same silence as AC-1023 §3.
+    private readonly Action<string> _logRefusal;
+
     // Guards the three collections below: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the
     // gateway's own thread (the UI thread), while HandleInboundMessageAsync/HandleButtonAsync are called from
     // Discord.NET's socket threads — the same reason AssistantChannelGateway locks around _relayedPrompts.
@@ -35,6 +38,10 @@ internal sealed class DiscordChannelBridge : IDisposable
     // answering the oldest is the same order the operator would reach them in the app's own queue.
     private readonly List<Guid> _openPromptOrder = [];
 
+    // Prompts whose post is still on its way. A close that lands meanwhile removes the id here, so the finished post
+    // does not register a prompt that is already gone at the head of the JA/NEE queue.
+    private readonly HashSet<Guid> _postingPrompts = [];
+
     private bool _disposed;
 
     public DiscordChannelBridge(
@@ -43,7 +50,8 @@ internal sealed class DiscordChannelBridge : IDisposable
         IDiscordFileFetcher files,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
-        Action<string>? reportError = null)
+        Action<string>? reportError = null,
+        Action<string>? logRefusal = null)
     {
         _gateway = gateway;
         _sink = sink;
@@ -51,6 +59,7 @@ internal sealed class DiscordChannelBridge : IDisposable
         _access = access;
         _verbosity = verbosity;
         _reportError = reportError ?? (_ => { });
+        _logRefusal = logRefusal ?? (_ => { });
 
         _gateway.RowChanged += _OnRowChanged;
         _gateway.ConsentPromptOpened += _OnPromptOpened;
@@ -81,9 +90,20 @@ internal sealed class DiscordChannelBridge : IDisposable
                 {
                     _gateway.RespondToConsent(openPromptId, outcome);
                 }
+                else
+                {
+                    _logRefusal($"Discord ignored a consent reply from {senderId}: not on the access list.");
+                }
 
                 return;
             }
+        }
+
+        // Before any attachment is fetched: a stranger must not be able to make the bot download anything.
+        if (!_access.IsAllowed(senderId))
+        {
+            _logRefusal($"Discord ignored a message from {senderId}: not on the access list.");
+            return;
         }
 
         var (images, someFileRefused, downloadFailures) = await _CollectImagesAsync(files, cancellationToken).ConfigureAwait(false);
@@ -166,8 +186,14 @@ internal sealed class DiscordChannelBridge : IDisposable
     // before calling this — this only decides and edits.
     public async Task HandleButtonAsync(string customId, string senderId, CancellationToken cancellationToken = default)
     {
-        if (!DiscordConsentButtonId.TryParse(customId, out var promptId, out var approve) || !_access.IsAllowed(senderId))
+        if (!DiscordConsentButtonId.TryParse(customId, out var promptId, out var approve))
         {
+            return;
+        }
+
+        if (!_access.IsAllowed(senderId))
+        {
+            _logRefusal($"Discord ignored a consent button click from {senderId}: not on the access list.");
             return;
         }
 
@@ -229,6 +255,11 @@ internal sealed class DiscordChannelBridge : IDisposable
             return;
         }
 
+        lock (_gate)
+        {
+            _postingPrompts.Add(prompt.Id);
+        }
+
         ulong messageId;
         try
         {
@@ -238,13 +269,21 @@ internal sealed class DiscordChannelBridge : IDisposable
         {
             // Not registered as open when the post itself failed — otherwise a "JA" typed for an unrelated
             // reason would answer a prompt nobody in the channel ever actually saw.
+            lock (_gate)
+            {
+                _postingPrompts.Remove(prompt.Id);
+            }
+
             return;
         }
 
         lock (_gate)
         {
-            _openPromptOrder.Add(prompt.Id);
-            _promptMessageIds[prompt.Id] = messageId;
+            if (_postingPrompts.Remove(prompt.Id))
+            {
+                _openPromptOrder.Add(prompt.Id);
+                _promptMessageIds[prompt.Id] = messageId;
+            }
         }
     }
 
@@ -252,6 +291,7 @@ internal sealed class DiscordChannelBridge : IDisposable
     {
         lock (_gate)
         {
+            _postingPrompts.Remove(promptId);
             _openPromptOrder.Remove(promptId);
             _promptMessageIds.Remove(promptId);
         }

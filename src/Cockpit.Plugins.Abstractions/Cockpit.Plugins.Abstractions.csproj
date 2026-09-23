@@ -447,7 +447,11 @@
          asking. An already-compiled plugin keeps constructing the record unchanged. A plugin that sets it needs
          a host whose ConsentService understands the field, so it sets minHostVersion 0.35.0. Additions only — a
          minor; major and abstractionsVersion stay 2. -->
-    <Version>1.65.0</Version>
+    <!-- 1.66.0 (AC-1360): added ICockpitHost.RequestConsentAsync(ConsentRequest, CancellationToken) (default
+         denies) so a plugin can put a deadline on a prompt and have it taken down, denied, when it runs out. A
+         plugin that relies on that sets minHostVersion 0.38.0. Additions only — a minor; major and
+         abstractionsVersion stay 2. -->
+    <Version>1.66.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -144,9 +144,12 @@ internal sealed class CockpitHost(
     }
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
+        RequestConsentAsync(request, CancellationToken.None);
+
+    public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) =>
         // The plugin's identity is stamped here, not taken from the request — a plugin cannot ask under another's name.
         services.GetRequiredService<IConsentBroker>()
-            .RequestConsentAsync(request with { Source = request.Source with { PluginId = pluginId } });
+            .RequestConsentAsync(request with { Source = request.Source with { PluginId = pluginId } }, cancellationToken);
 
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(pluginId, title, createView);

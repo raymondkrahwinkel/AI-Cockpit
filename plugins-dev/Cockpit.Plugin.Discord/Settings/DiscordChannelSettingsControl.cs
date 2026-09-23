@@ -127,7 +127,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
         _channelId = new TextBox
         {
             Text = settings.ChannelId == 0 ? string.Empty : settings.ChannelId.ToString(),
-            PlaceholderText = "Discord text channel id to relay into",
+            PlaceholderText = "Channel id — leave blank to talk in direct messages",
         };
 
         _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -136,7 +136,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
         // reports a state the operator chose by installing and has not finished, not something that went wrong.
         _notConfiguredText = new TextBlock
         {
-            Text = "Not set up yet. Nothing is relayed to Discord until a bot token and a channel id are saved here.",
+            Text = "Not set up yet. Nothing is relayed to Discord until a bot token and the account allowed to talk are saved here.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.8,
@@ -244,9 +244,17 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
             return _Fail(out commit, out error, "A bot token is required.");
         }
 
-        if (!ulong.TryParse(_channelId.Text, out var channelId) || channelId == 0)
+        // AC-1360: blank is the default, direct messages with the one allowed account. A shared conversation fanned
+        // out over several people's DMs is a different risk, so a list or everyone still needs a channel.
+        ulong channelId = 0;
+        if (!string.IsNullOrWhiteSpace(_channelId.Text) && (!ulong.TryParse(_channelId.Text.Trim(), out channelId) || channelId == 0))
         {
-            return _Fail(out commit, out error, "A valid Discord channel id is required.");
+            return _Fail(out commit, out error, "The channel id is not a valid Discord channel id. Leave it blank to talk in direct messages.");
+        }
+
+        if (channelId == 0 && _singleUserOption.IsChecked != true)
+        {
+            return _Fail(out commit, out error, "Direct messages are for a single account only. Enter a channel id to let more people talk to the assistant.");
         }
 
         var access = result.Access!;

@@ -11,6 +11,9 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
     // the prompt as open" test (AC-1024 review point 2) simulates a real Discord failure.
     public bool FailNextPost { get; set; }
 
+    // Set to hold the next PostAsync until the test completes it — a post still on its way when its prompt closes.
+    public TaskCompletionSource<ulong>? HoldNextPost { get; set; }
+
     public List<(string Text, Guid? ConsentPromptId)> Posted { get; } = [];
 
     public List<(ulong MessageId, string Text, bool KeepButtons)> Edited { get; } = [];
@@ -28,6 +31,12 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
             }
 
             Posted.Add((text, consentPromptId));
+            if (HoldNextPost is { } held)
+            {
+                HoldNextPost = null;
+                return held.Task;
+            }
+
             return Task.FromResult(_nextMessageId++);
         }
     }

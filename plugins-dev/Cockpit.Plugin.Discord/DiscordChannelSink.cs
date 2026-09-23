@@ -2,10 +2,10 @@ using global::Discord;
 
 namespace Cockpit.Plugin.Discord;
 
-// The real `IDiscordChannelSink`: posts/edits/reacts against one Discord text channel over Discord.NET's
-// REST surface. `resolveChannel` is asked fresh on every call rather than resolved once — the
+// The real `IDiscordChannelSink`: posts/edits/reacts against one Discord text channel or direct message over
+// Discord.NET's REST surface. `resolveChannel` is asked fresh on every call rather than resolved once — the
 // gateway may not have the channel cached yet the moment the bridge tries to use it.
-internal sealed class DiscordChannelSink(Func<Task<ITextChannel?>> resolveChannel) : IDiscordChannelSink
+internal sealed class DiscordChannelSink(Func<Task<IMessageChannel?>> resolveChannel) : IDiscordChannelSink
 {
     // Discord's own hard cap on a message body.
     private const int _MessageLimit = 2000;

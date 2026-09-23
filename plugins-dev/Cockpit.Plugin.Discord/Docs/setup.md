@@ -5,9 +5,9 @@ summary: Creating the Discord application and bot, and the one setting that sile
 icon: 🤖
 ---
 
-Five things need to be true before a bot token works in this plugin's settings: an application exists, it
-has a bot, the bot's privileged Message Content intent is on, the bot is in your server, and you have the
-channel's id. This page walks through all five in order. The same walkthrough is also in the repo as this
+Four things need to be true before a bot token works in this plugin's settings: an application exists, it
+has a bot, the bot's privileged Message Content intent is on, and the bot is in your server. A fifth — the
+channel's id — only when you want a channel instead of direct messages. This page walks through them in order. The same walkthrough is also in the repo as this
 plugin's `README.md`, for whoever's reading it outside the app.
 
 ## 1. Create the application and get the bot token {#create-application}
@@ -46,12 +46,16 @@ this plugin relays. Copy the **Install Link**.
 Open the link from the previous step in a browser, select **Add to server** in the installation prompt, then
 pick the server and confirm. You need the **Manage Server** permission on that server to complete this step.
 
-## 5. Find the channel id {#channel-id}
+## 5. Direct messages, or a channel {#channel-id}
 
-The plugin needs the numeric id of the text channel to relay into, not its name. Discord only shows ids once
-**Developer Mode** is on: in the Discord client, open **User Settings → Advanced** and turn on **Developer
-Mode**. Then right-click the channel and choose **Copy Channel ID**, and paste that into this plugin's
-**Channel id** field.
+Leave **Channel id** blank and the bot talks to you in direct messages: a DM from the allowed account becomes
+a turn, and the answer comes back in that DM. This is the default, and it is only offered for a single allowed
+account — a list of accounts or everyone needs a channel. Discord lets you DM a bot you share a server with.
+
+For a channel instead, the plugin needs the numeric id of the text channel, not its name. Discord only shows
+ids once **Developer Mode** is on: in the Discord client, open **User Settings → Advanced** and turn on
+**Developer Mode**. Then right-click the channel, choose **Copy Channel ID**, and paste that into this
+plugin's **Channel id** field. With a channel set, direct messages are ignored, and so is every other channel.
 
 ## Your responsibility, not this plugin's {#terms-of-service}
 

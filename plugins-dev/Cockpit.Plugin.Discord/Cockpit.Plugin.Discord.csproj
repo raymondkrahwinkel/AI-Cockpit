@@ -30,6 +30,11 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- AC-1360: resolved from ICockpitHost.Services, like the Depot plugin's, so a refused sender reaches the log.
+         Compile-only: the host's own already-loaded copy answers this type at runtime. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <!-- The plugin's own runtime dependency: the Discord gateway/REST client. Not compile-only — it and its
          transitive deps ship in the plugin folder. -->
     <PackageReference Include="Discord.Net" Version="3.20.1" />

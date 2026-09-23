@@ -264,26 +264,30 @@ public class AssistantChannelGatewayTests
         broker.Received().Respond(opened.Id, ConsentOutcome.Approved, false);
     });
 
-    /// <summary>
-    /// A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to answer.
-    /// </summary>
-    [Fact]
-    public void APromptBelongingToAnotherSession_IsNeitherRelayedNorAnswerable() => HeadlessAvalonia.Run(() =>
+    // A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to
+    // answer. AC-1360 adds a workflow's prompt that no session owns ("Ask me first"), and no other plugin's.
+    [Theory]
+    [InlineData("pane-someone-else", null, 0)]
+    [InlineData("pane-someone-else", "workflows", 0)]
+    [InlineData(null, null, 0)]
+    [InlineData(null, "docker", 0)]
+    [InlineData(null, "workflows", 1)]
+    public void OnlyTheAssistantsOwnOrASessionlessWorkflowPrompt_IsRelayedAndAnswerable(string? paneId, string? pluginId, int relayed) => HeadlessAvalonia.Run(() =>
     {
         var broker = Substitute.For<IConsentBroker>();
         var prompts = new List<AssistantChannelConsentPrompt>();
         using var gateway = _Open(_Session(), broker, rows: []);
         gateway.ConsentPromptOpened += (_, prompt) => prompts.Add(prompt);
 
-        var opened = _Prompt("pane-someone-else");
+        var opened = _Prompt(paneId, pluginId);
         broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, opened);
 
-        Assert.Empty(prompts);
+        Assert.Equal(relayed, prompts.Count);
 
         // And knowing the id from somewhere else is not a way in either.
         gateway.RespondToConsent(opened.Id, ConsentOutcome.Approved);
 
-        broker.DidNotReceive().Respond(Arg.Any<Guid>(), Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
+        broker.Received(relayed).Respond(opened.Id, ConsentOutcome.Approved, false);
     });
 
     [Fact]
@@ -307,9 +311,9 @@ public class AssistantChannelGatewayTests
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static ConsentPrompt _Prompt(string paneId) => new(
+    private static ConsentPrompt _Prompt(string? paneId, string? pluginId = null) => new(
         Guid.NewGuid(),
-        new ConsentRequest("The assistant wants to run a command", "rm -rf /tmp/build", new ConsentSource(paneId, null, "Assistant"), "bash", ConsentRisk.Dangerous),
+        new ConsentRequest("The assistant wants to run a command", "rm -rf /tmp/build", new ConsentSource(paneId, pluginId, "Assistant"), "bash", ConsentRisk.Dangerous),
         CanRemember: false);
 
     private static SessionViewModel _Session()

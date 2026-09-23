@@ -676,6 +676,18 @@ public interface ICockpitHost
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => Task.FromResult(ConsentDecision.Denied);
 
     /// <summary>
+    /// <see cref="RequestConsentAsync(ConsentRequest)"/> with a deadline: when <paramref name="cancellationToken"/> is
+    /// cancelled before anyone answers, the prompt is taken down everywhere it shows and the answer is
+    /// <see cref="ConsentOutcome.Denied"/> — never an approval.
+    /// </summary>
+    /// <remarks>
+    /// Default denies, the same fail-closed answer as the overload without a deadline. A plugin that relies on the
+    /// prompt closing sets minHostVersion 0.38.0.
+    /// </remarks>
+    Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) =>
+        Task.FromResult(ConsentDecision.Denied);
+
+    /// <summary>
     /// Registers a dashboard widget type (see <see cref="WidgetRegistration"/>): it becomes available in a
     /// Dashboard workspace's "Add widget" gallery, and each placed instance is built by the registration's own
     /// view factory.

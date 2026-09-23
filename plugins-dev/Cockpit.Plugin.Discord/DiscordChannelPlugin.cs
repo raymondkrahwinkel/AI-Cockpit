@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugin.Discord.Settings;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -16,12 +17,14 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
         DisplayName: "Discord",
         Author: "Cockpit",
         Description: "Talk to your assistant from Discord — a second door onto the same conversation the chat " +
-            "window shows. Connects with a bot token over Discord.NET; consent prompts relay as Approve/Deny " +
-            "buttons with a \"type JA/NEE\" text fallback.");
+            "window shows. Connects with a bot token over Discord.NET, in direct messages or one channel; consent " +
+            "prompts relay as Approve/Deny buttons with a \"type JA/NEE\" text fallback. Adds a flow step that " +
+            "DMs you.");
 
     private ICockpitHost? _host;
     private DiscordChannelSettings? _settings;
     private DiscordGatewayConnection? _connection;
+    private ILogger? _logger;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -34,6 +37,12 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
 
         host.AddSettings(() => new DiscordChannelSettingsControl(host, _settings), "Assistant Plugins");
         host.OnSettingsSaved(_Reconnect);
+
+        // Resolved from the host's container, like the Depot plugin's (AC-499): a refused sender belongs in the log.
+        _logger = host.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Discord");
+
+        var settings = _settings;
+        host.AddWorkflowStep(new DiscordSendDmStep(() => settings.Access?.Access, _SendDirectMessageAsync));
 
         _Reconnect();
     }
@@ -51,10 +60,18 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             return;
         }
 
-        // Nothing configured yet — no channel to open (AssistantChannelStorage.Load's own "null is not a default
-        // to invent" rule), or the operator has not entered a token/channel yet.
-        if (settings.Access is not { } configured || string.IsNullOrWhiteSpace(settings.BotToken) || settings.ChannelId == 0)
+        // Nothing configured yet — no access to open with (AssistantChannelStorage.Load's own "null is not a default
+        // to invent" rule), or the operator has not entered a token yet.
+        if (settings.Access is not { } configured || string.IsNullOrWhiteSpace(settings.BotToken))
         {
+            return;
+        }
+
+        // AC-1360: direct messages are for the one allowed account only. The settings view refuses anything else,
+        // so this is a stored value from before that rule — said out loud, and nothing opens.
+        if (settings.ChannelId == 0 && configured.Access.Audience != AssistantChannelAudience.SingleUser)
+        {
+            host.ShowToast("Discord: direct messages are for a single account only — enter a channel id in the settings.", PluginToastSeverity.Error);
             return;
         }
 
@@ -85,8 +102,14 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             settings.ChannelId,
             configured.Access,
             () => settings.Access?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly,
-            error => host.ShowToast(error, PluginToastSeverity.Error));
+            error => host.ShowToast(error, PluginToastSeverity.Error),
+            refusal => _logger?.LogInformation("{Refusal}", refusal));
     }
+
+    private Task _SendDirectMessageAsync(string userId, IReadOnlyList<string> parts, CancellationToken cancellationToken) =>
+        _connection is { } connection
+            ? connection.SendDirectMessageAsync(userId, parts, cancellationToken)
+            : throw new InvalidOperationException("Nothing was sent: Discord is not connected. Check the bot token in the Discord plugin's settings.");
 
     public void Dispose()
     {
