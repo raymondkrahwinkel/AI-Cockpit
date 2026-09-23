@@ -26,7 +26,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_list", @namespace, $"list Helm releases in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_list", @namespace, $"list Helm releases in namespace \"{@namespace}\"", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -82,7 +82,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_history", @namespace, $"read Helm release \"{release}\" history in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_history", @namespace, $"read Helm release \"{release}\" history in namespace \"{@namespace}\"", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -151,7 +151,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, toolName, @namespace, operation, session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, toolName, @namespace, operation, session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -166,7 +166,7 @@ internal sealed partial class KubernetesMcpTools
             }
 
             var decoded = HelmReleaseSecretCodec.TryDecode(secret, out var decodeError);
-            return decoded is null ? McpText.Error(decodeError!) : McpText.Ok(project(decoded), decision.BypassNote);
+            return decoded is null ? McpText.Error(decodeError ?? $"Could not decode Helm release \"{release}\".") : McpText.Ok(project(decoded), decision.BypassNote);
         }, cancellationToken);
     }
 

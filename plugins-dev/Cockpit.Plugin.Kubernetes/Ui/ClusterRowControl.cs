@@ -177,6 +177,12 @@ internal sealed class ClusterRowControl : UserControl
     // this same dialog, before Save, must not carry a mode chosen for the old target along. A paste always counts.
     private void _ResetConsentModeIfRepointed()
     {
+        // Rebuilding the context list clears the selection for a moment; that is not a re-point.
+        if (_contextBox.SelectedItem is null)
+        {
+            return;
+        }
+
         if (KubeconfigPath != _originalKubeconfigPath || _SelectedContext() != _originalContext || !string.IsNullOrWhiteSpace(_kubeconfig.Text))
         {
             _consentMode.SelectedIndex = (int)ClusterConsentMode.AlwaysAsk;

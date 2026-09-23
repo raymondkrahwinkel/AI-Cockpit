@@ -52,7 +52,8 @@ internal sealed partial class KubernetesMcpTools
         }
 
         var operation = $"sync Argo CD Application \"{name}\" in namespace \"{@namespace}\" — applies the changes below to bring the cluster back in line with Git";
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "argo_sync", @namespace, operation, session, diffLines);
+        // The Application's namespace does not bound where a sync deploys, so a consent mode never frees it (AC-1349).
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "argo_sync", @namespace, operation, session, diffLines, reachesBeyondNamespace: true);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);

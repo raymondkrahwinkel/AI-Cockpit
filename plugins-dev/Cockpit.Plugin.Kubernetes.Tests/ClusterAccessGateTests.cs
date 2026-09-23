@@ -320,20 +320,20 @@ public class ClusterAccessGateTests
     }
 
     // AC-1349: a cluster's consent mode pre-approves a call by routing PreApprovedBy to the host instead of
-    // asking. Tegenproef rows: a change under ReadFree, an unlisted tool, a secret, a change outside the allowed
+    // asking. Counter-check rows: a change under ReadFree, an unlisted tool, a secret, a change outside the allowed
     // namespaces under AllFree, and a re-pointed context all still ask. The default mode is the tests above.
     public static IEnumerable<object[]> ConsentModeCases()
     {
         yield return
         [
-            "AC1 + AC5 tegenproef: ReadFree, relabelled after choosing, frees get_resource on pods",
+            "AC1 + AC5 counter-check: ReadFree, relabelled after choosing, frees get_resource on pods",
             _Jita(ClusterConsentMode.ReadFree) with { Label = "jita-renamed" },
             (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedReadAsync(cluster, "get_resource", "staging", "get pods/web (v1)", PaneId)),
             true,
         ];
         yield return
         [
-            "AC1 tegenproef: ReadFree still asks for delete_resource on the same cluster",
+            "AC1 counter-check: ReadFree still asks for delete_resource on the same cluster",
             _Jita(ClusterConsentMode.ReadFree),
             (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "delete_resource", "staging", "delete pods/web (v1)", PaneId)),
             false,
@@ -361,7 +361,7 @@ public class ClusterAccessGateTests
         ];
         yield return
         [
-            "AC4 tegenproef: AllFree still asks for scale_resource in production, off the allowed list",
+            "AC4 counter-check: AllFree still asks for scale_resource in production, off the allowed list",
             _Jita(ClusterConsentMode.AllFree),
             (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "scale_resource", "production", "scale deployments/web to 2 replica(s)", PaneId)),
             false,

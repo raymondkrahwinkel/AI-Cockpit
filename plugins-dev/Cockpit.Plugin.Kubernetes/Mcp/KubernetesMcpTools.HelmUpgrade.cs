@@ -55,7 +55,7 @@ internal sealed partial class KubernetesMcpTools
 
         // Rendering reads the release's own state through helm, and the diff is built from the release secret —
         // the same credential material every other helm tool asks for before it reads it.
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_upgrade", @namespace, $"render an upgrade of Helm release \"{release}\" in namespace \"{@namespace}\" and read its current manifest", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_upgrade", @namespace, $"render an upgrade of Helm release \"{release}\" in namespace \"{@namespace}\" and read its current manifest", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -120,7 +120,7 @@ internal sealed partial class KubernetesMcpTools
         // arriving as one block with the breaks already baked in as `\n`.
         var version = string.IsNullOrWhiteSpace(chartVersion) ? string.Empty : $" version {chartVersion}";
         var operation = $"upgrade Helm release \"{release}\" in namespace \"{@namespace}\" to chart \"{chart}\"{version}";
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "helm_upgrade", @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength));
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "helm_upgrade", @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength), reachesBeyondNamespace: plan.Resources.Any(resource => !resource.Namespaced));
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);

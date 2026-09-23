@@ -29,11 +29,11 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, _PreApprovedFor(cluster, toolName, @namespace));
 
     // A change to a namespaced resource: connection, namespace jail, then an always-fresh Dangerous consent.
-    // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
-    // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
-    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
+    // `detailLines` (AC-1062): each line escaped on its own, see `_ComposeAction`. `reachesBeyondNamespace`
+    // (AC-1349): the change also lands outside `@namespace` (a cluster-scoped document, an Argo destination).
+    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, IReadOnlyList<string>? detailLines = null, bool reachesBeyondNamespace = false)
     {
-        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace);
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, reachesBeyondNamespace ? null : @namespace);
         var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
         if (!namespaced.IsAllowed)
         {
@@ -93,7 +93,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
     // A read of credential material (a secret) in a namespaced resource: the namespace jail applies, and then —
     // even inside an allowed namespace — reading the contents asks afresh as Dangerous and is never remembered, so
     // "free to read in an allowed namespace" does not silently include secrets (security review F2).
-    public async Task<GateResult> AuthorizeSensitiveNamespacedReadAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, bool sensitiveResource = false)
+    public async Task<GateResult> AuthorizeSensitiveNamespacedReadAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, bool sensitiveResource)
     {
         var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace, sensitiveResource);
         var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
@@ -138,7 +138,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
 
     // AC-1349: one decision per call, handed to every card that call raises. ReadFree frees a read anywhere;
     // AllFree also frees a sensitive read or a change, but only in a namespace on `AllowedNamespaces` — a
-    // cluster-scoped call (`@namespace` null) is in none. AlwaysAsk, the default, never pre-approves.
+    // cluster-scoped or wider-reaching call (`@namespace` null) is in none. AlwaysAsk never pre-approves.
     private static string? _PreApprovedFor(ClusterRegistration cluster, string toolName, string? @namespace, bool sensitiveResource = false)
     {
         var mode = cluster.EffectiveConsentMode();

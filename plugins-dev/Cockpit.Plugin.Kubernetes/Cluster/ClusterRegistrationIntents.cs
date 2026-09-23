@@ -6,11 +6,12 @@ namespace Cockpit.Plugin.Kubernetes.Cluster;
 
 // Lets another plugin that manages a cluster's lifecycle register it here (AC-1083), so its kubeconfig reaches the
 // k8s tools without the operator retyping it — the Kind plugin is the first caller. Addressed by manifest id and an
-// agreed action string (AC-95), so nothing here knows what kind is or references its types.
+// agreed action string (AC-95), so nothing here references its types; only a consent mode is honoured from it alone.
 internal sealed class ClusterRegistrationIntents(KubernetesSettings settings)
 {
     public const string RegisterAction = "cluster.register";
     public const string UnregisterAction = "cluster.unregister";
+    private const string KindPluginId = "kind";
 
     public Task<IReadOnlyDictionary<string, string>> RegisterAsync(PluginIntent intent)
     {
@@ -28,14 +29,16 @@ internal sealed class ClusterRegistrationIntents(KubernetesSettings settings)
         }
 
         // The narrowest jail an intent-registered cluster can have; widen it in the plugin settings if needed.
-        // AC-1349: the sender may name a consent mode (Kind's own default); anything unrecognised stays AlwaysAsk.
+        // AC-1349: only the Kind plugin may name a consent mode (the operator's default there); any other caller,
+        // or anything but an exact mode name, registers as AlwaysAsk.
         var registration = new ClusterRegistration(
             id,
             intent.Data.GetValueOrDefault("label", id),
             intent.Data.GetValueOrDefault("context", string.Empty),
             ["default"],
             KubeconfigPath: kubeconfigPath);
-        var consentMode = Enum.TryParse<ClusterConsentMode>(intent.Data.GetValueOrDefault("consentMode", string.Empty), out var parsed) && Enum.IsDefined(parsed)
+        var requested = intent.Data.GetValueOrDefault("consentMode", string.Empty);
+        var consentMode = intent.CallerPluginId == KindPluginId && Enum.TryParse<ClusterConsentMode>(requested, out var parsed) && parsed.ToString() == requested
             ? parsed
             : ClusterConsentMode.AlwaysAsk;
         settings.Clusters = [.. settings.Clusters, registration.WithConsentMode(consentMode)];
