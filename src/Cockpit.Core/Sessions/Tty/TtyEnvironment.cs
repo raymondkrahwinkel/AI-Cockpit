@@ -88,7 +88,8 @@ public static class TtyEnvironment
         || IsHostTerminalIdentityMarker(key)
         || IsAnthropicCredentialMarker(key)
         || IsCockpitMcpKeyMarker(key)
-        || IsCockpitPaneIdMarker(key);
+        || IsCockpitPaneIdMarker(key)
+        || IsCockpitConnectKeyMarker(key);
 
     // True when the effective ctype locale is UTF-8. The C library resolves the ctype category as
     // `LC_ALL` (if set) else `LC_CTYPE` else `LANG`, so this checks them in that precedence
@@ -140,4 +141,10 @@ public static class TtyEnvironment
     // A session that could choose its own could set another pane's statusline or claim its consent.
     public static bool IsCockpitPaneIdMarker(string key) =>
         key.Equals("COCKPIT_PANE_ID", StringComparison.OrdinalIgnoreCase);
+
+    // True for the node's bootstrap connect key and the path to it (AC-1351): an admin credential for this node,
+    // so a session that inherited it — an unsupervised one started by an operate key — would hold admin.
+    public static bool IsCockpitConnectKeyMarker(string key) =>
+        key.Equals("COCKPIT_CONNECT_KEY", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("COCKPIT_CONNECT_KEY_FILE", StringComparison.OrdinalIgnoreCase);
 }

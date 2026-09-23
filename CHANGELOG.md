@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a network node can now be reached with a connect key instead of a pairing, so a node nobody sits at
+  (a headless cockpit) can be connected to without anyone approving a request there. The first key comes from a
+  secret at startup (`COCKPIT_CONNECT_KEY_FILE`, or `COCKPIT_CONNECT_KEY` as a fallback), must be `ck_` followed
+  by at least 43 random characters, and is never passed on to a session; with an admin key a controller can issue further keys (operate or admin, always with an expiry), list
+  them and revoke them. Keys are stored only as a hash and a short prefix, a revoked key is refused on its next
+  call and any call it has in flight is cut off, and a revoked bootstrap key stays revoked across restarts. Every
+  failed attempt gets the same answer, an address that keeps failing is locked out for a while, and attempts,
+  node tool calls and key changes are written to `node-access-audit.jsonl`. The node also logs its certificate
+  fingerprint at startup, and the profiles it lists now say which ones run without asking for approval.
 - added: each cluster in the Kubernetes plugin's settings now has a consent mode — Always ask (unchanged),
   Read-free (reads go without a card anywhere on the cluster; secrets, Helm values/manifests and every change
   still ask) or All-free (changes go without a card too, but only in the cluster's allowed namespaces — outside

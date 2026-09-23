@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Cockpit.Core.Mcp;
@@ -19,7 +17,8 @@ internal static class McpAuthMiddleware
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         Func<string?, ValueTask<bool>> authorize,
-        NodeSharedSecret? nodeSharedSecret = null) =>
+        NodeSharedSecret? nodeSharedSecret = null,
+        ConnectKeyVerifier? connectKeys = null) =>
         app.Use(async (context, next) =>
         {
             var header = context.Request.Headers.Authorization.ToString();
@@ -27,16 +26,27 @@ internal static class McpAuthMiddleware
 
             if (context.Request.IsHttps)
             {
-                // The node's own persistent shared secret (AC-790), and nothing else: this socket is reachable off
-                // this machine, so a loopback-scoped credential must not work here even if it happens to match.
-                // Read now rather than closed over, so the answer follows the current pairing.
-                if (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret))
+                // IPv4 over a dual-stack socket arrives mapped into IPv6; unmapped, one machine is one lockout bucket.
+                var remoteIp = context.Connection.RemoteIpAddress;
+                var remoteAddress = (remoteIp is { IsIPv4MappedToIPv6: true } ? remoteIp.MapToIPv4() : remoteIp)?.ToString() ?? "unknown";
+
+                // The node's own persistent shared secret (AC-790) or a connect key (AC-1351), and nothing else:
+                // this socket is reachable off this machine, so a loopback-scoped credential must not work here even
+                // if it happens to match. Read now rather than closed over, so the answer follows the current pairing.
+                var caller = connectKeys is null
+                    ? (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret) ? NodeCaller.ForPairing(remoteAddress) : null)
+                    : await connectKeys.AuthenticateAsync(token, nodeSharedSecret?.Value, remoteAddress).ConfigureAwait(false);
+
+                // One refusal for every way in which this failed — see `ConnectKeyVerifier`.
+                if (caller is null)
                 {
-                    await _DispatchIfAuthorizedAsync(context, next, authorize, NodeCallerIdentity.PaneId).ConfigureAwait(false);
+                    await _RefuseWithReasonAsync(context).ConfigureAwait(false);
                     return;
                 }
 
-                await _RefuseWithReasonAsync(context).ConfigureAwait(false);
+                // A revoked key's requests still in flight end with it (AC-1351, DEP-208's lesson).
+                using var revocation = caller.Revoked.Register(context.Abort);
+                await _DispatchIfAuthorizedAsync(context, next, authorize, NodeCallerIdentity.PaneId, caller).ConfigureAwait(false);
                 return;
             }
 
@@ -59,9 +69,9 @@ internal static class McpAuthMiddleware
 
     // AC-1148: the identity is stamped either way, so a refusal is attributable; only the dispatch is withheld.
     // The body names no policy source — a caller learns it may not be here, and nothing about what it missed.
-    private static async Task _DispatchIfAuthorizedAsync(HttpContext context, RequestDelegate next, Func<string?, ValueTask<bool>> authorize, string? paneId)
+    private static async Task _DispatchIfAuthorizedAsync(HttpContext context, RequestDelegate next, Func<string?, ValueTask<bool>> authorize, string? paneId, NodeCaller? nodeCaller = null)
     {
-        McpRequestContext.Set(paneId);
+        McpRequestContext.Set(paneId, nodeCaller);
         if (!await authorize(paneId).ConfigureAwait(false))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -88,7 +98,6 @@ internal static class McpAuthMiddleware
     }
 
     // Constant-time for the same reason McpAuthKey.IsAuthorized is — this credential crosses a real network, not
-    // just a local socket, so a timing side-channel is a real leak here rather than a theoretical one.
-    private static bool _ConstantTimeEquals(string a, string b) =>
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+    // just a local socket. AC-1351: over both sides' hashes, so the length of the secret does not leak either.
+    private static bool _ConstantTimeEquals(string a, string b) => ConnectKeyVerifier.ConstantTimeEquals(a, b);
 }

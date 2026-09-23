@@ -25,8 +25,11 @@ internal static class AuditTrailFiles
     // The job-run trail (AC-490): which project jobs were started, and what their agents said they did.
     public const string JobHistory = "job-history.jsonl";
 
+    // The node-access trail (AC-1351): who knocked on the node endpoint, with which key prefix, and what they did.
+    public const string NodeAccess = "node-access-audit.jsonl";
+
     // Every trail's file name. The order carries no meaning.
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn, JobHistory];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn, JobHistory, NodeAccess];
 
     // Where `fileName` lives for this install: next to `cockpit.json`, under the state root
     // a development build keeps to itself.

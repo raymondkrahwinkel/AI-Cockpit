@@ -163,7 +163,9 @@ public class TtyEnvironmentTests
     [InlineData("ANTHROPIC_API_KEY")]
     [InlineData("ANTHROPIC_AUTH_TOKEN")]
     [InlineData("anthropic_api_key")]
-    public void BuildBase_DropsAnInheritedAnthropicCredential(string variable)
+    [InlineData("COCKPIT_CONNECT_KEY")]
+    [InlineData("COCKPIT_CONNECT_KEY_FILE")]
+    public void BuildBase_DropsAnInheritedCredential(string variable)
     {
         var inherited = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {

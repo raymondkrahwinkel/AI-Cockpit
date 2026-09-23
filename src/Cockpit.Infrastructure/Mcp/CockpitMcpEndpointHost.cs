@@ -170,6 +170,7 @@ internal sealed class CockpitMcpEndpointHost
                     result = _UiOutcomeUnknownResult(exception);
                 }
 
+                await _AuditNodeCallAsync(nodeOnly, context.Params.Name, result).ConfigureAwait(false);
                 return McpInboxPiggyback.Attach(result, _services.GetService<IAgentTurnInboxDelivery>(), _logger);
             }));
 
@@ -218,6 +219,13 @@ internal sealed class CockpitMcpEndpointHost
                 _nodeSecretSeeded = true;
             }
 
+            // AC-1351: loaded before the listener takes a request, so a bad bootstrap key is in the log at startup.
+            var connectKeys = bindNodeListener ? _services.GetService<ConnectKeyVerifier>() : null;
+            if (connectKeys is not null)
+            {
+                await connectKeys.EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             var app = builder.Build();
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40),
             // and AC-1148: nor does one this endpoint's own mount decision never granted.
@@ -226,7 +234,8 @@ internal sealed class CockpitMcpEndpointHost
                 _authKey,
                 _keyring,
                 paneId => _AuthorizeAsync(paneId, serverName, enabled, nodeOnly),
-                bindNodeListener ? _nodeSharedSecret : null);
+                bindNodeListener ? _nodeSharedSecret : null,
+                connectKeys);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -260,6 +269,12 @@ internal sealed class CockpitMcpEndpointHost
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
+
+            // AC-1351: what a controller connecting with a key compares its trust-on-first-use pin against.
+            if (bindNodeListener)
+            {
+                _logger.LogInformation("Node listener for {ServerName} presents certificate fingerprint {Fingerprint}.", serverName, _nodeCertificate.Fingerprint);
+            }
         }
         finally
         {
@@ -311,14 +326,20 @@ internal sealed class CockpitMcpEndpointHost
     // than captured at mount time, so a master switch flipped off or a pairing narrowed applies to the next call.
     private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled, bool nodeOnly)
     {
-        var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await NodeScopeGrantedAsync().ConfigureAwait(false);
+        // AC-1351: a connect key is not held to a pairing's scope — a node reached by key has no pairing at all.
+        var byConnectKey = McpRequestContext.CurrentNodeCaller is { ByConnectKey: true };
+        var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && (byConnectKey || await NodeScopeGrantedAsync().ConfigureAwait(false));
         var allowed = McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
 
         // AC-1321: an authorized controller call is what "holding the line" means — noted here, at the one door
         // every such call passes, and only once it is through it: a pairing with no scope controls nothing.
         if (allowed && nodeScopeGranted && _services.GetService<NodeControllerPresence>() is { } presence)
         {
-            presence.Seen(_services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");
+            // ponytail: every key caller and the pairing are one controller, so two connected at once share one
+            // inbox — who reads first gets the message. A lease per credential once a second controller exists (B3).
+            presence.Seen(byConnectKey && McpRequestContext.CurrentNodeCaller is { } caller
+                ? caller.Label
+                : _services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");
         }
 
         return allowed;
@@ -343,6 +364,21 @@ internal sealed class CockpitMcpEndpointHost
                 || pairing.AllowAllProjects
                 || pairing.AllowedProfileLabels.Count > 0
                 || pairing.AllowedProjectIds.Count > 0);
+    }
+
+    // AC-1351: every node-listener tool call into the audit, except the three list reads the controller polls every 20 s.
+    private async Task _AuditNodeCallAsync(bool nodeOnly, string tool, CallToolResult result)
+    {
+        if (!nodeOnly
+            || McpRequestContext.CurrentNodeCaller is not { } caller
+            || tool.StartsWith("list_node_", StringComparison.Ordinal)
+            || _services.GetService<NodeAccessAuditLog>() is not { } audit)
+        {
+            return;
+        }
+
+        var outcome = result.IsError == true ? "tool error" : "called";
+        await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, tool, outcome)).ConfigureAwait(false);
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference

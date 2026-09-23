@@ -66,6 +66,10 @@ internal sealed class CockpitConfigFile
     // store. Absent/false means every mounted MCP endpoint stays loopback-only.
     public NodeEndpointSettingsEntry? NodeEndpoint { get; set; }
 
+    // AC-1351: the node endpoint's connect keys (hash and prefix only) and the door's lockout/expiry policy; owned
+    // by `ConnectKeyVerifier`. A section of its own so the pairing's whole-section writes can never drop a revocation.
+    public NodeConnectKeysEntry? NodeConnectKeys { get; set; }
+
     // The workspaces and which one is active; owned by the workspace-settings store.
     public WorkspaceSettingsEntry? Workspaces { get; set; }
 

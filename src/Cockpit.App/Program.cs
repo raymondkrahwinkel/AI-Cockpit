@@ -55,7 +55,9 @@ sealed class Program
         }
 
         // Scrub inherited session identity (AC-42), terminal identity (#58), and credentials before any spawn.
-        // Doing it once gives every route the same clean environment.
+        // Doing it once gives every route the same clean environment. AC-1351: the bootstrap connect key is one of
+        // those credentials, so it is taken for the node's door first and never reaches a session.
+        Cockpit.Infrastructure.Mcp.ConnectKeyBootstrapEnvironment.Capture();
         ScrubInheritedHostEnvironment();
 
         // Acquire before housekeeping or plugin installation can delete files used by another cockpit (AC-4).
