@@ -825,7 +825,8 @@ public sealed record ConsentRequest(
     ConsentSource Source,    // who is asking (pane + label)
     string Scope,            // stable key for "remember", e.g. "workflow.http:GET"
     ConsentRisk Risk,        // LowRisk (rememberable) | Dangerous (asked every time)
-    bool AllowRemember = false);
+    bool AllowRemember = false,
+    string? PreApprovedBy = null); // your own policy already decided — no card, logged as Bypassed (SDK 1.65.0)
 
 public sealed record ConsentSource(string? PaneId, string? PluginId, string Label);
 public enum ConsentRisk { LowRisk, Dangerous }

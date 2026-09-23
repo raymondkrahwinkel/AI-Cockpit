@@ -29,10 +29,17 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// <param name="AllowRemember">
 /// Whether to offer "remember for this session". Honoured only when <paramref name="Risk"/> is <see cref="ConsentRisk.LowRisk"/>; ignored for a dangerous action.
 /// </param>
+/// <param name="PreApprovedBy">
+/// Set when the calling plugin's own policy already decided this request — a daemon or cluster consent mode the
+/// operator chose ahead of time, named here (e.g. <c>"daemon mode: read-free"</c>). When set, no prompt is shown;
+/// the decision comes back <see cref="ConsentDecision.Bypassed"/> instead. A plugin gains nothing over simply not
+/// asking — this only makes that skip visible in the audit trail (AC-1347/AC-1348).
+/// </param>
 public sealed record ConsentRequest(
     string Title,
     string Action,
     ConsentSource Source,
     string Scope,
     ConsentRisk Risk,
-    bool AllowRemember = false);
+    bool AllowRemember = false,
+    string? PreApprovedBy = null);

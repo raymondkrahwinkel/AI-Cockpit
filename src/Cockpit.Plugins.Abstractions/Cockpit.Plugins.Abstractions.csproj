@@ -441,7 +441,13 @@
          already-compiled plugin keeps loading unchanged; a plugin that calls NotifyAssistantAsync sets
          minHostVersion 0.34.0, since an older host's default body delivers nothing. Additions only — a minor;
          major and abstractionsVersion stay 2. -->
-    <Version>1.64.0</Version>
+    <!-- 1.65.0 (AC-1348): added ConsentRequest.PreApprovedBy (a trailing optional parameter, null default) — a
+         plugin names the policy that already decided a request (e.g. a daemon's consent mode), so
+         ConsentService skips the prompt and logs ConsentAuditAction.Bypassed instead of the caller silently never
+         asking. An already-compiled plugin keeps constructing the record unchanged. A plugin that sets it needs
+         a host whose ConsentService understands the field, so it sets minHostVersion 0.35.0. Additions only — a
+         minor; major and abstractionsVersion stay 2. -->
+    <Version>1.65.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
