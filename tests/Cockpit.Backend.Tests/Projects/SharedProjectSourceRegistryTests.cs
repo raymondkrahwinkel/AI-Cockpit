@@ -1,14 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.App.Plugins;
+using Cockpit.Core;
+using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
-namespace Cockpit.Core.Tests.Plugins;
+namespace Cockpit.Backend.Tests.Projects;
 
 /// <summary>
 /// Which shared-project sources the Projects workspace ends up reading from (AC-245). Two plugins offering the
 /// same key is the agreed case — the same "first wins, second is refused, nothing throws" rule
-/// <see cref="ProjectFieldRegistryTests"/> and <see cref="ProjectOwnershipRegistryTests"/> already cover for their
-/// own registries.
+/// <c>ProjectFieldRegistryTests</c> and <c>ProjectOwnershipRegistryTests</c> already cover for their own
+/// registries. AC-1374: moved to Infrastructure, out of App.
 /// </summary>
 public class SharedProjectSourceRegistryTests
 {
@@ -72,13 +74,16 @@ public class SharedProjectSourceRegistryTests
     }
 
     [Fact]
-    public void TheAppsOwnScan_ResolvesTheRegistry()
+    public void TheBackendsOwnScan_ResolvesTheRegistry()
     {
-        // ProjectsViewModel takes ISharedProjectSourceRegistry as a constructor dependency; a missing marker
-        // interface here is the app failing to start, not a quiet degradation — the same reason
-        // ProjectFieldRegistryTests carries the identical scan check for its own registry.
+        // ProjectsViewModel and the moved AssistantReadGateway both take ISharedProjectSourceRegistry as a
+        // constructor dependency; a missing marker interface here is the app failing to start, not a quiet
+        // degradation — the same reason ProjectFieldRegistryTests carries the identical scan check for its own registry.
         var services = new ServiceCollection();
-        services.AddServices(typeof(SharedProjectSourceRegistry).Assembly);
+        services.AddLogging();
+        services.AddCore().AddInfrastructure().AddServices(
+            typeof(Cockpit.Core.DependencyInjection).Assembly,
+            typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
 
         Assert.IsType<SharedProjectSourceRegistry>(services.BuildServiceProvider().GetService<ISharedProjectSourceRegistry>());
     }

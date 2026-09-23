@@ -32,13 +32,14 @@ public class AssistantWorkspacePlacementTests
     {
         var (gateway, desk, assistant) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _CockpitWithASessionsDesk(out var deskId);
+            var sessions = new SessionRegistry();
+            var cockpit = _CockpitWithASessionsDesk(out var deskId, sessions);
             var session = new SessionViewModel { WorkspaceId = deskId };
             var assistantSession = new SessionViewModel { BelongsToNoWorkspace = true, WorkspaceId = deskId };
             cockpit.Sessions.Add(session);
             cockpit.Sessions.Add(assistantSession);
 
-            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), session, assistantSession);
+            return (new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance), session, assistantSession);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(desk.PaneId).GetAwaiter().GetResult());
@@ -58,11 +59,12 @@ public class AssistantWorkspacePlacementTests
     {
         var (gateway, assistant) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _CockpitWithASessionsDesk(out _);
+            var sessions = new SessionRegistry();
+            var cockpit = _CockpitWithASessionsDesk(out _, sessions);
             var session = new SessionViewModel { BelongsToNoWorkspace = true };
             cockpit.Sessions.Add(session);
 
-            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), session);
+            return (new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance), session);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(assistant.PaneId).GetAwaiter().GetResult());

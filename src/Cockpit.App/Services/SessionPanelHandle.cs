@@ -75,6 +75,28 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
     public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) =>
         UiThreadCall.DispatchAsync(() => pane.FeedVerifyResultAsync(caption, screenshotPng));
 
+    // Only an SDK session holds permission rows; a TTY session's prompts are its CLI's own, and a plain terminal has none.
+    public Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync() => pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => (IReadOnlyList<SessionPendingPermission>)
+            [
+                .. sdk.PendingToolPermissionRows().Select(row =>
+                    new SessionPendingPermission(row.ToolUseId ?? "", row.ToolName ?? "", row.InputJson ?? "{}", row.Timestamp)),
+            ])
+        : Task.FromResult<IReadOnlyList<SessionPendingPermission>>([]);
+
+    public Task<bool> SetStatuslineAsync(string statusline) => UiThreadCall.RunAsync(() =>
+    {
+        pane.Statusline = statusline ?? string.Empty;
+        return true;
+    });
+
+    public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => pane.SuggestName(name));
+
+    // AC-1374: the three fields read as one dispatcher callback, so a wake decision never sees one from before a
+    // change and another from after it — same deadline and UiUnavailable handling as every other hop here (AC-1138).
+    public Task<SessionWakeState> ReadWakeStateAsync() =>
+        UiThreadCall.RunAsync(() => new SessionWakeState(pane.PendingConsent is not null, pane.SessionStatus, pane.CanTakeAPrompt));
+
     private static SessionTranscriptSlice _SliceOf(SessionViewModel sdk, int count)
     {
         var transcript = sdk.Transcript;

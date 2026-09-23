@@ -134,4 +134,35 @@ public interface ISessionHandle
     /// Hands a verify render back to the session as its next input; false when the session cannot take it.
     /// </summary>
     Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);
+
+    /// <summary>
+    /// Every Allow/Deny question this session is stopped on right now (AC-1324); empty for a TTY session or a
+    /// plain terminal, which have no tool-permission rows of their own.
+    /// </summary>
+    Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync();
+
+    /// <summary>
+    /// Sets what the session says it is working on; true when a live pane took it (AC-13).
+    /// </summary>
+    Task<bool> SetStatuslineAsync(string statusline);
+
+    /// <summary>
+    /// Proposes <paramref name="name"/> as the session's name; false when the operator already named it on
+    /// purpose, which leaves the existing name standing (AC-310).
+    /// </summary>
+    Task<bool> SuggestNameAsync(string name);
+
+    /// <summary>
+    /// The three fields a wake decision reads as one instant, not as three separate moments a consent banner or a
+    /// turn starting could fall between (AC-1374). Use this, not the individual properties, wherever a decision
+    /// chains more than one of them.
+    /// </summary>
+    Task<SessionWakeState> ReadWakeStateAsync();
 }
+
+// AC-1324: one open Allow/Deny question on a session, as its own handle reports it — the same shape
+// IAssistantReadGateway's AssistantPendingPermission carries minus the pane id, which the caller already has.
+public sealed record SessionPendingPermission(string ToolUseId, string ToolName, string InputJson, DateTimeOffset SinceUtc);
+
+// AC-1374: HasPendingConsent, SessionStatus and CanTakeAPrompt, read together — see ISessionHandle.ReadWakeStateAsync.
+public sealed record SessionWakeState(bool HasPendingConsent, SessionStatus SessionStatus, bool CanTakeAPrompt);

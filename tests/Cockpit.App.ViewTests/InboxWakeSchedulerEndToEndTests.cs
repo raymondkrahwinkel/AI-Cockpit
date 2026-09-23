@@ -5,6 +5,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -25,18 +26,19 @@ public sealed class InboxWakeSchedulerEndToEndTests
     {
         var inbox = new AgentMessageInbox();
 
-        var (cockpit, target, sent) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, target, sent) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var sessions = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: sessions);
             var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
             to.MarkHostedTuiReady();
             vm.Sessions.Add(to);
-            return (vm, to, captured);
+            return (sessions, to, captured);
         });
 
-        var gateway = new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
+        var gateway = new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
         var scheduler = new InboxWakeScheduler(inbox, gateway) { Panes = () => [target.PaneId] };
 
         // A peer's own delivery — no notify tool, no urgent=true, no set_wake_optin call for the recipient anywhere
@@ -46,6 +48,9 @@ public sealed class InboxWakeSchedulerEndToEndTests
         Assert.Empty(sent);
 
         await scheduler.RunOnceAsync();
+        // AC-1374: the wake send now goes through the handle and posts to the dispatcher instead of running inline
+        // (see WorkspaceAgentGatewayWakeTests._DrainSendAsync for why) — one more turn for the queued send to land.
+        await Dispatcher.UIThread.InvokeAsync(() => { }).GetTask();
 
         var turn = Assert.Single(sent);
         Assert.Contains("<cockpit-agent-wake", turn, StringComparison.Ordinal);
@@ -65,17 +70,18 @@ public sealed class InboxWakeSchedulerEndToEndTests
     {
         var inbox = new AgentMessageInbox();
 
-        var (cockpit, target, sent) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, target, sent) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var sessions = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: sessions);
             var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
             vm.Sessions.Add(to);
-            return (vm, to, captured);
+            return (sessions, to, captured);
         });
 
-        var gateway = new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
+        var gateway = new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
         var scheduler = new InboxWakeScheduler(inbox, gateway) { Panes = () => [target.PaneId] };
 
         await scheduler.RunOnceAsync();

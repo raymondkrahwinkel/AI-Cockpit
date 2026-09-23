@@ -13,6 +13,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
