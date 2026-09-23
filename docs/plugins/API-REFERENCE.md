@@ -800,6 +800,9 @@ chose; act only on `decision.IsApproved`. *(Added in SDK 1.4.0; default implemen
 - Set `Source.PaneId` to the session the request belongs to (from `IPluginSessionContext.PaneId`) so the banner
   appears on that pane. Leave `Source.PluginId` null — the host stamps your plugin's identity itself.
 - Every decision is written to an append-only audit trail (`consent-audit.jsonl`) the operator can review.
+- **A deadline.** `RequestConsentAsync(request, cancellationToken)` takes the prompt down and returns `Denied`
+  when the token is cancelled before anyone answered — a timeout is a refusal, never an approval. *(SDK 1.66.0;
+  set `minHostVersion` 0.38.0 when you rely on the prompt closing.)*
 
 ```csharp
 var decision = await host.RequestConsentAsync(new ConsentRequest(
