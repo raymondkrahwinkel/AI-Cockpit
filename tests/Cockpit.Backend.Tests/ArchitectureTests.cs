@@ -1,9 +1,8 @@
 namespace Cockpit.Backend.Tests;
 
 /// <summary>
-/// AC-1373: this suite is the backend without the desktop, so it must not be able to reach Cockpit.App, nor
-/// Cockpit.TestSupport, which brings the Avalonia package with it. A project reference copies the assembly into
-/// the output even when no code uses it yet, so the output folder is what tells.
+/// AC-1373: the backend suite must not reach Cockpit.App, nor Cockpit.TestSupport, which brings the Avalonia package.
+/// A project reference copies its assembly into the output even before any code uses it, so the output folder tells.
 /// </summary>
 public class ArchitectureTests
 {

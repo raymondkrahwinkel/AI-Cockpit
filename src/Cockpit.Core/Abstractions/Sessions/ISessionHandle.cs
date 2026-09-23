@@ -80,9 +80,9 @@ public interface ISessionHandle
     bool HasPromptWaitingToBeDelivered { get; }
 
     /// <summary>
-    /// Whether a shell the session backgrounded is still running.
+    /// Whether a shell the session backgrounded is still running; asked where the session keeps its task list.
     /// </summary>
-    bool HasOutstandingBackgroundShells { get; }
+    Task<bool> HasOutstandingBackgroundShellsAsync();
 
     /// <summary>
     /// Whether a consent banner is waiting for the operator on this pane.

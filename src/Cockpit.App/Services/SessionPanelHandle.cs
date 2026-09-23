@@ -41,7 +41,7 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
     public bool HasPromptWaitingToBeDelivered => pane.HasPromptWaitingToBeDelivered;
 
     // An SDK session answers this from its background-task list, which only the UI thread may walk.
-    public bool HasOutstandingBackgroundShells => UiThreadCall.Run(() => pane.HasOutstandingBackgroundShells);
+    public Task<bool> HasOutstandingBackgroundShellsAsync() => UiThreadCall.RunAsync(() => pane.HasOutstandingBackgroundShells);
 
     public bool HasPendingConsent => pane.PendingConsent is not null;
 

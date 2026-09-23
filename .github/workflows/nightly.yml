@@ -93,6 +93,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Infrastructure --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
+      - name: Backend tests
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Backend --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
       - name: View tests
         if: ${{ !cancelled() }}
         run: dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/View --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
