@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Docker plugin's settings now offer a consent mode per daemon — Always ask (unchanged), Read-free
+  (reads go without a card; a change still asks) or All-free (nothing asks on this daemon). It is tied to the
+  daemon endpoint below it, so pointing the plugin at a different endpoint resets it to Always ask. A call that
+  skipped its card this way says so in its result and in the consent audit log, and exec/run still refuse
+  outright until the exec capability is turned on, in every mode.
 - added: an Autopilot epic chain now runs a mid-epic gate every few merged subs (default 5, configurable) and an
   end gate once every sub is merged: it brings main into the collection branch first, runs the full suite on the
   pinned tip with TRX reports kept, reads the red set against a recorded suite run on main (red on both is the
