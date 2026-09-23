@@ -55,7 +55,7 @@ internal sealed partial class KubernetesMcpTools
 
         // Rendering reads the release's own state through helm, and the diff is built from the release secret —
         // the same credential material every other helm tool asks for before it reads it.
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, @namespace, $"render an upgrade of Helm release \"{release}\" in namespace \"{@namespace}\" and read its current manifest", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_upgrade", @namespace, $"render an upgrade of Helm release \"{release}\" in namespace \"{@namespace}\" and read its current manifest", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -120,7 +120,7 @@ internal sealed partial class KubernetesMcpTools
         // arriving as one block with the breaks already baked in as `\n`.
         var version = string.IsNullOrWhiteSpace(chartVersion) ? string.Empty : $" version {chartVersion}";
         var operation = $"upgrade Helm release \"{release}\" in namespace \"{@namespace}\" to chart \"{chart}\"{version}";
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength));
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "helm_upgrade", @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength));
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -145,7 +145,7 @@ internal sealed partial class KubernetesMcpTools
             note = outcome.Succeeded
                 ? "Hooks were not run and no three-way merge was done — see the tool description for what that leaves untouched."
                 : "Partially applied: this upgrade is recorded as a failed revision. The resources listed with an error were not changed.",
-        });
+        }, decision.BypassNote);
     }
 
     private static IReadOnlyList<string> _RenderArguments(string release, string chart, string chartVersion, string values, bool reuseValues)

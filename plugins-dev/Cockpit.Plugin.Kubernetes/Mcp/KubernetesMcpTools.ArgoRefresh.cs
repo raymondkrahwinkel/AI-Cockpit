@@ -31,7 +31,7 @@ internal sealed partial class KubernetesMcpTools
 
         var refreshKind = hard ? "hard" : "normal";
         var operation = $"refresh Argo CD Application \"{name}\" in namespace \"{@namespace}\" ({refreshKind}) — this sets a refresh annotation on the Application, which Argo CD removes itself once it has reconciled; no resource is rolled out, updated or deleted";
-        var decision = await gate.AuthorizeArgoRefreshAsync(registration, @namespace, operation, session);
+        var decision = await gate.AuthorizeArgoRefreshAsync(registration, "argo_refresh", @namespace, operation, session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -50,7 +50,7 @@ internal sealed partial class KubernetesMcpTools
                 @namespace,
                 refreshRequested = refreshKind,
                 note = "Argo CD re-reads Git and updates status; no resource was rolled out, updated or deleted. Argo removes this annotation itself once it has reconciled.",
-            });
+            }, decision.BypassNote);
         }, cancellationToken);
     }
 }

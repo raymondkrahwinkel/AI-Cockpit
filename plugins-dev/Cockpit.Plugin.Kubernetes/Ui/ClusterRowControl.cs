@@ -29,6 +29,9 @@ internal sealed class ClusterRowControl : UserControl
     private readonly CheckBox _allowClusterScoped;
     private readonly CheckBox _allowExec;
     private readonly CheckBox _allowPortForward;
+    private readonly ComboBox _consentMode;
+    private readonly string _originalKubeconfigPath;
+    private readonly string _originalContext;
 
     public event Action? RemoveRequested;
 
@@ -69,6 +72,19 @@ internal sealed class ClusterRowControl : UserControl
         _allowPortForward = new CheckBox { Content = "Allow port-forward (open a tunnel into the cluster)", IsChecked = existing?.AllowPortForward ?? false };
 
         _RebuildContextItems([], existing?.ContextName);
+
+        // AC-1349: index matches ClusterConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree).
+        _originalKubeconfigPath = KubeconfigPath;
+        _originalContext = _SelectedContext();
+        _consentMode = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = new[] { "Always ask", "Read-free (reads skip the card; secrets, Helm values/manifests and changes still ask)", "All-free (changes skip the card too, but only in an allowed namespace)" },
+            SelectedIndex = (int)(existing?.EffectiveConsentMode() ?? ClusterConsentMode.AlwaysAsk),
+        };
+        _kubeconfigPath.TextChanged += (_, _) => _ResetConsentModeIfRepointed();
+        _contextBox.SelectionChanged += (_, _) => _ResetConsentModeIfRepointed();
+        _kubeconfig.TextChanged += (_, _) => _ResetConsentModeIfRepointed();
 
         var browse = new Button { Content = "Browse…" };
         browse.Click += async (_, _) => await _BrowseAsync();
@@ -117,6 +133,8 @@ internal sealed class ClusterRowControl : UserControl
         panel.Children.Add(_allowClusterScoped);
         panel.Children.Add(_allowExec);
         panel.Children.Add(_allowPortForward);
+        panel.Children.Add(_Hint("Consent mode for this cluster — tied to the kubeconfig and context above; re-pointing them resets it to Always ask. A kubeconfig file on (current-context) always asks: pick a context to use a mode"));
+        panel.Children.Add(_consentMode);
         panel.Children.Add(remove);
 
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
@@ -142,7 +160,7 @@ internal sealed class ClusterRowControl : UserControl
     // What was pasted into the Argo token box this session, if anything — the parent stores it through the secret layer.
     public string ArgoTokenInput => _argoToken.Text ?? string.Empty;
 
-    public ClusterRegistration ToRegistration() => new(
+    public ClusterRegistration ToRegistration() => new ClusterRegistration(
         Id: _id,
         Label: (_label.Text ?? string.Empty).Trim(),
         ContextName: _SelectedContext(),
@@ -153,7 +171,17 @@ internal sealed class ClusterRowControl : UserControl
         // attach is model+gate-ready but has no meaningful non-interactive MCP tool yet, so it stays off.
         AllowAttach: false,
         UsesExecAuth: _usesExecAuth,
-        KubeconfigPath: KubeconfigPath);
+        KubeconfigPath: KubeconfigPath).WithConsentMode((ClusterConsentMode)_consentMode.SelectedIndex);
+
+    // Mirrors ClusterRegistration.EffectiveConsentMode live: a row re-pointed at another kubeconfig or context in
+    // this same dialog, before Save, must not carry a mode chosen for the old target along. A paste always counts.
+    private void _ResetConsentModeIfRepointed()
+    {
+        if (KubeconfigPath != _originalKubeconfigPath || _SelectedContext() != _originalContext || !string.IsNullOrWhiteSpace(_kubeconfig.Text))
+        {
+            _consentMode.SelectedIndex = (int)ClusterConsentMode.AlwaysAsk;
+        }
+    }
 
     private async Task _BrowseAsync()
     {

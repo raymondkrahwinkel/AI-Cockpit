@@ -27,7 +27,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"list Argo CD Applications in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedReadAsync(registration, "argo_apps", @namespace, $"list Argo CD Applications in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -37,7 +37,7 @@ internal sealed partial class KubernetesMcpTools
         {
             using var generic = new GenericClient(client, ArgoGroup, ArgoVersion, ArgoApplicationPlural, disposeClient: false);
             var list = await generic.ListNamespacedAsync<RawKubernetesList>(@namespace, limit: ListPageLimit, cancel: token);
-            return McpText.Node(ArgoApplicationSummary.SummarizeList(list));
+            return McpText.Node(ArgoApplicationSummary.SummarizeList(list), decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -56,7 +56,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"read Argo CD Application \"{name}\" in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedReadAsync(registration, "argo_app", @namespace, $"read Argo CD Application \"{name}\" in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -66,7 +66,7 @@ internal sealed partial class KubernetesMcpTools
         {
             using var generic = new GenericClient(client, ArgoGroup, ArgoVersion, ArgoApplicationPlural, disposeClient: false);
             var app = await generic.ReadNamespacedAsync<RawKubernetesObject>(@namespace, name, cancel: token);
-            return McpText.Node(ArgoApplicationSummary.SummarizeApp(app));
+            return McpText.Node(ArgoApplicationSummary.SummarizeApp(app), decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -85,7 +85,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"read Argo CD Application \"{name}\" history in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedReadAsync(registration, "argo_history", @namespace, $"read Argo CD Application \"{name}\" history in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -95,7 +95,7 @@ internal sealed partial class KubernetesMcpTools
         {
             using var generic = new GenericClient(client, ArgoGroup, ArgoVersion, ArgoApplicationPlural, disposeClient: false);
             var app = await generic.ReadNamespacedAsync<RawKubernetesObject>(@namespace, name, cancel: token);
-            return McpText.Node(ArgoApplicationSummary.SummarizeHistory(app));
+            return McpText.Node(ArgoApplicationSummary.SummarizeHistory(app), decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -114,7 +114,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"read Argo CD Application \"{name}\" last sync in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedReadAsync(registration, "argo_last_sync", @namespace, $"read Argo CD Application \"{name}\" last sync in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -124,7 +124,7 @@ internal sealed partial class KubernetesMcpTools
         {
             using var generic = new GenericClient(client, ArgoGroup, ArgoVersion, ArgoApplicationPlural, disposeClient: false);
             var app = await generic.ReadNamespacedAsync<RawKubernetesObject>(@namespace, name, cancel: token);
-            return McpText.Node(ArgoApplicationSummary.SummarizeLastSync(app));
+            return McpText.Node(ArgoApplicationSummary.SummarizeLastSync(app), decision.BypassNote);
         }, cancellationToken);
     }
 }

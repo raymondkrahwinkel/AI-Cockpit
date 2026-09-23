@@ -3,8 +3,9 @@ namespace Cockpit.Plugin.Kubernetes.Security;
 // What `ClusterAccessGate` decided about one requested action: allowed, or denied with a reason the
 // MCP tool can hand back to the agent. A denial is either the operator saying no to a consent prompt, or a policy
 // block (a capability that is off for the cluster) — the reason distinguishes them so the agent is told what to
-// do about it (ask the operator, or turn the capability on in settings).
-internal sealed record GateResult(bool IsAllowed, string? DeniedReason)
+// do about it (ask the operator, or turn the capability on in settings). BypassNote (AC-1349) is set when the
+// cluster's consent mode pre-approved the call, so the tool result can say so in the transcript too.
+internal sealed record GateResult(bool IsAllowed, string? DeniedReason, string? BypassNote = null)
 {
     public static GateResult Allow { get; } = new(true, null);
 

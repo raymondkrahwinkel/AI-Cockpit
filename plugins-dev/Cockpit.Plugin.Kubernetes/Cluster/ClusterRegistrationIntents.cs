@@ -28,12 +28,17 @@ internal sealed class ClusterRegistrationIntents(KubernetesSettings settings)
         }
 
         // The narrowest jail an intent-registered cluster can have; widen it in the plugin settings if needed.
-        settings.Clusters = [.. settings.Clusters, new ClusterRegistration(
+        // AC-1349: the sender may name a consent mode (Kind's own default); anything unrecognised stays AlwaysAsk.
+        var registration = new ClusterRegistration(
             id,
             intent.Data.GetValueOrDefault("label", id),
             intent.Data.GetValueOrDefault("context", string.Empty),
             ["default"],
-            KubeconfigPath: kubeconfigPath)];
+            KubeconfigPath: kubeconfigPath);
+        var consentMode = Enum.TryParse<ClusterConsentMode>(intent.Data.GetValueOrDefault("consentMode", string.Empty), out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : ClusterConsentMode.AlwaysAsk;
+        settings.Clusters = [.. settings.Clusters, registration.WithConsentMode(consentMode)];
         return _Notice(null);
     }
 
