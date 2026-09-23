@@ -72,7 +72,7 @@ public class ScheduleTests
         var slot = Schedule.Previous("mon 09:00", TimeZoneInfo.Local, DateTimeOffset.Parse("2026-07-13T08:00:00")); // Monday, 08:00.
 
         Assert.NotNull(slot);
-        var local = TimeZoneInfo.ConvertTime(slot!.Value, TimeZoneInfo.Local);
+        var local = TimeZoneInfo.ConvertTime(slot.Value, TimeZoneInfo.Local);
         Assert.Equal(new DateOnly(2026, 7, 6), DateOnly.FromDateTime(local.Date)); // The Monday before.
     }
 }
