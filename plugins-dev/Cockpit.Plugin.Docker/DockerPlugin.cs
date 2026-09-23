@@ -37,7 +37,7 @@ public sealed class DockerPlugin : ICockpitPlugin
         var settings = new DockerSettings(host.Storage);
         var engine = new DockerEngine(settings);
         _engine = engine;
-        var gate = new DockerAccessGate(host);
+        var gate = new DockerAccessGate(host, settings);
         var compose = new ComposeCli();
         var docker = new DockerCli();
         var running = new RunningContainerRegistry(engine, () => DateTimeOffset.UtcNow);

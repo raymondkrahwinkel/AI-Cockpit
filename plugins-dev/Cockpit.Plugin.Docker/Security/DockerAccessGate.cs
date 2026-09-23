@@ -1,6 +1,7 @@
 using System.Text;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugin.Docker.Settings;
 
 namespace Cockpit.Plugin.Docker.Security;
 
@@ -11,29 +12,34 @@ namespace Cockpit.Plugin.Docker.Security;
 //   - Connection — the first touch of the daemon asks once, LowRisk, remembered per pane. Reads are free after that.
 //   - Mutation — start/stop/remove/run and other changes always ask afresh, Dangerous, never remembered, with the literal command shown.
 //   - Danger capability (exec) — blocked with a settings hint unless the operator turned it on; then asks afresh, Dangerous, never remembered.
+// AC-1348: `settings.ConsentMode` (per daemon endpoint) can pre-approve a read (ReadFree/AllFree) or a change
+// (AllFree only), per `DockerToolAccess`. A pre-approved request still goes to `host.RequestConsentAsync` — with
+// `PreApprovedBy` set — so the host logs it as bypassed instead of the gate silently skipping the ask.
 // The `ConsentRequest.Action` is rendered verbatim to the operator, and parts of it (a container name, a
 // command) are agent-supplied, so it is flattened to a single line — an agent cannot smuggle extra lines into the
 // consent body.
-internal sealed class DockerAccessGate(ICockpitHost host)
+internal sealed class DockerAccessGate(ICockpitHost host, DockerSettings settings)
 {
     private const string SourceLabel = "Docker";
 
-    // Authorize touching the daemon at all. LowRisk, remembered per pane — asks once, then reads are free.
-    public Task<GateResult> AuthorizeConnectionAsync(string operation, string? paneId) =>
+    // Authorize touching the daemon at all. LowRisk, remembered per pane — asks once, then reads are free. Pre-
+    // approved instead when the consent mode frees this tool (AC-1348).
+    public Task<GateResult> AuthorizeConnectionAsync(string toolName, string operation, string? paneId) =>
         _RequestAsync(
             "Connect to the Docker daemon",
             operation,
             "docker.connect:local",
             ConsentRisk.LowRisk,
             allowRemember: true,
-            paneId);
+            paneId,
+            preApprovedBy: _PreApprovedFor(toolName));
 
-    // Authorize a change to a Docker resource. Layered on connection auth, then always Dangerous and never remembered.
-    // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
+    // Authorize a change to a Docker resource. Layered on connection auth, then Dangerous unless the consent mode
+    // pre-approves this tool too. `detailLines` (AC-1062): each line is escaped on its own and joined with a real
     // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
-    public async Task<GateResult> AuthorizeMutationAsync(string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
+    public async Task<GateResult> AuthorizeMutationAsync(string toolName, string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
-        var connection = await AuthorizeConnectionAsync(operation, paneId);
+        var connection = await AuthorizeConnectionAsync(toolName, operation, paneId);
         if (!connection.IsAllowed)
         {
             return connection;
@@ -46,12 +52,14 @@ internal sealed class DockerAccessGate(ICockpitHost host)
             ConsentRisk.Dangerous,
             allowRemember: false,
             paneId,
-            detailLines);
+            detailLines,
+            preApprovedBy: _PreApprovedFor(toolName));
     }
 
-    // Authorize a dangerous capability (exec/run). Blocked with a settings hint when the capability is off — a policy
-    // block, so no prompt is shown. When on: connection auth, then always Dangerous and never remembered.
-    public async Task<GateResult> AuthorizeDangerAsync(DangerCapability capability, bool enabled, string operation, string? paneId)
+    // Authorize a dangerous capability (exec/run). Blocked with a settings hint when the capability is off — a
+    // policy block regardless of consent mode. When on: connection auth, then Dangerous unless the consent mode
+    // pre-approves this tool too.
+    public async Task<GateResult> AuthorizeDangerAsync(string toolName, DangerCapability capability, bool enabled, string operation, string? paneId)
     {
         if (!enabled)
         {
@@ -59,7 +67,7 @@ internal sealed class DockerAccessGate(ICockpitHost host)
                 $"The \"{capability}\" capability is off for the Docker daemon. Turn it on in the plugin settings first.");
         }
 
-        var connection = await AuthorizeConnectionAsync(operation, paneId);
+        var connection = await AuthorizeConnectionAsync(toolName, operation, paneId);
         if (!connection.IsAllowed)
         {
             return connection;
@@ -71,10 +79,27 @@ internal sealed class DockerAccessGate(ICockpitHost host)
             $"docker.{capability.ToString().ToLowerInvariant()}:local",
             ConsentRisk.Dangerous,
             allowRemember: false,
-            paneId);
+            paneId,
+            preApprovedBy: _PreApprovedFor(toolName));
     }
 
-    private async Task<GateResult> _RequestAsync(string title, string operation, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
+    // ReadFree frees a read-classified tool; AllFree frees every tool; AlwaysAsk (the default) never pre-approves.
+    private string? _PreApprovedFor(string toolName)
+    {
+        var mode = settings.ConsentMode;
+        if (mode == DockerConsentMode.AlwaysAsk)
+        {
+            return null;
+        }
+
+        var freed = mode == DockerConsentMode.AllFree || DockerToolAccess.IsRead(toolName);
+        return freed ? $"daemon mode: {_ModeLabel(mode)}" : null;
+    }
+
+    private static string _ModeLabel(DockerConsentMode mode) =>
+        mode == DockerConsentMode.ReadFree ? "read-free" : "all-free";
+
+    private async Task<GateResult> _RequestAsync(string title, string operation, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null, string? preApprovedBy = null)
     {
         var request = new ConsentRequest(
             Title: title,
@@ -84,7 +109,8 @@ internal sealed class DockerAccessGate(ICockpitHost host)
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
-            AllowRemember: allowRemember);
+            AllowRemember: allowRemember,
+            PreApprovedBy: preApprovedBy);
 
         ConsentDecision decision;
         try
@@ -97,9 +123,14 @@ internal sealed class DockerAccessGate(ICockpitHost host)
             return GateResult.Deny("The operator did not approve this Docker action.");
         }
 
-        return decision.IsApproved
-            ? GateResult.Allow
-            : GateResult.Deny("The operator did not approve this Docker action.");
+        if (!decision.IsApproved)
+        {
+            return GateResult.Deny("The operator did not approve this Docker action.");
+        }
+
+        return decision.Bypassed
+            ? new GateResult(true, null, $"Executed without asking — {preApprovedBy}.")
+            : GateResult.Allow;
     }
 
     // AC-1062: escapes each fragment on its own — the operation summary, then each detail line — before joining

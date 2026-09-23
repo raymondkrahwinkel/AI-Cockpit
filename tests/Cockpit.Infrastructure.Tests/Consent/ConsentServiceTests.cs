@@ -25,8 +25,31 @@ public sealed class ConsentServiceTests
         string? paneId = "pane-1",
         string scope = "workflow.command",
         string action = "rm -rf /tmp/x",
-        string pluginId = "workflows") =>
-        new("Workflow wants to run a command", action, new ConsentSource(paneId, pluginId, "Workflows"), scope, risk, allowRemember);
+        string pluginId = "workflows",
+        string? preApprovedBy = null) =>
+        new("Workflow wants to run a command", action, new ConsentSource(paneId, pluginId, "Workflows"), scope, risk, allowRemember, preApprovedBy);
+
+    /// <summary>
+    /// AC-1348: a plugin's own policy (a daemon or cluster consent mode) can name itself as the reason a request
+    /// never needed a card, independent of AC-575's operator-configured bypass below. The audit still gets its
+    /// own line — Bypassed, not Approved — so the skip stays visible even though nobody clicked anything.
+    /// </summary>
+    [Fact]
+    public async Task RequestConsentAsync_WithPreApprovedBy_SkipsThePrompt_AndLogsBypassed()
+    {
+        var entries = new List<ConsentAuditEntry>();
+        _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var broker = CreateBroker();
+        var prompts = _RecordPrompts(broker);
+
+        var decision = await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, preApprovedBy: "daemon mode: read-free"));
+
+        Assert.True(decision.IsApproved);
+        Assert.True(decision.Bypassed);
+        Assert.Empty(prompts);
+        var entry = Assert.Single(entries);
+        Assert.Equal(ConsentAuditAction.Bypassed, entry.Action);
+    }
 
     /// <summary>
     /// The core safety property: a dangerous action is asked every single time. Even when the operator ticked

@@ -28,7 +28,7 @@ public sealed class DockerMcpToolsTests
         var asked = new List<ConsentRequest>();
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        var gate = new DockerAccessGate(host);
+        var gate = new DockerAccessGate(host, settings);
         var engine = new FakeDockerEngine();
         var compose = new FakeComposeCli();
         var docker = new FakeDockerCli();

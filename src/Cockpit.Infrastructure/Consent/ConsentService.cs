@@ -40,6 +40,15 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             return await _FailClosedAsync(request).ConfigureAwait(false);
         }
 
+        // AC-1348: the calling plugin's own policy already decided this one (e.g. a daemon consent mode) — a
+        // second, independent bypass from AC-575's operator switch below, so it is honoured first and it too must
+        // not become a remembered approval (see AC-575's placement note just below).
+        if (request.PreApprovedBy is not null)
+        {
+            await _RecordAsync(request, ConsentOutcome.Approved, remembered: false, bypassed: true).ConfigureAwait(false);
+            return new ConsentDecision(ConsentOutcome.Approved, Remembered: false, Bypassed: true);
+        }
+
         // AC-575: the operator can switch the card off ahead of time, per source, for the assistant only. Placed
         // after the pane-id override (an agent can't fake its way in) and before the _remembered check (a bypass
         // is stronger and mustn't become a remembered approval). "Not low risk" so a future risk value fails closed.
