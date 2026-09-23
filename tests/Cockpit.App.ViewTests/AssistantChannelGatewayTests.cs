@@ -265,13 +265,14 @@ public class AssistantChannelGatewayTests
     });
 
     // A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to
-    // answer. AC-1360 adds a plugin's prompt that no session owns (a workflow's "Ask me first"), and nothing else.
+    // answer. AC-1360 adds a workflow's prompt that no session owns ("Ask me first"), and no other plugin's.
     [Theory]
     [InlineData("pane-someone-else", null, 0)]
     [InlineData("pane-someone-else", "workflows", 0)]
     [InlineData(null, null, 0)]
+    [InlineData(null, "docker", 0)]
     [InlineData(null, "workflows", 1)]
-    public void OnlyTheAssistantsOwnOrASessionlessPluginPrompt_IsRelayedAndAnswerable(string? paneId, string? pluginId, int relayed) => HeadlessAvalonia.Run(() =>
+    public void OnlyTheAssistantsOwnOrASessionlessWorkflowPrompt_IsRelayedAndAnswerable(string? paneId, string? pluginId, int relayed) => HeadlessAvalonia.Run(() =>
     {
         var broker = Substitute.For<IConsentBroker>();
         var prompts = new List<AssistantChannelConsentPrompt>();

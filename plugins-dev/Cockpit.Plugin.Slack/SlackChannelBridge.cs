@@ -88,6 +88,14 @@ internal sealed class SlackChannelBridge : IDisposable
             }
         }
 
+        // A stranger must not be able to make the bot download anything (AC-1360). Their text still goes to the
+        // host without the files, so the host's own refusal logs them (AC-1074) and nothing more happens.
+        if (!_access.IsAllowed(senderId))
+        {
+            await _gateway.SendAsync(senderId, text, [], cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var (images, someFileRefused, downloadFailures) = await _CollectImagesAsync(files, cancellationToken).ConfigureAwait(false);
 
         // One report per message rather than per file: a bad token fails every attachment, and that would be a

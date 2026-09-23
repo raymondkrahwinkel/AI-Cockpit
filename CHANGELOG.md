@@ -43,7 +43,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   shows as a banner in the cockpit and as Approve/Deny buttons in a connected Discord or Slack channel. It waits
   60 minutes by default (a **Wait (minutes)** setting on the step); no answer in that time counts as no and the
   flow stops there, marked skipped. A chat channel relays such flow prompts now as well — never another
-  session's.
+  session's, and no other plugin's.
 
 - added: a Workflows schedule trigger now understands a weekday ("mon 09:00", "mon,fri 09:00"), a single date
   ("once 2026-10-01 09:00" — the flow switches itself off once it has run), and a time zone (an IANA id such as
@@ -665,6 +665,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the Slack plugin no longer downloads a file sent by someone who is not allowed to talk to the assistant;
+  who sent it is checked first.
 - fixed: a plugin's saved setting or declared credential field name could be lost if you quit right after it was
   written — the write now finishes before the process closes instead of racing it.
 - fixed: a session pane restored from your last run could briefly use the default usage-threshold settings

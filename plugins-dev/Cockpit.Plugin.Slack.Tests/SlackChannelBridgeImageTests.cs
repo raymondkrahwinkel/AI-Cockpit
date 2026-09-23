@@ -134,16 +134,20 @@ public class SlackChannelBridgeImageTests
     }
 
     // A stranger stays answered with silence (AC-1023 §3), even when there is something to complain about —
-    // a ⚠️ would confirm to them that a bot is listening at all.
-    [Fact]
-    public async Task AStrangerGetsNoReactionEvenWhenTheirFileWasRefused()
+    // a ⚠️ would confirm to them that a bot is listening at all. AC-1360: and nothing of theirs is downloaded.
+    [Theory]
+    [InlineData("report.pdf", "application/pdf")]
+    [InlineData("photo.png", "image/png")]
+    public async Task AStrangerGetsNoReaction_AndNothingOfTheirsIsDownloaded(string name, string mimeType)
     {
-        var (bridge, gateway, sink, _) = _Build();
+        var (bridge, gateway, sink, files) = _Build();
+        files.Files[_Url] = _Bytes;
         gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
-        var pdf = new SlackInboundFile("report.pdf", "application/pdf", 4, "https://files.slack.com/private/report.pdf");
 
-        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", "1", [pdf]);
+        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", "1", [new SlackInboundFile(name, mimeType, 4, _Url)]);
 
+        Assert.Empty(files.Fetched);
+        Assert.Empty(Assert.Single(gateway.SentImages));
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
     }

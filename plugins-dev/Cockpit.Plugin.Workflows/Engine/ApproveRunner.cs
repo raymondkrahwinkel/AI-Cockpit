@@ -17,6 +17,8 @@ internal sealed class ApproveRunner(ICockpitHost host) : IStepRunner
     public const string TimeoutParameter = "Wait (minutes)";
 
     // As long as AI-Hub's scheduler waited for an approval: long enough to be away from the desk for a while.
+    // ponytail: on the desktop this sessionless prompt holds the selected pane's one banner slot for the whole wait,
+    // denying that pane's own prompts meanwhile; give it a surface of its own if that starts to bite.
     public const double DefaultTimeoutMinutes = 60;
 
     // A week: well inside what CancelAfter accepts, and longer than any question worth pausing a flow for.
