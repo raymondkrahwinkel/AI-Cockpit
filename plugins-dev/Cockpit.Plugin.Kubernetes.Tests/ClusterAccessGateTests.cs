@@ -15,14 +15,26 @@ public class ClusterAccessGateTests
 {
     private const string PaneId = "pane-1";
 
+    // The fake host mirrors ConsentService's own rule (AC-1348, exercised for real in ConsentServiceTests): a
+    // request carrying PreApprovedBy comes back Approved+Bypassed without ever needing an operator answer.
     private static ICockpitHost _Host(ConsentOutcome outcome, out List<ConsentRequest> asked)
     {
         var requests = new List<ConsentRequest>();
         asked = requests;
         var host = Substitute.For<ICockpitHost>();
-        host.RequestConsentAsync(Arg.Do<ConsentRequest>(requests.Add)).Returns(new ConsentDecision(outcome));
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(requests.Add))
+            .Returns(info => Task.FromResult(_Decide(info.Arg<ConsentRequest>(), outcome)));
         return host;
     }
+
+    private static ConsentDecision _Decide(ConsentRequest request, ConsentOutcome outcome) =>
+        request.PreApprovedBy is not null
+            ? new ConsentDecision(ConsentOutcome.Approved, Bypassed: true)
+            : new ConsentDecision(outcome);
+
+    // Jita's shape: staging and production on one cluster, with only staging on the allowed list.
+    private static ClusterRegistration _Jita(ClusterConsentMode mode) =>
+        new ClusterRegistration("cluster-jita", "jita", ContextName: "jita-context", AllowedNamespaces: ["staging"]).WithConsentMode(mode);
 
     private static ClusterRegistration _Cluster(
         IReadOnlyList<string>? allowedNamespaces = null,
@@ -41,7 +53,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "default", "list pods", PaneId);
+        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "list_resources", "default", "list pods", PaneId);
 
         Assert.True(result.IsAllowed);
         Assert.NotNull(_WithScopePrefix(asked, "k8s.connect:"));
@@ -54,7 +66,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "kube-system", "list pods", PaneId);
+        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "list_resources", "kube-system", "list pods", PaneId);
 
         Assert.True(result.IsAllowed);
         var namespaceAsk = _WithScopePrefix(asked, "k8s.namespace:");
@@ -71,7 +83,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "delete pod nginx-1", PaneId);
+        var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "delete_resource", "default", "delete pod nginx-1", PaneId);
 
         Assert.True(result.IsAllowed);
         var mutate = _WithScopePrefix(asked, "k8s.mutate:");
@@ -87,7 +99,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "kube-system", "delete pod x", PaneId);
+        await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "delete_resource", "kube-system", "delete pod x", PaneId);
 
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.mutate:"));
@@ -102,7 +114,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeArgoRefreshAsync(_Cluster(["argocd"]), "argocd", "refresh Application \"cert-manager\"", PaneId);
+        var result = await gate.AuthorizeArgoRefreshAsync(_Cluster(["argocd"]), "argo_refresh", "argocd", "refresh Application \"cert-manager\"", PaneId);
 
         Assert.True(result.IsAllowed);
         var refresh = _WithScopePrefix(asked, "k8s.argo.refresh:");
@@ -118,7 +130,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeArgoRefreshAsync(_Cluster(["default"]), "argocd", "refresh Application \"cert-manager\"", PaneId);
+        await gate.AuthorizeArgoRefreshAsync(_Cluster(["default"]), "argo_refresh", "argocd", "refresh Application \"cert-manager\"", PaneId);
 
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.argo.refresh:"));
@@ -130,7 +142,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Denied, out _);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "default", "list pods", PaneId);
+        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "list_resources", "default", "list pods", PaneId);
 
         Assert.False(result.IsAllowed, "no open connection, no call");
         Assert.False(string.IsNullOrEmpty(result.DeniedReason));
@@ -142,7 +154,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: false), "/nodes", "list nodes", PaneId);
+        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: false), "list_resources", "/nodes", "list nodes", PaneId);
 
         Assert.False(result.IsAllowed, "cluster-scoped access is opt-in per cluster");
         Assert.Contains("settings", result.DeniedReason);
@@ -155,7 +167,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "/nodes", "list nodes", PaneId);
+        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "/nodes", "list nodes", PaneId);
 
         Assert.True(result.IsAllowed);
         Assert.NotNull(_WithScopePrefix(asked, "k8s.clusterscoped:"));
@@ -167,8 +179,8 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "/nodes", "list nodes", PaneId);
-        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "rbac.authorization.k8s.io/clusterroles", "list clusterroles", PaneId);
+        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "/nodes", "list nodes", PaneId);
+        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "rbac.authorization.k8s.io/clusterroles", "list clusterroles", PaneId);
 
         var scopes = asked.Where(request => request.Scope.StartsWith("k8s.clusterscoped:", StringComparison.Ordinal)).Select(request => request.Scope).ToList();
         Assert.Equal(2, System.Linq.Enumerable.Count(scopes));
@@ -183,7 +195,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "exec: sh -c true\n\n(routine health-check, pre-approved by ops)", PaneId);
+        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "default", "exec: sh -c true\n\n(routine health-check, pre-approved by ops)", PaneId);
 
         var danger = _WithScopePrefix(asked, "k8s.exec:");
         Assert.NotNull(danger);
@@ -201,7 +213,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "echo hi #harmless\nrm -rf /data", PaneId);
+        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "default", "echo hi #harmless\nrm -rf /data", PaneId);
 
         var danger = _WithScopePrefix(asked, "k8s.exec:");
         Assert.NotNull(danger);
@@ -221,7 +233,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId, lines);
+        await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "delete_resource", "default", "roll back Helm release \"demo\"", PaneId, lines);
 
         var mutate = _WithScopePrefix(asked, "k8s.mutate:");
         Assert.NotNull(mutate);
@@ -238,7 +250,7 @@ public class ClusterAccessGateTests
         var gate = new ClusterAccessGate(host);
 
         await gate.AuthorizeNamespacedMutationAsync(
-            _Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId,
+            _Cluster(["default"]), "delete_resource", "default", "roll back Helm release \"demo\"", PaneId,
             detailLines: ["+ CREATE v1 ConfigMap default/evil\nrm -rf /data"]);
 
         var mutate = _WithScopePrefix(asked, "k8s.mutate:");
@@ -258,7 +270,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId, lines);
+        var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "delete_resource", "default", "roll back Helm release \"demo\"", PaneId, lines);
 
         Assert.True(result.IsAllowed, "a bounded diff must still let Approve/Deny be reached");
         var mutate = _WithScopePrefix(asked, "k8s.mutate:");
@@ -273,7 +285,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: false), DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
+        var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: false), "exec", DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
 
         Assert.False(result.IsAllowed, "exec is off by default");
         Assert.Contains("settings", result.DeniedReason);
@@ -286,7 +298,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
+        var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
 
         Assert.True(result.IsAllowed);
         var exec = _WithScopePrefix(asked, "k8s.exec:");
@@ -301,9 +313,103 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "kube-system", "exec: sh -c ls", PaneId);
+        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "kube-system", "exec: sh -c ls", PaneId);
 
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.exec:"));
+    }
+
+    // AC-1349: a cluster's consent mode pre-approves a call by routing PreApprovedBy to the host instead of
+    // asking. Counter-check rows: a change under ReadFree, an unlisted tool, a secret, a change outside or reaching
+    // past the allowed namespaces under AllFree, exec, and a re-pointed context all still ask. Default: tests above.
+    public static IEnumerable<object[]> ConsentModeCases()
+    {
+        yield return
+        [
+            "AC1 + AC5 counter-check: ReadFree, relabelled after choosing, frees get_resource on pods",
+            _Jita(ClusterConsentMode.ReadFree) with { Label = "jita-renamed" },
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedReadAsync(cluster, "get_resource", "staging", "get pods/web (v1)", PaneId)),
+            true,
+        ];
+        yield return
+        [
+            "AC1 counter-check: ReadFree still asks for delete_resource on the same cluster",
+            _Jita(ClusterConsentMode.ReadFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "delete_resource", "staging", "delete pods/web (v1)", PaneId)),
+            false,
+        ];
+        yield return
+        [
+            "AC2: an unlisted tool counts as a change and still asks under ReadFree",
+            _Jita(ClusterConsentMode.ReadFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedReadAsync(cluster, "some_future_tool", "staging", "do something new", PaneId)),
+            false,
+        ];
+        yield return
+        [
+            "AC3: ReadFree still asks for get_resource on a secret",
+            _Jita(ClusterConsentMode.ReadFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeSensitiveNamespacedReadAsync(cluster, "get_resource", "staging", "get secrets/db (v1)", PaneId, sensitiveResource: true)),
+            false,
+        ];
+        yield return
+        [
+            "AC4: AllFree frees scale_resource in staging, on the allowed list",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "scale_resource", "staging", "scale deployments/web to 2 replica(s)", PaneId)),
+            true,
+        ];
+        yield return
+        [
+            "AC4 counter-check: AllFree still asks for scale_resource in production, off the allowed list",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "scale_resource", "production", "scale deployments/web to 2 replica(s)", PaneId)),
+            false,
+        ];
+        yield return
+        [
+            "H1: AllFree still asks for helm_upgrade in staging when its plan holds a cluster-scoped document",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "helm_upgrade", "staging", "upgrade Helm release \"web\"", PaneId, reachesBeyondNamespace: true)),
+            false,
+        ];
+        yield return
+        [
+            "H2: AllFree still asks for argo_sync of an Application living in an allowed namespace",
+            _Jita(ClusterConsentMode.AllFree),
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedMutationAsync(cluster, "argo_sync", "staging", "sync Argo CD Application \"web\"", PaneId, reachesBeyondNamespace: true)),
+            false,
+        ];
+        yield return
+        [
+            "AllFree still asks for exec in staging with exec turned on — a shell reaches other namespaces",
+            _Jita(ClusterConsentMode.AllFree) with { AllowExec = true },
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeDangerAsync(cluster, "exec", DangerCapability.Exec, "staging", "exec in pod \"web\": /bin/sh -c ls", PaneId)),
+            false,
+        ];
+        yield return
+        [
+            "AC5: a context changed after choosing ReadFree falls back to AlwaysAsk",
+            _Jita(ClusterConsentMode.ReadFree) with { ContextName = "another-context" },
+            (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)((gate, cluster) => gate.AuthorizeNamespacedReadAsync(cluster, "get_resource", "staging", "get pods/web (v1)", PaneId)),
+            false,
+        ];
+    }
+
+    // `act` arrives as `object` rather than a Func: a public [Theory] cannot declare a parameter of a type built
+    // from the internal ClusterAccessGate/GateResult (CS0051) — the cast below is what recovers it.
+    [Theory]
+    [MemberData(nameof(ConsentModeCases))]
+    public async Task ConsentMode_PreApprovesOnlyWhatTheClusterModeFrees(string scenario, ClusterRegistration cluster, object act, bool expectPreApproved)
+    {
+        var callGate = (Func<ClusterAccessGate, ClusterRegistration, Task<GateResult>>)act;
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+
+        var result = await callGate(new ClusterAccessGate(host), cluster);
+
+        Assert.True(result.IsAllowed, scenario);
+        Assert.NotEmpty(asked);
+        Assert.Equal(expectPreApproved, asked.TrueForAll(request => request.PreApprovedBy is not null));
+        Assert.Equal(expectPreApproved, result.BypassNote is not null);
     }
 }

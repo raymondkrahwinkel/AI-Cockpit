@@ -16,6 +16,7 @@ internal sealed class KindSettingsControl : UserControl, IPluginSettingsView
     private readonly List<(KindClusterRecord Record, CheckBox Pinned)> _rows = [];
     private readonly NumericUpDown _maxLifetimeHours;
     private readonly CheckBox _mcpEnabled;
+    private readonly ComboBox _consentMode;
 
     public KindSettingsControl(ICockpitHost host, KindSettings settings)
     {
@@ -54,6 +55,13 @@ internal sealed class KindSettingsControl : UserControl, IPluginSettingsView
 
         _mcpEnabled = new CheckBox { Content = "Let sessions use the kind MCP tools", IsChecked = settings.McpEnabled };
 
+        // AC-1349: index matches KindConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree).
+        _consentMode = new ComboBox
+        {
+            ItemsSource = new[] { "Always ask", "Read-free (reads skip the card; secrets, Helm values/manifests and changes still ask)", "All-free (changes skip the card too, but only in an allowed namespace)" },
+            SelectedIndex = (int)settings.ConsentModeForNewClusters,
+        };
+
         // No ScrollViewer here: the host dialog already wraps every settings view in one.
         Content = new StackPanel
         {
@@ -73,6 +81,9 @@ internal sealed class KindSettingsControl : UserControl, IPluginSettingsView
                     Spacing = 6,
                     Children = { new TextBlock { Text = "Maximum lifetime (hours)", VerticalAlignment = VerticalAlignment.Center }, _maxLifetimeHours },
                 },
+                _Label("Consent mode for clusters I create"),
+                _Hint("Set on the Kubernetes plugin's registration when kind_create makes a cluster; change it per cluster there afterwards."),
+                _consentMode,
                 _Label("MCP"),
                 _mcpEnabled,
             },
@@ -93,6 +104,7 @@ internal sealed class KindSettingsControl : UserControl, IPluginSettingsView
         _settings.KindClusters = _rows.Select(row => row.Record with { IsPinned = row.Pinned.IsChecked ?? false }).ToList();
         _settings.KindClusterMaxLifetime = TimeSpan.FromHours((double)(_maxLifetimeHours.Value ?? 4m));
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
+        _settings.ConsentModeForNewClusters = (KindConsentMode)_consentMode.SelectedIndex;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

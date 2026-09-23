@@ -28,8 +28,24 @@ public sealed record ClusterRegistration(
     bool AllowPortForward = false,
     bool AllowAttach = false,
     bool UsesExecAuth = false,
-    string KubeconfigPath = "")
+    string KubeconfigPath = "",
+    ClusterConsentMode ConsentMode = ClusterConsentMode.AlwaysAsk,
+    string ConsentModeFor = "")
 {
     public bool IsNamespaceAllowed(string @namespace) =>
         AllowedNamespaces.Any(allowed => string.Equals(allowed, @namespace, StringComparison.Ordinal));
+
+    // AC-1349: `ConsentMode` only holds while the kubeconfig path and context it was chosen for still do — a
+    // registration re-pointed under the same Id falls back to AlwaysAsk. So does a kubeconfig file on its
+    // "(current-context)", whose target moves with every `kubectl config use-context`. A relabel keeps the mode.
+    public ClusterConsentMode EffectiveConsentMode()
+    {
+        var followsLiveCurrentContext = ContextName.Length == 0 && KubeconfigPath.Length > 0;
+        return ConsentModeFor == _ConsentIdentity() && !followsLiveCurrentContext ? ConsentMode : ClusterConsentMode.AlwaysAsk;
+    }
+
+    public ClusterRegistration WithConsentMode(ClusterConsentMode mode) =>
+        this with { ConsentMode = mode, ConsentModeFor = _ConsentIdentity() };
+
+    private string _ConsentIdentity() => $"{KubeconfigPath}\n{ContextName}";
 }

@@ -45,7 +45,7 @@ internal sealed partial class KubernetesMcpTools
 
         // Reading the two release secrets is the same credential-material read the other helm tools do; the change
         // itself asks again, with the diff, once there is something to show.
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, @namespace, $"read Helm release \"{release}\" revisions {revision} and current in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_rollback", @namespace, $"read Helm release \"{release}\" revisions {revision} and current in namespace \"{@namespace}\"", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -101,7 +101,7 @@ internal sealed partial class KubernetesMcpTools
         // AC-1062: the diff goes to the gate as separate lines, not pre-joined with `\n`, so the gate can escape
         // and join them itself instead of collapsing the whole block to one unreadable line.
         var operation = $"roll back Helm release \"{release}\" in namespace \"{@namespace}\" from revision {currentRevision} to revision {revision}";
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength));
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "helm_rollback", @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength), reachesBeyondNamespace: plan.Resources.Any(resource => !resource.Namespaced));
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -127,7 +127,7 @@ internal sealed partial class KubernetesMcpTools
             note = outcome.Succeeded
                 ? "Hooks were not run and no three-way merge was done — see the tool description for what that leaves untouched."
                 : "Partially applied: this rollback is recorded as a failed revision. The resources listed with an error were not changed.",
-        });
+        }, decision.BypassNote);
     }
 
     private static string? _Manifest(JsonObject release) =>

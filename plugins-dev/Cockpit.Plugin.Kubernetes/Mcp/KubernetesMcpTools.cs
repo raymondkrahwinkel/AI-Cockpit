@@ -40,7 +40,7 @@ internal sealed partial class KubernetesMcpTools(
     private const int ListPageLimit = 200;
 
     [McpServerTool(Name = "list_clusters", ReadOnly = true)]
-    [Description("Lists the Kubernetes clusters the operator registered, with each cluster's label, its allowed namespaces, and which extra capabilities (cluster-scoped resources, exec) are turned on for it. Reading or changing anything else goes through the other tools and asks the operator for consent. Start here to see what you can reach.")]
+    [Description("Lists the Kubernetes clusters the operator registered, with each cluster's label, its allowed namespaces, and which extra capabilities (cluster-scoped resources, exec) are turned on for it, and its consent mode: AlwaysAsk (every call asks), ReadFree (reads skip the card; sensitive reads and changes still ask) or AllFree (changes skip it too, but only in an allowed namespace). Reading or changing anything else goes through the other tools and asks the operator for consent. Start here to see what you can reach.")]
     public string ListClusters() =>
         McpText.Ok(new
         {
@@ -52,6 +52,7 @@ internal sealed partial class KubernetesMcpTools(
                 clusterScoped = cluster.AllowClusterScoped,
                 exec = cluster.AllowExec,
                 usesExecAuth = cluster.UsesExecAuth,
+                consentMode = cluster.EffectiveConsentMode().ToString(),
             }),
         });
 
@@ -78,7 +79,7 @@ internal sealed partial class KubernetesMcpTools(
         }
 
         var reference = ApiVersionRef.Parse(apiVersion);
-        var (decision, clusterScoped) = await _AuthorizeReadAsync(registration, reference, plural, @namespace, $"list {plural} ({apiVersion})", session);
+        var (decision, clusterScoped) = await _AuthorizeReadAsync(registration, "list_resources", reference, plural, @namespace, $"list {plural} ({apiVersion})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -90,7 +91,7 @@ internal sealed partial class KubernetesMcpTools(
             var list = clusterScoped
                 ? await generic.ListAsync<RawKubernetesList>(labelSelector: labelSelector, limit: ListPageLimit, cancel: token)
                 : await generic.ListNamespacedAsync<RawKubernetesList>(_RequireNamespace(@namespace), labelSelector: labelSelector, limit: ListPageLimit, cancel: token);
-            return McpText.Node(ResourceListSummary.Summarize(list));
+            return McpText.Node(ResourceListSummary.Summarize(list), decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -117,7 +118,7 @@ internal sealed partial class KubernetesMcpTools(
         }
 
         var reference = ApiVersionRef.Parse(apiVersion);
-        var (decision, clusterScoped) = await _AuthorizeReadAsync(registration, reference, plural, @namespace, $"get {plural}/{name} ({apiVersion})", session);
+        var (decision, clusterScoped) = await _AuthorizeReadAsync(registration, "get_resource", reference, plural, @namespace, $"get {plural}/{name} ({apiVersion})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -135,7 +136,7 @@ internal sealed partial class KubernetesMcpTools(
                 ResourceOwnership.Annotate(node);
             }
 
-            return McpText.Node(node);
+            return McpText.Node(node, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -164,7 +165,7 @@ internal sealed partial class KubernetesMcpTools(
         // Cap the tail so a huge value cannot pull an unbounded log into memory through ReadToEndAsync.
         tailLines = Math.Min(tailLines, MaxLogTailLines);
 
-        var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"read logs of pod \"{pod}\" in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedReadAsync(registration, "pod_logs", @namespace, $"read logs of pod \"{pod}\" in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -175,7 +176,7 @@ internal sealed partial class KubernetesMcpTools(
             await using var stream = await client.CoreV1.ReadNamespacedPodLogAsync(pod, @namespace, container: container, tailLines: tailLines, cancellationToken: token);
             using var reader = new StreamReader(stream);
             var logs = await reader.ReadToEndAsync(token);
-            return McpText.Ok(new { ok = true, logs });
+            return McpText.Ok(new { ok = true, logs }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -202,7 +203,7 @@ internal sealed partial class KubernetesMcpTools(
         }
 
         var reference = ApiVersionRef.Parse(apiVersion);
-        var (decision, clusterScoped) = await _AuthorizeMutationAsync(registration, reference, plural, @namespace, $"delete {plural}/{name} ({apiVersion})", session);
+        var (decision, clusterScoped) = await _AuthorizeMutationAsync(registration, "delete_resource", reference, plural, @namespace, $"delete {plural}/{name} ({apiVersion})", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -220,7 +221,7 @@ internal sealed partial class KubernetesMcpTools(
                 await generic.DeleteNamespacedAsync<RawKubernetesObject>(_RequireNamespace(@namespace), name, cancel: token);
             }
 
-            return McpText.Ok(new { ok = true, deleted = name });
+            return McpText.Ok(new { ok = true, deleted = name }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -251,7 +252,7 @@ internal sealed partial class KubernetesMcpTools(
             return McpText.Error("kind must be \"deployments\" or \"statefulsets\".");
         }
 
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, $"scale {kind}/{name} to {replicas} replica(s) in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "scale_resource", @namespace, $"scale {kind}/{name} to {replicas} replica(s) in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -272,7 +273,7 @@ internal sealed partial class KubernetesMcpTools(
                 await client.AppsV1.ReplaceNamespacedStatefulSetScaleAsync(scale, name, @namespace, cancellationToken: token);
             }
 
-            return McpText.Ok(new { ok = true, scaled = name, replicas });
+            return McpText.Ok(new { ok = true, scaled = name, replicas }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -304,7 +305,7 @@ internal sealed partial class KubernetesMcpTools(
             return McpText.Error("patchJson must be a JSON object with the fields to change.");
         }
 
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, $"patch {plural}/{name} ({apiVersion}) in namespace \"{@namespace}\" with {patchJson}", session);
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, "patch_resource", @namespace, $"patch {plural}/{name} ({apiVersion}) in namespace \"{@namespace}\" with {patchJson}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -315,7 +316,7 @@ internal sealed partial class KubernetesMcpTools(
             var reference = ApiVersionRef.Parse(apiVersion);
             using var generic = new GenericClient(client, reference.Group, reference.Version, plural, disposeClient: false);
             var patched = await generic.PatchNamespacedAsync<RawKubernetesObject>(new V1Patch(patchJson, V1Patch.PatchType.MergePatch), @namespace, name, cancel: token);
-            return McpText.Node(JsonSerializer.SerializeToNode(patched));
+            return McpText.Node(JsonSerializer.SerializeToNode(patched), decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -336,7 +337,7 @@ internal sealed partial class KubernetesMcpTools(
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeDangerAsync(registration, DangerCapability.Exec, @namespace, $"exec in pod \"{pod}\" (namespace \"{@namespace}\"): /bin/sh -c {command}", session);
+        var decision = await gate.AuthorizeDangerAsync(registration, "exec", DangerCapability.Exec, @namespace, $"exec in pod \"{pod}\" (namespace \"{@namespace}\"): /bin/sh -c {command}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -360,7 +361,7 @@ internal sealed partial class KubernetesMcpTools(
             var exitCode = await client.NamespacedPodExecAsync(
                 pod, @namespace, container, ["/bin/sh", "-c", command], tty: false, callback, token);
 
-            return McpText.Ok(new { ok = true, exitCode, stdout = stdout.ToString(), stderr = stderr.ToString() });
+            return McpText.Ok(new { ok = true, exitCode, stdout = stdout.ToString(), stderr = stderr.ToString() }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -392,7 +393,7 @@ internal sealed partial class KubernetesMcpTools(
         }
 
         var target = localPort == 0 ? "an OS-assigned local port" : $"127.0.0.1:{localPort}";
-        var decision = await gate.AuthorizeDangerAsync(registration, DangerCapability.PortForward, @namespace, $"port-forward pod \"{pod}\" (namespace \"{@namespace}\") port {remotePort} to {target}", session);
+        var decision = await gate.AuthorizeDangerAsync(registration, "port_forward", DangerCapability.PortForward, @namespace, $"port-forward pod \"{pod}\" (namespace \"{@namespace}\") port {remotePort} to {target}", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -418,7 +419,7 @@ internal sealed partial class KubernetesMcpTools(
                 remotePort,
                 pod,
                 note = "Listed in the status bar with a Kill button; auto-closes after 30 minutes.",
-            });
+            }, decision.BypassNote);
         }
         catch (System.Net.Sockets.SocketException)
         {
@@ -440,11 +441,11 @@ internal sealed partial class KubernetesMcpTools(
     // kind requires a namespace (blank is refused, never silently listed cluster-wide — security review F1) and goes
     // through the jail, with secrets asking afresh even inside an allowed namespace (F2).
     private async Task<(GateResult Decision, bool ClusterScoped)> _AuthorizeReadAsync(
-        ClusterRegistration cluster, ApiVersionRef reference, string plural, string? @namespace, string describe, string? session)
+        ClusterRegistration cluster, string toolName, ApiVersionRef reference, string plural, string? @namespace, string describe, string? session)
     {
         if (ResourceScope.IsClusterScoped(reference.Group, plural))
         {
-            return (await gate.AuthorizeClusterScopedReadAsync(cluster, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
+            return (await gate.AuthorizeClusterScopedReadAsync(cluster, toolName, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
         }
 
         if (string.IsNullOrWhiteSpace(@namespace))
@@ -454,17 +455,17 @@ internal sealed partial class KubernetesMcpTools(
 
         var operation = $"{describe} in namespace \"{@namespace}\"";
         var decision = ResourceScope.IsSensitive(reference.Group, plural)
-            ? await gate.AuthorizeSensitiveNamespacedReadAsync(cluster, @namespace, operation, session)
-            : await gate.AuthorizeNamespacedReadAsync(cluster, @namespace, operation, session);
+            ? await gate.AuthorizeSensitiveNamespacedReadAsync(cluster, toolName, @namespace, operation, session, sensitiveResource: true)
+            : await gate.AuthorizeNamespacedReadAsync(cluster, toolName, @namespace, operation, session);
         return (decision, false);
     }
 
     private async Task<(GateResult Decision, bool ClusterScoped)> _AuthorizeMutationAsync(
-        ClusterRegistration cluster, ApiVersionRef reference, string plural, string? @namespace, string describe, string? session)
+        ClusterRegistration cluster, string toolName, ApiVersionRef reference, string plural, string? @namespace, string describe, string? session)
     {
         if (ResourceScope.IsClusterScoped(reference.Group, plural))
         {
-            return (await gate.AuthorizeClusterScopedMutationAsync(cluster, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
+            return (await gate.AuthorizeClusterScopedMutationAsync(cluster, toolName, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
         }
 
         if (string.IsNullOrWhiteSpace(@namespace))
@@ -472,7 +473,7 @@ internal sealed partial class KubernetesMcpTools(
             return (GateResult.Deny($"\"{plural}\" is a namespaced resource — a namespace is required."), false);
         }
 
-        return (await gate.AuthorizeNamespacedMutationAsync(cluster, @namespace, $"{describe} in namespace \"{@namespace}\"", session), false);
+        return (await gate.AuthorizeNamespacedMutationAsync(cluster, toolName, @namespace, $"{describe} in namespace \"{@namespace}\"", session), false);
     }
 
     // Resolve a cluster by its label, fail-closed on ambiguity: two clusters sharing a label would otherwise let the

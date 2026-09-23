@@ -49,7 +49,7 @@ internal sealed class KindClusterManager(
         var record = new KindClusterRecord(name, ownerPaneId, kubeconfigPath, DateTimeOffset.UtcNow);
         settings.KindClusters = [.. settings.KindClusters, record];
         Changed?.Invoke();
-        return (record, await KubernetesClusterGate.RegisterAsync(host, name, kubeconfigPath));
+        return (record, await KubernetesClusterGate.RegisterAsync(host, name, kubeconfigPath, settings.ConsentModeForNewClusters));
     }
 
     public async Task<IReadOnlyList<KindClusterListEntry>> ListAsync(CancellationToken cancellationToken)

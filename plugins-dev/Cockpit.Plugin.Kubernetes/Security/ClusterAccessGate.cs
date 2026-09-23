@@ -14,6 +14,9 @@ namespace Cockpit.Plugin.Kubernetes.Security;
 // allowed list is free, one outside it asks each session (reads included); a mutation asks afresh every time and
 // is never remembered; cluster-scoped resources and exec/port-forward/attach are blocked outright until the
 // operator turns them on per cluster, and even then a mutation or a danger action asks afresh.
+// AC-1349: a cluster's consent mode can pre-approve a call per `KubernetesToolAccess`; the request still reaches
+// `host.RequestConsentAsync` with `PreApprovedBy` set, so the host audits it as bypassed. Capability flags stay
+// hard blocks under every mode, and AllFree frees a sensitive read or a change only inside `AllowedNamespaces`.
 // The consent surface renders the action verbatim, so callers pass a description built from the real verb and the
 // real parameters (never agent-supplied free text): a delete tool that asks "delete pod …" cannot be talked into
 // showing "get pod …", because the tool it came from chose the verb, not the agent.
@@ -22,42 +25,142 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
     private const string SourceLabel = "Kubernetes";
 
     // A read against a namespaced resource: needs an open connection and the namespace to be in the jail (or consented).
-    public async Task<GateResult> AuthorizeNamespacedReadAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
-    {
-        var connection = await _AuthorizeConnectionAsync(cluster, paneId);
-        if (!connection.IsAllowed)
-        {
-            return connection;
-        }
-
-        return await _AuthorizeNamespaceAsync(cluster, @namespace, operation, paneId);
-    }
+    public Task<GateResult> AuthorizeNamespacedReadAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId) =>
+        _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, _PreApprovedFor(cluster, toolName, @namespace));
 
     // A change to a namespaced resource: connection, namespace jail, then an always-fresh Dangerous consent.
-    // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
-    // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
-    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
+    // `detailLines` (AC-1062): each line escaped on its own, see `_ComposeAction`. `reachesBeyondNamespace`
+    // (AC-1349): the change also lands outside `@namespace` (a cluster-scoped document, an Argo destination).
+    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, IReadOnlyList<string>? detailLines = null, bool reachesBeyondNamespace = false)
     {
-        var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, reachesBeyondNamespace ? null : @namespace);
+        var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
         if (!namespaced.IsAllowed)
         {
             return namespaced;
         }
 
-        return await _AuthorizeMutationAsync(cluster, operation, paneId, detailLines);
+        return await _AuthorizeMutationAsync(cluster, operation, paneId, preApprovedBy, detailLines);
     }
 
     // A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then
     // consented. `resourceKey` (group/plural) scopes a remembered approval to the kind that was
     // actually shown — approving "read nodes" must not silently authorize clusterroles or persistentvolumes too.
-    public async Task<GateResult> AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
+    public Task<GateResult> AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string toolName, string resourceKey, string operation, string? paneId) =>
+        _AuthorizeClusterScopedReadAsync(cluster, resourceKey, operation, paneId, _PreApprovedFor(cluster, toolName, @namespace: null));
+
+    // A change to a cluster-scoped resource: opt-in, connection, then an always-fresh Dangerous consent.
+    public async Task<GateResult> AuthorizeClusterScopedMutationAsync(ClusterRegistration cluster, string toolName, string resourceKey, string operation, string? paneId)
+    {
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace: null);
+        var read = await _AuthorizeClusterScopedReadAsync(cluster, resourceKey, operation, paneId, preApprovedBy);
+        if (!read.IsAllowed)
+        {
+            return read;
+        }
+
+        return await _AuthorizeMutationAsync(cluster, operation, paneId, preApprovedBy);
+    }
+
+    // exec, port-forward or attach: blocked unless the capability is on for the cluster, then the namespace jail
+    // applies and the action asks afresh every time. These sit apart because they hand out a shell or a tunnel
+    // that reaches past the namespace RBAC the read/mutate tools rely on.
+    public async Task<GateResult> AuthorizeDangerAsync(ClusterRegistration cluster, string toolName, DangerCapability capability, string @namespace, string operation, string? paneId)
+    {
+        if (!_IsCapabilityEnabled(cluster, capability))
+        {
+            return GateResult.Deny($"{capability} is off for cluster \"{cluster.Label}\". Turn it on for this cluster in the Kubernetes plugin settings first — it is off by default because it can reach past the namespace boundary.");
+        }
+
+        // A shell or tunnel in an allowed pod can reach services in any namespace, so AllFree never frees it (AC-1349).
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace: null);
+        var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
+        if (!namespaced.IsAllowed)
+        {
+            return namespaced;
+        }
+
+        return await _RequestAsync(
+            title: $"Kubernetes: {capability} — this reaches past the namespace boundary",
+            operation: operation,
+            clusterLabel: cluster.Label,
+            scope: $"k8s.{capability.ToString().ToLowerInvariant()}:{cluster.Id}",
+            risk: ConsentRisk.Dangerous,
+            allowRemember: false,
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
+    }
+
+    // A read of credential material (a secret) in a namespaced resource: the namespace jail applies, and then —
+    // even inside an allowed namespace — reading the contents asks afresh as Dangerous and is never remembered, so
+    // "free to read in an allowed namespace" does not silently include secrets (security review F2).
+    public async Task<GateResult> AuthorizeSensitiveNamespacedReadAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId, bool sensitiveResource)
+    {
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace, sensitiveResource);
+        var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
+        if (!namespaced.IsAllowed)
+        {
+            return namespaced;
+        }
+
+        return await _RequestAsync(
+            title: "Kubernetes: read credential material",
+            operation: operation,
+            clusterLabel: cluster.Label,
+            scope: $"k8s.secret:{cluster.Id}",
+            risk: ConsentRisk.Dangerous,
+            allowRemember: false,
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
+    }
+
+    // AC-576 phase 4: a refresh is idempotent and changes nothing by itself (Argo just re-reads Git and updates
+    // status), but it is still a write, so it gets its own scope — separate from the generic mutation bucket a
+    // real change (e.g. a future argo_sync) would share — and still asks Dangerous, never remembered.
+    public async Task<GateResult> AuthorizeArgoRefreshAsync(ClusterRegistration cluster, string toolName, string @namespace, string operation, string? paneId)
+    {
+        var preApprovedBy = _PreApprovedFor(cluster, toolName, @namespace);
+        var namespaced = await _AuthorizeConnectionAndNamespaceAsync(cluster, @namespace, operation, paneId, preApprovedBy);
+        if (!namespaced.IsAllowed)
+        {
+            return namespaced;
+        }
+
+        return await _RequestAsync(
+            title: "Kubernetes: refresh an Argo CD Application",
+            operation: operation,
+            clusterLabel: cluster.Label,
+            scope: $"k8s.argo.refresh:{cluster.Id}",
+            risk: ConsentRisk.Dangerous,
+            allowRemember: false,
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
+    }
+
+    // AC-1349: one decision per call, handed to every card that call raises. ReadFree frees a read anywhere;
+    // AllFree also frees a sensitive read or a change, but only in a namespace on `AllowedNamespaces` — a
+    // cluster-scoped or wider-reaching call (`@namespace` null) is in none. AlwaysAsk never pre-approves.
+    private static string? _PreApprovedFor(ClusterRegistration cluster, string toolName, string? @namespace, bool sensitiveResource = false)
+    {
+        var mode = cluster.EffectiveConsentMode();
+        var access = KubernetesToolAccess.Classify(toolName, sensitiveResource);
+        var freed = mode switch
+        {
+            ClusterConsentMode.ReadFree => access == ToolAccess.Read,
+            ClusterConsentMode.AllFree => access == ToolAccess.Read || (@namespace is not null && cluster.IsNamespaceAllowed(@namespace)),
+            _ => false,
+        };
+        return freed ? $"cluster mode: {(mode == ClusterConsentMode.ReadFree ? "read-free" : "all-free")}" : null;
+    }
+
+    private async Task<GateResult> _AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId, string? preApprovedBy)
     {
         if (!cluster.AllowClusterScoped)
         {
             return GateResult.Deny($"Cluster-scoped resources are off for cluster \"{cluster.Label}\". Turn on cluster-scoped access for it in the Kubernetes plugin settings to reach nodes, persistent volumes, namespaces and the like.");
         }
 
-        var connection = await _AuthorizeConnectionAsync(cluster, paneId);
+        var connection = await _AuthorizeConnectionAsync(cluster, paneId, preApprovedBy);
         if (!connection.IsAllowed)
         {
             return connection;
@@ -72,90 +175,30 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             scope: $"k8s.clusterscoped:{cluster.Id}:{resourceKey}",
             risk: ConsentRisk.LowRisk,
             allowRemember: true,
-            paneId: paneId);
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
     }
 
-    // A change to a cluster-scoped resource: opt-in, connection, then an always-fresh Dangerous consent.
-    public async Task<GateResult> AuthorizeClusterScopedMutationAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
+    private async Task<GateResult> _AuthorizeConnectionAndNamespaceAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId, string? preApprovedBy)
     {
-        var read = await AuthorizeClusterScopedReadAsync(cluster, resourceKey, operation, paneId);
-        if (!read.IsAllowed)
+        var connection = await _AuthorizeConnectionAsync(cluster, paneId, preApprovedBy);
+        if (!connection.IsAllowed || cluster.IsNamespaceAllowed(@namespace))
         {
-            return read;
-        }
-
-        return await _AuthorizeMutationAsync(cluster, operation, paneId);
-    }
-
-    // exec, port-forward or attach: blocked unless the capability is on for the cluster, then the namespace jail
-    // applies and the action asks afresh every time. These sit apart because they hand out a shell or a tunnel
-    // that reaches past the namespace RBAC the read/mutate tools rely on.
-    public async Task<GateResult> AuthorizeDangerAsync(ClusterRegistration cluster, DangerCapability capability, string @namespace, string operation, string? paneId)
-    {
-        if (!_IsCapabilityEnabled(cluster, capability))
-        {
-            return GateResult.Deny($"{capability} is off for cluster \"{cluster.Label}\". Turn it on for this cluster in the Kubernetes plugin settings first — it is off by default because it can reach past the namespace boundary.");
-        }
-
-        var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
-        if (!namespaced.IsAllowed)
-        {
-            return namespaced;
+            return connection;
         }
 
         return await _RequestAsync(
-            title: $"Kubernetes: {capability} — this reaches past the namespace boundary",
-            operation: operation,
+            title: "Kubernetes: reach a namespace outside the allowed list",
+            operation: $"{operation} — namespace \"{@namespace}\" is not on the allowed list for cluster \"{cluster.Label}\"",
             clusterLabel: cluster.Label,
-            scope: $"k8s.{capability.ToString().ToLowerInvariant()}:{cluster.Id}",
-            risk: ConsentRisk.Dangerous,
-            allowRemember: false,
-            paneId: paneId);
+            scope: $"k8s.namespace:{cluster.Id}:{@namespace}",
+            risk: ConsentRisk.LowRisk,
+            allowRemember: true,
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
     }
 
-    // A read of credential material (a secret) in a namespaced resource: the namespace jail applies, and then —
-    // even inside an allowed namespace — reading the contents asks afresh as Dangerous and is never remembered, so
-    // "free to read in an allowed namespace" does not silently include secrets (security review F2).
-    public async Task<GateResult> AuthorizeSensitiveNamespacedReadAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
-    {
-        var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
-        if (!namespaced.IsAllowed)
-        {
-            return namespaced;
-        }
-
-        return await _RequestAsync(
-            title: "Kubernetes: read credential material",
-            operation: operation,
-            clusterLabel: cluster.Label,
-            scope: $"k8s.secret:{cluster.Id}",
-            risk: ConsentRisk.Dangerous,
-            allowRemember: false,
-            paneId: paneId);
-    }
-
-    // AC-576 phase 4: a refresh is idempotent and changes nothing by itself (Argo just re-reads Git and updates
-    // status), but it is still a write, so it gets its own scope — separate from the generic mutation bucket a
-    // real change (e.g. a future argo_sync) would share — and still asks Dangerous, never remembered.
-    public async Task<GateResult> AuthorizeArgoRefreshAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
-    {
-        var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
-        if (!namespaced.IsAllowed)
-        {
-            return namespaced;
-        }
-
-        return await _RequestAsync(
-            title: "Kubernetes: refresh an Argo CD Application",
-            operation: operation,
-            clusterLabel: cluster.Label,
-            scope: $"k8s.argo.refresh:{cluster.Id}",
-            risk: ConsentRisk.Dangerous,
-            allowRemember: false,
-            paneId: paneId);
-    }
-
-    private async Task<GateResult> _AuthorizeConnectionAsync(ClusterRegistration cluster, string? paneId) =>
+    private async Task<GateResult> _AuthorizeConnectionAsync(ClusterRegistration cluster, string? paneId, string? preApprovedBy) =>
         await _RequestAsync(
             title: "Kubernetes: open a connection to a cluster",
             // Exec-auth contexts run an external credential command on connect — state that on the runtime prompt an
@@ -167,26 +210,10 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             scope: $"k8s.connect:{cluster.Id}",
             risk: ConsentRisk.LowRisk,
             allowRemember: true,
-            paneId: paneId);
+            paneId: paneId,
+            preApprovedBy: preApprovedBy);
 
-    private async Task<GateResult> _AuthorizeNamespaceAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
-    {
-        if (cluster.IsNamespaceAllowed(@namespace))
-        {
-            return GateResult.Allow;
-        }
-
-        return await _RequestAsync(
-            title: "Kubernetes: reach a namespace outside the allowed list",
-            operation: $"{operation} — namespace \"{@namespace}\" is not on the allowed list for cluster \"{cluster.Label}\"",
-            clusterLabel: cluster.Label,
-            scope: $"k8s.namespace:{cluster.Id}:{@namespace}",
-            risk: ConsentRisk.LowRisk,
-            allowRemember: true,
-            paneId: paneId);
-    }
-
-    private Task<GateResult> _AuthorizeMutationAsync(ClusterRegistration cluster, string operation, string? paneId, IReadOnlyList<string>? detailLines = null) =>
+    private Task<GateResult> _AuthorizeMutationAsync(ClusterRegistration cluster, string operation, string? paneId, string? preApprovedBy, IReadOnlyList<string>? detailLines = null) =>
         _RequestAsync(
             title: "Kubernetes: change a resource",
             operation: operation,
@@ -195,9 +222,10 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
             paneId: paneId,
-            detailLines: detailLines);
+            detailLines: detailLines,
+            preApprovedBy: preApprovedBy);
 
-    private async Task<GateResult> _RequestAsync(string title, string operation, string clusterLabel, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
+    private async Task<GateResult> _RequestAsync(string title, string operation, string clusterLabel, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null, string? preApprovedBy = null)
     {
         var request = new ConsentRequest(
             Title: title,
@@ -209,12 +237,18 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
-            AllowRemember: allowRemember);
+            AllowRemember: allowRemember,
+            PreApprovedBy: preApprovedBy);
 
         var decision = await host.RequestConsentAsync(request);
-        return decision.IsApproved
-            ? GateResult.Allow
-            : GateResult.Deny($"The operator did not approve this action on cluster \"{clusterLabel}\".");
+        if (!decision.IsApproved)
+        {
+            return GateResult.Deny($"The operator did not approve this action on cluster \"{clusterLabel}\".");
+        }
+
+        return decision.Bypassed && preApprovedBy is not null
+            ? new GateResult(true, null, $"Executed without asking — {preApprovedBy}.")
+            : GateResult.Allow;
     }
 
     // AC-1062: escapes each fragment on its own — the operation summary, then each detail line — before joining

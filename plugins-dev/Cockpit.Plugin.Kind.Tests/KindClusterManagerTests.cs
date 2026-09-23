@@ -244,6 +244,20 @@ public class KindClusterManagerTests
         Assert.Contains(activity.Details, detail => detail.Label == "owner" && detail.Value == OwnerPane);
     }
 
+    // AC-1349 (AC-1347 decision 2B): the operator's default for clusters this plugin makes rides along on the
+    // register intent by name, so a fresh kind cluster lands in the Kubernetes plugin already in that mode.
+    [Fact]
+    public async Task CreateAsync_SendsTheConfiguredConsentModeOnTheRegisterIntent()
+    {
+        var (manager, settings, _, host) = _Manager();
+        settings.ConsentModeForNewClusters = KindConsentMode.ReadFree;
+
+        await manager.CreateAsync("cockpit-ac1349", OwnerPane, CancellationToken.None);
+
+        await host.Received(1).SendIntent("kubernetes", "cluster.register", Arg.Is<IReadOnlyDictionary<string, string>>(
+            data => data["consentMode"] == "ReadFree"));
+    }
+
     // AC-1083's whole point: the Kubernetes plugin is optional. Without it the cluster still comes up and the
     // answer carries the kubeconfig and context to reach it by hand.
     [Fact]

@@ -26,7 +26,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, @namespace, $"list Helm releases in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_list", @namespace, $"list Helm releases in namespace \"{@namespace}\"", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -49,7 +49,7 @@ internal sealed partial class KubernetesMcpTools
                     : decoded.ToListEntry());
             }
 
-            return McpText.Ok(new { ok = true, releases });
+            return McpText.Ok(new { ok = true, releases }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -62,9 +62,9 @@ internal sealed partial class KubernetesMcpTools
         [Description("The Helm release name.")] string release,
         [Description("The revision to read, or 0 for the current one.")] int revision = 0,
         CancellationToken cancellationToken = default) =>
-        _WithHelmRelease(cluster, session, @namespace, release, revision,
+        _WithHelmRelease("helm_status", cluster, session, @namespace, release, revision,
             $"read Helm release \"{release}\" status in namespace \"{@namespace}\"",
-            found => McpText.Ok(new { ok = true, release = found.ToStatus() }),
+            found => new { ok = true, release = found.ToStatus() },
             cancellationToken);
 
     [McpServerTool(Name = "helm_history", ReadOnly = true)]
@@ -82,7 +82,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, @namespace, $"read Helm release \"{release}\" history in namespace \"{@namespace}\"", session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, "helm_history", @namespace, $"read Helm release \"{release}\" history in namespace \"{@namespace}\"", session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -105,7 +105,7 @@ internal sealed partial class KubernetesMcpTools
                     : decoded.ToHistoryEntry());
             }
 
-            return McpText.Ok(new { ok = true, release, revisions });
+            return McpText.Ok(new { ok = true, release, revisions }, decision.BypassNote);
         }, cancellationToken);
     }
 
@@ -119,9 +119,9 @@ internal sealed partial class KubernetesMcpTools
         [Description("The revision to read, or 0 for the current one.")] int revision = 0,
         [Description("Also return the chart's own default values alongside the operator-supplied ones.")] bool includeChartDefaults = false,
         CancellationToken cancellationToken = default) =>
-        _WithHelmRelease(cluster, session, @namespace, release, revision,
+        _WithHelmRelease("helm_values", cluster, session, @namespace, release, revision,
             $"read Helm release \"{release}\" values in namespace \"{@namespace}\"",
-            found => McpText.Ok(new { ok = true, release = found.ToValues(includeChartDefaults) }),
+            found => new { ok = true, release = found.ToValues(includeChartDefaults) },
             cancellationToken);
 
     [McpServerTool(Name = "helm_manifest", ReadOnly = true)]
@@ -133,17 +133,17 @@ internal sealed partial class KubernetesMcpTools
         [Description("The Helm release name.")] string release,
         [Description("The revision to read, or 0 for the current one.")] int revision = 0,
         CancellationToken cancellationToken = default) =>
-        _WithHelmRelease(cluster, session, @namespace, release, revision,
+        _WithHelmRelease("helm_manifest", cluster, session, @namespace, release, revision,
             $"read Helm release \"{release}\" manifest in namespace \"{@namespace}\"",
-            found => McpText.Ok(new { ok = true, release = found.ToManifest() }),
+            found => new { ok = true, release = found.ToManifest() },
             cancellationToken);
 
     // Shared by the three single-revision tools (status/values/manifest): resolve the cluster, gate the read as
     // Dangerous credential material, fetch and decode the one release secret, then let the caller shape its own
     // slice of the result.
     private async Task<string> _WithHelmRelease(
-        string cluster, string session, string @namespace, string release, int revision, string operation,
-        Func<HelmRelease, string> project, CancellationToken cancellationToken)
+        string toolName, string cluster, string session, string @namespace, string release, int revision, string operation,
+        Func<HelmRelease, object> project, CancellationToken cancellationToken)
     {
         var (registration, clusterError) = _ResolveCluster(cluster);
         if (registration is null)
@@ -151,7 +151,7 @@ internal sealed partial class KubernetesMcpTools
             return clusterError!;
         }
 
-        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, @namespace, operation, session);
+        var decision = await gate.AuthorizeSensitiveNamespacedReadAsync(registration, toolName, @namespace, operation, session, sensitiveResource: false);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -166,7 +166,7 @@ internal sealed partial class KubernetesMcpTools
             }
 
             var decoded = HelmReleaseSecretCodec.TryDecode(secret, out var decodeError);
-            return decoded is null ? McpText.Error(decodeError!) : project(decoded);
+            return decoded is null ? McpText.Error(decodeError ?? $"Could not decode Helm release \"{release}\".") : McpText.Ok(project(decoded), decision.BypassNote);
         }, cancellationToken);
     }
 
