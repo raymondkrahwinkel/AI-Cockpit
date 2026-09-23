@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
@@ -94,12 +95,21 @@ public sealed class ConnectKeyDoorTests
         Assert.Equal(baseline, answer);
     }
 
-    // Criterion 3: revocation reaches a controller that is already connected — its next call on the open client
-    // fails, and its open event stream closes. A test that reconnected after revoking would pass on any door.
+    // Criterion 3: revocation reaches a controller that is already connected. The node's MCP transport is stateless
+    // (SDK 2.0), so what is open at that moment is a call in flight: it is cut off within a second, and the open
+    // client's next call is refused. A test that reconnected after revoking would pass on any door.
     [Fact]
-    public async Task RevokingAKey_FailsTheOpenClientsNextCall_AndClosesItsOpenStream()
+    public async Task RevokingAKey_CutsOffItsCallInFlight_AndFailsTheOpenClientsNextCall()
     {
         await using var door = new _Door();
+        var reached = new TaskCompletionSource();
+        var heldProfiles = new TaskCompletionSource<IReadOnlyList<SessionProfile>>();
+        door.Profiles = Substitute.For<ISessionProfileStore>();
+        door.Profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            reached.TrySetResult();
+            return heldProfiles.Task;
+        });
         door.Read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", SessionProfile, "running", null, null));
         await door.StartAsync(_BootstrapFromVariable);
         await using var admin = await door.ClientAsync(Bootstrap);
@@ -107,15 +117,18 @@ public sealed class ConnectKeyDoorTests
         var key = issued["key"]?.GetValue<string>() ?? "";
         await using var controller = await door.ClientAsync(key);
         var before = await _CallAsync(controller, "list_node_sessions", new());
-        using var events = await door.OpenEventStreamAsync(key);
-        var drain = new StreamReader(await events.Content.ReadAsStreamAsync()).ReadToEndAsync();
+        var inFlight = controller.CallToolAsync("list_node_profiles").AsTask();
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         await _CallAsync(admin, "revoke_connect_key", new() { ["prefix"] = issued["prefix"]?.GetValue<string>() });
+        var cutOff = await Record.ExceptionAsync(() => inFlight.WaitAsync(TimeSpan.FromSeconds(1)));
+        var nextCall = await Record.ExceptionAsync(() => controller.CallToolAsync("list_node_sessions").AsTask());
+        heldProfiles.SetResult([]);
 
         Assert.Equal("pane-a", Assert.Single(before["sessions"]?.AsArray() ?? new JsonArray())?["paneId"]?.GetValue<string>());
-        Assert.Equal(HttpStatusCode.OK, events.StatusCode);
-        Assert.IsNotType<TimeoutException>(await Record.ExceptionAsync(() => drain.WaitAsync(TimeSpan.FromSeconds(1))));
-        await Assert.ThrowsAnyAsync<Exception>(() => controller.CallToolAsync("list_node_sessions").AsTask());
+        Assert.NotNull(cutOff);
+        Assert.IsNotType<TimeoutException>(cutOff);
+        Assert.NotNull(nextCall);
     }
 
     // Criterion 4: managing keys is admin's alone. An operate key and the pairing secret get the admin refusal on
@@ -259,6 +272,8 @@ public sealed class ConnectKeyDoorTests
 
         public NodeSessionMcpToolsTests.RecordingReadGateway Read { get; } = new();
 
+        public ISessionProfileStore Profiles { get; set; } = new NodeSessionMcpToolsTests.StubProfileStore();
+
         public NodeAccessAuditLog Audit { get; }
 
         public string NodeUrl { get; private set; } = "";
@@ -281,7 +296,7 @@ public sealed class ConnectKeyDoorTests
             services.AddSingleton<IAssistantReadGateway>(Read);
             services.AddSingleton<IAssistantAgentGateway>(new NodeSessionMcpToolsTests.RecordingAgentGateway());
             services.AddSingleton(broker);
-            services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
+            services.AddSingleton(Profiles);
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
             services.AddSingleton<IAssistantMemory>(new NodeSessionMcpToolsTests.StubMemory());
@@ -323,8 +338,8 @@ public sealed class ConnectKeyDoorTests
             return await McpClient.CreateAsync(transport);
         }
 
-        public Task<HttpResponseMessage> InitializeAsync(string bearer, string? sessionId = null) =>
-            _PostAsync(bearer, """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"door-test","version":"1"}}}""", sessionId);
+        public Task<HttpResponseMessage> InitializeAsync(string bearer) =>
+            _PostAsync(bearer, """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"door-test","version":"1"}}}""");
 
         public async Task<_Answer> AnswerAsync(string bearer)
         {
@@ -334,20 +349,6 @@ public sealed class ConnectKeyDoorTests
                 string.Join(", ", response.Headers.WwwAuthenticate),
                 response.Content.Headers.ContentType?.ToString() ?? "",
                 await response.Content.ReadAsStringAsync());
-        }
-
-        // An MCP session's server-to-client stream (GET with the session id), left open and handed back unread.
-        public async Task<HttpResponseMessage> OpenEventStreamAsync(string bearer)
-        {
-            using var initialized = await InitializeAsync(bearer);
-            var sessionId = initialized.Headers.GetValues("Mcp-Session-Id").Single();
-            using var notified = await _PostAsync(bearer, """{"jsonrpc":"2.0","method":"notifications/initialized"}""", sessionId);
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, NodeUrl);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-            request.Headers.Accept.ParseAdd("text/event-stream");
-            request.Headers.Add("Mcp-Session-Id", sessionId);
-            return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         }
 
         public async ValueTask DisposeAsync()
@@ -363,17 +364,12 @@ public sealed class ConnectKeyDoorTests
             System.IO.Directory.Delete(Directory, recursive: true);
         }
 
-        private Task<HttpResponseMessage> _PostAsync(string bearer, string body, string? sessionId)
+        private Task<HttpResponseMessage> _PostAsync(string bearer, string body)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, NodeUrl) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             request.Headers.Accept.ParseAdd("application/json");
             request.Headers.Accept.ParseAdd("text/event-stream");
-            if (sessionId is not null)
-            {
-                request.Headers.Add("Mcp-Session-Id", sessionId);
-            }
-
             return _http.SendAsync(request);
         }
     }

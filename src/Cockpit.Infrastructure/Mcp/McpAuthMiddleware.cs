@@ -46,7 +46,7 @@ internal static class McpAuthMiddleware
                     return;
                 }
 
-                // A revoked key's open requests end with it, the SSE stream included (AC-1351, DEP-208's lesson).
+                // A revoked key's requests still in flight end with it (AC-1351, DEP-208's lesson).
                 using var revocation = caller.Revoked.Register(context.Abort);
                 await _DispatchIfAuthorizedAsync(context, next, authorize, NodeCallerIdentity.PaneId, caller).ConfigureAwait(false);
                 return;

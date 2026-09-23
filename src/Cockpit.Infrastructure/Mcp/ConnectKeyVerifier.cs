@@ -39,9 +39,9 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     // address. Persist it, or bucket by /64, once the node faces more than LAN/Tailscale (B2).
     private readonly Dictionary<string, _AddressState> _addresses = new(StringComparer.Ordinal);
 
-    // Per key, what an in-flight request of that key is aborted by — so revoking also ends an open SSE stream.
-    // ponytail: expiry does not fire it, so an expired key's already-open stream lives until it reconnects (new
-    // requests are refused). Cancel on ExpiresAt too if a stream ever carries more than notifications.
+    // Per key, what its in-flight requests are aborted by. The MCP transport is stateless, so that is all it has open.
+    // ponytail: expiry does not fire it, so an expired key's call already in flight finishes (new requests are
+    // refused). Cancel on ExpiresAt too if node calls ever run long.
     private readonly Dictionary<string, CancellationTokenSource> _revocations = new(StringComparer.Ordinal);
 
     // Not persisted: the controller polls every 20 s, and that would be a cockpit.json write every 20 s.
