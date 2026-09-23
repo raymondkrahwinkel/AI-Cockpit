@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.Docker.Mcp;
 
@@ -20,7 +21,11 @@ internal static class McpText
             return JsonSerializer.Serialize(payload, Options);
         }
 
-        var node = JsonSerializer.SerializeToNode(payload, Options)!.AsObject();
+        if (JsonSerializer.SerializeToNode(payload, Options) is not JsonObject node)
+        {
+            return JsonSerializer.Serialize(payload, Options);
+        }
+
         node["note"] = note;
         return node.ToJsonString(Options);
     }
