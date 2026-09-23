@@ -1,10 +1,10 @@
 using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.Assistant;
 

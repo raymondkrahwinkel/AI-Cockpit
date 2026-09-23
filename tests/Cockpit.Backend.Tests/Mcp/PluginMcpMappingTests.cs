@@ -1,8 +1,8 @@
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions.Mcp;
 
-namespace Cockpit.Core.Tests.Plugins;
+namespace Cockpit.Backend.Tests.Mcp;
 
 /// <summary>
 /// <see cref="PluginMcpMapping"/> (#60, AC-500): a plugin's <see cref="McpServerContribution"/> maps to the host's

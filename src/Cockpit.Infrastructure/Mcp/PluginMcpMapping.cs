@@ -1,12 +1,12 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions.Mcp;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Mcp;
 
 // Maps a plugin's `McpServerContribution` (plugin-ALC-safe DTO) to the host's `McpServerConfig`
 // (#60, AC-11) — the one place that sees both sides of the plugin isolation boundary, shared by the
 // pull path (`McpServerCatalog`) and the legacy push path (`CockpitHost.AddMcpServer`).
-internal static class PluginMcpMapping
+public static class PluginMcpMapping
 {
     public static McpServerConfig ToServerConfig(McpServerContribution contribution)
     {
@@ -28,7 +28,7 @@ internal static class PluginMcpMapping
             // ToConfig() applies — so a contribution that (wrongly) set both a token and an authority never leaves
             // a dead, unused secret sitting in the registry beside the OAuth config that is actually in effect.
             ApiKey = auth == McpServerAuth.ApiKey ? contribution.BearerToken : null,
-            OAuthAuthority = auth == McpServerAuth.OAuth ? contribution.OAuthAuthority!.Trim() : null,
+            OAuthAuthority = auth == McpServerAuth.OAuth ? contribution.OAuthAuthority?.Trim() : null,
             OAuthClientId = auth == McpServerAuth.OAuth ? contribution.OAuthClientId : null,
         };
     }

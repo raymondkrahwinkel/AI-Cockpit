@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 

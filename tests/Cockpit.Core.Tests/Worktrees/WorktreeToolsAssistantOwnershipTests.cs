@@ -1,4 +1,4 @@
-using Cockpit.App.Services;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Worktrees;
@@ -24,7 +24,7 @@ public class WorktreeToolsAssistantOwnershipTests
         var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/assistant", "cockpit/x", "abc", DateTimeOffset.UtcNow);
         manager.GetStatusesAsync(Arg.Any<CancellationToken>())
             .Returns(new List<WorktreeStatus> { new(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0) });
-        var registry = new LiveSessionRegistry([]);
+        var registry = new LiveSessionRegistry(new SessionRegistry(), []);
         var tools = new WorktreeTools(manager, registry);
 
         using var result = System.Text.Json.JsonDocument.Parse(await tools.ListAsync());
@@ -44,7 +44,7 @@ public class WorktreeToolsAssistantOwnershipTests
         // assistant is never in either, by construction. If liveness relied on those alone this worktree would
         // read as ownerless and a different session's worktree_remove would be allowed to delete it out from
         // under the assistant actually working in it.
-        var registry = new LiveSessionRegistry([]);
+        var registry = new LiveSessionRegistry(new SessionRegistry(), []);
         var tools = new WorktreeTools(manager, registry);
 
         McpRequestContext.Set("some-other-session");

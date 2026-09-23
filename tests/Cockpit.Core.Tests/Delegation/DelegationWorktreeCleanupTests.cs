@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Cockpit.App.Services;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
@@ -12,7 +12,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Delegation;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using NSubstitute;
 
@@ -40,7 +39,7 @@ public class DelegationWorktreeCleanupTests
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record(task.TaskId, "/wt/delegated");
         manager.ListAsync(default).Returns(new List<WorktreeRecord> { record });
-        var tools = new WorktreeTools(manager, new LiveSessionRegistry([service]));
+        var tools = new WorktreeTools(manager, new LiveSessionRegistry(new SessionRegistry(), [service]));
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/delegated"));
 
@@ -64,7 +63,7 @@ public class DelegationWorktreeCleanupTests
         var record = _Record(task.TaskId, "/wt/delegated");
         manager.ListAsync(default).Returns(new List<WorktreeRecord> { record });
         manager.HasUncommittedChangesAsync(record, default).Returns(false);
-        var tools = new WorktreeTools(manager, new LiveSessionRegistry([service]));
+        var tools = new WorktreeTools(manager, new LiveSessionRegistry(new SessionRegistry(), [service]));
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/delegated"));
 
@@ -89,7 +88,7 @@ public class DelegationWorktreeCleanupTests
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record(task.TaskId, "/wt/answered");
         manager.ListAsync(default).Returns(new List<WorktreeRecord> { record });
-        var tools = new WorktreeTools(manager, new LiveSessionRegistry([service]));
+        var tools = new WorktreeTools(manager, new LiveSessionRegistry(new SessionRegistry(), [service]));
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/answered"));
 
@@ -237,8 +236,11 @@ public class DelegationWorktreeCleanupTests
         // only with delegated ids would unprotect every worktree the operator's own sessions are sitting in.
         var delegated = Substitute.For<ILiveSessionSource>();
         delegated.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "task-1" });
-        var registry = new LiveSessionRegistry([delegated]);
-        registry.SetSource(() => new HashSet<string>(StringComparer.Ordinal) { "pane-1" });
+        var panes = new SessionRegistry();
+        var pane = Substitute.For<ISessionHandle>();
+        pane.PaneId.Returns("pane-1");
+        panes.Register(pane);
+        var registry = new LiveSessionRegistry(panes, [delegated]);
 
         Assert.Equivalent(new object[] { "pane-1", "task-1" }, registry.LiveSessionIds);
     }

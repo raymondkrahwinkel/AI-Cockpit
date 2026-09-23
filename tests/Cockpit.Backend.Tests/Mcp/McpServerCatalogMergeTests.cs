@@ -1,7 +1,7 @@
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Mcp;
 
-namespace Cockpit.Core.Tests.Mcp;
+namespace Cockpit.Backend.Tests.Mcp;
 
 /// <summary>
 /// The effective MCP set the session fan-out and the New-session checklist read (#26, AC-11): the registry with

@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.UsagePill;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 

@@ -1,4 +1,4 @@
-namespace Cockpit.App.ViewModels;
+namespace Cockpit.Core.Abstractions.Sessions;
 
 // Coarse-grained lifecycle/attention state for a single `SessionViewModel`,
 // derived from the session events it already receives. Drives the sidebar status-dot and the

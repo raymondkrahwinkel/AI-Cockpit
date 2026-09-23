@@ -1,5 +1,6 @@
 using Avalonia.Threading;
-using Cockpit.App.Services;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
 
@@ -8,7 +9,8 @@ namespace Cockpit.App.ViewTests;
 /// <summary>
 /// AC-1201: <see cref="PaneWorkspaceDirectory.WorkspaceIdsByPane"/> is reached off the UI thread every 5s, via
 /// <c>RefreshClaimCollisionsAsync</c>'s <c>Task.Run</c> — while <c>CockpitViewModel.Sessions</c> is UI-thread-owned
-/// state a real dispatcher tick can be mutating at the same moment.
+/// state a real dispatcher tick can be mutating at the same moment. Since AC-1373 it reads the session registry,
+/// which that mutation feeds on the UI thread.
 /// </summary>
 /// <remarks>
 /// A real dispatcher is the point, same as <see cref="AssistantAgentGatewayUiThreadTests"/>: without one pumping
@@ -22,7 +24,8 @@ public class PaneWorkspaceDirectoryUiThreadTests
     {
         var (directory, cockpit, deskId) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = new CockpitViewModel();
+            var sessions = new SessionRegistry();
+            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
             cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
 
@@ -31,7 +34,7 @@ public class PaneWorkspaceDirectoryUiThreadTests
                 cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = desk.Id });
             }
 
-            return (new PaneWorkspaceDirectory(new _SingleObjectProvider(cockpit)), cockpit, desk.Id);
+            return (new PaneWorkspaceDirectory(sessions), cockpit, desk.Id);
         });
 
         // Mutates from the real UI thread via a blocking Invoke, not a fire-and-forget Post: Post floods the
@@ -73,11 +76,5 @@ public class PaneWorkspaceDirectoryUiThreadTests
         {
             Volatile.Write(ref mutating, false);
         }
-    }
-
-    /// <summary>The one dependency <see cref="PaneWorkspaceDirectory"/> resolves lazily; a container is more machinery than this needs.</summary>
-    private sealed class _SingleObjectProvider(object instance) : IServiceProvider
-    {
-        public object? GetService(Type serviceType) => serviceType.IsInstanceOfType(instance) ? instance : null;
     }
 }

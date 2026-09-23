@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
@@ -7,7 +7,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Plugins;
+namespace Cockpit.Backend.Tests.Mcp;
 
 /// <summary>
 /// <see cref="McpServerCatalog.GetServersForProjectAsync"/> passing <c>projectId</c> to each plugin's own
@@ -17,12 +17,9 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class McpServerCatalogProjectScopingTests
 {
-    // AC-766: the unscoped query used to pass an empty scheme list to every plugin provider, so a server scoped to
-    // one project's own Depot connection (say) never reached it — the assistant, a project-less session and the
-    // profile checklists could never be offered it at all. Fixed by taking the union of every project's own schemes
-    // into that query instead of one project's — "a project narrows what is selected, never what is offered"
-    // (ProjectMcpOverlay) now applies to a plugin's own bevraging too. The server is not ProjectLinked there: no
-    // single project points at it in an unscoped query.
+    // AC-766: the unscoped query now carries the union of every project's schemes, so a server scoped to one
+    // project's Depot connection is still offered to the assistant and project-less sessions. It is not
+    // ProjectLinked there: no single project points at it in an unscoped query.
     [Fact]
     public async Task GetServersForProjectAsync_APluginServerScopedToOneProjectsScheme_IsAlsoOfferedUnscopedButNotProjectLinked()
     {

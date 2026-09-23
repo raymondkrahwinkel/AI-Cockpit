@@ -21,6 +21,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App;
 

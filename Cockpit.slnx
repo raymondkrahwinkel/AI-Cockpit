@@ -9,6 +9,7 @@
     <Project Path="tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj" />
     <Project Path="tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj" />
     <Project Path="tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj" />
     <Project Path="tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj" />
     <Project Path="tests/Cockpit.MeasurementHarness/Cockpit.MeasurementHarness.csproj" />
     <Project Path="tests/Cockpit.LogPidProbe/Cockpit.LogPidProbe.csproj" />

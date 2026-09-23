@@ -22,6 +22,7 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 

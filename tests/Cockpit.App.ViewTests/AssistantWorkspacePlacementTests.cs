@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
 using Cockpit.App.Services;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
 
@@ -75,13 +77,14 @@ public class AssistantWorkspacePlacementTests
     {
         var (directory, desk, assistant) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _CockpitWithASessionsDesk(out var deskId);
+            var sessions = new SessionRegistry();
+            var cockpit = _CockpitWithASessionsDesk(out var deskId, sessions);
             var session = new SessionViewModel { WorkspaceId = deskId };
             var assistantSession = new SessionViewModel { BelongsToNoWorkspace = true };
             cockpit.Sessions.Add(session);
             cockpit.Sessions.Add(assistantSession);
 
-            return (new PaneWorkspaceDirectory(new _SingleObjectProvider(cockpit)), session, assistantSession);
+            return (new PaneWorkspaceDirectory(sessions), session, assistantSession);
         });
 
         var byPane = Dispatcher.UIThread.Invoke(directory.WorkspaceIdsByPane);
@@ -112,18 +115,12 @@ public class AssistantWorkspacePlacementTests
     }
 
     /// <summary>A cockpit with one Sessions desk — the desk the old fallback would have handed the assistant.</summary>
-    private static CockpitViewModel _CockpitWithASessionsDesk(out string deskId)
+    private static CockpitViewModel _CockpitWithASessionsDesk(out string deskId, SessionRegistry? sessions = null)
     {
-        var cockpit = new CockpitViewModel();
+        var cockpit = new CockpitViewModel(sessionRegistry: sessions);
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         deskId = desk.Id;
         cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
         return cockpit;
-    }
-
-    /// <summary>The one dependency <see cref="PaneWorkspaceDirectory"/> resolves lazily; a container is more machinery than this needs.</summary>
-    private sealed class _SingleObjectProvider(object instance) : IServiceProvider
-    {
-        public object? GetService(Type serviceType) => serviceType.IsInstanceOfType(instance) ? instance : null;
     }
 }

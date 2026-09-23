@@ -21,6 +21,7 @@ TEST_SUITES=(
   "run_core_tests:tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj"
   "run_infrastructure_tests:tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj"
   "run_view_tests:tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj"
+  "run_backend_tests:tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj"
 )
 
 # Every csproj file (repo-relative) reachable from $1 via <ProjectReference>, transitively, including $1
@@ -97,7 +98,7 @@ json_array() {
 
 if [ "$base" = "--all" ]; then
   printf 'src=true\nplugins_dev=true\nother=true\n'
-  printf 'run_core_tests=true\nrun_infrastructure_tests=true\nrun_view_tests=true\n'
+  printf 'run_core_tests=true\nrun_infrastructure_tests=true\nrun_view_tests=true\nrun_backend_tests=true\n'
   printf 'plugins=%s\n' "$(plugin_names | json_array)"
   exit 0
 fi

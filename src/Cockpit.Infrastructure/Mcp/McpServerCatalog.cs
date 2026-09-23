@@ -6,7 +6,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Mcp;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Mcp;
 
 // #26, AC-11: the effective MCP-server set a session sees — the user-managed registry merged with what
 // each active `IPluginMcpProvider` contributes. The MCP-servers manager still reads `IMcpServerStore`
@@ -40,8 +40,7 @@ internal sealed class McpServerCatalog(
             .SelectMany(candidate => candidate.Resources)
             .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
             .Select(resource => ProjectMemoryRef.TryParse(resource.Reference.Trim(), out var scheme, out _) ? scheme : null)
-            .Where(scheme => scheme is not null)
-            .Select(scheme => scheme!)
+            .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 

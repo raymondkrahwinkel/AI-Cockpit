@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 

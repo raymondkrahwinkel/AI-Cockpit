@@ -11,6 +11,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Views;
 
