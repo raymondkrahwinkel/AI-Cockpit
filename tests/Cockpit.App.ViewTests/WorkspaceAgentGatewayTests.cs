@@ -5,6 +5,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -244,6 +245,23 @@ public class WorkspaceAgentGatewayTests
 
         Assert.True(coordinator.IsEnrolled(paneId));
         Assert.Null(coordinator.LastContactUtc(paneId));
+    }
+
+    // AC-1373: an embedded pane is live like a grid pane, so it is in the registry until it closes, marked as
+    // embedded so the directory list that only ever held grid panes (SessionWorkspaces) can keep leaving it out.
+    [Fact]
+    public async Task Embed_RegistersThePaneAsEmbedded_UntilItCloses()
+    {
+        var sessions = new SessionRegistry();
+        var embedded = Dispatcher.UIThread.Invoke(() =>
+            _NewEmbeddingCapableCockpit(sessionRegistry: sessions).Embed("unplaced", new EmbeddedSessionRequest()));
+        var handle = sessions.Find(embedded.PaneId);
+
+        await Dispatcher.UIThread.InvokeAsync(embedded.CloseAsync);
+
+        Assert.NotNull(handle);
+        Assert.True(handle.IsEmbedded);
+        Assert.Null(sessions.Find(embedded.PaneId));
     }
 
     /// <summary>
@@ -506,7 +524,8 @@ public class WorkspaceAgentGatewayTests
     private static CockpitViewModel _NewEmbeddingCapableCockpit(
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentResourceClaims? agentClaims = null,
-        Func<SessionViewModel>? sessionFactory = null)
+        Func<SessionViewModel>? sessionFactory = null,
+        SessionRegistry? sessionRegistry = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -536,7 +555,8 @@ public class WorkspaceAgentGatewayTests
             terminalSettingsStore,
             sessionProfileStore: Substitute.For<ISessionProfileStore>(),
             agentCoordinator: agentCoordinator,
-            agentClaims: agentClaims);
+            agentClaims: agentClaims,
+            sessionRegistry: sessionRegistry);
     }
 
     /// <summary>
