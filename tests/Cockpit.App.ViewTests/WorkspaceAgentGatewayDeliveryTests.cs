@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -23,9 +24,10 @@ public class WorkspaceAgentGatewayDeliveryTests
     [Fact]
     public async Task TheRoster_TakesEachPanesOwnAnswerOnPassiveDelivery()
     {
-        var (cockpit, session, terminal) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, session, terminal) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = new CockpitViewModel();
+            var sessions = new SessionRegistry();
+            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
 
             // Both are agent panes sharing a desk — the terminal one is a CLI running in a pty, not a plain shell, so
             // it is on the roster like any other. That is exactly the pane this ticket cannot deliver to. The session
@@ -37,10 +39,10 @@ public class WorkspaceAgentGatewayDeliveryTests
             var terminal = new TtyViewModel();
             cockpit.Sessions.Add(session);
             cockpit.Sessions.Add(terminal);
-            return (cockpit, session, terminal);
+            return (sessions, session, terminal);
         });
 
-        var snapshot = await new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance).GetWorkspaceSnapshotAsync(session.PaneId);
+        var snapshot = await new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance).GetWorkspaceSnapshotAsync(session.PaneId);
 
         Assert.NotNull(snapshot);
         Assert.True(snapshot.Panes.Single(pane => pane.PaneId == session.PaneId).DeliversAtTurnStart);

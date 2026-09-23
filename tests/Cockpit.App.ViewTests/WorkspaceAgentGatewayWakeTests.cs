@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
@@ -49,12 +50,13 @@ public class WorkspaceAgentGatewayWakeTests
             Entries.Add((logLevel, exception));
     }
 
-    private static (CockpitViewModel Cockpit, TtyViewModel Sender, TtyViewModel Target, List<string> Sent) _Desk(
+    private static (SessionRegistry Sessions, TtyViewModel Sender, TtyViewModel Target, List<string> Sent) _Desk(
         SessionStatus targetStatus = SessionStatus.Done)
     {
         return Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = new CockpitViewModel();
+            var sessions = new SessionRegistry();
+            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             var sender = new TtyViewModel();
             var target = new TtyViewModel { SessionStatus = targetStatus };
 
@@ -67,19 +69,24 @@ public class WorkspaceAgentGatewayWakeTests
 
             cockpit.Sessions.Add(sender);
             cockpit.Sessions.Add(target);
-            return (cockpit, sender, target, sent);
+            return (sessions, sender, target, sent);
         });
     }
 
-    private static WorkspaceAgentGateway _Gateway(CockpitViewModel cockpit) =>
-        new(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
+    private static WorkspaceAgentGateway _Gateway(SessionRegistry sessions) =>
+        new(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
+
+    // AC-1374: the wake send now posts to the dispatcher (handle.SendPromptAsync) instead of running inline when
+    // called off the UI thread; _TryWake still does not await it, so this drains one more turn for it to land.
+    private static Task _DrainSendAsync() => Dispatcher.UIThread.InvokeAsync(() => { }).GetTask();
 
     [Fact]
     public async Task Wake_OnAPaneStandingStill_StartsATurnCarryingTheLabelledNotice()
     {
-        var (cockpit, sender, target, sent) = _Desk();
+        var (sessions, sender, target, sent) = _Desk();
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        await _DrainSendAsync();
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var turn = Assert.Single(sent);
@@ -92,11 +99,12 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_TellsTheRecipientWhereTheMessageIs_FromThePanesOwnDeliveryAnswer()
     {
-        var (cockpit, sender, plainTerminal, plainSent) = _Desk();
+        var (sessions, sender, plainTerminal, plainSent) = _Desk();
 
-        var (deliveringCockpit, deliveringSender, delivering, deliveringSent) = Dispatcher.UIThread.Invoke(() =>
+        var (deliveringSessions, deliveringSender, delivering, deliveringSent) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var deliveringRegistry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: deliveringRegistry);
             var from = new TtyViewModel();
             var to = new DeliveringTerminal { SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
@@ -104,11 +112,12 @@ public class WorkspaceAgentGatewayWakeTests
             to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to, captured);
+            return (deliveringRegistry, from, to, captured);
         });
 
-        _ = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, plainTerminal.PaneId, "branch");
-        _ = await _Gateway(deliveringCockpit).TryWakeAsync(deliveringSender.PaneId, delivering.PaneId, "branch");
+        _ = await _Gateway(sessions).TryWakeAsync(sender.PaneId, plainTerminal.PaneId, "branch");
+        _ = await _Gateway(deliveringSessions).TryWakeAsync(deliveringSender.PaneId, delivering.PaneId, "branch");
+        await _DrainSendAsync();
 
         // Two panes, two different sentences, from one line of gateway code reading each pane's own answer. Asserted
         // as a pair because either sentence alone is satisfied by a constant.
@@ -121,9 +130,10 @@ public class WorkspaceAgentGatewayWakeTests
     {
         // AC-1309: a crashed turn leaves no question standing, unlike NeedsAttention — Failed is wakeable the
         // same as Idle/Done.
-        var (cockpit, sender, target, sent) = _Desk(SessionStatus.Failed);
+        var (sessions, sender, target, sent) = _Desk(SessionStatus.Failed);
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        await _DrainSendAsync();
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         Assert.Single(sent);
@@ -136,9 +146,9 @@ public class WorkspaceAgentGatewayWakeTests
     {
         // WorkingBackground looks quiet from outside and is not: a sub-agent is still running, and a turn dropped on
         // top of it is an interruption of real work.
-        var (cockpit, sender, target, sent) = _Desk(status);
+        var (sessions, sender, target, sent) = _Desk(status);
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.Busy, outcome);
         Assert.Empty(sent);
@@ -147,9 +157,9 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_OnAPaneNeedingAttention_IsRefusedAsAwaitingItsOperator()
     {
-        var (cockpit, sender, target, sent) = _Desk(SessionStatus.NeedsAttention);
+        var (sessions, sender, target, sent) = _Desk(SessionStatus.NeedsAttention);
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         // Reported as awaiting its operator rather than as busy, because that is what it is — a session with a
         // permission decision outstanding is standing still, and telling the sender "it was working" would be untrue.
@@ -163,7 +173,7 @@ public class WorkspaceAgentGatewayWakeTests
         // Status Done on purpose: opening a consent banner sets PendingConsent and does not touch SessionStatus, so
         // this is a pane that reads as standing still while a human is being asked something. The status gate waves
         // it through; only the consent gate does not.
-        var (cockpit, sender, target, sent) = _Desk(SessionStatus.Done);
+        var (sessions, sender, target, sent) = _Desk(SessionStatus.Done);
         var broker = Substitute.For<IConsentBroker>();
         var promptId = Guid.NewGuid();
         var consent = new ConsentPromptViewModel(
@@ -174,7 +184,7 @@ public class WorkspaceAgentGatewayWakeTests
             broker);
         Dispatcher.UIThread.Invoke(() => target.PendingConsent = consent);
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.AwaitingOperator, outcome);
         Assert.Empty(sent);
@@ -189,9 +199,10 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_OnAPaneThatCannotTakeAPrompt_IsRefusedRatherThanReportedAsWoken()
     {
-        var (cockpit, sender, target) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel();
             // No PromptSink: the terminal has not been launched, so there is nowhere to type. Reported as a refusal
             // rather than as a wake, because "woken" on a pane that heard nothing is the failure this line exists to
@@ -199,10 +210,10 @@ public class WorkspaceAgentGatewayWakeTests
             var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to);
+            return (registry, from, to);
         });
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
     }
@@ -210,9 +221,10 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_OnASessionPaneWhoseRuntimeNeverStarted_IsRefused()
     {
-        var (cockpit, sender, target) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel();
             // Wired for delivery but never started. Its send path accepts a turn and hands back a completed task
             // with nothing having gone anywhere, so only the readiness check separates this from a false wake.
@@ -224,10 +236,37 @@ public class WorkspaceAgentGatewayWakeTests
             };
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to);
+            return (registry, from, to);
         });
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+
+        Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
+    }
+
+    // AC-1374 acceptance 3: the hold-check moved with the gateway, unchanged — it lives on CanTakeAPrompt
+    // (AC-1321), which the gateway still reads through the handle rather than re-deriving.
+    [Fact]
+    public async Task Wake_OnAPaneAControllerIsHolding_IsRefused()
+    {
+        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
+            var from = new TtyViewModel();
+            var to = new SessionViewModel(
+                Substitute.For<ISessionManager>(),
+                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>())
+            {
+                SessionStatus = SessionStatus.Idle,
+                TurnsHeldBecause = "a paired controller is driving this session",
+            };
+            vm.Sessions.Add(from);
+            vm.Sessions.Add(to);
+            return (registry, from, to);
+        });
+
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
     }
@@ -235,9 +274,10 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_AcrossAWorkspaceBoundary_IsRefusedHostSide()
     {
-        var (cockpit, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel { WorkspaceId = "ws-1" };
             var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
@@ -245,10 +285,10 @@ public class WorkspaceAgentGatewayWakeTests
             to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to, captured);
+            return (registry, from, to, captured);
         });
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         // The target is live, standing still and perfectly wakeable — everything except a neighbour. Asked of the
         // host's own answer to "who is on this caller's desk", never of anything the caller supplied, and asked here
@@ -260,9 +300,9 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_OnAPaneThatIsNoLongerThere_IsRefused()
     {
-        var (cockpit, sender, _, _) = _Desk();
+        var (sessions, sender, _, _) = _Desk();
 
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, "pane-that-never-existed", "branch");
+        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, "pane-that-never-existed", "branch");
 
         Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
     }
@@ -270,8 +310,8 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_IsRefusedTheSecondTime_BecauseTheFirstOneLeftThePaneWorking()
     {
-        var (cockpit, sender, target, sent) = _Desk();
-        var gateway = _Gateway(cockpit);
+        var (sessions, sender, target, sent) = _Desk();
+        var gateway = _Gateway(sessions);
 
         var first = await gateway.TryWakeAsync(sender.PaneId, target.PaneId, "branch");
         var second = await gateway.TryWakeAsync(sender.PaneId, target.PaneId, "worktree");
@@ -293,9 +333,10 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task WakeForWaitingMail_AcrossAWorkspaceBoundary_StillWakes()
     {
-        var (cockpit, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel { WorkspaceId = "ws-1" };
             var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
             var captured = new List<string>();
@@ -303,10 +344,11 @@ public class WorkspaceAgentGatewayWakeTests
             to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to, captured);
+            return (registry, from, to, captured);
         });
 
-        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
+        await _DrainSendAsync();
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var turn = Assert.Single(sent);
@@ -322,9 +364,9 @@ public class WorkspaceAgentGatewayWakeTests
     [InlineData(SessionStatus.NeedsAttention)]
     public async Task WakeForWaitingMail_OnAPaneThatIsNotStandingStill_IsRefusedAndSendsNothing(SessionStatus status)
     {
-        var (cockpit, sender, target, sent) = _Desk(status);
+        var (sessions, sender, target, sent) = _Desk(status);
 
-        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await _Gateway(sessions).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.NotEqual(AgentWakeOutcome.Woken, outcome);
         Assert.Empty(sent);
@@ -333,9 +375,9 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task WakeForWaitingMail_OnAPaneThatIsNoLongerThere_IsRefused()
     {
-        var (cockpit, sender, _, _) = _Desk();
+        var (sessions, sender, _, _) = _Desk();
 
-        var outcome = await _Gateway(cockpit).TryWakeForWaitingMailAsync(sender.PaneId, "pane-that-never-existed", "branch");
+        var outcome = await _Gateway(sessions).TryWakeForWaitingMailAsync(sender.PaneId, "pane-that-never-existed", "branch");
 
         Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
     }
@@ -343,22 +385,24 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_WhoseTurnThrowsOnItsWayOut_LeavesATraceInsteadOfAnUnobservedFailure()
     {
-        var (cockpit, sender, target) = Dispatcher.UIThread.Invoke(() =>
+        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
         {
-            var vm = new CockpitViewModel();
+            var registry = new SessionRegistry();
+            var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel();
             var to = new TtyViewModel { SessionStatus = SessionStatus.Done };
             to.PromptSink = _ => throw new IOException("the terminal went away");
             to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
-            return (vm, from, to);
+            return (registry, from, to);
         });
         var logger = new CapturingLogger();
 
         // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
         // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
-        var outcome = await new WorkspaceAgentGateway(cockpit, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await new WorkspaceAgentGateway(sessions, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        await _DrainSendAsync();
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var entry = Assert.Single(logger.Entries);

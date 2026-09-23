@@ -17,6 +17,13 @@ public interface ISessionRegistry
     ISessionHandle? Find(string paneId);
 
     /// <summary>
+    /// The assistant's own pane while it runs, or null (AC-1374). Tracked apart from <see cref="All"/> and
+    /// <see cref="Find"/> on purpose: the assistant sits on no desk, and every existing reader of those two —
+    /// <c>SessionWorkspaces</c>, <c>PaneWorkspaceDirectory</c> — must keep seeing exactly the panes it sees today.
+    /// </summary>
+    ISessionHandle? Assistant { get; }
+
+    /// <summary>
     /// Raised after a pane is registered or removed, on the thread that changed the registry.
     /// </summary>
     event EventHandler? Changed;

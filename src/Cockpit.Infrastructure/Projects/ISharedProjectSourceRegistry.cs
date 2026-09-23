@@ -1,12 +1,14 @@
-using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Projects;
 
+// AC-1374: moved from Cockpit.App.Plugins, kept out of Core — its signature needs ISharedProjectSource, a
+// Plugins.Abstractions type Core carries no reference to at all. Infrastructure already does, so both the
+// contract and its implementation live here.
 /// <summary>
 /// Holds the shared-project sources plugins register (<c>ICockpitHost.AddSharedProjectSource</c>, AC-245), so the
-/// Projects workspace lists what they offer without depending on the contributing plugins. Same shape as
-/// <see cref="IProjectMemorySourceRegistry"/>.
+/// Projects workspace and the assistant's read gateway list what they offer without depending on the contributing
+/// plugins. Same shape as App's <c>IProjectMemorySourceRegistry</c>.
 /// </summary>
 public interface ISharedProjectSourceRegistry
 {
@@ -34,27 +36,4 @@ public interface ISharedProjectSourceRegistry
     /// race has already been lost is otherwise never retried until the operator opens Manage projects.
     /// </summary>
     event Action<ISharedProjectSource>? Registered;
-}
-
-internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry, ISingletonService
-{
-    private readonly Dictionary<string, ISharedProjectSource> _sources = new(StringComparer.Ordinal);
-
-    public IReadOnlyList<ISharedProjectSource> Sources => [.. _sources.Values];
-
-    public event Action<ISharedProjectSource>? Registered;
-
-    public bool Register(ISharedProjectSource source)
-    {
-        if (string.IsNullOrWhiteSpace(source.Key) || _sources.ContainsKey(source.Key))
-        {
-            return false;
-        }
-
-        _sources.Add(source.Key, source);
-        Registered?.Invoke(source);
-        return true;
-    }
-
-    public void Remove(string key) => _sources.Remove(key);
 }

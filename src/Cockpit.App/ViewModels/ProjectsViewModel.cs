@@ -6,6 +6,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -122,10 +123,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // How many of them the sidebar shows.
     private const int SidebarLimit = 5;
-
-    // How long `LoadSharedProjectsAsync` waits on one source before treating it as failed — one slow or hung connection
-    // must not hold up every other source's rows, let alone the whole workspace.
-    internal static TimeSpan SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
 
     // Empty until `LoadSharedProjectsAsync` has run at least once; `LoadAsync` starts it in the background rather than
     // waiting on it, so opening the workspace never blocks on a slow or unreachable connection — see that method's own
@@ -548,42 +545,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     // The ids a shared project is filtered against before it counts as visible here: already bound to a local
-    // project, or hidden on this machine. Internal so AC-797's `AssistantReadGateway` applies the exact same rule
-    // instead of a second copy that can drift from this one.
+    // project, or hidden on this machine. AC-1374: forwards to Infrastructure's copy, which the moved
+    // `AssistantReadGateway` applies too — the exact same rule instead of a second copy that can drift from this one.
     internal (HashSet<string> BoundIds, HashSet<string> HiddenIds) SharedProjectVisibilityFilterIds() =>
-        (
-            new HashSet<string>(
-                _settings.Projects
-                    .SelectMany(project => project.Resources)
-                    .Where(resource => resource.Role == ProjectResourceRole.Memory)
-                    .Select(resource => resource.Reference),
-                StringComparer.Ordinal),
-            new HashSet<string>(_settings.HiddenSharedProjectIds, StringComparer.Ordinal)
-        );
+        SharedProjectSourceLister.VisibilityFilterIds(_settings);
 
-    // Never throws: a call superseded by a newer `LoadSharedProjectsAsync` (its `cancellationToken` cancelled) also
-    // lands here as an (ignored — see that method's own stale-result check) failure rather than an unobserved exception
-    // on this fire-and-forget call (AC-797).
-    internal static async Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
-    {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        try
-        {
-            var listTask = source.ListAsync(timeoutCts.Token);
-            var completed = await Task.WhenAny(listTask, Task.Delay(SharedProjectSourceTimeout, cancellationToken)).ConfigureAwait(true);
-            if (completed != listTask)
-            {
-                timeoutCts.Cancel();
-                return SharedProjectListResult.Failed("Timed out waiting for a response.");
-            }
-
-            return await listTask.ConfigureAwait(true);
-        }
-        catch (Exception exception)
-        {
-            return SharedProjectListResult.Failed(exception.Message);
-        }
-    }
+    // AC-1374: forwards to Infrastructure's copy — see `SharedProjectSourceLister.ListWithTimeoutAsync` for the
+    // never-throws rationale (AC-797).
+    internal static Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken) =>
+        SharedProjectSourceLister.ListWithTimeoutAsync(source, cancellationToken);
 
     [RelayCommand]
     private async Task AddProjectAsync()

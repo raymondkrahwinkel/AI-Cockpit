@@ -7546,8 +7546,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // AC-1374: memoized per `Workspaces.Settings` instance — a snapshot sweep over N panes used to resolve this
+    // once and hand it to every candidate; a per-handle property loses that unless it caches here. One field, not
+    // two, so a reader racing a writer on another thread sees an old-but-consistent pair, never a torn one.
+    private _WorkspaceIdCache? _firstSessionsWorkspaceIdCache;
+
+    private sealed record _WorkspaceIdCache(WorkspaceSettings Settings, string? Value);
+
     // Read by a registry handle off the UI thread; `Workspaces.Settings` is an immutable record swapped whole.
-    private string? _FirstSessionsWorkspaceId() => SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+    private string? _FirstSessionsWorkspaceId()
+    {
+        var settings = Workspaces.Settings;
+        if (_firstSessionsWorkspaceIdCache is { } cache && ReferenceEquals(cache.Settings, settings))
+        {
+            return cache.Value;
+        }
+
+        var value = SessionWorkspacePlacement.FirstSessionsWorkspaceId(settings);
+        _firstSessionsWorkspaceIdCache = new _WorkspaceIdCache(settings, value);
+        return value;
+    }
 
     // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
     // the pane-id lookup searches, so an embedded pane is never half-reached. The assistant is *not* in here; consent
@@ -8505,6 +8523,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
         _assistantSession = session;
+        // AC-1374: a seam apart from the grid/embedded pool below — the registry's `Assistant` reaches it without
+        // ever listing it in `All`, matching `AssistantPane`'s own exclusion from `FindSession`/`AllSessions`.
+        _sessionRegistry?.RegisterAssistant(new SessionPanelHandle(session, isEmbedded: false, _FirstSessionsWorkspaceId));
 
         return session;
     }
@@ -8522,6 +8543,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (ReferenceEquals(_assistantSession, session))
         {
             _assistantSession = null;
+            _sessionRegistry?.UnregisterAssistant();
         }
     }
 

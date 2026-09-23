@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.VisualTree;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -21,6 +20,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 

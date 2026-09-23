@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -10,8 +11,8 @@ namespace Cockpit.Core.Tests.Plugins;
 /// <summary>
 /// <see cref="CockpitHost.AddSharedProjectSource"/>/<see cref="CockpitHost.RemoveSharedProjectSource"/> (AC-245):
 /// the host's forwarding half of <see cref="ISharedProjectSourceRegistry"/>, exercised through the real DI-resolved
-/// registry rather than a mock — <see cref="SharedProjectSourceRegistryTests"/> already covers the registry's own
-/// rules in isolation. Mirrors <see cref="CockpitHostProjectMemorySourceTests"/>.
+/// registry rather than a mock — <c>Cockpit.Backend.Tests.Projects.SharedProjectSourceRegistryTests</c> already
+/// covers the registry's own rules in isolation. Mirrors <see cref="CockpitHostProjectMemorySourceTests"/>.
 /// </summary>
 public class CockpitHostSharedProjectSourceTests
 {

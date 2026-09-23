@@ -31,6 +31,19 @@ public sealed class SessionRegistry : ISessionRegistry, ISingletonService
         }
     }
 
+    private ISessionHandle? _assistant;
+
+    public ISessionHandle? Assistant
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _assistant;
+            }
+        }
+    }
+
     // A pane id registered twice replaces the earlier handle, so the registry never answers with two panes for one id.
     public void Register(ISessionHandle handle)
     {
@@ -54,6 +67,24 @@ public sealed class SessionRegistry : ISessionRegistry, ISingletonService
         if (removed > 0)
         {
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // AC-1374: kept off `_handles` on purpose — the assistant must never appear in `All`, only be reachable by
+    // whoever already knows to ask for it by name.
+    public void RegisterAssistant(ISessionHandle handle)
+    {
+        lock (_gate)
+        {
+            _assistant = handle;
+        }
+    }
+
+    public void UnregisterAssistant()
+    {
+        lock (_gate)
+        {
+            _assistant = null;
         }
     }
 }

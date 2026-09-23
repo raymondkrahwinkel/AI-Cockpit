@@ -4,6 +4,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -455,7 +456,7 @@ public class ProjectsViewModelTests
     [Fact]
     public async Task LoadSharedProjectsAsync_ASourceThatNeverCompletes_TimesOutRatherThanHangingForever()
     {
-        ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromMilliseconds(20);
+        SharedProjectSourceLister.Timeout = TimeSpan.FromMilliseconds(20);
         try
         {
             var hanging = new _FakeSharedProjectSource("Depot — Slow", neverCompletes: true);
@@ -468,7 +469,7 @@ public class ProjectsViewModelTests
         }
         finally
         {
-            ProjectsViewModel.SharedProjectSourceTimeout = TimeSpan.FromSeconds(10);
+            SharedProjectSourceLister.Timeout = TimeSpan.FromSeconds(10);
         }
     }
 

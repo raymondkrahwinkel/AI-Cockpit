@@ -104,7 +104,7 @@ public sealed class Ac1138UiThreadDeadlineTests
     [Fact]
     public async Task AGatewayCalledWhileTheUiThreadIsBlocked_AnswersUiUnavailable_RatherThanWaitingItOut()
     {
-        var (_, sink) = Dispatcher.UIThread.Invoke(_SinkWithOneSession);
+        var (_, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
 
         // Longer than the cap by a margin, and a Wait with that 8 s as its ceiling rather than a bare Sleep of it
         // (AC-1196's blocking test, same reason): the ceiling keeps this able to fail, and releasing it below
@@ -114,7 +114,7 @@ public sealed class Ac1138UiThreadDeadlineTests
 
         try
         {
-            var (failure, elapsed) = await _TimedRefusal(sink);
+            var (failure, elapsed) = await _TimedRefusal(handle);
 
             Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
             Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
@@ -141,10 +141,10 @@ public sealed class Ac1138UiThreadDeadlineTests
     [Fact]
     public async Task TheSameHopOnAQuietUiThread_RunsOnceAndAnswersNormally()
     {
-        var (cockpit, sink) = Dispatcher.UIThread.Invoke(_SinkWithOneSession);
+        var (cockpit, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
 
         var clock = Stopwatch.StartNew();
-        var applied = await Task.Run(() => sink.SetStatuslineAsync(PaneId, "AC-1138"));
+        var applied = await Task.Run(() => handle.SetStatuslineAsync("AC-1138"));
         clock.Stop();
 
         Assert.True(applied);
@@ -163,12 +163,12 @@ public sealed class Ac1138UiThreadDeadlineTests
     [Fact]
     public async Task WorkAbandonedAtTheCap_IsNotAppliedWhenTheUiThreadComesBack()
     {
-        var (cockpit, sink) = Dispatcher.UIThread.Invoke(_SinkWithOneSession);
+        var (cockpit, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
         var before = Dispatcher.UIThread.Invoke(() => cockpit.FindSession(PaneId)!.Statusline);
 
         using (StarvedDispatcher.Start(DispatcherPriority.Render))
         {
-            await Assert.ThrowsAsync<UiUnavailableException>(() => sink.SetStatuslineAsync(PaneId, "late"));
+            await Assert.ThrowsAsync<UiUnavailableException>(() => handle.SetStatuslineAsync("late"));
         }
 
         // The abandoned hop is still queued. Draining below Default lets it run, so what follows is a statement
@@ -184,7 +184,7 @@ public sealed class Ac1138UiThreadDeadlineTests
 
     private static async Task _StarvedGatewayIsCapped(DispatcherPriority priority)
     {
-        var (cockpit, sink) = Dispatcher.UIThread.Invoke(_SinkWithOneSession);
+        var (cockpit, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
 
         using var starver = StarvedDispatcher.Start(priority);
 
@@ -192,7 +192,7 @@ public sealed class Ac1138UiThreadDeadlineTests
         // priority, no cap. It is the control for "without the fix it waits", and it must still be waiting below.
         var uncapped = Dispatcher.UIThread.InvokeAsync(() => cockpit.SetSessionStatusline(PaneId, "uncapped")).GetTask();
 
-        var (failure, elapsed) = await _TimedRefusal(sink);
+        var (failure, elapsed) = await _TimedRefusal(handle);
 
         Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
         Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
@@ -202,17 +202,19 @@ public sealed class Ac1138UiThreadDeadlineTests
         Assert.True(starver.Rounds > 10, $"the thread has to have kept working, not blocked; rounds={starver.Rounds}");
     }
 
-    private static async Task<(UiUnavailableException Failure, TimeSpan Elapsed)> _TimedRefusal(SessionLabelSink sink)
+    private static async Task<(UiUnavailableException Failure, TimeSpan Elapsed)> _TimedRefusal(SessionPanelHandle handle)
     {
         var clock = Stopwatch.StartNew();
         var failure = await Assert.ThrowsAsync<UiUnavailableException>(
-            () => Task.Run(() => sink.SetStatuslineAsync(PaneId, "AC-1138")));
+            () => Task.Run(() => handle.SetStatuslineAsync("AC-1138")));
         clock.Stop();
 
         return (failure, clock.Elapsed);
     }
 
-    private static (CockpitViewModel Cockpit, SessionLabelSink Sink) _SinkWithOneSession()
+    // AC-1374: the UiThreadCall hop this file exercises now lives in the handle, not in the (now-thin) gateway
+    // sink built above it — `SessionPanelHandle` is a real, direct consumer of it, same as `SessionLabelSink` was.
+    private static (CockpitViewModel Cockpit, SessionPanelHandle Handle) _HandleWithOneSession()
     {
         var cockpit = new CockpitViewModel();
         cockpit.Sessions.Clear();
@@ -221,6 +223,6 @@ public sealed class Ac1138UiThreadDeadlineTests
         session.AdoptPaneId(PaneId);
         cockpit.Sessions.Add(session);
 
-        return (cockpit, new SessionLabelSink(cockpit));
+        return (cockpit, new SessionPanelHandle(session, isEmbedded: false, () => null));
     }
 }

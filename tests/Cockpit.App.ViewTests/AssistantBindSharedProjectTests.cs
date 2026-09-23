@@ -1,5 +1,4 @@
 using Avalonia.Threading;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
@@ -21,6 +20,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;

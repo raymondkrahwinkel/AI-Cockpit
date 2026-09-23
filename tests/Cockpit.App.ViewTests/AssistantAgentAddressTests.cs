@@ -22,6 +22,7 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
@@ -53,14 +54,15 @@ public sealed class AssistantAgentAddressTests : IDisposable
     {
         var (gateway, deskA, deskB) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _Cockpit();
+            var sessions = new SessionRegistry();
+            var cockpit = _Cockpit(sessions);
             var a = new SessionViewModel { WorkspaceId = "desk-a" };
             var b = new SessionViewModel { WorkspaceId = "desk-b" };
             cockpit.Sessions.Add(a);
             cockpit.Sessions.Add(b);
             cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
 
-            return (_Gateway(cockpit), a, b);
+            return (_Gateway(sessions), a, b);
         });
 
         foreach (var caller in new[] { deskA, deskB })
@@ -84,11 +86,12 @@ public sealed class AssistantAgentAddressTests : IDisposable
     {
         var (gateway, caller) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _Cockpit();
+            var sessions = new SessionRegistry();
+            var cockpit = _Cockpit(sessions);
             var session = new SessionViewModel { WorkspaceId = "desk-a" };
             cockpit.Sessions.Add(session);
 
-            return (_Gateway(cockpit), session);
+            return (_Gateway(sessions), session);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(caller.PaneId).GetAwaiter().GetResult());
@@ -106,11 +109,12 @@ public sealed class AssistantAgentAddressTests : IDisposable
     {
         var gateway = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _Cockpit();
+            var sessions = new SessionRegistry();
+            var cockpit = _Cockpit(sessions);
             cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = "desk-a" });
             cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
 
-            return _Gateway(cockpit);
+            return _Gateway(sessions);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(AssistantIdentity.PaneId).GetAwaiter().GetResult());
@@ -129,7 +133,7 @@ public sealed class AssistantAgentAddressTests : IDisposable
     {
         var cockpit = Dispatcher.UIThread.Invoke(() =>
         {
-            var viewModel = _Cockpit();
+            var viewModel = _Cockpit(new SessionRegistry());
             viewModel.CreateAssistantSession(AssistantIdentity.PaneId);
             return viewModel;
         });
@@ -151,7 +155,8 @@ public sealed class AssistantAgentAddressTests : IDisposable
     {
         var (gateway, caller) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _Cockpit();
+            var sessions = new SessionRegistry();
+            var cockpit = _Cockpit(sessions);
             var session = new SessionViewModel { WorkspaceId = "desk-a" };
             cockpit.Sessions.Add(session);
             var assistant = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
@@ -160,7 +165,7 @@ public sealed class AssistantAgentAddressTests : IDisposable
                 assistant.SessionStatus = SessionStatus.Idle;
             }
 
-            return (_Gateway(cockpit), session);
+            return (_Gateway(sessions), session);
         });
 
         var outcome = Dispatcher.UIThread.Invoke(
@@ -183,12 +188,13 @@ public sealed class AssistantAgentAddressTests : IDisposable
 
         var (gateway, agentPaneId) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = _Cockpit();
+            var sessions = new SessionRegistry();
+            var cockpit = _Cockpit(sessions);
             var session = new SessionViewModel { WorkspaceId = "desk-a" };
             cockpit.Sessions.Add(session);
             cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
 
-            return (_Gateway(cockpit), session.PaneId);
+            return (_Gateway(sessions), session.PaneId);
         });
 
         var tools = new AgentsMcpTools(
@@ -220,12 +226,12 @@ public sealed class AssistantAgentAddressTests : IDisposable
         Assert.NotNull(coordinator.LastInboxReadUtc(AssistantIdentity.PaneId));
     }
 
-    private static WorkspaceAgentGateway _Gateway(CockpitViewModel cockpit) =>
-        new(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
+    private static WorkspaceAgentGateway _Gateway(SessionRegistry sessions) =>
+        new(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
 
     // The smallest cockpit that can mint an assistant: CreateAssistantSession needs the session factory, which the
     // design-time constructor does not carry. Same shape as AssistantVoiceFanOutTests' helper, for the same reason.
-    private static CockpitViewModel _Cockpit()
+    private static CockpitViewModel _Cockpit(SessionRegistry sessions)
     {
         var notifications = Substitute.For<INotificationSettingsStore>();
         notifications.LoadAsync().Returns(new NotificationSettings());
@@ -252,6 +258,7 @@ public sealed class AssistantAgentAddressTests : IDisposable
             sessionBehavior,
             layout,
             voice,
-            terminal);
+            terminal,
+            sessionRegistry: sessions);
     }
 }
