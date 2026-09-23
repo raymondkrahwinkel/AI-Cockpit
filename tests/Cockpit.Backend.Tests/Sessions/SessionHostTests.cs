@@ -157,10 +157,10 @@ public class SessionHostTests
 
     /// <summary>
     /// Moved from <c>SessionViewModelSignOfLifeDisposeTests</c> (AC-786): a clock left armed would keep the pane alive
-    /// after it closed. A tick that a restart has since replaced is recognised as stale, so its post says nothing.
+    /// after it closed. A tick whose timer fires only after a restart replaced it still carries its own, stale arm.
     /// </summary>
     [Fact]
-    public async Task TheSignOfLife_TicksOnce_KnowsAStaleArm_AndStopsForGoodOnDispose()
+    public async Task TheSignOfLife_KnowsALateTickAsStale_AndStopsForGoodOnDispose()
     {
         var clock = new ManualClock();
         var (host, _) = _Started(clock);
@@ -168,11 +168,10 @@ public class SessionHostTests
         host.SignOfLifeDue += arms.Add;
 
         host.RestartSignOfLife(TimeSpan.FromSeconds(10));
-        clock.Advance(TimeSpan.FromSeconds(10));
-        Assert.True(host.IsCurrentSignOfLife(Assert.Single(arms)));
-
+        var replaced = clock.LastCreated;
         host.RestartSignOfLife(TimeSpan.FromSeconds(10));
-        Assert.False(host.IsCurrentSignOfLife(arms[0]));
+        replaced.Fire();
+        Assert.False(host.IsCurrentSignOfLife(Assert.Single(arms)));
 
         await host.DisposeAsync();
         clock.Advance(TimeSpan.FromMinutes(5));
@@ -249,6 +248,8 @@ public class SessionHostTests
             return timer;
         }
 
+        public ManualTimer LastCreated => _timers[^1];
+
         public void Advance(TimeSpan by)
         {
             _now += by;
@@ -258,7 +259,7 @@ public class SessionHostTests
             }
         }
 
-        private sealed class ManualTimer(ManualClock clock, TimerCallback callback, object? state) : ITimer
+        public sealed class ManualTimer(ManualClock clock, TimerCallback callback, object? state) : ITimer
         {
             private TimeSpan _period = Timeout.InfiniteTimeSpan;
 

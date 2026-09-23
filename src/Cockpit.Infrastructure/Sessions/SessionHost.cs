@@ -420,29 +420,32 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
     public void StartUsageCatchUp() =>
         _usageCatchUp ??= _time.CreateTimer(_ => _Tick("usage catch-up", () => UsageCatchUpDue?.Invoke()), null, UsageCatchUpInterval, UsageCatchUpInterval);
 
+    // False once the pane is closing. A tick posted just before that still arrives, and asks this before it acts.
+    public bool IsPolling { get; private set; } = true;
+
     // The pane is closing: nothing is left to poll for.
     public void StopPolling()
     {
+        IsPolling = false;
         _loginPoll?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _usageCatchUp?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    // AC-598: one tick after `delay`; the consumer re-arms it from its handler. Every restart and stop is a new arm.
+    // AC-598: one tick after `delay`; the consumer re-arms it from its handler. A timer per arm, with the arm taken
+    // when it is set: read when it fires instead, a tick racing a restart would carry the restart's arm as its own.
     public void RestartSignOfLife(TimeSpan delay)
     {
-        Interlocked.Increment(ref _signOfLifeArm);
-        _signOfLife ??= _time.CreateTimer(
-            _ => _Tick("sign of life", () => SignOfLifeDue?.Invoke(Volatile.Read(ref _signOfLifeArm))),
-            null,
-            Timeout.InfiniteTimeSpan,
-            Timeout.InfiniteTimeSpan);
-        _signOfLife.Change(delay, Timeout.InfiniteTimeSpan);
+        var arm = Interlocked.Increment(ref _signOfLifeArm);
+        _signOfLife?.Dispose();
+        _signOfLife = _time.CreateTimer(
+            _ => _Tick("sign of life", () => SignOfLifeDue?.Invoke(arm)), null, delay, Timeout.InfiniteTimeSpan);
     }
 
     public void StopSignOfLife()
     {
         Interlocked.Increment(ref _signOfLifeArm);
-        _signOfLife?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _signOfLife?.Dispose();
+        _signOfLife = null;
     }
 
     // A tick reaches its consumer through a post, and a restart or stop can land in between; a stale arm is dropped.
@@ -464,6 +467,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        IsPolling = false;
         StopSignOfLife();
         foreach (var timer in new[] { _loginPoll, _usageCatchUp, _signOfLife })
         {

@@ -1505,10 +1505,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.MailDelivered += _NoteDeliveredMail;
-        host.LoginChecked += loggedIn => _OnUiThread(() => ReportLoginStatus(loggedIn));
-        host.UsageCatchUpDue += () => _OnUiThread(_RefreshLimits);
+        host.LoginChecked += loggedIn => _OnUiThread(() => _WhilePolling(() => ReportLoginStatus(loggedIn)));
+        host.UsageCatchUpDue += () => _OnUiThread(() => _WhilePolling(_RefreshLimits));
         host.SignOfLifeDue += arm => _OnUiThread(() => _OnSignOfLife(arm));
         return host;
+    }
+
+    // A DispatcherTimer stopped on close ticked no more; a pool tick posted just before the close still lands here.
+    private void _WhilePolling(Action action)
+    {
+        if (_host.IsPolling)
+        {
+            action();
+        }
     }
 
     // A throw in `action` reaches the UI thread's own net (Program.cs), as a DispatcherTimer tick's did.
