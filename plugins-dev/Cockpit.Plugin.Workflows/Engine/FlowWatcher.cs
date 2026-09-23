@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -15,6 +14,9 @@ namespace Cockpit.Plugin.Workflows.Engine;
 //
 // The flows are re-read on every signal rather than cached. They are edited in a dialog that this object cannot see,
 // and a watcher running yesterday's copy of a flow is worse than one that is a millisecond late.
+//
+// The clock is `TimeProvider`, not Avalonia's dispatcher (#AC-1359): a headless cockpit has no dispatcher to tick
+// on, and a schedule this plugin can only keep on the desktop is not a schedule a server can run.
 internal sealed class FlowWatcher : IDisposable
 {
     // The clock is checked every half minute: a schedule of "09:00" means that minute, not that second, and a timer
@@ -23,37 +25,44 @@ internal sealed class FlowWatcher : IDisposable
 
     private readonly WorkflowStore _store;
     private readonly RunStore _runs;
+    private readonly ScheduleMarks _marks;
     private readonly ICockpitHost _host;
-    private readonly DispatcherTimer _timer;
+    private readonly Func<TimeSpan> _grace;
+    private readonly TimeProvider _time;
+    private readonly ITimer _timer;
 
     // Built on the first firing, not in the constructor: plugins initialise in an order nobody controls, and an
     // engine built at startup would not have YouTrack's steps in it — a flow that moves a ticket would then be
     // "skipped, this cockpit cannot run youtrack.start", which is a lie about what this build can do.
     private WorkflowEngine? _engine;
 
-    // What has already fired for a given minute, so a schedule does not run twice within the same one.
-    private readonly HashSet<string> _firedThisMinute = [];
-    private DateTimeOffset _minute = DateTimeOffset.MinValue;
-
-    // A trigger already running. A flow that watches for text and then *sends* text to a session feeds its own
-    // trigger, and the cockpit would sit there running it forever — the worst thing this could do, because it looks
-    // from the outside like the app has simply gone busy.
+    // A trigger already running, guarded by `_runningLock` now that the clock's own tick can land on a threadpool
+    // thread too. A flow that watches for text and then *sends* text to a session feeds its own trigger, and the
+    // cockpit would sit there running it forever — which looks from the outside like the app has simply gone busy.
     private readonly HashSet<string> _running = [];
+    private readonly Lock _runningLock = new();
 
     private bool _disposed;
 
-    public FlowWatcher(WorkflowStore store, RunStore runs, ICockpitHost host)
+    public FlowWatcher(WorkflowStore store, RunStore runs, ScheduleMarks marks, ICockpitHost host, Func<TimeSpan> grace)
+        : this(store, runs, marks, host, grace, TimeProvider.System)
+    {
+    }
+
+    // For tests: a clock that only moves when told to, so a catch-up decision does not need a real restart to prove.
+    internal FlowWatcher(WorkflowStore store, RunStore runs, ScheduleMarks marks, ICockpitHost host, Func<TimeSpan> grace, TimeProvider time)
     {
         _store = store;
         _runs = runs;
+        _marks = marks;
         _host = host;
+        _grace = grace;
+        _time = time;
 
         _host.Sessions.OutputProduced += _OnOutput;
         _host.WorkflowTriggerRaised += _OnPluginTrigger;
 
-        _timer = new DispatcherTimer { Interval = Tick };
-        _timer.Tick += (_, _) => _OnClock(DateTimeOffset.Now);
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnClock(_time.GetUtcNow()), null, TimeSpan.Zero, Tick);
     }
 
     public void Dispose()
@@ -66,7 +75,7 @@ internal sealed class FlowWatcher : IDisposable
         _disposed = true;
         _host.Sessions.OutputProduced -= _OnOutput;
         _host.WorkflowTriggerRaised -= _OnPluginTrigger;
-        _timer.Stop();
+        _timer.Dispose();
     }
 
     // A plugin fired one of its own triggers: a ticket was picked for a session, a review was requested. Every active
@@ -102,37 +111,72 @@ internal sealed class FlowWatcher : IDisposable
         }
     }
 
-    // The clock came round. "09:00" fires in that minute; "every 15m" fires when the minute divides.
+    // The clock came round. Each schedule trigger is judged against its own marker: fire on time, catch up late
+    // within the grace, or log a miss and leave it alone — never silently shifted (#AC-493), and never twice for
+    // the same slot (#AC-1359).
     private void _OnClock(DateTimeOffset now)
     {
-        var minute = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Offset);
-        if (minute != _minute)
-        {
-            _minute = minute;
-            _firedThisMinute.Clear();
-        }
-
         foreach (var (workflow, trigger) in _Triggers("cockpit.schedule"))
         {
             var when = trigger.Parameters.GetValueOrDefault("When");
-            if (string.IsNullOrWhiteSpace(when) || !Schedule.IsDue(when, now))
+            if (string.IsNullOrWhiteSpace(when))
             {
                 continue;
             }
 
-            // Two ticks fall inside the same minute, and "09:00" is a minute, not an instant.
-            if (!_firedThisMinute.Add($"{workflow.Id}:{trigger.Id}"))
+            if (Schedule.ResolveZone(trigger.Parameters.GetValueOrDefault("Time zone")) is not { } zone)
             {
                 continue;
             }
 
-            _ = _FireAsync(workflow, trigger,
-            [
-                WorkflowItem.Of(new Dictionary<string, string>
+            var isOnce = when.TrimStart().StartsWith("once", StringComparison.OrdinalIgnoreCase);
+            var previous = Schedule.Previous(when, zone, now);
+            var marker = _marks.For(workflow.Id, trigger.Id);
+
+            // A `once` slot has no next occurrence to wait for, so there is nothing to bootstrap: its one sighting
+            // must be judged for real (Fire/Late/Missed) rather than seeded away like a recurring schedule's stale
+            // first tick — seeding it here would mean it never runs at all.
+            var effectiveMarker = marker ?? (isOnce ? DateTimeOffset.MinValue : null);
+            var decision = ScheduleCatchUp.Decide(previous, effectiveMarker, now, _grace());
+
+            if (decision.Outcome == ScheduleCatchUpOutcome.Nothing)
+            {
+                if (marker is null && previous is { } seed)
                 {
-                    ["at"] = now.ToString("yyyy-MM-dd HH:mm"),
-                }),
-            ]);
+                    _marks.Set(workflow.Id, trigger.Id, seed);
+                }
+
+                continue;
+            }
+
+            // Set before anything runs: at-most-once means a crash mid-run must not replay this slot on restart.
+            _marks.Set(workflow.Id, trigger.Id, decision.Slot);
+
+            if (decision.Outcome == ScheduleCatchUpOutcome.Missed)
+            {
+                _runs.Add(_MissedRun(workflow, decision.Slot, now));
+            }
+            else
+            {
+                var note = decision.Outcome == ScheduleCatchUpOutcome.Late
+                    ? $"Late — scheduled for {decision.Slot:yyyy-MM-dd HH:mm} UTC."
+                    : null;
+
+                _ = _FireAsync(workflow, trigger,
+                [
+                    WorkflowItem.Of(new Dictionary<string, string>
+                    {
+                        ["at"] = decision.Slot.ToString("yyyy-MM-dd HH:mm"),
+                    }),
+                ], note);
+            }
+
+            // A one-shot slot is spent the moment it is handled — fired, late, or missed makes no difference: none
+            // of the three means "ask again tomorrow".
+            if (isOnce)
+            {
+                _Deactivate(workflow);
+            }
         }
     }
 
@@ -144,12 +188,30 @@ internal sealed class FlowWatcher : IDisposable
                 .Where(node => node.TypeId == typeId && !node.IsDisabled)
                 .Select(node => (workflow, node)));
 
-    private async Task _FireAsync(Workflow workflow, WorkflowNode trigger, IReadOnlyList<WorkflowItem> seed)
+    private void _Deactivate(Workflow workflow)
     {
-        var key = $"{workflow.Id}:{trigger.Id}";
-        if (!_running.Add(key))
+        var workflows = _store.Load().ToList();
+        var index = workflows.FindIndex(existing => existing.Id == workflow.Id);
+        if (index < 0)
         {
             return;
+        }
+
+        workflows[index].IsActive = false;
+        _store.Save(workflows);
+    }
+
+    private async Task _FireAsync(Workflow workflow, WorkflowNode trigger, IReadOnlyList<WorkflowItem> seed, string? note = null)
+    {
+        var key = $"{workflow.Id}:{trigger.Id}";
+
+        lock (_runningLock)
+        {
+            if (!_running.Add(key))
+            {
+                _runs.Add(_SkippedRun(workflow, "Skipped — the previous run of this flow was still going."));
+                return;
+            }
         }
 
         _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
@@ -161,9 +223,13 @@ internal sealed class FlowWatcher : IDisposable
         }
         finally
         {
-            _running.Remove(key);
+            lock (_runningLock)
+            {
+                _running.Remove(key);
+            }
         }
 
+        run.Note = note;
         _runs.Add(run);
 
         // A flow that fired and failed while you were looking elsewhere must say so — this is the one thing that
@@ -173,6 +239,28 @@ internal sealed class FlowWatcher : IDisposable
             _host.ShowToast($"'{workflow.Name}' failed: {run.Error}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
         }
     }
+
+    private static WorkflowRun _SkippedRun(Workflow workflow, string note) => new()
+    {
+        Id = Guid.NewGuid().ToString("n"),
+        WorkflowId = workflow.Id,
+        WorkflowName = workflow.Name,
+        StartedAt = DateTimeOffset.UtcNow,
+        FinishedAt = DateTimeOffset.UtcNow,
+        Status = RunStatus.Skipped,
+        Note = note,
+    };
+
+    private static WorkflowRun _MissedRun(Workflow workflow, DateTimeOffset slot, DateTimeOffset now) => new()
+    {
+        Id = Guid.NewGuid().ToString("n"),
+        WorkflowId = workflow.Id,
+        WorkflowName = workflow.Name,
+        StartedAt = DateTimeOffset.UtcNow,
+        FinishedAt = DateTimeOffset.UtcNow,
+        Status = RunStatus.Skipped,
+        Note = $"Missed — scheduled for {slot:yyyy-MM-dd HH:mm} UTC, this cockpit was not running until {now:yyyy-MM-dd HH:mm} UTC.",
+    };
 
     // A pattern is plain text, unless it is written as a regex (/like this/) — the everyday case is "did it say
     // 'tests passed'", and making that person write a regex is a tax on the common case.

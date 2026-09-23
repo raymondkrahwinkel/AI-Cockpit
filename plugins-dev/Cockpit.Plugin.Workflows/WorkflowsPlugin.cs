@@ -32,16 +32,18 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         var store = new WorkflowStore(host.Storage);
         Engine.RunStore.Migrate(host.Storage, host.Cache);
         var runs = new Engine.RunStore(host.Cache);
+        var marks = new Engine.ScheduleMarks(host.Cache);
+        var settings = new WorkflowsSettings(host.Storage);
 
         // The triggers that fire by themselves. Started here rather than when the editor opens: a flow that only runs
-        // while you are looking at the editor is not automation, it is a button with extra steps.
-        _watcher = new Engine.FlowWatcher(store, runs, host);
+        // while you are looking at the editor is not automation, it is a button with extra steps. The grace is read
+        // live off `settings` on every tick, same as the MCP toggle below, so changing it takes effect without a restart.
+        _watcher = new Engine.FlowWatcher(store, runs, marks, host, () => TimeSpan.FromMinutes(settings.CatchUpGraceMinutes));
 
         // AC-12: the plugin's own MCP server, so agents can list, read, run and create/edit workflows. Contributed
         // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP. Fire-and-forget,
         // as the host asks. AC-40: gated on the plugin's own setting, read live each time a session's servers are
         // gathered, so the Workflows-settings toggle takes effect without a restart; the settings view below edits it.
-        var settings = new WorkflowsSettings(host.Storage);
         _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host), isEnabled: () => settings.McpEnabled);
         host.AddSettings(() => new WorkflowsSettingsControl(host, settings));
 

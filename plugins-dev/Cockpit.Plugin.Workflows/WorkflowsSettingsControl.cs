@@ -12,6 +12,7 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
 {
     private readonly WorkflowsSettings _settings;
     private readonly CheckBox _mcpEnabled;
+    private readonly NumericUpDown _catchUpGrace;
 
     public WorkflowsSettingsControl(ICockpitHost host, WorkflowsSettings settings)
     {
@@ -40,19 +41,51 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
             Children = { _mcpEnabled, host.CreateHelpHint("how-it-works", "consent-tiers") },
         };
 
+        // AC-1359: how late a scheduled trigger may still run after a restart or a sleeping laptop found it. Past
+        // this, the slot is logged as missed rather than run — the same honesty rule as AC-493's reminders.
+        _catchUpGrace = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 1440,
+            Increment = 5,
+            Value = settings.CatchUpGraceMinutes,
+            Width = 120,
+        };
+
+        var catchUpLabel = new TextBlock { Text = "Catch up scheduled flows within (minutes)", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        var catchUpRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 8,
+            Children = { catchUpLabel, _catchUpGrace },
+        };
+
+        var catchUpDescription = new TextBlock
+        {
+            Text = "A scheduled flow the cockpit was not running to fire still runs once, late, within this window. "
+                + "Past it, the slot is logged as missed instead — never run silently late.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.7,
+        };
+
         Content = new StackPanel
         {
             Spacing = 8,
             Margin = new Thickness(4),
-            Children = { mcpRow, description },
+            Children = { mcpRow, description, catchUpRow, catchUpDescription },
         };
     }
 
-    // AC-1004, criterion 3: the old `Save()` was this one storage write and nothing else — the MCP toggle is read
-    // fresh whenever the plugin is asked for its servers, so there is nothing to re-register here.
+    // AC-1004, criterion 3: the MCP toggle is read fresh whenever the plugin is asked for its servers, so there is
+    // nothing to re-register for it here. The grace is read fresh by the watcher on every tick, same reasoning.
     public bool TryStage(out Action? commit, out string? error)
     {
-        commit = () => _settings.SaveMcpEnabled(_mcpEnabled.IsChecked ?? true);
+        commit = () =>
+        {
+            _settings.SaveMcpEnabled(_mcpEnabled.IsChecked ?? true);
+            _settings.SaveCatchUpGraceMinutes((int)(_catchUpGrace.Value ?? WorkflowsSettings.DefaultCatchUpGraceMinutes));
+        };
         error = null;
         return true;
     }

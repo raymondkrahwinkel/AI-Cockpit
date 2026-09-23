@@ -60,8 +60,10 @@ internal sealed class RunPanel : Border
             _ => run.Status.ToString(),
         };
 
-        _summary.Text = run.Error is { } error
-            ? $"{verdict} in {_Ms(run.Duration)} — {error}"
+        // Error wins when a run has both: a run that failed late is still, first of all, a run that failed.
+        var detail = run.Error ?? run.Note;
+        _summary.Text = detail is { } text
+            ? $"{verdict} in {_Ms(run.Duration)} — {text}"
             : $"{verdict} in {_Ms(run.Duration)} · {run.Steps.Count} step(s)";
         _summary.Foreground = run.Status == RunStatus.Failed
             ? _Brush("CockpitStatusErrorBrush", "#D64545")

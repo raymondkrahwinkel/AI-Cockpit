@@ -117,6 +117,13 @@ internal sealed class WorkflowEditorControl : UserControl
         // history is stored. Without this a flow you ran yesterday opened with "nothing has flowed into this step",
         // which is not true, and is exactly the moment the panes are worth having.
         _lastRun = runs.Load().FirstOrDefault(run => run.WorkflowId == workflow.Id);
+        if (_lastRun is { } lastRun)
+        {
+            // Including a run this flow's own trigger fired while nobody was looking — a schedule catching up late,
+            // or logged as missed (#AC-1359) — so opening the flow is how you find out, not a toast you had to see.
+            _runPanel.Show(lastRun);
+        }
+
         _Describe();
         _RefreshExecutable();
     }
