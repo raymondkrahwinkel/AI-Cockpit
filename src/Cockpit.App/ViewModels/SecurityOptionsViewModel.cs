@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Avalonia.Threading;
@@ -846,11 +847,9 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         // AC-1325: no chains — before any network call, refuse when this cockpit is itself already a node.
-        if (nodePairing?.Pairing is { } controlledBy)
+        if (_AlreadyControlledRefusal() is { } refusal)
         {
-            PairingStatus =
-                $"This cockpit is already controlled by \"{controlledBy.ControllerName}\" ({controlledBy.ControllerAddress}). "
-                + "Unpair it on the Nodes page first — a cockpit cannot be both a node and a controller.";
+            PairingStatus = refusal;
             return;
         }
 
@@ -915,9 +914,9 @@ public sealed partial class SecurityOptionsViewModel(
         }
         catch (Exception ex) when (ex is HttpRequestException or NotSupportedException or System.Text.Json.JsonException)
         {
-            // A pin mismatch arrives here wrapped in an HttpRequestException; its inner exception is the reason
-            // worth showing, because "that is not the machine you paired with" is not a network problem.
-            PairingStatus = ex.InnerException is NodeCertificatePinMismatchException mismatch ? mismatch.Message : ex.Message;
+            // A pin mismatch arrives here wrapped in an HttpRequestException, more than one level deep — the
+            // reason worth showing, because "that is not the machine you paired with" is not a network problem.
+            PairingStatus = NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(ex) is { } mismatch ? mismatch.Message : ex.Message;
         }
         finally
         {
@@ -933,6 +932,19 @@ public sealed partial class SecurityOptionsViewModel(
         // Cancel before clearing: a poll already in flight has to be told to stop, not merely forgotten.
         _pairingCancellation?.Cancel();
         _ClearHandshake();
+    }
+
+    // AC-1325: shared by both entrances a controller opens against a node — StartPairingAsync and, below,
+    // ConnectToServerAsync — so the refusal can never drift into two different sentences for one actual state.
+    private string? _AlreadyControlledRefusal()
+    {
+        if (nodePairing?.Pairing is not { } controlledBy)
+        {
+            return null;
+        }
+
+        return $"This cockpit is already controlled by \"{controlledBy.ControllerName}\" ({controlledBy.ControllerAddress}). "
+            + "Unpair it on the Nodes page first — a cockpit cannot be both a node and a controller.";
     }
 
     private void _ClearHandshake()
@@ -988,9 +1000,8 @@ public sealed partial class SecurityOptionsViewModel(
     [RelayCommand]
     private void UseFoundNode(NodeDiscoveryFound node) => PairWithNodeAddress = node.Address;
 
-    // Turns the grant into ordinary registry rows — the same `Transport = Http` + bearer + URL an operator would
-    // have typed by hand after AC-790, with the certificate pin added, which is the part they could not have
-    // typed. Rows for this node are replaced rather than appended to, so pairing twice does not double the list.
+    // Turns the grant into ordinary registry rows — one per endpoint, all built by the shared _BuildNodeRow
+    // below (AC-1352) and saved together, so a node with more than one endpoint keeps every row.
     private async Task<int> _StoreNodeServersAsync(NodePairingHandshake handshake, NodePairingGrant grant)
     {
         if (mcpServers is null || grant.Endpoints.Count == 0)
@@ -998,28 +1009,171 @@ public sealed partial class SecurityOptionsViewModel(
             return 0;
         }
 
-        var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
-        var prefix = NodeServerName.PrefixFor(handshake.NodeName);
-        var kept = existing.Where(server => !server.Name.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+        var rows = grant.Endpoints.Select(endpoint =>
+            _BuildNodeRow(handshake.NodeName, endpoint.ServerName, endpoint.Url, grant.SharedSecret, handshake.Fingerprint));
+        await _StoreNodeRowsAsync(handshake.NodeName, rows).ConfigureAwait(true);
+        return grant.Endpoints.Count;
+    }
 
-        kept.AddRange(grant.Endpoints.Select(endpoint => new McpServerConfig
+    // AC-1352: the row shape both a pairing and a manual connect produce — one shape, one naming rule, so
+    // nothing downstream can tell which entrance produced it. AC-795 reads the name back to find a node's
+    // session server again, hence building it through `NodeServerName` rather than inline here and parsed there.
+    private static McpServerConfig _BuildNodeRow(string nodeName, string serverName, string url, string bearer, string fingerprint) =>
+        new()
         {
             Id = McpServerIdentity.NewId(),
-            // AC-795 reads this name back to find one node's session server again, so the shape is stated once in
-            // `NodeServerName` rather than built here and parsed there.
-            Name = NodeServerName.For(handshake.NodeName, endpoint.ServerName),
+            Name = NodeServerName.For(nodeName, serverName),
             Transport = McpTransport.Http,
-            // Only the in-process tool loop builds its own HTTP transport (`McpToolProvider`), so only it can be told
-            // which certificate to trust.
+            // Only the in-process tool loop builds its own HTTP transport (`McpToolProvider`), so only it can be
+            // told which certificate to trust.
             Scope = McpServerScope.LocalOnly,
-            Url = endpoint.Url,
+            Url = url,
             Auth = McpServerAuth.ApiKey,
-            ApiKey = grant.SharedSecret,
-            PinnedCertificateFingerprint = handshake.Fingerprint,
-        }));
+            ApiKey = bearer,
+            PinnedCertificateFingerprint = fingerprint,
+        };
+
+    // Replaces this node's rows with `rows` in one save. Takes an already-loaded registry when the caller has
+    // one (ConnectToServerAsync's own clash-check), so a connect does not pay for the load twice.
+    private async Task _StoreNodeRowsAsync(string nodeName, IEnumerable<McpServerConfig> rows, IReadOnlyList<McpServerConfig>? existing = null)
+    {
+        if (mcpServers is null)
+        {
+            return;
+        }
+
+        existing ??= await mcpServers.LoadAsync().ConfigureAwait(true);
+        var prefix = NodeServerName.PrefixFor(nodeName);
+        var kept = existing.Where(server => !server.Name.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+        kept.AddRange(rows);
 
         await mcpServers.SaveAsync(kept).ConfigureAwait(true);
-        return grant.Endpoints.Count;
+    }
+
+    // ── AC-1352, connect to a headless server with a connect key ──────────────────────────────────────────────
+
+    // What the operator types on the counterpart of the pairing block above: no handshake, because there is
+    // nobody at the other end to confirm one.
+
+    [ObservableProperty]
+    private string _connectNodeName = "";
+
+    [ObservableProperty]
+    private string _connectAddress = "";
+
+    // Never left standing once a connect succeeds — see ConnectToServerAsync.
+    [ObservableProperty]
+    private string _connectKey = "";
+
+    [ObservableProperty]
+    private string _connectFingerprint = "";
+
+    [ObservableProperty]
+    private string _connectStatus = "";
+
+    [ObservableProperty]
+    private bool _isConnectBusy;
+
+    // Writes the same row a pairing would, only after ProbeAsync proves the address, key and pin actually work
+    // together — a typo here must never leave a dead row for NodeSessionsClient to poll forever.
+    [RelayCommand]
+    private async Task ConnectToServerAsync()
+    {
+        if (nodeSessions is null
+            || string.IsNullOrWhiteSpace(ConnectAddress)
+            || string.IsNullOrWhiteSpace(ConnectKey)
+            || string.IsNullOrWhiteSpace(ConnectFingerprint))
+        {
+            return;
+        }
+
+        // AC-1325: no chains — the same refusal StartPairingAsync gives, before any network call.
+        if (_AlreadyControlledRefusal() is { } refusal)
+        {
+            ConnectStatus = refusal;
+            return;
+        }
+
+        // Named here, ahead of the try, so a parse failure below can still report against something readable.
+        var nodeName = string.IsNullOrWhiteSpace(ConnectNodeName) ? ConnectAddress.Trim() : ConnectNodeName.Trim();
+
+        IsConnectBusy = true;
+        ConnectStatus = "";
+        try
+        {
+            var (host, mcpUrl) = _ParseConnectAddress(ConnectAddress);
+            nodeName = string.IsNullOrWhiteSpace(ConnectNodeName) ? host : ConnectNodeName.Trim();
+            var url = mcpUrl.ToString();
+            var fingerprint = ConnectFingerprint.Trim();
+
+            IReadOnlyList<McpServerConfig>? existing = null;
+            if (mcpServers is not null)
+            {
+                existing = await mcpServers.LoadAsync().ConfigureAwait(true);
+                var prefix = NodeServerName.PrefixFor(nodeName);
+
+                // A typo that happens to match an existing name must not silently overwrite it — only the same
+                // address may replace what is there, which is rotating a key rather than a mistake (AC-1352).
+                if (existing.FirstOrDefault(server => server.Name.StartsWith(prefix, StringComparison.Ordinal)
+                        && !string.Equals(server.Url, url, StringComparison.Ordinal)) is { } clash)
+                {
+                    ConnectStatus = $"\"{nodeName}\" is already connected at {clash.Url}. Use a different name, or fix the address to reconnect to that one.";
+                    return;
+                }
+            }
+
+            var row = _BuildNodeRow(nodeName, NodeServerName.SessionsServerName, url, ConnectKey, fingerprint);
+            await nodeSessions.ProbeAsync(row).ConfigureAwait(true);
+            await _StoreNodeRowsAsync(nodeName, [row], existing).ConfigureAwait(true);
+            ConnectKey = "";
+            ConnectStatus = $"Connected to \"{nodeName}\".";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or SocketException or NotSupportedException
+            or System.Text.Json.JsonException or OperationCanceledException or InvalidOperationException or UriFormatException)
+        {
+            ConnectStatus = _ClassifyConnectFailure(nodeName, ex);
+        }
+        finally
+        {
+            IsConnectBusy = false;
+        }
+    }
+
+    private static string _ClassifyConnectFailure(string nodeName, Exception exception)
+    {
+        // Same full-chain unwrap ConfirmPairingCodeAsync uses — a certificate callback's throw arrives wrapped
+        // more than one level deep, and the exception's own Message already names both fingerprints.
+        if (NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(exception) is { } mismatch)
+        {
+            return mismatch.Message;
+        }
+
+        if (exception is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+        {
+            return "The server refused this key.";
+        }
+
+        if (exception is InvalidOperationException { InnerException: null })
+        {
+            // The node answered and refused in its own words (ProbeAsync's list_node_sessions error) — shown
+            // verbatim, the same posture NodeSessionsClient takes for a node's own refusal elsewhere.
+            return exception.Message;
+        }
+
+        return NodeConnectionFailure.Describe(nodeName, exception, NodeConnectionFailure.DefaultBudget);
+    }
+
+    // A bare host defaults to the node listener's own port — there is no pairing port to fall back through here,
+    // unlike NodePairingClient.NormalizeAddress. Via Uri/UriBuilder rather than a hand split on ':', so an IPv6
+    // address (its own colons) parses as one host instead of being chopped at the wrong one (AC-1352).
+    private static (string Host, Uri McpUrl) _ParseConnectAddress(string address)
+    {
+        var trimmed = address.Trim();
+        var withScheme = trimmed.Contains("://", StringComparison.Ordinal) ? trimmed : $"https://{trimmed}";
+        var uri = new Uri(withScheme, UriKind.Absolute);
+        var port = uri.IsDefaultPort ? NodeEndpointSettings.DefaultPort + NodeEndpointSettings.McpPortOffset : uri.Port;
+
+        return (uri.Host, new UriBuilder("https", uri.Host, port, "mcp").Uri);
     }
 
     // Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists

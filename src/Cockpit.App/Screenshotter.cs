@@ -727,7 +727,23 @@ internal static class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
+        // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
+        // on Height alone to make it fit.
+        ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
     };
+
+    // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.
+    private static void _ScrollIntoView(Window window, string scrollerTag, string headingText)
+    {
+        var scroller = window.GetVisualDescendants().OfType<ScrollViewer>().First(sv => (string?)sv.Tag == scrollerTag);
+        var heading = window.GetVisualDescendants().OfType<TextBlock>().First(tb => tb.Text == headingText);
+
+        if (heading.TranslatePoint(new Point(0, 0), (Visual)scroller.Content!) is { } target)
+        {
+            scroller.Offset = new Vector(0, target.Y);
+        }
+    }
 
     // AC-1316: screenshot scenes click a segment so the selected state follows the operator's command path.
     private static void _ChooseWorkKind(Window window)
@@ -1293,7 +1309,9 @@ internal static class Screenshotter
         security.RefreshAsync().GetAwaiter().GetResult();
         security.NodeEndpointEnabled = true;
 
-        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1000 };
+        // AC-1352: taller than before (1000) — the connect block sits between the pairing panel and the
+        // paired-node cards, and a render that crops it proves nothing about the part this change touched.
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
         dialog.SelectCategory("nodes");
         return dialog;
     }

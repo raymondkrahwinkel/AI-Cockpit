@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
@@ -176,43 +178,149 @@ public class SecurityOptionsViewModelTests
         Assert.False(vm.IsComparingPairingCode);
     }
 
-    [Fact]
-    public async Task CompletingAPairing_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierPairingsRows()
+    /// <summary>
+    /// AC-1352 criterion 2: a pairing and a manual connect write the identical row shape through the same
+    /// <c>_BuildNodeRow</c> — a separate write path for connect that set, say, <c>Scope</c> or the pin
+    /// differently would make the "connect" row of this Theory red.
+    /// </summary>
+    [Theory]
+    [InlineData("pairing")]
+    [InlineData("connect")]
+    public async Task CompletingAPairingOrConnect_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierRow(string kind)
     {
+        const string ConnectUrl = "https://192.168.1.20:7331/mcp";
+        var staleUrl = kind == "pairing" ? "https://old/mcp" : ConnectUrl;
         var servers = new FakeMcpServerStore(
         [
             new McpServerConfig { Name = "something else", Transport = McpTransport.Stdio, Command = "npx" },
-            new McpServerConfig { Name = "laptop · stale-endpoint", Transport = McpTransport.Http, Url = "https://old/mcp" },
+            new McpServerConfig { Name = "laptop · stale-endpoint", Transport = McpTransport.Http, Url = staleUrl },
         ]);
 
-        var client = new FakePairingClient();
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairingClient: client, mcpServers: servers)
+        if (kind == "pairing")
         {
-            PairWithNodeAddress = "192.168.1.20:7331",
-        };
+            var client = new FakePairingClient();
+            var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairingClient: client, mcpServers: servers)
+            {
+                PairWithNodeAddress = "192.168.1.20:7331",
+            };
 
-        await vm.StartPairingCommand.ExecuteAsync(null);
-        Assert.True(vm.IsComparingPairingCode);
-        Assert.Equal("314159", vm.OutgoingPairingCode);
+            await vm.StartPairingCommand.ExecuteAsync(null);
+            Assert.True(vm.IsComparingPairingCode);
+            Assert.Equal("314159", vm.OutgoingPairingCode);
 
-        await vm.ConfirmPairingCodeCommand.ExecuteAsync(null);
+            await vm.ConfirmPairingCodeCommand.ExecuteAsync(null);
 
+            // The comparison panel is gone once it is done, so the code cannot be confirmed a second time.
+            Assert.False(vm.IsComparingPairingCode);
+        }
+        else
+        {
+            var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeSessions: new FakeNodeProbe(), mcpServers: servers)
+            {
+                ConnectNodeName = "laptop",
+                ConnectAddress = "192.168.1.20:7331",
+                ConnectKey = "ck_test-key",
+                ConnectFingerprint = "AABBCCDD",
+            };
+
+            await vm.ConnectToServerCommand.ExecuteAsync(null);
+
+            // Never left standing once a connect succeeds.
+            Assert.Equal("", vm.ConnectKey);
+        }
+
+        // Pairing keeps the endpoint's own server name (here "cockpit-agents", the FakePairingClient's own
+        // stand-in); connect always names its one row "cockpit-node" — there is no handshake to read a name from.
+        var expectedName = kind == "pairing" ? "laptop · cockpit-agents" : "laptop · cockpit-node";
         var saved = await servers.LoadAsync();
-        var added = saved.Single(server => server.Name == "laptop · cockpit-agents");
+        var added = saved.Single(server => server.Name == expectedName);
 
         Assert.Equal("AABBCCDD", added.PinnedCertificateFingerprint);
-        Assert.Equal("granted-by-pairing", added.ApiKey);
+        Assert.Equal(kind == "pairing" ? "granted-by-pairing" : "ck_test-key", added.ApiKey);
         // Only the in-process tool loop can be told which certificate to trust; a spawned CLI session brings its
         // own HTTP client and would fail the handshake against a self-signed certificate.
         Assert.Equal(McpServerScope.LocalOnly, added.Scope);
+        Assert.Equal(McpTransport.Http, added.Transport);
 
-        // The earlier pairing's rows are replaced, not appended to — pairing twice must not double the list — and
-        // a server that has nothing to do with this node is left alone.
+        // The earlier row is replaced, not appended to — reconnecting must not double the list — and a server
+        // that has nothing to do with this node is left alone.
         Assert.DoesNotContain(saved, server => server.Name == "laptop · stale-endpoint");
         Assert.Contains(saved, server => server.Name == "something else");
+    }
 
-        // And the comparison panel is gone once it is done, so the code cannot be confirmed a second time.
-        Assert.False(vm.IsComparingPairingCode);
+    /// <summary>
+    /// AC-1352 criteria 1 and 4: a connect that does not answer as typed — a pin mismatch, a rejected key, an
+    /// unreachable address, this cockpit already being a node, or a name that already belongs to a different
+    /// address — leaves the registry exactly as it was, and a pin mismatch names both fingerprints.
+    /// </summary>
+    [Theory]
+    [InlineData("pin-mismatch")]
+    [InlineData("key-rejected")]
+    [InlineData("unreachable")]
+    [InlineData("already-a-node")]
+    [InlineData("name-clash")]
+    public async Task Connect_StoresNothing_UnlessTheServerAnswersAsTyped(string scenario)
+    {
+        var servers = new FakeMcpServerStore(
+        [
+            new McpServerConfig { Name = "laptop · cockpit-node", Transport = McpTransport.Http, Url = "https://elsewhere/mcp" },
+        ]);
+        var before = await servers.LoadAsync();
+
+        var probe = new FakeNodeProbe();
+        INodePairingBroker? pairing = null;
+        var nodeName = "phone";
+
+        switch (scenario)
+        {
+            case "pin-mismatch":
+                probe.ThrowOnProbe = new HttpRequestException("tls", new NodeCertificatePinMismatchException("AABBCCDD", "11223344"));
+                break;
+            case "key-rejected":
+                probe.ThrowOnProbe = new HttpRequestException("unauthorized", null, HttpStatusCode.Unauthorized);
+                break;
+            case "unreachable":
+                probe.ThrowOnProbe = new SocketException((int)SocketError.ConnectionRefused);
+                break;
+            case "already-a-node":
+                var broker = Substitute.For<INodePairingBroker>();
+                broker.Pairing.Returns(new NodePairing
+                {
+                    ControllerName = "desk",
+                    ControllerAddress = "192.168.1.5",
+                    PairedAtUtc = DateTimeOffset.UnixEpoch,
+                });
+                pairing = broker;
+                break;
+            case "name-clash":
+                // "laptop" already belongs to a row pointing elsewhere — a typo here must not overwrite it.
+                nodeName = "laptop";
+                break;
+        }
+
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairing: pairing, nodeSessions: probe, mcpServers: servers)
+        {
+            ConnectNodeName = nodeName,
+            ConnectAddress = "192.168.1.30:20383",
+            ConnectKey = "ck_test-key",
+            ConnectFingerprint = "AABBCCDD",
+        };
+
+        await vm.ConnectToServerCommand.ExecuteAsync(null);
+
+        var after = await servers.LoadAsync();
+        Assert.Equal(before, after);
+
+        if (scenario == "pin-mismatch")
+        {
+            Assert.Contains("AABBCCDD", vm.ConnectStatus, StringComparison.Ordinal);
+            Assert.Contains("11223344", vm.ConnectStatus, StringComparison.Ordinal);
+        }
+
+        if (scenario == "key-rejected")
+        {
+            Assert.Equal("The server refused this key.", vm.ConnectStatus);
+        }
     }
 
     [Fact]
@@ -527,6 +635,8 @@ public class SecurityOptionsViewModelTests
 
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
+
+        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient
@@ -551,6 +661,44 @@ public class SecurityOptionsViewModelTests
 
         public Task UnpairAsync(string address, string sharedSecret, string certificateFingerprint, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    // AC-1352: a stand-in for the connect dialog's own network call — no real registry lookup, no re-resolve,
+    // just whatever ProbeAsync should have done for that row: succeed, or throw exactly the exception a scenario
+    // needs the view model to classify.
+    private sealed class FakeNodeProbe : INodeSessionsClient
+    {
+        public Exception? ThrowOnProbe { get; set; }
+
+        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) =>
+            ThrowOnProbe is { } exception ? Task.FromException<NodeSessionsSnapshot>(exception) : Task.FromResult(new NodeSessionsSnapshot(row.Name, [], [], []));
+
+        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => throw new NotSupportedException();
+
+        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeMcpServerStore(IReadOnlyList<McpServerConfig> servers) : IMcpServerStore

@@ -396,6 +396,9 @@ public class NodeSessionsViewModelTests
             return Task.FromResult<string?>(null);
         }
 
+        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Snapshot);
+
         public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
         {
             if (FailNextInboxRead)

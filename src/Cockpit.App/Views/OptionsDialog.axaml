@@ -2138,7 +2138,31 @@
                                        IsVisible="{Binding Security.PairingStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="3. SESSIONS ON YOUR NODES"
+                        <TextBlock Classes="optionsSectionHeader" Text="3. CONNECT TO A SERVER"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="For a headless Cockpit with nobody there to approve a pairing. Type the address it is listening on, the connect key it was set up with, and the certificate fingerprint from its own startup log — this cockpit pins exactly what you confirm here (TOFU), so compare it yourself. This writes the same kind of row a pairing would, and only once the three actually work together."/>
+                        </StackPanel>
+                        <StackPanel Spacing="6" Margin="24,4,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBox Text="{Binding Security.ConnectNodeName}" PlaceholderText="Name (defaults to the host)" Width="200"
+                                         FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                                <TextBox Text="{Binding Security.ConnectAddress}" PlaceholderText="host:port" Width="200"
+                                         FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            </StackPanel>
+                            <TextBox Text="{Binding Security.ConnectKey}" PlaceholderText="Connect key (ck_…)" PasswordChar="•"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBox Text="{Binding Security.ConnectFingerprint}" PlaceholderText="Certificate fingerprint, from the server's startup log"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <Button Content="Connect" HorizontalAlignment="Left" Command="{Binding Security.ConnectToServerCommand}"
+                                    IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBlock Text="{Binding Security.ConnectStatus}" TextWrapping="Wrap" FontSize="11.5"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                       IsVisible="{Binding Security.ConnectStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS ON YOUR NODES"
                                     IsVisible="{Binding Security.PairedNodes.Count}"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding Security.PairedNodes.Count}">
@@ -2208,7 +2232,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="4. IF SOMETHING GOES WRONG"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="5. IF SOMETHING GOES WRONG"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,0">
                             <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

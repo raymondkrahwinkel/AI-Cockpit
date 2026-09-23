@@ -49,6 +49,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   failed attempt gets the same answer, an address that keeps failing is locked out for a while, and attempts,
   node tool calls and key changes are written to `node-access-audit.jsonl`. The node also logs its certificate
   fingerprint at startup, and the profiles it lists now say which ones run without asking for approval.
+- added: a "Connect to a server" option next to "Pair with another Cockpit" on the Security tab's Nodes page,
+  for a headless node with nobody there to approve a pairing request. Type the address, the connect key it was
+  set up with and the certificate fingerprint from its own startup log, and it is added exactly like a paired
+  node — nothing is saved until that address, key and fingerprint actually work together.
 - added: each cluster in the Kubernetes plugin's settings now has a consent mode — Always ask (unchanged),
   Read-free (reads go without a card anywhere on the cluster; secrets, Helm values/manifests and every change
   still ask) or All-free (changes go without a card too, but only in the cluster's allowed namespaces — outside
