@@ -176,6 +176,26 @@ public class DiscordChannelBridgeTests
         Assert.Empty(gateway.SentMessages);
     }
 
+    // AC-1360 review: a prompt closed while its post was still on its way used to be registered afterwards, dead at
+    // the head of the JA/NEE queue — so every later "JA" answered nothing, not even the prompt that was really open.
+    [Fact]
+    public async Task APromptClosedWhileItsPostIsInFlight_NeverBlocksTheNextOne()
+    {
+        var (bridge, gateway, sink) = _Build();
+        var held = new TaskCompletionSource<ulong>();
+        sink.HoldNextPost = held;
+        var closed = _ConsentPrompt("answered elsewhere");
+        var live = _ConsentPrompt("still open");
+
+        gateway.RaisePromptOpened(closed);
+        gateway.RaisePromptClosed(closed.Id);
+        held.SetResult(99);
+        gateway.RaisePromptOpened(live);
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId: 1);
+
+        Assert.Equal((live.Id, ConsentOutcome.Approved, false), Assert.Single(gateway.Responses));
+    }
+
     // Review point 2: a failed post must not register the prompt as open — otherwise a "JA" typed for an
     // unrelated reason later would answer a prompt nobody in the channel ever actually saw.
     [Fact]

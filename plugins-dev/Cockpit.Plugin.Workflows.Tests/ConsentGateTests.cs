@@ -99,7 +99,7 @@ public class ConsentGateTests
     // Skipped, and a question nobody answers is a no once its wait runs out — never a silent yes.
     [Theory]
     [InlineData(ConsentOutcome.Approved, "", RunStatus.Succeeded, true, "You approved: Deploy?")]
-    [InlineData(ConsentOutcome.Denied, "", RunStatus.Skipped, false, "You said not now")]
+    [InlineData(ConsentOutcome.Denied, "", RunStatus.Skipped, false, "Not approved")]
     [InlineData(null, "0.001", RunStatus.Skipped, false, "Nobody answered within 0.001 minutes")]
     public async Task AskMeFirst_IsPutToTheBroker_AndNoAnswerInTimeIsANo(
         ConsentOutcome? answer, string wait, RunStatus expectedStatus, bool continues, string expectedText)

@@ -34,7 +34,7 @@ internal sealed class DiscordSendDmStep(
 
     public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)
     {
-        if (access() is not { Audience: AssistantChannelAudience.SingleUser } allowed)
+        if (access() is not { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 } allowed)
         {
             throw new InvalidOperationException(
                 "Nothing was sent: this step only writes to a single allowed account. In the Discord plugin's settings, choose \"Only this one Discord account\" and enter your user id.");
@@ -47,13 +47,13 @@ internal sealed class DiscordSendDmStep(
         }
 
         var parts = Split(message, _MaxLength(context.Parameter(MaxLengthParameter)));
-        await sendDirectMessage(allowed.UserIds.Single(), parts, cancellationToken).ConfigureAwait(false);
+        await sendDirectMessage(allowed.UserIds.First(), parts, cancellationToken).ConfigureAwait(false);
 
         return WorkflowStepResult.Done(parts.Count == 1 ? "Sent as a Discord DM." : $"Sent as {parts.Count} Discord DMs.");
     }
 
-    // Cut at the last line break that fits, else the last space, else hard — and every character kept, so the
-    // parts read back as the whole message.
+    // Cut at the last line break that fits, else the last space, else hard (never inside a surrogate pair). Every
+    // character is kept, except a part that is only whitespace: Discord refuses to send one.
     public static IReadOnlyList<string> Split(string text, int maxLength)
     {
         var parts = new List<string>();
@@ -68,13 +68,13 @@ internal sealed class DiscordSendDmStep(
                 cut = window.LastIndexOf(' ');
             }
 
-            var length = cut <= 0 ? maxLength : cut + 1;
+            var length = cut > 0 ? cut + 1 : char.IsHighSurrogate(window[^1]) ? maxLength - 1 : maxLength;
             parts.Add(rest[..length]);
             rest = rest[length..];
         }
 
         parts.Add(rest);
-        return parts;
+        return parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToList();
     }
 
     private static int _MaxLength(string text)

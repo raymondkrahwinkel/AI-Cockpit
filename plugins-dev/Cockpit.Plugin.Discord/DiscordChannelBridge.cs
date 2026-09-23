@@ -38,6 +38,10 @@ internal sealed class DiscordChannelBridge : IDisposable
     // answering the oldest is the same order the operator would reach them in the app's own queue.
     private readonly List<Guid> _openPromptOrder = [];
 
+    // Prompts whose post is still on its way. A close that lands meanwhile removes the id here, so the finished post
+    // does not register a prompt that is already gone at the head of the JA/NEE queue.
+    private readonly HashSet<Guid> _postingPrompts = [];
+
     private bool _disposed;
 
     public DiscordChannelBridge(
@@ -251,6 +255,11 @@ internal sealed class DiscordChannelBridge : IDisposable
             return;
         }
 
+        lock (_gate)
+        {
+            _postingPrompts.Add(prompt.Id);
+        }
+
         ulong messageId;
         try
         {
@@ -260,13 +269,21 @@ internal sealed class DiscordChannelBridge : IDisposable
         {
             // Not registered as open when the post itself failed — otherwise a "JA" typed for an unrelated
             // reason would answer a prompt nobody in the channel ever actually saw.
+            lock (_gate)
+            {
+                _postingPrompts.Remove(prompt.Id);
+            }
+
             return;
         }
 
         lock (_gate)
         {
-            _openPromptOrder.Add(prompt.Id);
-            _promptMessageIds[prompt.Id] = messageId;
+            if (_postingPrompts.Remove(prompt.Id))
+            {
+                _openPromptOrder.Add(prompt.Id);
+                _promptMessageIds[prompt.Id] = messageId;
+            }
         }
     }
 
@@ -274,6 +291,7 @@ internal sealed class DiscordChannelBridge : IDisposable
     {
         lock (_gate)
         {
+            _postingPrompts.Remove(promptId);
             _openPromptOrder.Remove(promptId);
             _promptMessageIds.Remove(promptId);
         }

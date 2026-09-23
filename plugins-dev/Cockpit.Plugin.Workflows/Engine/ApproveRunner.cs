@@ -37,24 +37,32 @@ internal sealed class ApproveRunner(ICockpitHost host) : IStepRunner
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromMinutes(minutes));
 
-        var decision = await host.RequestConsentAsync(
-            new ConsentRequest(
-                context.Node.Name,
-                question,
-                new ConsentSource(null, null, "Workflows"),
-                "workflow.cockpit.approve",
-                ConsentRisk.Dangerous),
-            deadline.Token);
+        var request = new ConsentRequest(
+            context.Node.Name,
+            question,
+            new ConsentSource(null, null, "Workflows"),
+            "workflow.cockpit.approve",
+            ConsentRisk.Dangerous);
+
+        // Asked outside the caller's flow: an agent that started this run over MCP carries its verified pane id in it,
+        // and the assistant's "allow all" would then answer the operator's own question without anyone seeing it.
+        Task<ConsentDecision> asking;
+        using (ExecutionContext.SuppressFlow())
+        {
+            asking = Task.Run(() => host.RequestConsentAsync(request, deadline.Token), CancellationToken.None);
+        }
+
+        var decision = await asking;
 
         cancellationToken.ThrowIfCancellationRequested();
 
         // A refusal ends this branch and says so. Throwing would record it as a failure, and a flow you deliberately
-        // stopped is not a flow that broke.
-        if (!decision.IsApproved)
+        // stopped is not a flow that broke. Only an answer counts: a skipped card (Bypassed) is not a yes.
+        if (!decision.IsApproved || decision.Bypassed)
         {
             return StepOutcome.Stop(deadline.IsCancellationRequested
                 ? $"Nobody answered within {minutes.ToString(CultureInfo.InvariantCulture)} minutes, so this counts as not now and the flow stopped here."
-                : "You said not now, so the flow stopped here.");
+                : "Not approved, so the flow stopped here.");
         }
 
         return StepOutcome.Passing(context.Input, $"You approved: {question}");
