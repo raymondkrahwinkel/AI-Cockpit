@@ -6,9 +6,18 @@ public static class McpRequestContext
 {
     private static readonly AsyncLocal<string?> Current = new();
 
+    private static readonly AsyncLocal<NodeCaller?> CurrentNode = new();
+
     // The verified pane id of the current MCP request, or null when there is no verified session in scope.
     public static string? CurrentPaneId => Current.Value;
 
-    // Sets the verified pane id for the duration of the current request's async flow.
-    internal static void Set(string? paneId) => Current.Value = paneId;
+    // AC-1351: which credential a node-listener caller used and what it may do; null for every other caller.
+    internal static NodeCaller? CurrentNodeCaller => CurrentNode.Value;
+
+    // Sets the verified pane id (and, for a node-listener caller, its credential) for the current request's async flow.
+    internal static void Set(string? paneId, NodeCaller? nodeCaller = null)
+    {
+        Current.Value = paneId;
+        CurrentNode.Value = nodeCaller;
+    }
 }

@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -24,7 +25,9 @@ internal sealed class NodeSessionMcpTools(
     // AC-1329: this machine's own memory — the same behaviour/machine split its own assistant reads at every
     // start. Never merged with the controller's: what these two tools hand over is read there and let go, per
     // Raymond's rule that a controller's memory must not be scrambled by the memory of the machine it is working on.
-    IAssistantMemory memory)
+    IAssistantMemory memory,
+    // AC-1351: null where nothing verifies connect keys (a test's own host), and then the key tools refuse.
+    ConnectKeyVerifier? connectKeys = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -36,6 +39,8 @@ internal sealed class NodeSessionMcpTools(
     // posture `AssistantAgentMcpTools` takes: a local session learns that this is not for it, and nothing else.
     private const string NotTheController =
         "This tool belongs to the cockpit that is paired to this one as its controller. It is not available to a session on this machine.";
+
+    private const string NoConnectKeys = "Connect keys are not available on this node.";
 
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
     [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so. pendingPermissions lists the Allow/Deny questions a session is stopped on; they are for the operator's own screen on the controller, never for you to answer.")]
@@ -106,12 +111,12 @@ internal sealed class NodeSessionMcpTools(
                 ok = true,
                 node = Environment.MachineName,
                 profiles = known
-                    .Where(profile => pairing.IsProfileAllowed(profile.Label))
-                    .Select(profile => new NodeScopedProfileSummary(profile.Label, profile.Provider, profile.Purpose))
+                    .Where(profile => _IsProfileAllowed(profile.Label))
+                    .Select(profile => new NodeScopedProfileSummary(profile.Label, profile.Provider, profile.Purpose, UnsupervisedProfile.SkipsApprovals(profile.Defaults)))
                     // Written out field by field rather than serialized as the record: the provider has to cross as
                     // its name and not as whatever number the enum happens to have, or the two machines agree only
                     // for as long as nobody inserts a value into `SessionProvider`.
-                    .Select(summary => new { label = summary.Label, provider = summary.Provider.ToString(), purpose = summary.Purpose }),
+                    .Select(summary => new { label = summary.Label, provider = summary.Provider.ToString(), purpose = summary.Purpose, skipsApprovals = summary.SkipsApprovals }),
             });
         }
         catch (Exception exception)
@@ -137,7 +142,7 @@ internal sealed class NodeSessionMcpTools(
                 ok = true,
                 node = Environment.MachineName,
                 projects = known
-                    .Where(project => pairing.IsProjectAllowed(project.Id))
+                    .Where(project => _IsProjectAllowed(project.Id))
                     .Select(project => new { id = project.Id, name = project.Name, description = project.Description }),
             });
         }
@@ -271,7 +276,7 @@ internal sealed class NodeSessionMcpTools(
                 });
             }
 
-            if (projectId is { Length: > 0 } project && !pairing.IsProjectAllowed(project))
+            if (projectId is { Length: > 0 } project && !_IsProjectAllowed(project))
             {
                 return _Serialize(new
                 {
@@ -507,6 +512,120 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
+    [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    public async Task<string> IssueConnectKeyAsync(
+        [Description("A name for the operator: which controller or machine this key is for.")] string label,
+        [Description("\"operate\" or \"admin\".")] string capability,
+        [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotAdmin()) is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            {
+                return _Serialize(new { ok = false, error = NoConnectKeys });
+            }
+
+            if (!Enum.TryParse<ConnectKeyCapability>(capability, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+            {
+                return _Serialize(new { ok = false, error = "capability must be \"operate\" or \"admin\"." });
+            }
+
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return _Serialize(new { ok = false, error = "label is required, so the operator can tell this key from the others." });
+            }
+
+            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller).ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                key = secret,
+                prefix = key.Prefix,
+                label = key.Label,
+                capability = key.Capability.ToString().ToLowerInvariant(),
+                expiresAt = key.ExpiresAt,
+                note = "This is the only time the key is shown. Store it now.",
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "revoke_connect_key", ReadOnly = false, Destructive = true)]
+    [Description("Revokes a connect key by its prefix, at once: its next call is refused and its open connections are closed. The bootstrap key can be revoked too, and stays revoked when the node restarts with the same secret. Needs a connect key with the admin capability. Revoking the key you are calling with ends this connection.")]
+    public async Task<string> RevokeConnectKeyAsync(
+        [Description("The key's prefix, exactly as list_connect_keys reports it.")] string prefix)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotAdmin()) is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            {
+                return _Serialize(new { ok = false, error = NoConnectKeys });
+            }
+
+            var revoked = await connectKeys.RevokeAsync(prefix, caller).ConfigureAwait(false);
+            return revoked
+                ? _Serialize(new { ok = true, prefix, revoked })
+                : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "list_connect_keys", ReadOnly = true)]
+    [Description("Lists this node's connect keys — prefix, label, capability, when each was created, expires, was revoked and was last used — never the keys themselves. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
+    public async Task<string> ListConnectKeysAsync()
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotAdmin()) is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (connectKeys is null)
+            {
+                return _Serialize(new { ok = false, error = NoConnectKeys });
+            }
+
+            var keys = await connectKeys.ListAsync().ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                keys = keys.Select(entry => new
+                {
+                    prefix = entry.Key.Prefix,
+                    label = entry.Key.Label,
+                    capability = entry.Key.Capability.ToString().ToLowerInvariant(),
+                    isBootstrap = entry.Key.IsBootstrap,
+                    createdAt = entry.Key.CreatedAt,
+                    expiresAt = entry.Key.ExpiresAt,
+                    revokedAt = entry.Key.RevokedAt,
+                    lastUsedAt = entry.LastUsedAt,
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     // AC-1323: the four controls share stop's bound — a session outside what listing showed is the node operator's
     // own, whatever the controller wants to do with it.
     private async Task<string?> _RefuseIfNotVisibleAsync(string paneId)
@@ -527,7 +646,7 @@ internal sealed class NodeSessionMcpTools(
     private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
     {
         var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
-        return [.. sessions.Where(session => pairing.IsProfileAllowed(session.Profile))];
+        return [.. sessions.Where(session => _IsProfileAllowed(session.Profile))];
     }
 
     // The profile this label names, if the grant covers it — or null, which is the only other answer callers need.
@@ -537,7 +656,7 @@ internal sealed class NodeSessionMcpTools(
     {
         var known = await profiles.LoadAsync().ConfigureAwait(false);
         var match = known.FirstOrDefault(candidate => string.Equals(candidate.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
-        return match is not null && pairing.IsProfileAllowed(match.Label) ? match.Label : null;
+        return match is not null && _IsProfileAllowed(match.Label) ? match.Label : null;
     }
 
     // The desk a controller's session lands on, derived here and never named by the caller — a controller has
@@ -560,6 +679,21 @@ internal sealed class NodeSessionMcpTools(
 
     private static string _ScopeRefusal() =>
         _Serialize(new { ok = false, error = "scope is required and must be \"behaviour\" or \"machine\"." });
+
+    // AC-1351 (B3): the key tools need an admin key. The pairing secret counts as operate, so a paired laptop
+    // cannot mint itself a key.
+    private static string? _RefuseIfNotAdmin() =>
+        McpRequestContext.CurrentNodeCaller is { Capability: ConnectKeyCapability.Admin }
+            ? null
+            : _Serialize(new { ok = false, error = "Managing connect keys needs a connect key with the admin capability." });
+
+    // AC-1351: a connect key reaches everything on this node, the default a fresh pairing gets too; per-key scope is
+    // S8's. A pairing caller stays inside what its operator ticked.
+    private bool _IsProfileAllowed(string profileLabel) =>
+        McpRequestContext.CurrentNodeCaller is { ByConnectKey: true } || pairing.IsProfileAllowed(profileLabel);
+
+    private bool _IsProjectAllowed(string projectId) =>
+        McpRequestContext.CurrentNodeCaller is { ByConnectKey: true } || pairing.IsProjectAllowed(projectId);
 
     private static string? _RefuseIfNotTheController() =>
         string.Equals(McpRequestContext.CurrentPaneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal)

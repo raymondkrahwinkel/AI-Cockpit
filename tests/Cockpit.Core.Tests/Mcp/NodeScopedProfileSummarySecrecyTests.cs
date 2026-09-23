@@ -13,6 +13,7 @@ public class NodeScopedProfileSummarySecrecyTests
         nameof(NodeScopedProfileSummary.Label),
         nameof(NodeScopedProfileSummary.Provider),
         nameof(NodeScopedProfileSummary.Purpose),
+        nameof(NodeScopedProfileSummary.SkipsApprovals),
     ];
 
     [Fact]

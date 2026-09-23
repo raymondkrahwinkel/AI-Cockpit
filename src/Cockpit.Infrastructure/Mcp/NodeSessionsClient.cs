@@ -92,7 +92,8 @@ internal sealed class NodeSessionsClient(
                     // An unknown provider name is not a reason to drop a profile the operator is allowed to run:
                     // this side may be the older build of the two, and the label is what the grant is keyed on.
                     Enum.TryParse<SessionProvider>(_Text(row, "provider"), out var provider) ? provider : default,
-                    _Text(row, "purpose") is { Length: > 0 } purpose ? purpose : null))],
+                    _Text(row, "purpose") is { Length: > 0 } purpose ? purpose : null,
+                    _Bool(row, "skipsApprovals")))],
                 [.. _Array(projects, "projects").Select(row => new NodeProjectRow(_Text(row, "id"), _Text(row, "name")))],
                 DiscoveryId: _Text(sessions, "discoveryId"));
 
