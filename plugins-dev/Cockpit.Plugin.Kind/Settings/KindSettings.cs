@@ -22,6 +22,13 @@ internal sealed class KindSettings(IPluginStorage storage)
         set => storage.Set("kindClusterMaxLifetimeHours", value.TotalHours);
     }
 
+    // AC-1349: the consent mode a cluster made by kind_create gets in the Kubernetes plugin. Always ask by default.
+    public KindConsentMode ConsentModeForNewClusters
+    {
+        get => storage.Get<KindConsentMode?>("consentModeForNewClusters") ?? KindConsentMode.AlwaysAsk;
+        set => storage.Set("consentModeForNewClusters", value);
+    }
+
     // Whether the kind MCP server is offered to sessions. On by default until the operator turns it off.
     public bool McpEnabled
     {

@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: each cluster in the Kubernetes plugin's settings now has a consent mode — Always ask (unchanged),
+  Read-free (reads go without a card anywhere on the cluster; secrets, Helm values/manifests and every change
+  still ask) or All-free (changes go without a card too, but only in the cluster's allowed namespaces — outside
+  them a change asks as before). It is tied to the kubeconfig and context the cluster points at, so re-pointing
+  it resets it to Always ask; a kubeconfig file left on its current context always asks. A call that skipped its
+  card says so in its result and in the consent audit log, and exec, port-forward and cluster-scoped access
+  still refuse outright until turned on for the cluster. The Kind plugin gets a matching setting for the
+  clusters it creates (Always ask by default).
 - added: the Docker plugin's settings now offer a consent mode per daemon — Always ask (unchanged), Read-free
   (reads go without a card; a change still asks) or All-free (nothing asks on this daemon). It is tied to the
   daemon endpoint below it, so pointing the plugin at a different endpoint resets it to Always ask. A call that

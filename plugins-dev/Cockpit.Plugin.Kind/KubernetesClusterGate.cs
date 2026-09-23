@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.Kind.Settings;
 
 namespace Cockpit.Plugin.Kind;
 
@@ -14,7 +15,7 @@ internal static class KubernetesClusterGate
     // What kind_create should tell the agent on top of "the cluster is up", or null when there is nothing to add.
     // Checked at the moment of the call, never from Initialize: a plugin that loads after this one has not
     // registered its handler yet when ours runs.
-    public static async Task<string?> RegisterAsync(ICockpitHost? host, string name, string kubeconfigPath)
+    public static async Task<string?> RegisterAsync(ICockpitHost? host, string name, string kubeconfigPath, KindConsentMode consentMode)
     {
         if (host is null || !host.CanSendIntent(PluginId, RegisterAction))
         {
@@ -27,6 +28,7 @@ internal static class KubernetesClusterGate
             ["label"] = name,
             ["context"] = $"kind-{name}",
             ["kubeconfigPath"] = kubeconfigPath,
+            ["consentMode"] = consentMode.ToString(),
         });
 
         return answer?.GetValueOrDefault("notice") is { Length: > 0 } notice ? notice : null;
