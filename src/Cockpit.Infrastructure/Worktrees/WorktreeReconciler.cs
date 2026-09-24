@@ -20,7 +20,10 @@ public sealed class WorktreeReconciler : ISingletonService, IDisposable
     private readonly TimeProvider _time;
 
     private ITimer? _timer;
-    private bool _sweeping;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it.
+    private int _sweeping;
     private bool _disposed;
 
     public WorktreeReconciler(IWorktreeManager worktrees, ILogger<WorktreeReconciler>? logger = null)
@@ -58,12 +61,11 @@ public sealed class WorktreeReconciler : ISingletonService, IDisposable
     {
         // A sweep that outlasts the interval must not have a second one started on top of it: two of them releasing
         // the same orphan is one removing a worktree the other is still measuring.
-        if (_sweeping || LiveSessionIds is null)
+        if (LiveSessionIds is null || Interlocked.CompareExchange(ref _sweeping, 1, 0) != 0)
         {
             return;
         }
 
-        _sweeping = true;
         try
         {
             // AC-654: the assistant owns every worktree it makes with `worktree_create` and is in no session list by
@@ -73,7 +75,7 @@ public sealed class WorktreeReconciler : ISingletonService, IDisposable
         }
         finally
         {
-            _sweeping = false;
+            Interlocked.Exchange(ref _sweeping, 0);
         }
     }
 

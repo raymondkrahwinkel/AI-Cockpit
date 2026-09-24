@@ -78,7 +78,10 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
     private readonly Dictionary<string, Armed> _watches = new(StringComparer.Ordinal);
 
     private ITimer? _timer;
-    private bool _looking;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it.
+    private int _looking;
     private bool _disposed;
 
     // One pane's state, as of the last tick that looked at it.
@@ -242,12 +245,11 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         // A look that outlasts the interval must not have a second one started on top of it: two ticks comparing
         // against the same `watch.Rows` is how a stall is reported twice, or a growth spurt missed entirely. The
         // same guard, and for the same reason, as `CiWatcher.RunOnceAsync`'s.
-        if (_looking || _watches.Count == 0 || Probe is null)
+        if (_watches.Count == 0 || Probe is null || Interlocked.CompareExchange(ref _looking, 1, 0) != 0)
         {
             return;
         }
 
-        _looking = true;
         try
         {
             foreach (var (paneId, watch) in _watches.ToList())
@@ -264,7 +266,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         }
         finally
         {
-            _looking = false;
+            Interlocked.Exchange(ref _looking, 0);
         }
     }
 

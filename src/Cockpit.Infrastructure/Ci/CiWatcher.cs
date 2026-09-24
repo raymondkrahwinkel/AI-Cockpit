@@ -41,7 +41,10 @@ public sealed class CiWatcher : ISingletonService, IDisposable
     private readonly HashSet<string> _reportedReady = new(StringComparer.OrdinalIgnoreCase);
 
     private ITimer? _timer;
-    private bool _looking;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it, the same claim race `UiThreadCallClaim` guards against.
+    private int _looking;
     private bool _disposed;
 
     public CiWatcher(
@@ -102,22 +105,21 @@ public sealed class CiWatcher : ISingletonService, IDisposable
     {
         // A look that outlasts the interval must not have a second one started on top of it: two answers racing to
         // update what has been reported is how a failure is announced twice, or not at all.
-        if (_looking || Watching is null)
+        if (Watching is null || Interlocked.CompareExchange(ref _looking, 1, 0) != 0)
         {
             return;
         }
 
-        var settings = await _settingsStore.LoadAsync(cancellationToken);
-        if (!settings.NotifyOnCiFailure)
-        {
-            // Checked before anything is run, not before anything is delivered: the cost of this feature is the
-            // processes it starts, and an operator who turned it off should not be paying it.
-            return;
-        }
-
-        _looking = true;
         try
         {
+            var settings = await _settingsStore.LoadAsync(cancellationToken);
+            if (!settings.NotifyOnCiFailure)
+            {
+                // Checked before anything is run, not before anything is delivered: the cost of this feature is the
+                // processes it starts, and an operator who turned it off should not be paying it.
+                return;
+            }
+
             var checkoutGroups = Watching()
                 .Where(checkout => !string.IsNullOrWhiteSpace(checkout.Directory))
                 .GroupBy(checkout => checkout.Directory, StringComparer.OrdinalIgnoreCase)
@@ -134,7 +136,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         }
         finally
         {
-            _looking = false;
+            Interlocked.Exchange(ref _looking, 0);
         }
     }
 

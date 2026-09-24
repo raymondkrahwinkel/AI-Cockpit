@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
@@ -20,10 +21,10 @@ public sealed class InboxWakeScheduler : ISingletonService, IDisposable
     private readonly ILogger<InboxWakeScheduler> _logger;
     private readonly TimeProvider _time;
 
-    // The oldest waiting message id last attempted per pane. The wake send is fire-and-forget (see
-    // WorkspaceAgentGateway._SendWakeAsync), so without this a slow send could be re-attempted before the
-    // first landed. Cleared once PeekOldest no longer returns that message.
-    private readonly Dictionary<string, string> _attempted = new(StringComparer.Ordinal);
+    // The oldest waiting message id last attempted per pane — without this a slow, fire-and-forget wake send
+    // could be re-attempted before the first landed. Concurrent: `Start()`'s immediate look and the timer's own
+    // first tick can each reach this from a different threadpool thread.
+    private readonly ConcurrentDictionary<string, string> _attempted = new(StringComparer.Ordinal);
 
     private ITimer? _timer;
     private bool _disposed;
@@ -88,7 +89,7 @@ public sealed class InboxWakeScheduler : ISingletonService, IDisposable
         // for it does not block a later pane reusing the id (the assistant's is fixed) from ever being tried.
         foreach (var stale in _attempted.Keys.Where(paneId => !seen.Contains(paneId)).ToList())
         {
-            _attempted.Remove(stale);
+            _attempted.TryRemove(stale, out _);
         }
     }
 
@@ -96,7 +97,7 @@ public sealed class InboxWakeScheduler : ISingletonService, IDisposable
     {
         if (_inbox.PeekOldest(paneId) is not { } message)
         {
-            _attempted.Remove(paneId);
+            _attempted.TryRemove(paneId, out _);
             return;
         }
 

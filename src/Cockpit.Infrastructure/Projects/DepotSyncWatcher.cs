@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.Logging;
@@ -25,11 +26,16 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     private readonly TimeProvider _time;
 
     // The last checksum seen per project id, so a project checked for the first time never reports a change it has
-    // nothing to compare against, and a project that goes quiet stays quiet.
-    private readonly Dictionary<string, string> _lastChecksum = new(StringComparer.Ordinal);
+    // nothing to compare against, and a project that goes quiet stays quiet. Concurrent: "Sync now" reaches this
+    // from the UI thread while a tick can reach it from the threadpool, on the same or a different project's key.
+    private readonly ConcurrentDictionary<string, string> _lastChecksum = new(StringComparer.Ordinal);
 
     private ITimer? _timer;
-    private bool _polling;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it. "Sync now" deliberately never claims it (see
+    // `SyncNowAsync`), so it still cannot serialise against a tick — only `_lastChecksum` guards that.
+    private int _polling;
     private bool _disposed;
 
     public DepotSyncWatcher(ILogger<DepotSyncWatcher>? logger = null)
@@ -70,12 +76,11 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     {
         // A pass that outlasts the interval must not have a second one started on top of it: two checks racing to
         // update `_lastChecksum` is how a change is reported twice, or not at all.
-        if (_polling || BoundProjects is null)
+        if (BoundProjects is null || Interlocked.CompareExchange(ref _polling, 1, 0) != 0)
         {
             return;
         }
 
-        _polling = true;
         try
         {
             foreach (var bound in BoundProjects())
@@ -85,7 +90,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
         finally
         {
-            _polling = false;
+            Interlocked.Exchange(ref _polling, 0);
         }
     }
 
