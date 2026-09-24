@@ -1113,7 +1113,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
-        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null);
+        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null, TimeProvider.System);
         _eventQueue = new SessionEventQueue(Apply);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
@@ -1195,13 +1195,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IMentionFileSource? mentionFileSource = null,
         ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
-        ILogger<SessionViewModel>? logger = null)
+        ILogger<SessionViewModel>? logger = null,
+        TimeProvider? timeProvider = null)
         : base(usageHistory)
     {
         _transcriptReader = transcriptReader;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
-        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
+        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore, timeProvider ?? TimeProvider.System);
         _eventQueue = new SessionEventQueue(Apply);
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
@@ -1223,10 +1224,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IProfileLoginChecker? loginChecker,
         ISharedUsageCache? sharedUsageCache,
         ILogger? logger,
-        ISessionTranscriptStore? transcriptStore)
+        ISessionTranscriptStore? transcriptStore,
+        TimeProvider time)
     {
         var host = new SessionHost<QueuedMessageViewModel>(
-            () => PaneId, sessionManager, TimeProvider.System, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
+            () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
         host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
         host.RowUpserted += _OnRowUpserted;
         host.BusyChanged += _OnHostBusyChanged;
