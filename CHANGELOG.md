@@ -565,6 +565,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: for plugin authors, the plugin template now starts a plugin in two parts, a backend part and a UI
+  part in its `UI/` folder that talk over the plugin's own channel, and the SDK release carries the UI half as its
+  own package. Git status is the first plugin built that way; it looks and works exactly as before.
 - changed: pairing now says what it grants — that the other cockpit's assistant becomes the assistant here while
   it is connected and can start, stop and steer sessions and read their transcripts — on the pairing request, on
   the paired-controller card under Options → Nodes and on the banner in the main window. The choice of which
