@@ -5,19 +5,8 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Infrastructure.Sessions;
 
-// Outside the generic session host: every prompt type and backend event shares this counter.
-namespace Cockpit.Infrastructure.Sessions
-{
-    internal static class SessionEventSequence
-    {
-        private static long _last;
+namespace Cockpit.Infrastructure.Events;
 
-        public static long Next() => Interlocked.Increment(ref _last);
-    }
-}
-
-namespace Cockpit.Infrastructure.Events
-{
 public sealed class BackendEventLog : IBackendEventLog, ISingletonService
 {
     // ponytail: 10,000 events per process; a reader older than this must reload state after reset.
@@ -62,7 +51,7 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
     {
         var reader = Channel.CreateBounded<BackendEvent>(new BoundedChannelOptions(ReaderCapacity)
         {
-            SingleReader = true,
+            SingleReader = false,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.Wait,
         });
@@ -105,5 +94,4 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
     }
 
     private static BackendEvent Reset(long seq) => new(seq, "reset", null, JsonSerializer.SerializeToElement(new { }));
-}
 }
