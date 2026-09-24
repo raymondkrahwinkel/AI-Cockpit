@@ -18,6 +18,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -66,6 +67,27 @@ public class AssistantSpawnProjectIsolationTests
         Assert.True(launch.IsolateInWorktree);
         Assert.Contains("Work ticket by ticket.", launch.SystemPrompt);
         Assert.Equal(project.Id, launch.ProjectId);
+    }
+
+    [Fact]
+    public async Task ADeskClosedAfterTheSpawnDecided_ButBeforeThePaneLands_IsRefused_AndNoSessionRunsOnIt()
+    {
+        // AC-1375, the counter-proof of the exclusivity: the gateway decides on the desk in one section and starts after it,
+        // and composing the project awaits in between. Without the start's own re-check the pane lands on a desk no
+        // tab shows any more — it runs, spends and cannot be reached.
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)] };
+        var other = Workspace.Create("Other", WorkspaceType.Sessions);
+
+        var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(
+            profile, project, _WorktreeManagerThatIsolatesCleanly(),
+            whileComposing: host => host.Workspaces.Settings = new WorkspaceSettings { Workspaces = [other], ActiveWorkspaceId = other.Id }));
+
+        var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
+
+        Assert.Equal("The cockpit could not start a session just now.", result.Error);
+        Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions.ToList()));
+        Assert.Equal(result.Error, Assert.Single(trail.Entries).Refusal);
     }
 
     [Fact]
@@ -413,7 +435,8 @@ public class AssistantSpawnProjectIsolationTests
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail, string WorkspaceId) _Gateway(
         SessionProfile profile, Project project, IWorktreeManager worktreeManager, ISessionDialogService? dialogService = null,
         LiveSessionRegistry? liveSessions = null,
-        SessionRegistry? sessionRegistry = null)
+        SessionRegistry? sessionRegistry = null,
+        Action<CockpitViewModel>? whileComposing = null)
     {
         var sessions = sessionRegistry ?? new SessionRegistry();
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
@@ -428,7 +451,12 @@ public class AssistantSpawnProjectIsolationTests
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([profile]));
         var mcpCatalog = Substitute.For<IMcpServerCatalog>();
-        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+        CockpitViewModel? composingFor = null;
+        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            whileComposing?.Invoke(composingFor ?? throw new InvalidOperationException("Composed before the cockpit was built."));
+            return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+        });
         var quickStart = new ProjectQuickStart(
             profileStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
 
@@ -465,6 +493,7 @@ public class AssistantSpawnProjectIsolationTests
             liveSessions: liveSessions,
             sessionRegistry: sessions);
         cockpit.Workspaces.Settings = settings;
+        composingFor = cockpit;
 
         var trail = new RecordingSpawnTrail();
         return (

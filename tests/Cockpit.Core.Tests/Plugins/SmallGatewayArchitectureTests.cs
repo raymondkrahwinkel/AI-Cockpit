@@ -7,8 +7,8 @@ using Cockpit.Core.Abstractions.Verify;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// AC-1374 acceptance 2: <c>Cockpit.App</c> carries no implementation of the four gateway seams this ticket moved
-/// to Infrastructure — a regression here means one came back into App rather than staying moved.
+/// AC-1374 acceptance 2 and AC-1375 acceptance 3: <c>Cockpit.App</c> carries no implementation of the gateway seams
+/// those tickets moved to Infrastructure — a regression here means one came back into App rather than staying moved.
 /// </summary>
 public class SmallGatewayArchitectureTests
 {
@@ -17,6 +17,7 @@ public class SmallGatewayArchitectureTests
     [InlineData(typeof(IWorkspaceAgentGateway))]
     [InlineData(typeof(IVerifySessionGateway))]
     [InlineData(typeof(ISessionLabelSink))]
+    [InlineData(typeof(IAssistantAgentGateway))]
     public void CockpitApp_ImplementsNoneOfTheMovedGatewaySeams(Type seam)
     {
         var offenders = typeof(CockpitViewModel).Assembly.GetTypes()
