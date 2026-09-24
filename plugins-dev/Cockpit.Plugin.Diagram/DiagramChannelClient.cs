@@ -33,10 +33,34 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
         }
     }
 
+    // Whether the backend has the registry behind `prefix`; without it a window is in the "older host" state.
+    protected static bool Serves(IPluginUiChannel channel, string prefix)
+    {
+        try
+        {
+            channel.InvokeAsync(prefix + Served, default).GetAwaiter().GetResult();
+            return true;
+        }
+        catch (PluginChannelUnknownActionException)
+        {
+            return false;
+        }
+    }
+
     // ponytail: waits for the backend's answer. In-process the handler runs inline and the task is already complete,
-    // so nothing blocks; a remote backend (F5/F6) needs these callers made async first.
-    protected T? Invoke<T>(string action, params object?[] args) =>
-        channel.InvokeAsync(action, JsonSerializer.SerializeToElement(args, Json)).GetAwaiter().GetResult().Deserialize<T>(Json);
+    // so nothing blocks; a remote backend (F5/F6) needs these callers made async first. A backend that went away
+    // (the plugin disabled under an open window) leaves the window inert, as without a registry, never a crash.
+    protected T? Invoke<T>(string action, params object?[] args)
+    {
+        try
+        {
+            return channel.InvokeAsync(action, JsonSerializer.SerializeToElement(args, Json)).GetAwaiter().GetResult().Deserialize<T>(Json);
+        }
+        catch (PluginChannelUnknownActionException)
+        {
+            return default;
+        }
+    }
 
     protected void Send(string action, params object?[] args) => Invoke<JsonElement>(action, args);
 
@@ -80,6 +104,9 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
 internal sealed class DiagramChannelClient : SurfaceChannelClient
 {
     private const string P = DiagramPrefix;
+
+    public static DiagramChannelClient? Connect(IPluginUiChannel? channel) =>
+        channel is not null && Serves(channel, P) ? new DiagramChannelClient(channel) : null;
 
     public DiagramChannelClient(IPluginUiChannel channel)
         : base(channel)
@@ -139,6 +166,9 @@ internal sealed class WhiteboardChannelClient : SurfaceChannelClient
 {
     private const string P = WhiteboardPrefix;
 
+    public static WhiteboardChannelClient? Connect(IPluginUiChannel? channel) =>
+        channel is not null && Serves(channel, P) ? new WhiteboardChannelClient(channel) : null;
+
     public WhiteboardChannelClient(IPluginUiChannel channel)
         : base(channel)
     {
@@ -178,6 +208,9 @@ internal sealed class WhiteboardChannelClient : SurfaceChannelClient
 internal sealed class WireframeChannelClient : SurfaceChannelClient
 {
     private const string P = WireframePrefix;
+
+    public static WireframeChannelClient? Connect(IPluginUiChannel? channel) =>
+        channel is not null && Serves(channel, P) ? new WireframeChannelClient(channel) : null;
 
     public WireframeChannelClient(IPluginUiChannel channel)
         : base(channel)

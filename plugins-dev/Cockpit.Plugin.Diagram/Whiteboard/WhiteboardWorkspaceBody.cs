@@ -60,13 +60,13 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private string _savedText;
     private string? _fileAsLastSeen;
 
-    // AC-1400: both registries through the plugin's channel, as in DiagramWorkspaceBody; no channel is "older host".
+    // AC-1400: both registries through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
     public WhiteboardWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId)
     {
         _host = host;
         _channel = channel;
-        _registry = channel is null ? null : new WhiteboardChannelClient(channel);
-        _diagrams = channel is null ? null : new DiagramChannelClient(channel);
+        _registry = WhiteboardChannelClient.Connect(channel);
+        _diagrams = DiagramChannelClient.Connect(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;

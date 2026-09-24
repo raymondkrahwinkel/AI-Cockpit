@@ -27,6 +27,9 @@ internal sealed class DiagramChannel : IDisposable
     // Invoked by the UI part once it listens for OpenSurface; before that, an open_* tool has nobody to ask.
     public const string AttachUi = "ui.attach";
 
+    // "<prefix>Served" answers only when this backend has that registry, so a window can tell "no registry here".
+    public const string Served = "Served";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly ICockpitHost _host;
@@ -88,6 +91,7 @@ internal sealed class DiagramChannel : IDisposable
     private void _Diagrams(D registry)
     {
         const string p = DiagramPrefix;
+        _Do(p + Served, _ => { });
         _Do(p + nameof(D.SurfaceOpened), a => registry.SurfaceOpened(ReadString(a, 0), ReadString(a, 1), ReadString(a, 2)));
         _Do(p + nameof(D.SurfaceClosed), a => registry.SurfaceClosed(ReadString(a, 0)));
         _Do(p + nameof(D.UpdateText), a => registry.UpdateText(ReadString(a, 0), ReadString(a, 1)));
@@ -125,6 +129,7 @@ internal sealed class DiagramChannel : IDisposable
     private void _Whiteboards(W registry)
     {
         const string p = WhiteboardPrefix;
+        _Do(p + Served, _ => { });
         _Do(p + nameof(W.SurfaceOpened), a => registry.SurfaceOpened(ReadString(a, 0), ReadString(a, 1), ReadArg<byte[]>(a, 2)));
         _Do(p + nameof(W.SurfaceClosed), a => registry.SurfaceClosed(ReadString(a, 0)));
         _Do(p + nameof(W.UpdateSnapshot), a => registry.UpdateSnapshot(ReadString(a, 0), ReadArg<byte[]>(a, 1)));
@@ -154,6 +159,7 @@ internal sealed class DiagramChannel : IDisposable
     private void _Wireframes(F registry)
     {
         const string p = WireframePrefix;
+        _Do(p + Served, _ => { });
         _Do(p + nameof(F.SurfaceOpened), a => registry.SurfaceOpened(ReadString(a, 0), ReadString(a, 1), ReadString(a, 2)));
         _Do(p + nameof(F.SurfaceClosed), a => registry.SurfaceClosed(ReadString(a, 0)));
         _Do(p + nameof(F.Disconnect), a => registry.Disconnect(ReadString(a, 0)));

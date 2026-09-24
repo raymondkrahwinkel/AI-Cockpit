@@ -103,12 +103,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private int _glowGeneration;
     private bool _following;
 
-    // AC-1400: the registry is reached through the plugin's channel; no channel is the same "older host" state a
-    // missing registry was, and every branch below that asks `_registry is null` still means that.
+    // AC-1400: the registry is reached through the plugin's channel; no channel, or a backend without the registry,
+    // is the "older host" state a missing registry was, and every `_registry is null` branch below still means that.
     public DiagramWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = channel is null ? null : new DiagramChannelClient(channel);
+        _registry = DiagramChannelClient.Connect(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;

@@ -123,11 +123,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private string _savedText;
     private string? _fileAsLastSeen;
 
-    // AC-1400: the registry through the plugin's channel, as in DiagramWorkspaceBody; no channel is "older host".
+    // AC-1400: the registry through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
     public WireframeWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = channel is null ? null : new WireframeChannelClient(channel);
+        _registry = WireframeChannelClient.Connect(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
