@@ -44,6 +44,16 @@ internal sealed class NodeSessionMcpTools(
 
     internal const string AdminRefusal = "Managing connect keys needs a connect key with the admin capability.";
 
+    internal const string PermissionsRefusal = "This connect key may not answer permission prompts: it does not have the mayAnswerPermissions grant.";
+
+    private const string ProfilesParameter = "The profile labels the key may use. Leave out for all of them, including ones added later.";
+
+    private const string ProjectsParameter = "The project ids the key may use. Leave out for all of them, including ones added later.";
+
+    private const string BypassParameter = "Whether the key may start a profile that skips its approvals. Defaults to false.";
+
+    private const string PermissionsParameter = "Whether the key may answer a session's permission prompts. Defaults to true.";
+
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
     [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so. pendingPermissions lists the Allow/Deny questions a session is stopped on; they are for the operator's own screen on the controller, never for you to answer.")]
     public async Task<string> ListNodeSessionsAsync()
@@ -112,8 +122,9 @@ internal sealed class NodeSessionMcpTools(
             {
                 ok = true,
                 node = Environment.MachineName,
+                // AC-1367: a bypass profile this caller may not start is not shown either — seeing is starting.
                 profiles = known
-                    .Where(profile => _IsProfileAllowed(profile.Label))
+                    .Where(profile => _IsProfileAllowed(profile.Label) && (_Caller().MayStartBypass || !UnsupervisedProfile.SkipsApprovals(profile.Defaults)))
                     .Select(profile => new NodeScopedProfileSummary(profile.Label, profile.Provider, profile.Purpose, UnsupervisedProfile.SkipsApprovals(profile.Defaults)))
                     // Written out field by field rather than serialized as the record: the provider has to cross as
                     // its name and not as whatever number the enum happens to have, or the two machines agree only
@@ -274,7 +285,19 @@ internal sealed class NodeSessionMcpTools(
                 return _Serialize(new
                 {
                     ok = false,
-                    error = $"This node's operator has not allowed the profile '{profile}'. Call list_node_profiles for the ones they have, and ask them to tick it on that machine if the one you want is missing.",
+                    error = _Caller().ByConnectKey
+                        ? $"The scope of this connect key does not include the profile '{profile}'. Call list_node_profiles for the ones it does."
+                        : $"This node's operator has not allowed the profile '{profile}'. Call list_node_profiles for the ones they have, and ask them to tick it on that machine if the one you want is missing.",
+                });
+            }
+
+            // AC-1367: in scope is not enough for a profile that skips its approvals — that takes its own grant.
+            if (!_Caller().MayStartBypass && UnsupervisedProfile.SkipsApprovals(allowedProfile.Defaults))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"The profile '{allowedProfile.Label}' skips its approvals, and this connect key does not have the mayStartBypassProfiles grant to start such a profile.",
                 });
             }
 
@@ -283,7 +306,20 @@ internal sealed class NodeSessionMcpTools(
                 return _Serialize(new
                 {
                     ok = false,
-                    error = $"This node's operator has not allowed the project '{project}'. Call list_node_projects for the ones they have.",
+                    error = _Caller().ByConnectKey
+                        ? $"The scope of this connect key does not include the project '{project}'. Call list_node_projects for the ones it does."
+                        : $"This node's operator has not allowed the project '{project}'. Call list_node_projects for the ones they have.",
+                });
+            }
+
+            // AC-1367: a key may start only what it could see afterwards, and a session without a project is visible
+            // only to a key with every project. A pairing is not held to this (AC-795).
+            if (projectId is not { Length: > 0 } && !_Caller().AllowsSession(allowedProfile.Label, null, pairing))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = "The scope of this connect key is limited to certain projects, so a start must name one of them. Call list_node_projects for the ones it does.",
                 });
             }
 
@@ -298,7 +334,7 @@ internal sealed class NodeSessionMcpTools(
                 SpawnTarget.RequestedByThePairedController(workspaceId),
                 // The label as this machine spells it, not as the request spelled it — the one the grant was
                 // actually checked against.
-                allowedProfile,
+                allowedProfile.Label,
                 projectId,
                 prompt,
                 // Deliberately no working directory and no provider options over the wire. A path means nothing on
@@ -492,7 +528,7 @@ internal sealed class NodeSessionMcpTools(
     {
         try
         {
-            if ((_RefuseIfNotTheController() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
+            if ((_RefuseIfNotTheController() ?? _RefuseIfMayNotAnswerPermissions() ?? await _RefuseIfNotVisibleAsync(paneId).ConfigureAwait(false)) is { } refusal)
             {
                 return refusal;
             }
@@ -515,12 +551,16 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
         [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null,
-        [Description("Turns off this node's assistant while you call. Defaults to false.")] bool holdsAssistant = false)
+        [Description("Turns off this node's assistant while you call. Defaults to false.")] bool holdsAssistant = false,
+        [Description(ProfilesParameter)] string[]? profiles = null,
+        [Description(ProjectsParameter)] string[]? projects = null,
+        [Description(BypassParameter)] bool mayStartBypassProfiles = false,
+        [Description(PermissionsParameter)] bool mayAnswerPermissions = true)
     {
         try
         {
@@ -544,7 +584,8 @@ internal sealed class NodeSessionMcpTools(
                 return _Serialize(new { ok = false, error = "label is required, so the operator can tell this key from the others." });
             }
 
-            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller, holdsAssistant).ConfigureAwait(false);
+            var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
+            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller, holdsAssistant, scope).ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
@@ -553,6 +594,7 @@ internal sealed class NodeSessionMcpTools(
                 label = key.Label,
                 capability = key.Capability.ToString().ToLowerInvariant(),
                 expiresAt = key.ExpiresAt,
+                scope = _ScopeJson(key.EffectiveScope()),
                 note = "This is the only time the key is shown. Store it now.",
             });
         }
@@ -590,8 +632,40 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
+    [McpServerTool(Name = "set_connect_key_scope", ReadOnly = false, Destructive = true)]
+    [Description("Replaces the scope of a connect key by its prefix, from its next call on — a controller already connected with it is held to the new scope without reconnecting. The whole scope is replaced: what you leave out takes the default issue_connect_key gives it. The bootstrap key keeps its full scope and is refused. Needs a connect key with the admin capability.")]
+    public async Task<string> SetConnectKeyScopeAsync(
+        [Description("The key's prefix, exactly as list_connect_keys reports it.")] string prefix,
+        [Description(ProfilesParameter)] string[]? profiles = null,
+        [Description(ProjectsParameter)] string[]? projects = null,
+        [Description(BypassParameter)] bool mayStartBypassProfiles = false,
+        [Description(PermissionsParameter)] bool mayAnswerPermissions = true)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotAdmin()) is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            {
+                return _Serialize(new { ok = false, error = NoConnectKeys });
+            }
+
+            var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
+            return await connectKeys.UpdateScopeAsync(prefix, scope, caller).ConfigureAwait(false)
+                ? _Serialize(new { ok = true, prefix, scope = _ScopeJson(scope) })
+                : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "list_connect_keys", ReadOnly = true)]
-    [Description("Lists this node's connect keys — prefix, label, capability, holdsAssistant, when each was created, expires, was revoked and was last used — never the keys themselves. holdsAssistant turns off this node's assistant while you call. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
+    [Description("Lists this node's connect keys — prefix, label, capability, holdsAssistant, scope (null profiles or projects means all of them), when each was created, expires, was revoked and was last used — never the keys themselves. holdsAssistant turns off this node's assistant while you call. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
     public async Task<string> ListConnectKeysAsync()
     {
         try
@@ -616,6 +690,7 @@ internal sealed class NodeSessionMcpTools(
                     label = entry.Key.Label,
                     capability = entry.Key.Capability.ToString().ToLowerInvariant(),
                     holdsAssistant = entry.Key.HoldsAssistant,
+                    scope = _ScopeJson(entry.Key.EffectiveScope()),
                     isBootstrap = entry.Key.IsBootstrap,
                     createdAt = entry.Key.CreatedAt,
                     expiresAt = entry.Key.ExpiresAt,
@@ -650,17 +725,17 @@ internal sealed class NodeSessionMcpTools(
     private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
     {
         var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
-        return [.. sessions.Where(session => _IsProfileAllowed(session.Profile))];
+        return [.. sessions.Where(session => _Caller().AllowsSession(session.Profile, session.ProjectId, pairing))];
     }
 
     // The profile this label names, if the grant covers it — or null, which is the only other answer callers need.
     // Compared the way the spawn path compares (`AssistantAgentGateway`: OrdinalIgnoreCase), so the profile checked
     // here is the profile that would run.
-    private async Task<string?> _ResolveAllowedProfileAsync(string label)
+    private async Task<SessionProfile?> _ResolveAllowedProfileAsync(string label)
     {
         var known = await profiles.LoadAsync().ConfigureAwait(false);
         var match = known.FirstOrDefault(candidate => string.Equals(candidate.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
-        return match is not null && _IsProfileAllowed(match.Label) ? match.Label : null;
+        return match is not null && _IsProfileAllowed(match.Label) ? match : null;
     }
 
     // The desk a controller's session lands on, derived here and never named by the caller — a controller has
@@ -691,13 +766,36 @@ internal sealed class NodeSessionMcpTools(
             ? null
             : _Serialize(new { ok = false, error = AdminRefusal });
 
-    // AC-1351: a connect key reaches everything on this node, the default a fresh pairing gets too; per-key scope is
-    // S8's. A pairing caller stays inside what its operator ticked.
-    private bool _IsProfileAllowed(string profileLabel) =>
-        McpRequestContext.CurrentNodeCaller is { ByConnectKey: true } || pairing.IsProfileAllowed(profileLabel);
+    // AC-1367: pass-throughs to `NodeCaller`, the one check the backend API shares. A connect key is held to its
+    // own scope, a pairing caller to what its operator ticked.
+    private bool _IsProfileAllowed(string profileLabel) => _Caller().AllowsProfile(profileLabel, pairing);
 
-    private bool _IsProjectAllowed(string projectId) =>
-        McpRequestContext.CurrentNodeCaller is { ByConnectKey: true } || pairing.IsProjectAllowed(projectId);
+    private bool _IsProjectAllowed(string projectId) => _Caller().AllowsProject(projectId, pairing);
+
+    // No caller stamped is the pairing's: the node tools are driven that way outside the listener's door.
+    private static NodeCaller _Caller() => McpRequestContext.CurrentNodeCaller ?? NodeCaller.ForPairing("");
+
+    private static string? _RefuseIfMayNotAnswerPermissions() =>
+        _Caller().MayAnswerPermissions ? null : _Serialize(new { ok = false, error = PermissionsRefusal });
+
+    private static ConnectKeyScope _ScopeOf(string[]? profiles, string[]? projects, bool mayStartBypassProfiles, bool mayAnswerPermissions) => new()
+    {
+        AllowAllProfiles = profiles is null,
+        AllowedProfileLabels = [.. (profiles ?? []).Select(label => label.Trim())],
+        AllowAllProjects = projects is null,
+        AllowedProjectIds = [.. (projects ?? []).Select(id => id.Trim())],
+        MayStartBypassProfiles = mayStartBypassProfiles,
+        MayAnswerPermissions = mayAnswerPermissions,
+    };
+
+    // Null profiles or projects means all of them, the way the tools take it in.
+    private static object _ScopeJson(ConnectKeyScope scope) => new
+    {
+        profiles = scope.AllowAllProfiles ? null : scope.AllowedProfileLabels,
+        projects = scope.AllowAllProjects ? null : scope.AllowedProjectIds,
+        mayStartBypassProfiles = scope.MayStartBypassProfiles,
+        mayAnswerPermissions = scope.MayAnswerPermissions,
+    };
 
     private static string? _RefuseIfNotTheController() =>
         string.Equals(McpRequestContext.CurrentPaneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal)

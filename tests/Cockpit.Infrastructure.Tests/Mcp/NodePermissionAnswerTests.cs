@@ -79,5 +79,22 @@ public sealed class NodePermissionAnswerTests : IDisposable
         await _gateway.DidNotReceive().RespondToPermissionAsync(PrivatePane, Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
+    // AC-1367 criterion 3: a connect key answers a permission prompt only with the mayAnswerPermissions grant, and
+    // without it is refused before the gateway is asked.
+    [Theory]
+    [InlineData(false, NodeSessionMcpTools.PermissionsRefusal, 0)]
+    [InlineData(true, null, 1)]
+    public async Task AConnectKey_AnswersAPermissionOnlyWithTheGrant(bool mayAnswerPermissions, string? refusal, int answeredCalls)
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, new NodeCaller(
+            "testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions }));
+        _gateway.RespondToPermissionAsync(Pane, "toolu_1", true, Arg.Any<CancellationToken>()).Returns(true);
+
+        var answer = _Json(await _Tools().AnswerNodePermissionAsync(Pane, "toolu_1", allow: true));
+
+        Assert.Equal(refusal, answer["error"]?.GetValue<string>());
+        await _gateway.Received(answeredCalls).RespondToPermissionAsync(Pane, "toolu_1", true, Arg.Any<CancellationToken>());
+    }
+
     public void Dispose() => McpRequestContext.Set(null);
 }

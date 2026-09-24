@@ -45,6 +45,11 @@ public interface ISessionHandle
     string? ActiveProfileLabel { get; }
 
     /// <summary>
+    /// The project the session was started for, or null when it has none.
+    /// </summary>
+    string? ProjectId => null;
+
+    /// <summary>
     /// True for a plain shell pane, which has no agent behind it.
     /// </summary>
     bool IsTerminal { get; }

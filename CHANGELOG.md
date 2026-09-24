@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a connect key can be limited to certain profiles and projects, and a key only starts a profile that
+  skips its approvals when it is allowed to. A key limited to some projects sees and reaches only the sessions in
+  those projects. You can also stop a key from answering permission prompts. Set the
+  limits when you issue the key or later with `set_connect_key_scope`. The change applies from the key's next
+  call, even for a controller that is already connected, and `list_connect_keys` shows each key's scope. Existing
+  keys keep every profile and project and can still answer permissions, but they can no longer start a bypass
+  profile until you allow it. Pairing is unchanged.
 - added: the first routes of the backend API on the node's HTTPS listener, for a connect key only: `GET /api/v1/whoami`
   (who the key is, any capability) and `GET /api/v1/keys` (the key list, admin only). The pairing secret, the app key
   and session tokens are refused, and a call over the API never counts as a controller holding the assistant.

@@ -33,7 +33,8 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         string workspaceId,
         string? workingDirectory,
         string? profileLabel,
-        SessionHost<QueuedPrompt> host)
+        SessionHost<QueuedPrompt> host,
+        string? projectId = null)
     {
         PaneId = paneId;
         _title = title;
@@ -41,6 +42,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         WorkspaceId = workspaceId;
         WorkingDirectory = workingDirectory;
         ActiveProfileLabel = profileLabel;
+        ProjectId = projectId;
         _host = host;
         host.RowUpserted += _OnRowUpserted;
         host.EventAppended += _OnEventAppended;
@@ -80,6 +82,8 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     }
 
     public string? ActiveProfileLabel { get; }
+
+    public string? ProjectId { get; }
 
     public bool IsTerminal => false;
 
