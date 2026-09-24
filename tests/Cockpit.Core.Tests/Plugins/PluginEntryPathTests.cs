@@ -66,13 +66,20 @@ public class PluginEntryPathTests : IDisposable
 
     // The edge case Path.GetFullPath alone gets wrong: it canonicalises lexically, so a symlink inside the
     // folder still reads as contained by spelling while the file it resolves to sits outside it (AC-1160).
-    [Fact]
+    [SkippableFact]
     public void TryResolve_SymlinkInsideFolderPointsOutside_Rejected()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_root, "plugin")).FullName;
         var outside = Directory.CreateDirectory(Path.Combine(_root, "outside")).FullName;
         File.WriteAllText(Path.Combine(outside, "entry.dll"), "outside-bytes");
-        Directory.CreateSymbolicLink(Path.Combine(folder, "link"), outside);
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(folder, "link"), outside);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Skip.If(true, $"This OS cannot create a directory symlink: {error.Message}");
+        }
 
         var accepted = PluginEntryPath.TryResolve(folder, Path.Combine("link", "entry.dll"), out _);
 
