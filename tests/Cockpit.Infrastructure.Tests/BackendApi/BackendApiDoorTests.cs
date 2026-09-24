@@ -121,22 +121,24 @@ public sealed class BackendApiDoorTests
         Assert.Contains("api:list_keys", audit, StringComparison.Ordinal);
     }
 
-    // Criterion 4: an API call leaves the assistant free; the same key on the MCP door does take the line.
+    // Criterion 4: an API call with a holdsAssistant key leaves the assistant free; the same key on the MCP door
+    // does take the line.
     [Fact]
     public async Task AnApiCall_NeverHoldsTheAssistant_WhereTheSameKeyOnTheMcpDoorDoes()
     {
         await using var door = new _Door();
-        await door.StartAsync();
+        var verifier = await door.StartAsync();
+        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true);
 
-        var api = await door.GetAsync(door.NodeBase, "/api/v1/whoami", Bootstrap);
+        var api = await door.GetAsync(door.NodeBase, "/api/v1/whoami", holding.Secret);
         var afterApi = door.Presence.Current;
-        using var mcp = await door.InitializeMcpAsync(Bootstrap);
+        using var mcp = await door.InitializeMcpAsync(holding.Secret);
         var afterMcp = door.Presence.Current;
 
         Assert.Equal(HttpStatusCode.OK, api.Status);
         Assert.Null(afterApi);
         Assert.Equal(HttpStatusCode.OK, mcp.StatusCode);
-        Assert.Equal("bootstrap", afterMcp?.Name);
+        Assert.Equal("holding", afterMcp?.Name);
     }
 
     // Criterion 5: after a revoke the key's next API call is the door's 401.
