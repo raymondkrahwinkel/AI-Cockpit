@@ -3,10 +3,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using Cockpit.Core.Abstractions.Events;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -14,6 +17,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
@@ -28,7 +32,13 @@ public sealed class EventsEndpointTests
         var log = new BackendEventLog();
         var first = log.Append("row", "pane-a", new { value = 1 });
         var second = log.Append("row", "pane-a", new { value = 2 });
-        var services = new ServiceCollection().AddSingleton<IBackendEventLog>(log).BuildServiceProvider();
+        var sessions = new SessionRegistry();
+        sessions.Register(_Session("pane-a", "profile-a", "project-a"));
+        var services = new ServiceCollection()
+            .AddSingleton<IBackendEventLog>(log)
+            .AddSingleton<ISessionRegistry>(sessions)
+            .AddSingleton(Substitute.For<INodePairingBroker>())
+            .BuildServiceProvider();
 
         var headerFrame = await _FrameAsync(services, first.ToString(), "");
         var queryFrame = await _FrameAsync(services, "", first.ToString());
@@ -43,6 +53,8 @@ public sealed class EventsEndpointTests
         var clock = new _Clock();
         var services = new ServiceCollection()
             .AddSingleton<IBackendEventLog>(new BackendEventLog())
+            .AddSingleton<ISessionRegistry>(new SessionRegistry())
+            .AddSingleton(Substitute.For<INodePairingBroker>())
             .AddSingleton<TimeProvider>(clock)
             .BuildServiceProvider();
         var pipe = new Pipe();
@@ -50,6 +62,7 @@ public sealed class EventsEndpointTests
         var context = new DefaultHttpContext();
         context.RequestAborted = stop.Token;
         context.Response.Body = pipe.Writer.AsStream();
+        McpRequestContext.Set(null, Operator);
         var stream = EventsEndpoint.StreamAsync(context, services);
         using var reader = new StreamReader(pipe.Reader.AsStream());
         var line = reader.ReadLineAsync();
@@ -59,6 +72,36 @@ public sealed class EventsEndpointTests
         Assert.Equal(": ping", await line.WaitAsync(TimeSpan.FromSeconds(1)));
         stop.Cancel();
         await stream.WaitAsync(TimeSpan.FromSeconds(1));
+        McpRequestContext.Set(null);
+    }
+
+    [Theory]
+    [InlineData("project-b", "profile-a")]
+    [InlineData("project-a", "profile-b")]
+    public async Task ScopedKeyReceivesItsSessionAndSkipsTheOther(string otherProject, string otherProfile)
+    {
+        var log = new BackendEventLog();
+        var first = log.Append("row", "pane-b", new { value = "outside" });
+        var second = log.Append("row", "pane-a", new { value = "inside" });
+        var sessions = new SessionRegistry();
+        sessions.Register(_Session("pane-b", otherProfile, otherProject));
+        sessions.Register(_Session("pane-a", "profile-a", "project-a"));
+        var services = new ServiceCollection()
+            .AddSingleton<IBackendEventLog>(log)
+            .AddSingleton<ISessionRegistry>(sessions)
+            .AddSingleton(Substitute.For<INodePairingBroker>())
+            .BuildServiceProvider();
+        var scope = new ConnectKeyScope
+        {
+            AllowAllProfiles = false,
+            AllowedProfileLabels = ["profile-a"],
+            AllowAllProjects = false,
+            AllowedProjectIds = ["project-a"],
+        };
+
+        var frame = await _FrameAsync(services, (first - 1).ToString(), "", scope);
+
+        Assert.Equal($"id: {second}\nevent: row\ndata: {{\"value\":\"inside\"}}", frame);
     }
 
     [Fact]
@@ -84,7 +127,7 @@ public sealed class EventsEndpointTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await survivorRead);
     }
 
-    private static async Task<string> _FrameAsync(IServiceProvider services, string header, string query)
+    private static async Task<string> _FrameAsync(IServiceProvider services, string header, string query, ConnectKeyScope? scope = null)
     {
         var pipe = new Pipe();
         using var stop = new CancellationTokenSource();
@@ -93,6 +136,7 @@ public sealed class EventsEndpointTests
         context.Request.Headers["Last-Event-ID"] = header;
         context.Request.QueryString = new QueryString($"?after={query}");
         context.Response.Body = pipe.Writer.AsStream();
+        McpRequestContext.Set(null, Operator with { Scope = scope });
         var stream = EventsEndpoint.StreamAsync(context, services);
         using var reader = new StreamReader(pipe.Reader.AsStream());
         var id = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
@@ -100,7 +144,17 @@ public sealed class EventsEndpointTests
         var data = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
         stop.Cancel();
         await stream.WaitAsync(TimeSpan.FromSeconds(1));
+        McpRequestContext.Set(null);
         return string.Join("\n", id, kind, data);
+    }
+
+    private static ISessionHandle _Session(string paneId, string profile, string project)
+    {
+        var session = Substitute.For<ISessionHandle>();
+        session.PaneId.Returns(paneId);
+        session.ActiveProfileLabel.Returns(profile);
+        session.ProjectId.Returns(project);
+        return session;
     }
 
     private sealed class _Clock : TimeProvider
@@ -145,6 +199,8 @@ public sealed class EventsEndpointTests
             await verifier.EnsureLoadedAsync();
             var services = new ServiceCollection()
                 .AddSingleton<IBackendEventLog>(new BackendEventLog())
+                .AddSingleton<ISessionRegistry>(new SessionRegistry())
+                .AddSingleton(Substitute.For<INodePairingBroker>())
                 .AddSingleton(verifier)
                 .BuildServiceProvider();
             _certificate = new NodeSelfSignedCertificate(Path.Combine(_directory, "cert.pfx"));

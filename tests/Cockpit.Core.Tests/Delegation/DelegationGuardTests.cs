@@ -151,7 +151,7 @@ public class DelegationGuardTests
     // AC-1160: `Path.GetFullPath` canonicalises lexically, so a link under an allowed root used to be inside it
     // by spelling while the process landed outside it. The second half is the one .NET will not do for you: it
     // resolves a link that is the last segment and returns null for one halfway up a path.
-    [Fact]
+    [SkippableFact]
     public async Task DelegateAsync_ThroughASymlinkPointingOutOfAnAllowedRoot_IsRefused()
     {
         var root = _TempRoot();
@@ -161,7 +161,7 @@ public class DelegationGuardTests
             var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
             Directory.CreateDirectory(Path.Combine(outside, "sub"));
             var link = Path.Combine(allowed, "link");
-            Directory.CreateSymbolicLink(link, outside);
+            _CreateLinkOrSkip(link, outside);
 
             var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
 
@@ -182,7 +182,7 @@ public class DelegationGuardTests
     // AC-1160: a chain of links that never comes to rest has to refuse, not be judged on how far it got. Links
     // that stay inside the allowed root until one past the budget leaves it would otherwise be waved through on
     // the spelling at that point, while the OS follows the whole chain at spawn time and lands outside.
-    [Fact]
+    [SkippableFact]
     public async Task DelegateAsync_ThroughALinkChainLongerThanTheHopBudget_IsRefused()
     {
         var root = _TempRoot();
@@ -195,7 +195,7 @@ public class DelegationGuardTests
             for (var index = 0; index < Links; index++)
             {
                 var step = Directory.CreateDirectory(Path.Combine(allowed, $"d{index}")).FullName;
-                Directory.CreateSymbolicLink(
+                _CreateLinkOrSkip(
                     Path.Combine(step, "l"),
                     index == Links - 1 ? outside : Path.Combine(allowed, $"d{index + 1}"));
             }
@@ -220,7 +220,7 @@ public class DelegationGuardTests
 
     // The same rule at the seam, both ways round. The budget counts passes rather than links, and the last pass
     // is the one that finds no further link -- so a two-link chain settles on the third and not the second.
-    [Fact]
+    [SkippableFact]
     public void Canonicalize_ResolvesAChainWithinItsBudget_AndYieldsNothingBeyondIt()
     {
         var root = _TempRoot();
@@ -229,8 +229,8 @@ public class DelegationGuardTests
             var first = Directory.CreateDirectory(Path.Combine(root, "d0")).FullName;
             var second = Directory.CreateDirectory(Path.Combine(root, "d1")).FullName;
             var target = Directory.CreateDirectory(Path.Combine(root, "target")).FullName;
-            Directory.CreateSymbolicLink(Path.Combine(first, "l"), second);
-            Directory.CreateSymbolicLink(Path.Combine(second, "l"), target);
+            _CreateLinkOrSkip(Path.Combine(first, "l"), second);
+            _CreateLinkOrSkip(Path.Combine(second, "l"), target);
 
             var asked = Path.Combine(first, "l", "l");
 
@@ -248,6 +248,18 @@ public class DelegationGuardTests
         var root = Path.Combine(Path.GetTempPath(), $"ac1160-{name}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void _CreateLinkOrSkip(string link, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Skip.If(true, $"This OS cannot create a directory symlink: {error.Message}");
+        }
     }
 
     // Asked of the directory rather than of the operating system, because the answer belongs to the volume: a
