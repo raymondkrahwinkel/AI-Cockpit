@@ -163,6 +163,65 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Equal(["label", "provider", "purpose", "skipsApprovals"], only?.AsObject().Select(field => field.Key).Order(StringComparer.Ordinal));
     }
 
+    // AC-1367: the callers the start rows below run as — dispatched by index rather than a branch in the test method.
+    private static readonly NodeCaller KeyScopedToTheAllowedProject = _Key(new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = [AllowedProject] });
+
+    private static readonly NodeCaller[] _StartingCallers =
+    [
+        KeyScopedToTheAllowedProject,
+        _Key(new ConnectKeyScope { MayStartBypassProfiles = true }),
+        NodeCaller.ForPairing("10.0.0.2"),
+    ];
+
+    private static NodeCaller _Key(ConnectKeyScope scope) =>
+        new("testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: scope);
+
+    // AC-1367 criteria 1 and 2: a key scoped to one project cannot start in another, and a key without the bypass
+    // grant cannot start a profile that skips its approvals — each refused with the scope as the reason.
+    [Theory]
+    [InlineData(AllowedProfile, "project-not-in-scope", "scope of this connect key")]
+    [InlineData(UnattendedProfile, null, "mayStartBypassProfiles")]
+    public async Task Start_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReason(string profile, string? projectId, string reason)
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, KeyScopedToTheAllowedProject);
+
+        var answer = _Json(await _Tools().StartNodeAgentAsync(profile, projectId));
+
+        Assert.False(answer["ok"]!.GetValue<bool>());
+        Assert.Contains(reason, answer["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Empty(_gateway.Spawns);
+    }
+
+    // The counterproofs: the same key starts in its own project, a key with the grant starts the bypass profile, and
+    // (criterion 7, the regression row) a pairing with that profile in its grant still starts it without any key grant.
+    [Theory]
+    [InlineData(0, AllowedProfile, AllowedProject)]
+    [InlineData(1, UnattendedProfile, null)]
+    [InlineData(2, UnattendedProfile, null)]
+    public async Task Start_WithinAKeysScope_OrByAPairing_Runs(int callerIndex, string profile, string? projectId)
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, _StartingCallers[callerIndex]);
+        _pairing.Profiles.Add(profile);
+
+        var answer = _Json(await _Tools().StartNodeAgentAsync(profile, projectId));
+
+        Assert.True(answer["ok"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.Equal(profile, Assert.Single(_gateway.Spawns).ProfileLabel);
+    }
+
+    // AC-1367 criterion 2, listing: what a key may not start it does not see.
+    [Theory]
+    [InlineData(false, new[] { AllowedProfile, "Something Expensive" })]
+    [InlineData(true, new[] { AllowedProfile, "Something Expensive", UnattendedProfile })]
+    public async Task ListProfiles_ByAConnectKey_ShowsABypassProfileOnlyWithTheGrant(bool mayStartBypass, string[] expected)
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, _Key(new ConnectKeyScope { MayStartBypassProfiles = mayStartBypass }));
+
+        var answer = _Json(await _Tools().ListNodeProfilesAsync());
+
+        Assert.Equal(expected, answer["profiles"]!.AsArray().Select(profile => profile!["label"]!.GetValue<string>()));
+    }
+
     [Fact]
     public async Task Stop_ActsOnThePaneIdItWasGiven_NotOnAName()
     {

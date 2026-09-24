@@ -199,6 +199,63 @@ public sealed class ConnectKeyDoorTests
         Assert.NotNull(nextCall);
     }
 
+    // AC-1367 criterion 4: a scope change reaches a controller that is already connected, from its next call —
+    // the same open client, never a reconnect. The call before the change still saw the project.
+    [Fact]
+    public async Task SettingAKeysScope_HoldsItsOpenClientToItFromTheNextCall()
+    {
+        await using var door = new _Door();
+        await door.StartAsync(_Environment());
+        await using var admin = await door.ClientAsync(Bootstrap);
+        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "laptop", ["capability"] = "operate" });
+        await using var controller = await door.ClientAsync(issued["key"]?.GetValue<string>() ?? "");
+        var before = await _CallAsync(controller, "list_node_projects", new());
+
+        var set = await _CallAsync(admin, "set_connect_key_scope", new() { ["prefix"] = issued["prefix"]?.GetValue<string>(), ["projects"] = new[] { "another-project" } });
+        var after = await _CallAsync(controller, "list_node_projects", new());
+
+        Assert.True(set["ok"]?.GetValue<bool>(), set.ToJsonString());
+        Assert.Equal("project-allowed", Assert.Single(before["projects"]?.AsArray() ?? new JsonArray())?["id"]?.GetValue<string>());
+        Assert.Empty(after["projects"]?.AsArray() ?? new JsonArray());
+    }
+
+    // AC-1367: the bootstrap key keeps its full scope — it is admin and meant to be revoked right after setup.
+    [Fact]
+    public async Task SetConnectKeyScope_RefusesTheBootstrapKey_AndLeavesItsScope()
+    {
+        await using var door = new _Door();
+        await door.StartAsync(_Environment());
+        await using var admin = await door.ClientAsync(Bootstrap);
+
+        var refused = await _CallAsync(admin, "set_connect_key_scope", new() { ["prefix"] = "bootstra", ["projects"] = new[] { "one-project" } });
+        var listed = await _CallAsync(admin, "list_connect_keys", new());
+
+        Assert.Contains("bootstrap key keeps its full scope", refused["error"]?.GetValue<string>() ?? "", StringComparison.Ordinal);
+        Assert.Equal(
+            """{"profiles":null,"projects":null,"mayStartBypassProfiles":true,"mayAnswerPermissions":true}""",
+            Assert.Single(listed["keys"]?.AsArray() ?? new JsonArray())?["scope"]?.ToJsonString());
+    }
+
+    // AC-1367 criterion 5: a key from a cockpit.json written before scopes existed reads as every profile and
+    // project, permissions on and bypass off.
+    [Fact]
+    public async Task AKeyStoredWithoutAScope_ReadsAsEverythingWithPermissionsButWithoutBypass()
+    {
+        await using var door = new _Door();
+        await door.Verifier(_Environment()).IssueAsync("legacy", ConnectKeyCapability.Operate, 30, Operator);
+        var config = JsonNode.Parse(await File.ReadAllTextAsync(door.ConfigPath)) ?? new JsonObject();
+        Assert.True(config["NodeConnectKeys"]?["Keys"]?.AsArray()[0]?.AsObject().Remove("Scope"));
+        await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
+        await door.StartAsync(_Environment());
+        await using var admin = await door.ClientAsync(Bootstrap);
+
+        var listed = await _CallAsync(admin, "list_connect_keys", new());
+
+        Assert.Equal(
+            """{"profiles":null,"projects":null,"mayStartBypassProfiles":false,"mayAnswerPermissions":true}""",
+            (listed["keys"]?.AsArray() ?? new JsonArray()).Single(key => key?["label"]?.GetValue<string>() == "legacy")?["scope"]?.ToJsonString());
+    }
+
     // Criterion 4: managing keys is admin's alone. An operate key and the pairing secret get the admin refusal on
     // each of the three key tools; an admin key gets no error on any of them.
     [Theory]
@@ -211,6 +268,9 @@ public sealed class ConnectKeyDoorTests
     [InlineData("admin key", "issue_connect_key", null)]
     [InlineData("admin key", "revoke_connect_key", null)]
     [InlineData("admin key", "list_connect_keys", null)]
+    [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("pairing secret", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
+    [InlineData("admin key", "set_connect_key_scope", null)]
     public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
     {
         await using var door = new _Door();
@@ -228,6 +288,7 @@ public sealed class ConnectKeyDoorTests
             ["issue_connect_key"] = new() { ["label"] = "another", ["capability"] = "admin" },
             ["revoke_connect_key"] = new() { ["prefix"] = spare.Key.Prefix },
             ["list_connect_keys"] = new(),
+            ["set_connect_key_scope"] = new() { ["prefix"] = spare.Key.Prefix, ["projects"] = new[] { "one-project" } },
         };
         await using var client = await door.ClientAsync(tokens[credential]);
 
