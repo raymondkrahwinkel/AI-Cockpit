@@ -21,6 +21,7 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.CompanionTools;
@@ -74,6 +75,9 @@ internal sealed class CockpitHost(
     public IPluginStorage Storage => storage;
 
     public IPluginCache Cache => _cache;
+
+    // AC-1389: this plugin's slice of the backend's channel hub, which the UI part's CockpitUiHost reaches by the same id.
+    public IPluginBackendChannel Channel => services.GetRequiredService<PluginChannelHub>().For(pluginId);
 
     public ICockpitSessionObserver Sessions => sessions;
 

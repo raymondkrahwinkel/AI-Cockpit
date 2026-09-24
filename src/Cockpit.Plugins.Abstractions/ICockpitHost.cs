@@ -246,6 +246,16 @@ public interface ICockpitHost
     bool CanSendIntent(string targetPluginId, string action) => false;
 
     /// <summary>
+    /// This plugin's own channel to its UI part (AC-1389): register the actions the UI may invoke, and publish
+    /// the events it subscribes to. The only route between the two halves of a plugin — they share no objects.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="SendIntent"/> it never reaches another plugin. Default is a channel that keeps nothing,
+    /// so existing implementations keep compiling untouched.
+    /// </remarks>
+    IPluginBackendChannel Channel => NullPluginBackendChannel.Instance;
+
+    /// <summary>
     /// The plugins the host has loaded, each with its manifest id and human-readable name (AC-189) — used to turn
     /// another plugin's id into a name to show, instead of the bare id.
     /// </summary>

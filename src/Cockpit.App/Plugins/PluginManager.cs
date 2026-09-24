@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.App.Plugins;
 
@@ -22,7 +23,12 @@ public sealed class PluginManager(
     // Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.
     public bool SafeMode { get; } = safeMode;
 
-    private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
+    // AC-1389: Plugin is null for a plugin that is only a UI part; its UI part joins `_ui` in InitializeUi.
+    private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
+    private readonly Dictionary<DiscoveredPlugin, ICockpitPluginUi> _ui = [];
+
+    // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
+    private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
 
     // Both the host's abstractions version and how to read a plugin's are seams so a test can drive the
     // drift check without a real assembly; defaults read the host's own Abstractions and the plugin's
@@ -37,8 +43,20 @@ public sealed class PluginManager(
 
     // AC-1033: the assembly each loaded plugin came out of, which is where the knowledge base reads its
     // embedded documentation — the same artefact as the code, so the two cannot drift apart.
+    // AC-1389: a plugin that is only a UI part has an assembly once InitializeUi activated it.
     public IReadOnlyList<(DiscoveredPlugin Discovered, System.Reflection.Assembly Assembly)> LoadedWithAssemblies =>
-        [.. _loaded.Select(entry => (entry.Discovered, entry.Plugin.GetType().Assembly))];
+        [.. _PartAssemblies()];
+
+    private IEnumerable<(DiscoveredPlugin Discovered, System.Reflection.Assembly Assembly)> _PartAssemblies()
+    {
+        foreach (var (discovered, plugin) in _loaded)
+        {
+            if (((object?)plugin ?? _ui.GetValueOrDefault(discovered)) is { } part)
+            {
+                yield return (discovered, part.GetType().Assembly);
+            }
+        }
+    }
 
     // Phase 1, before `BuildServiceProvider`: instantiate each `Load`-decided plugin and run its
     // `ConfigureServices` against the still-open `services`; failures are skipped (and disposed if created).
@@ -62,6 +80,13 @@ public sealed class PluginManager(
             if (candidate.Decision != PluginLoadDecision.Load)
             {
                 _NoteSkipped(candidate);
+                continue;
+            }
+
+            // AC-1389: a plugin that is only a UI part has nothing to configure; InitializeUi activates it.
+            if (candidate.Manifest.EntryAssembly is null)
+            {
+                _loaded.Add((candidate, null));
                 continue;
             }
 
@@ -176,6 +201,11 @@ public sealed class PluginManager(
     {
         foreach (var (discovered, plugin) in _loaded)
         {
+            if (plugin is null)
+            {
+                continue;
+            }
+
             try
             {
                 plugin.Initialize(hostFor(discovered, plugin));
@@ -183,7 +213,35 @@ public sealed class PluginManager(
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
+                _initializeFailed.Add(discovered);
                 diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", exception.Message);
+            }
+        }
+    }
+
+    // AC-1389, phase 3, where there is a window: after every backend part's Initialize, activate each plugin's UI
+    // part and hand it the host `hostFor` built. A UI part that cannot load or throws is recorded with its reason;
+    // the backend part stays loaded either way.
+    public void InitializeUi(
+        Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
+        Func<DiscoveredPlugin, ICockpitPluginUi, ICockpitUiHost> hostFor)
+    {
+        foreach (var (discovered, plugin) in _loaded.Where(entry => !_initializeFailed.Contains(entry.Discovered)))
+        {
+            try
+            {
+                if (activateUi(discovered, plugin) is not { } ui)
+                {
+                    continue;
+                }
+
+                _ui[discovered] = ui;
+                ui.InitializeUi(hostFor(discovered, ui));
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
+                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
             }
         }
     }
@@ -192,16 +250,31 @@ public sealed class PluginManager(
     {
         foreach (var (discovered, plugin) in _loaded)
         {
-            try
+            // A UI part that is its own object, not the backend entry type doing both, goes with it.
+            if (_ui.GetValueOrDefault(discovered) is IDisposable ui && !ReferenceEquals(ui, plugin))
             {
-                plugin.Dispose();
+                _DisposeQuietly(discovered, ui);
             }
-            catch (Exception exception)
+
+            if (plugin is not null)
             {
-                logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
+                _DisposeQuietly(discovered, plugin);
             }
         }
 
+        _ui.Clear();
         _loaded.Clear();
+    }
+
+    private void _DisposeQuietly(DiscoveredPlugin discovered, IDisposable part)
+    {
+        try
+        {
+            part.Dispose();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
+        }
     }
 }

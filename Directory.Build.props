@@ -8,7 +8,11 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.38.0: a chat channel also relays consent prompts that belong to no session — a workflow's "Ask me
+    <!-- 0.39.0: the plugin contract gains its window half next to the existing one (AC-1389): the new
+         Cockpit.Plugins.Abstractions.UI with ICockpitPluginUi/ICockpitUiHost, a channel between a plugin's
+         backend and UI part (ICockpitHost.Channel), and uiAssembly/uiEntryType in plugin.json, which also lets a
+         plugin be only a UI part. A plugin that uses any of these sets minHostVersion 0.39.0.
+         0.38.0: a chat channel also relays consent prompts that belong to no session — a workflow's "Ask me
          first" and other plugin prompts — while another session's prompt stays off it (AC-1360). And
          ICockpitHost.RequestConsentAsync gains a CancellationToken overload that closes the prompt, denied, when
          it runs out. The Discord and Workflows plugins rely on both, so they set minHostVersion 0.38.0.
@@ -279,7 +283,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.38.0</VersionPrefix>
+    <VersionPrefix>0.39.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

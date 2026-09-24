@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AC-1389 (F2.1): the half of the plugin SDK that needs a window — ICockpitPluginUi, ICockpitUiHost and the
+       UI side of a plugin's own channel. The one project besides the desktop that names Avalonia, so that
+       Cockpit.Plugins.Abstractions can drop it at the contract flip (F2.14, abstractionsVersion 3) and a
+       backend without a UI stack can load a plugin's backend part. Plugins reference it like the SDK itself:
+       compile-only (<Private>false</Private>), so the host's copy is the one loaded. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Moves in step with Cockpit.Plugins.Abstractions: the same version, whose major is the contract. The
+         AssemblyVersion stays fixed like the SDK's, so a plugin built against a later minor still binds to the
+         host's copy. -->
+    <Version>1.67.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
+    <Title>Cockpit Plugin SDK — UI</Title>
+    <Description>The window half of the Cockpit plugin SDK: ICockpitPluginUi (the UI part's entry point), ICockpitUiHost (settings, menus, panels, dialogs, the active session) and the UI side of a plugin's own channel to its backend part.</Description>
+    <Authors>Raymond Krahwinkel</Authors>
+    <Company>Krahwinkel-IT</Company>
+    <Copyright>Copyright (c) 2026 Raymond Krahwinkel / Krahwinkel-IT</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/docs/plugins/PLUGIN-SDK.md</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/raymondkrahwinkel/AI-Cockpit</RepositoryUrl>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+  </ItemGroup>
+
+</Project>

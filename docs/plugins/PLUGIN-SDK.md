@@ -980,7 +980,9 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `id` | yes | Stable identity; normalized to the install folder slug. Non-empty string. |
 | `name` | yes | Display name in the Plugins manager. Non-empty string. |
 | `version` | yes | Your plugin's version. Non-empty string (no particular format enforced). |
-| `entryAssembly` | yes | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. |
+| `entryAssembly` | yes, unless `uiAssembly` is set | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. Leave it out for a plugin that is only a UI part (host 0.39.0+). |
+| `uiAssembly` | no | The DLL carrying your `ICockpitPluginUi`, relative to the plugin folder — see [the UI part](API-REFERENCE.md#the-ui-part). Checked like `entryAssembly`. A manifest with neither is refused. Host 0.39.0+. |
+| `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |

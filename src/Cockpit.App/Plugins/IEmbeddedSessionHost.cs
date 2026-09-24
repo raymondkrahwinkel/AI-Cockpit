@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
@@ -20,4 +21,10 @@ internal interface IEmbeddedSessionHost
     /// Closes and disposes every session embedded in <paramref name="workspaceId"/> — the workspace is going away.
     /// </summary>
     void CloseForWorkspace(string workspaceId);
+
+    /// <summary>
+    /// The live view <see cref="Embed"/> built for the embedded session <paramref name="paneId"/>, or null once it
+    /// ended (AC-1389): how a plugin's UI part places a session its backend part only holds by pane id.
+    /// </summary>
+    Control? EmbeddedSessionView(string paneId);
 }

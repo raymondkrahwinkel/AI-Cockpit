@@ -74,6 +74,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
 | `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
 | `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync` |
+| `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitActions.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -148,6 +149,65 @@ where the plugin actually wires itself into the cockpit.
 Runs when the plugin is **disabled** or the app exits — release timers, `HttpClient`s, subscriptions, etc.
 The assembly is **not** unloaded until the process restarts (a loaded plugin cannot be truly unloaded), so
 "disable" means *UI removed + `Dispose` called*.
+
+---
+
+## The UI part — `Cockpit.Plugins.Abstractions.UI` {#the-ui-part}
+
+*Host 0.39.0, SDK 1.67.0 (AC-1389).* A plugin comes in two parts: a **backend part** (`ICockpitPlugin`,
+above) with its services, MCP tools, workflow steps and providers, and a **UI part** with everything that
+needs a window. The UI part lives against the separate `Cockpit.Plugins.Abstractions.UI` assembly, the only
+SDK assembly that references Avalonia once contract 3 lands; a backend without a window loads only the backend
+part. Reference it compile-only, exactly like `Cockpit.Plugins.Abstractions`.
+
+```csharp
+public interface ICockpitPluginUi
+{
+    void InitializeUi(ICockpitUiHost host);
+}
+```
+
+- **Where it comes from.** The manifest names it with `uiAssembly` (and optionally `uiEntryType`); the host
+  loads that assembly in the backend part's own load context; `uiEntryType` without `uiAssembly` is refused.
+  Without `uiAssembly`, a backend entry type that
+  also implements `ICockpitPluginUi` gets both calls — the way to move your UI registrations over before you
+  split the assembly. A plugin that is only a UI part (a clock) leaves `entryAssembly` out.
+- **When.** After every plugin's `Initialize`, on the UI thread, once. A UI part that cannot load or throws is
+  listed in Plugin Manager with its reason; the backend part stays loaded.
+- **`ICockpitUiHost`** holds what means nothing without a window: settings, side-menu buttons and sections,
+  session header items/actions/banners, toolbar actions, shortcuts, conversation pickers, provider config
+  views (`AddProviderConfigView`), widgets, dock panels, companion tools, workspace types, dialogs, markdown and
+  help views, and the live view of an embedded session (`CreateEmbeddedSessionView(paneId)`). It also carries
+  the host operations a view calls — storage, toasts, consent, profiles, managed CLIs, MCP sign-in,
+  project-memory rows, `SendToSessionAsync(paneId, …)`, intents.
+- **The active session is the window's.** `ActivePaneId`, `ActiveSessionWorkingDirectory`, `ActiveSessionUsage`
+  and `ActiveSessionChanged` live on the UI host, next to `SetClipboardTextAsync` and `ConfirmAsync`. A backend
+  part has no active session: the UI part passes the pane id along when it asks the backend to act.
+- **No `Services`.** The UI part cannot resolve the container, so it cannot reach its backend part around the
+  channel — which is what keeps it working when the backend runs in another process.
+
+### The plugin's own channel {#the-plugins-own-channel}
+
+The only route between the two parts: named actions and events, JSON in and out, never an object reference.
+
+```csharp
+// Backend part, in Initialize:
+host.Channel.Handle("list", async (payload, ct) => JsonSerializer.SerializeToElement(await LoadAsync(ct)));
+host.Channel.Publish("changed", JsonSerializer.SerializeToElement(new { id }));
+
+// UI part, in InitializeUi:
+var items = await host.Channel.InvokeAsync("list", JsonSerializer.SerializeToElement(new { }), ct);
+using var subscription = host.Channel.Subscribe("changed", e => Dispatcher.UIThread.Post(() => Refresh(e.Payload)));
+```
+
+- A channel is per plugin: an action only another plugin registered throws
+  `PluginChannelUnknownActionException`, the same as one nobody registered. Use intents to call another plugin.
+- `Handle` returns a handle: dispose it when the plugin is disabled or reloaded. Registering an action that is
+  still registered throws.
+- A subscriber that throws is logged and skipped; the other subscribers still get the event.
+- Every event carries `Seq`, the backend's one rising sequence number, shared with session events.
+- A subscriber runs on the publishing thread, not the UI thread: marshal before touching a control.
+- Payloads are copied on the way through, so a receiver may keep one after the sender disposed its document.
 
 ---
 

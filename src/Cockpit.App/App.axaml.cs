@@ -27,6 +27,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
 
@@ -613,7 +614,11 @@ public partial class App : Application
                 $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
         }
 
-        pluginManager.Initialize((discovered, plugin) => new CockpitHost(
+        // AC-1389: one host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards to it,
+        // and built on demand for a plugin that is only a UI part.
+        var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
+        ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType) =>
+            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new CockpitHost(
             discovered.FolderId,
             discovered.Manifest.Name,
             Program.Services,
@@ -630,8 +635,16 @@ public partial class App : Application
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
             // apart from every other plugin's when it resolves a tool call's caller-scoped fallback — see
             // CockpitHost's own parameter doc.
-            plugin.GetType(),
-            pluginCache.CreateFor(discovered.FolderId)));
+            pluginType,
+            pluginCache.CreateFor(discovered.FolderId));
+
+        pluginManager.Initialize((discovered, plugin) => HostFor(discovered, plugin.GetType()));
+
+        // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
+        // registrations (a provider it adds a config view to) being there.
+        pluginManager.InitializeUi(
+            PluginActivator.ActivateUi,
+            (discovered, ui) => new CockpitUiHost(discovered.FolderId, HostFor(discovered, ui.GetType()), Program.Services));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.

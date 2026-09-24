@@ -8678,6 +8678,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // rather than hang.
     private readonly Dictionary<SessionPanelViewModel, TaskCompletionSource<string?>> _embeddedSessionEnded = [];
 
+    // AC-1389: the one view each embedded session has, by pane id, so a plugin's UI part can ask for it by id.
+    private readonly Dictionary<string, Control> _embeddedSessionViews = new(StringComparer.Ordinal);
+
     public IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request)
     {
         // Null only in a graph with no session machinery (design-time/tests); a real host has both. The registry
@@ -8742,6 +8745,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // ViewLocator resolves SessionViewModel -> SessionView; the plugin body places this one Control. Because the
         // VM is not in Sessions, no second grid container fights it for the same pty.
         var view = new ContentControl { Content = session };
+        _embeddedSessionViews[session.PaneId] = view;
 
         // Start after the view exists. The pane id is stable from construction, so it is safe to hand back now while
         // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
@@ -8749,6 +8753,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         return new EmbeddedSession(view, session, ended.Task, enabled => _SetEmbeddedInputEnabled(session, enabled), () => _CloseEmbeddedSessionAsync(session));
     }
+
+    public Control? EmbeddedSessionView(string paneId) => _embeddedSessionViews.GetValueOrDefault(paneId);
 
     public void CloseForWorkspace(string workspaceId)
     {
@@ -9180,6 +9186,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         _sessionRegistry?.Unregister(session.PaneId);
+        _embeddedSessionViews.Remove(session.PaneId);
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnEmbeddedSessionCloseRequested;
         _lastStatus.Remove(session);
@@ -9349,6 +9356,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _embeddedSessions.Clear();
+        _embeddedSessionViews.Clear();
         Sessions.Clear();
         _lastStatus.Clear();
 

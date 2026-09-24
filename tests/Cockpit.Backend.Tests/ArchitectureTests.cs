@@ -25,4 +25,33 @@ public class ArchitectureTests
 
         Assert.DoesNotContain(referenced, assembly => assembly.Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
     }
+
+    // AC-1389 (F2.1): the window half of the plugin SDK is the one new project that names Avalonia. The SDK itself
+    // still does, by name, until the contract flip (F2.14, AC-1402) turns its row to false.
+    [Theory]
+    [InlineData("Cockpit.Plugins.Abstractions.UI", true)]
+    [InlineData("Cockpit.Plugins.Abstractions", true)]
+    [InlineData("Cockpit.Core", false)]
+    [InlineData("Cockpit.Infrastructure", false)]
+    public void OnlyTheUiHalfOfThePluginSdk_AndTheSdkUntilTheFlip_ReferenceAvalonia(string project, bool referencesAvalonia)
+    {
+        var projectFile = Path.Combine(_RepositoryRoot(), "src", project, $"{project}.csproj");
+
+        var names = System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference")
+            .Select(reference => (string?)reference.Attribute("Include"));
+
+        Assert.Equal((project, referencesAvalonia), (project, names.Any(name => name?.StartsWith("Avalonia", StringComparison.Ordinal) == true)));
+    }
+
+    private static string _RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Cockpit.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        return directory.FullName;
+    }
 }
