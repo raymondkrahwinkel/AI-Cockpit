@@ -196,6 +196,7 @@ sealed class Program
         }
 
         services.AddSingleton(pluginManager);
+        services.AddSingleton(new PluginUiManager(loggerFactory.CreateLogger<PluginUiManager>(), pluginDiagnostics, pluginManager));
 
         // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed,
         // so it is registered after the manager it asks. Nothing is scanned until the help is first opened or

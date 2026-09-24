@@ -1,4 +1,3 @@
-using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;

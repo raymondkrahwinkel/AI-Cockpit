@@ -643,8 +643,8 @@ public partial class App : Application
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
-        pluginManager.InitializeUi(
-            PluginActivator.ActivateUi,
+        Program.Services.GetRequiredService<PluginUiManager>().InitializeUi(
+            PluginUiManager.ActivateUi,
             (discovered, ui) => new CockpitUiHost(discovered.FolderId, HostFor(discovered, ui.GetType()), Program.Services));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
