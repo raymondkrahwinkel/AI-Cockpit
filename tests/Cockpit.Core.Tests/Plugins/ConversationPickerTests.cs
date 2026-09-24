@@ -70,7 +70,7 @@ public class ConversationPickerTests
         var services = new ServiceCollection();
         services.AddSingleton(registry);
 
-        return new CockpitHost(
+        return new DesktopPluginHost(
             "test-plugin",
             "Test Plugin",
             services.BuildServiceProvider(),

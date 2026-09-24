@@ -121,7 +121,7 @@ public class PluginSettingsAccessTests
     }
 
     private static ICockpitHost NewHost(IPluginContributionSink sink, IPluginDialogHost? dialogHost = null) =>
-        new CockpitHost(
+        new DesktopPluginHost(
             "test-plugin",
             "Test Plugin",
             Substitute.For<IServiceProvider>(),

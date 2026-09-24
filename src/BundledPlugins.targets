@@ -1,0 +1,110 @@
+<Project>
+
+  <!-- AC-1392: the plugins that ship with the app, built and copied beside a project's output as bundled-plugins/<id>,
+       the folder BundledPluginInstaller installs from. Imported by Cockpit.App, and by Cockpit.Backend.Tests so a
+       backend without App can be shown loading the same nine. -->
+
+  <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a
+       plugin, so an operator has them out of the box instead of having to know they exist. Referenced with
+       ReferenceOutputAssembly=false so they are *built* but never referenced — a bundled plugin must load
+       through the plugin loader like any other, in its own load context, or shared types lose their identity.
+       BundledPluginInstaller copies them into the operator's plugins directory on startup. -->
+  <!-- These plugins live outside Cockpit.slnx, so a solution build has no configuration mapping for them and
+       MSBuild — which by default strips Configuration/Platform when descending into a project reference — built
+       them as Debug even in a Release build, while CopyBundledPlugins below looks under $(Configuration). On a
+       machine with stale Debug output the copy quietly succeeded with yesterday's bytes; on a clean checkout
+       (CI) the Release build failed outright, which is how this was found. Keeping the parent configuration is
+       exactly what we want here: a bundled plugin is part of this build, not a separate one. -->
+  <PropertyGroup>
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+    <_BundledPluginsDev>$(MSBuildThisFileDirectory)..\plugins-dev\</_BundledPluginsDev>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.TranscriptSearch\Cockpit.Plugin.TranscriptSearch.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The clock: a Dashboard workspace with nothing to put on it is a worse first impression than one that
+         already has a clock, and it proves the widget SDK end to end from outside the host. Its former other
+         half, the system monitor, is its own plugin from the store — one plugin per widget, so wanting a clock
+         is not also wanting a CPU meter. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Clock\Cockpit.Plugin.Clock.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The usage-trend widget (AC-54): bundled beside the clock so the ctx/5h/wk trend is there out of the box,
+         and it exercises the AC-54 read surface (ICockpitSessionObserver.ActiveSessionUsage) from a real plugin. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.UsageTrend\Cockpit.Plugin.UsageTrend.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The example workspace (AC-122): bundled so the plugin-owned full-surface workspace type is there out of
+         the box, and it exercises the workspace-type SDK — a plugin drawing a whole workspace with a real host
+         session embedded in it — from a real plugin, the way UsageTrend exercises the widget SDK. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ExampleWorkspace\Cockpit.Plugin.ExampleWorkspace.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The example companion tool (AC-240): bundled so the plugin-owned companion-window mini-tool is there out
+         of the box, and it exercises the companion-tool SDK — a plugin drawing an icon and handling a click in
+         the companion window — from a real plugin, the way ExampleWorkspace exercises the workspace-type SDK. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ExampleCompanionTool\Cockpit.Plugin.ExampleCompanionTool.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Autopilot (AC-94, skeleton AC-149): bundled so its workspace and settings are there out of the box; it
+         registers a plugin workspace type through the AC-122 SDK. The run flow lands in later sub-tickets. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Fan-out (AC-467): bundled beside Autopilot, the other surface that runs agents in their own worktrees.
+         Where Autopilot drives one run through to a merge-ready PR, this puts several agents on one task at once
+         and tiles them, so the operator picks the take. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.FanOut\Cockpit.Plugin.FanOut.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
+         others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
+         and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+
+  <!-- AC-1390: the bundled plugins, by project folder and installed folder id. Each one's files are taken from its
+       output folder by wildcard (*.dll, *.deps.json, plugin.json) rather than by name, so a plugin that splits into
+       a backend and a UI part, two assemblies in that one folder, needs no change in this file. -->
+  <ItemGroup>
+    <BundledPlugin Include="TranscriptSearch" FolderId="transcript-search" />
+    <BundledPlugin Include="GitStatus" FolderId="git-status" />
+    <BundledPlugin Include="Clock" FolderId="clock" />
+    <BundledPlugin Include="UsageTrend" FolderId="usage-trend" />
+    <BundledPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
+    <BundledPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
+    <BundledPlugin Include="Autopilot" FolderId="autopilot" />
+    <BundledPlugin Include="FanOut" FolderId="fan-out" />
+    <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+  </ItemGroup>
+
+  <!-- Resolved in a target, after the plugins are built: at evaluation time, and before ResolveProjectReferences,
+       a clean checkout has no output folder yet and a wildcard would quietly match nothing. -->
+  <Target Name="ResolveBundledPluginFiles">
+    <ItemGroup>
+      <_BundledPluginOutput Include="@(BundledPlugin->'$(_BundledPluginsDev)Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')"
+                            PluginName="%(BundledPlugin.Identity)" />
+      <BundledPluginFile Include="%(_BundledPluginOutput.Identity)*.dll;%(_BundledPluginOutput.Identity)*.deps.json;%(_BundledPluginOutput.Identity)plugin.json"
+                         FolderId="%(_BundledPluginOutput.FolderId)" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(_BundledPluginOutput.Identity)plugin.json') Or !Exists('%(_BundledPluginOutput.Identity)Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll')"
+           Text="Bundled plugin %(_BundledPluginOutput.PluginName) has no plugin.json or Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll in %(_BundledPluginOutput.Identity); was it built for $(Configuration)?" />
+  </Target>
+
+  <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a cockpit
+       missing the features that used to be core. -->
+  <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish" DependsOnTargets="ResolveBundledPluginFiles">
+    <Copy SourceFiles="@(BundledPluginFile)" DestinationFolder="$(OutDir)bundled-plugins\%(BundledPluginFile.FolderId)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledPluginFile)" DestinationFolder="$(PublishDir)bundled-plugins\%(BundledPluginFile.FolderId)"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+  </Target>
+
+</Project>

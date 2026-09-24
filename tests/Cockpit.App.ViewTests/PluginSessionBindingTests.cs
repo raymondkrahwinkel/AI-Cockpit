@@ -1,6 +1,5 @@
 using Avalonia.Threading;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
@@ -8,9 +7,12 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -18,7 +20,7 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// <see cref="CockpitHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session already
+/// <see cref="DesktopPluginHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session already
 /// running. Checked on the ownership rule — sending reaches that session, and closing either side leaves the other.
 /// </summary>
 [Collection("avalonia")]
@@ -98,12 +100,18 @@ public class PluginSessionBindingTests
 
     private static (ICockpitHost Host, CockpitViewModel Cockpit, SessionViewModel Session) _HostWithOneSession()
     {
-        var cockpit = _NewCockpit();
+        // AC-1392: the host reaches the pane through the registry the cockpit feeds and the desktop's launcher.
+        var registry = new SessionRegistry();
+        var cockpit = _NewCockpit(registry);
         var session = new SessionViewModel();
         cockpit.Sessions.Add(session);
 
-        var services = new ServiceCollection().AddSingleton(cockpit).BuildServiceProvider();
-        var host = new CockpitHost(
+        var services = new ServiceCollection()
+            .AddSingleton(cockpit)
+            .AddSingleton<ISessionRegistry>(registry)
+            .AddSingleton<ISessionLauncher>(new SessionLauncherAdapter(cockpit))
+            .BuildServiceProvider();
+        var host = new DesktopPluginHost(
             "diagram",
             "Diagram",
             services,
@@ -117,7 +125,7 @@ public class PluginSessionBindingTests
         return (host, cockpit, session);
     }
 
-    private static CockpitViewModel _NewCockpit()
+    private static CockpitViewModel _NewCockpit(SessionRegistry registry)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new Core.Notifications.NotificationSettings());
@@ -145,6 +153,7 @@ public class PluginSessionBindingTests
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            sessionProfileStore: Substitute.For<ISessionProfileStore>());
+            sessionProfileStore: Substitute.For<ISessionProfileStore>(),
+            sessionRegistry: registry);
     }
 }

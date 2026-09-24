@@ -119,7 +119,7 @@ public class PluginCacheTests
     // Typed as the contract a plugin holds, so every assertion goes through `ICockpitHost.Cache` rather than
     // through the store the host happens to have been given.
     private static ICockpitHost _BuildHost(IPluginCache cache) =>
-        new CockpitHost(
+        new DesktopPluginHost(
             "workflows",
             "Workflows",
             Substitute.For<IServiceProvider>(),

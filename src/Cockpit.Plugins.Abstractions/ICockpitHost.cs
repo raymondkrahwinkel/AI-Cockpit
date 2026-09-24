@@ -47,7 +47,10 @@ public interface ICockpitHost
     /// <summary>
     /// Registers the plugin's settings view, opened from the gear next to the plugin in the plugin manager. Call at most once.
     /// </summary>
-    void AddSettings(Func<Control> createView);
+    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
+    void AddSettings(Func<Control> createView)
+    {
+    }
 
     /// <summary>
     /// Same as <see cref="AddSettings(Func{Control})"/>, but declares which Options sidebar group the plugin's
@@ -68,7 +71,10 @@ public interface ICockpitHost
     /// <summary>
     /// Adds an inline accordion section to the left menu, under the session list — for small, always-visible content.
     /// </summary>
-    void AddSideMenuSection(string title, Func<Control> createView);
+    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
+    void AddSideMenuSection(string title, Func<Control> createView)
+    {
+    }
 
     /// <summary>
     /// Adds a launcher button to the left menu like <see cref="AddSideMenuButton"/>, but carrying a live
@@ -286,7 +292,9 @@ public interface ICockpitHost
     /// <summary>
     /// Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh. Use the <paramref name="singleInstanceKey"/> overload for a window there should only ever be one of.
     /// </summary>
-    Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
+    Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
+        Task.CompletedTask;
 
     /// <summary>
     /// The same, for a window there should only ever be one of: asked for again while it is open, the cockpit

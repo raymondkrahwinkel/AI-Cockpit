@@ -604,7 +604,7 @@ public class DiagramCollabWindowTests
     }
 
     // Live for the one pane the fake cockpit is running, detached for anything else — the same split
-    // CockpitHost.BindToSession makes.
+    // DesktopPluginHost.BindToSession makes.
     internal sealed class FakeBinding(string paneId) : IPluginSessionBinding
     {
         public string PaneId => paneId;

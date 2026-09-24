@@ -1,25 +1,25 @@
-using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Plugins;
 
 // The live `IPluginSessionBinding` behind `ICockpitHost.BindToSession` (AC-832). It owns nothing of the session:
-// identity and liveness are read from the cockpit each time rather than cached, so no second view of that pane —
-// and nothing that could rival its pty — exists here to go stale.
-internal sealed class CockpitSessionBinding : IPluginSessionBinding
+// identity and liveness are read from the registry each time rather than cached, so no second view of that pane —
+// and nothing that could rival its pty — exists here to go stale. AC-1392: on ISessionRegistry, off any UI thread.
+internal sealed class PluginSessionBinding : IPluginSessionBinding
 {
-    private readonly CockpitViewModel _cockpit;
+    private readonly ISessionRegistry _registry;
     private readonly ICockpitSessionObserver _sessions;
     private readonly Func<string, string, Task> _send;
 
-    public CockpitSessionBinding(
+    public PluginSessionBinding(
         string paneId,
-        CockpitViewModel cockpit,
+        ISessionRegistry registry,
         ICockpitSessionObserver sessions,
         Func<string, string, Task> send)
     {
         PaneId = paneId;
-        _cockpit = cockpit;
+        _registry = registry;
         _sessions = sessions;
         _send = send;
         _sessions.SessionClosed += _OnSessionClosed;
@@ -27,12 +27,13 @@ internal sealed class CockpitSessionBinding : IPluginSessionBinding
 
     public string PaneId { get; }
 
-    public string? SessionName => _cockpit.FindSession(PaneId)?.Title;
+    public string? SessionName => _registry.Find(PaneId)?.Title;
 
-    public bool IsLive => _cockpit.FindSession(PaneId) is not null;
+    public bool IsLive => _registry.Find(PaneId) is not null;
 
     public event EventHandler? Ended;
 
+    // The send looks the pane up again itself, so a pane that closes after IsLive answered is still left alone.
     public Task SendAsync(string text) => IsLive ? _send(PaneId, text) : Task.CompletedTask;
 
     public void Dispose() => _sessions.SessionClosed -= _OnSessionClosed;

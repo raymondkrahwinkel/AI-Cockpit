@@ -94,7 +94,7 @@ public class McpToolProbeTests
     }
 
     // --- callerFallbackServers (AC-499) ---------------------------------------------------------------------------
-    // CockpitHost hands this an additive candidate list scoped to the calling plugin's own contributions. These
+    // PluginBackendHost hands this an additive candidate list scoped to the calling plugin's own contributions. These
     // tests exercise only the mechanism this class owns: the registry store is tried first, the fallback list only
     // when that finds nothing under the name, and a name absent from both never resolves.
 

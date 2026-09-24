@@ -27,4 +27,8 @@
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- AC-1392: the nine bundled plugins beside the output, built but never referenced, so a backend without App can
+       be shown loading them from bundled-plugins the way the desktop does. -->
+  <Import Project="..\..\src\BundledPlugins.targets" />
+
 </Project>

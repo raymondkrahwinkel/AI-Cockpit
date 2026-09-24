@@ -113,7 +113,7 @@ public class CockpitHostCreateMarkdownViewTests
     // Typed as the contract a plugin actually holds, so the call goes through ICockpitHost's defaulted parameters —
     // the same way a plugin invokes it.
     private static ICockpitHost _BuildHost() =>
-        new CockpitHost(
+        new DesktopPluginHost(
             "test-plugin",
             "Test Plugin",
             Substitute.For<IServiceProvider>(),

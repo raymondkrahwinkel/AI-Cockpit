@@ -108,6 +108,18 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
 
     public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => pane.SuggestName(name));
 
+    public Task<bool> SetNameAsync(string name) => UiThreadCall.RunAsync(() =>
+    {
+        pane.SetNameDirectly(name);
+        return true;
+    });
+
+    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(() =>
+    {
+        pane.InjectAndSubmit(text);
+        return true;
+    });
+
     // AC-1374: the three fields read as one dispatcher callback, so a wake decision never sees one from before a
     // change and another from after it — same deadline and UiUnavailable handling as every other hop here (AC-1138).
     public Task<SessionWakeState> ReadWakeStateAsync() =>

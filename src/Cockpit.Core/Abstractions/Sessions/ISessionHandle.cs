@@ -171,6 +171,18 @@ public interface ISessionHandle
     Task<bool> SuggestNameAsync(string name);
 
     /// <summary>
+    /// Names the session <paramref name="name"/> as a name somebody chose, which a later suggestion leaves standing;
+    /// true when a live pane took it (AC-1392). Defaults to <see cref="SuggestNameAsync"/> for a handle without that notion.
+    /// </summary>
+    Task<bool> SetNameAsync(string name) => SuggestNameAsync(name);
+
+    /// <summary>
+    /// Types <paramref name="text"/> into the session's input and submits it, as dictation does; true when a live pane
+    /// took it (AC-1392). Defaults to <see cref="SendPromptAsync"/> for a handle with no input of its own.
+    /// </summary>
+    Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
+
+    /// <summary>
     /// The three fields a wake decision reads as one instant, not as three separate moments a consent banner or a
     /// turn starting could fall between (AC-1374). Use this, not the individual properties, wherever a decision
     /// chains more than one of them.

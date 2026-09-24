@@ -96,10 +96,10 @@ public class McpToolProviderInvokeAsyncTests
     }
 
     // --- callerFallbackServers (AC-499) ---------------------------------------------------------------------------
-    // CockpitHost hands this an additive candidate list scoped to the calling plugin's own contributions — see its
+    // PluginBackendHost hands this an additive candidate list scoped to the calling plugin's own contributions — see its
     // own remarks on _OwnMcpServerContributions. These tests exercise only the mechanism this class owns: the
     // catalog is tried first, the fallback list only when that finds nothing under the name, and a name absent from
-    // both never resolves — never that the caller was entitled to what is in the list, which is CockpitHost's job.
+    // both never resolves — never that the caller was entitled to what is in the list, which is PluginBackendHost's job.
 
     [Fact]
     public async Task InvokeAsync_UnknownToCatalog_PresentInCallerFallback_CallsTheToolAndReturnsItsTextContent()

@@ -18,13 +18,10 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Core.Abstractions.Shell;
-using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
-using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Plugins;
@@ -532,11 +529,12 @@ public partial class App : Application
         _pluginUpdateTimer.Start();
     }
 
-    // Phase 2 of the plugin lifecycle: each plugin gets a CockpitHost carrying the built service provider,
-    // the cockpit as the contribution sink, the shared actions, and its own persisted storage slice.
+    // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopPluginHost per plugin carrying the
+    // built service provider, the cockpit as the contribution sink, the shared actions and its own storage slice;
+    // then the UI parts.
     private void _InitializePlugins()
     {
-        if (Program.Services.GetService<PluginManager>() is not { } pluginManager)
+        if (Program.Services.GetService<PluginManager>() is null)
         {
             return;
         }
@@ -550,37 +548,14 @@ public partial class App : Application
         // `cockpit.json`, where a settings restore would have replaced it with the source machine's copy.
         var pluginCache = PluginCacheStore.ForStateRoot(Program.Services.GetService<ILogger<PluginCacheStore>>());
 
-        // Register plugin-declared secret key names before reading settings, or ciphertext could reach a plugin
-        // and remain in a backup labelled credential-free. The names themselves require no key.
-        var declared = secretFieldStore.LoadAsync().GetAwaiter().GetResult()
-            .Concat(pluginManager.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
-            .ToList();
-
-        if (declared.Count > 0)
-        {
-            SecretKeyHolder.Shared.Declare(declared);
-
-            // A plugin's declared field names can turn a value the host did not recognise as a credential into one
-            // it does, so the awareness banner (AC-41) has to re-evaluate now that the field set is complete —
-            // otherwise a plugin token in the clear would go unmentioned until the next save (AC-1343: fire-and-forget, no persistence of its own).
-            _ = cockpit.Security.RefreshAsync();
-        }
-
-        // AC-34: seed the terminal-access master switch from its persisted setting before any session can start, so a
-        // session that launches before the operator ever opens Options still reflects the saved choice (default off).
-        Program.Services.GetRequiredService<ITerminalAccessSwitch>().Enabled =
-            Program.Services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
-
-        // AC-1066: same seeding, for the shell-access master switch.
-        Program.Services.GetRequiredService<IShellAccessSwitch>().Enabled =
-            Program.Services.GetRequiredService<IShellAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
-
         var actions = new PluginActions(
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,
             Program.Services.GetRequiredService<ISessionDialogService>(),
             Program.Services.GetRequiredService<ISessionProfileStore>(),
-            Program.Services.GetRequiredService<IDelegationService>());
+            new PluginBackendActions(
+                Program.Services.GetRequiredService<ISessionProfileStore>(),
+                Program.Services.GetRequiredService<IDelegationService>()));
 
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
         var sessionObserver = new PluginSessionObserver(cockpit);
@@ -619,13 +594,13 @@ public partial class App : Application
         // and built on demand for a plugin that is only a UI part.
         var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
         ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType) =>
-            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new CockpitHost(
+            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopPluginHost(
             discovered.FolderId,
             discovered.Manifest.Name,
             Program.Services,
             cockpit,
             actions,
-            _CreatePluginStorage(discovered, registrationStore, secretFieldStore),
+            PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
             dialogHost,
             sessionObserver,
             diagnostics,
@@ -634,12 +609,16 @@ public partial class App : Application
             // declared secret has to be honoured.
             discovered.Manifest.SecretKeys,
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
-            // apart from every other plugin's when it resolves a tool call's caller-scoped fallback — see
-            // CockpitHost's own parameter doc.
+            // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
             pluginType,
             pluginCache.CreateFor(discovered.FolderId));
 
-        pluginManager.Initialize((discovered, plugin) => HostFor(discovered, plugin.GetType()));
+        // A plugin's declared field names can turn a value the host did not recognise as a credential into one it
+        // does, so the awareness banner (AC-41) re-evaluates once the field set is complete (AC-1343: fire-and-forget,
+        // no persistence of its own).
+        Program.Services.GetRequiredService<CockpitBackend>().InitializePlugins(
+            (discovered, plugin) => HostFor(discovered, plugin.GetType()),
+            () => _ = cockpit.Security.RefreshAsync());
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
@@ -695,31 +674,6 @@ public partial class App : Application
             // PluginRegistrationStore.DisposeAsync drains it through CockpitConfigFileAccess.FlushAsync
             // before the container releases the store on exit.
             data => _ = store.SaveDataAsync(ownerId, data));
-    }
-
-    // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load
-    // blocks briefly on the small config file at startup, which is acceptable on the UI thread here.
-    private static PluginStorage _CreatePluginStorage(
-        DiscoveredPlugin discovered,
-        IPluginRegistrationStore store,
-        IPluginSecretFieldStore secretFieldStore)
-    {
-        var seed = store.LoadDataAsync(discovered.FolderId).GetAwaiter().GetResult();
-
-        return new PluginStorage(
-            seed,
-            // AC-1343: same as _CreateFirstPartyCompanionToolStorage above — the store drains this at exit.
-            data => _ = store.SaveDataAsync(discovered.FolderId, data),
-            // A key a plugin calls SetSecret on is remembered for the next start too: the name is what tells the
-            // host to decrypt that field on the way in, and it would otherwise only be known while the plugin that
-            // wrote it happened to be running.
-            key =>
-            {
-                SecretKeyHolder.Shared.Declare([key]);
-                // AC-1343: PluginSecretFieldStore.DisposeAsync drains this the same way, on the same
-                // CockpitConfigFileAccess.FlushAsync as the registration store above.
-                _ = secretFieldStore.DeclareAsync(discovered.FolderId, [key]);
-            });
     }
 
     // Restores and focuses the main window from the tray. A non-null window proves onboarding already ran, so this

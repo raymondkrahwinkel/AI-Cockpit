@@ -1,72 +1,70 @@
-using Avalonia.Controls;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.App.Controls;
-using Cockpit.App.Docking;
-using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
-using Cockpit.Core.Abstractions;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
-using Cockpit.Core.Mcp;
-using Cockpit.Core.Projects;
-using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Sessions.Tty;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
-using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Tracking;
+using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Plugins;
 
-// The `ICockpitHost` a plugin receives in `ICockpitPlugin.Initialize`, scoped by `pluginId`.
-// AC-499: `ownPluginType` (this instance's runtime type, or `null` in tests) scopes
-// `_OwnMcpServerContributions` to this plugin's own `IPluginMcpProvider` registration.
-internal sealed class CockpitHost(
+// AC-1392: the `ICockpitHost` a plugin's backend part receives, scoped by `pluginId`, with no window behind it.
+// Sessions are reached through ISessionRegistry/ISessionLauncher, which marshal for themselves. The window members
+// are no-ops that say so once per plugin; the desktop's DesktopPluginHost overrides them until F2.14 (AC-1369).
+public class PluginBackendHost(
     string pluginId,
     string pluginName,
     IServiceProvider services,
-    IPluginContributionSink contributionSink,
-    ICockpitActions actions,
     IPluginStorage storage,
-    IPluginDialogHost dialogHost,
     ICockpitSessionObserver sessions,
+    ICockpitActions actions,
     PluginDiagnostics diagnostics,
-    IReadOnlyList<string>? declaredSecretKeys = null,
     Type? ownPluginType = null,
     IPluginCache? cache = null) : ICockpitHost
 {
     // Without a cache file behind it — a test host — the plugin still gets a cache, one that lives as long as
     // this host does. `Cache` is never null (AC-1294).
     private readonly IPluginCache _cache = cache ?? new InMemoryPluginCache();
+
+    // This plugin's open channels, keyed by the id it named them (AC-1023). Kept so re-opening one replaces it
+    // rather than leaving a second gateway subscribed to the same transcript, doubling every relayed row.
+    private readonly Dictionary<string, IAssistantChannelGateway> _assistantChannels = new(StringComparer.Ordinal);
+
+    private int _saidWindowless;
+
+    // The plugin's folder id and manifest name, for a derived host's own registrations and log lines.
+    protected string PluginId => pluginId;
+
+    protected string PluginName => pluginName;
 
     public IServiceProvider Services => services;
 
@@ -86,15 +84,81 @@ internal sealed class CockpitHost(
     // session id the agent named. Null off the verified path (no MCP call in flight).
     public string? CurrentMcpCallerPaneId => McpRequestContext.CurrentPaneId;
 
-    // This plugin's open channels, keyed by the id it named them (AC-1023). Kept so re-opening one replaces it
-    // rather than leaving a second gateway subscribed to the same transcript, doubling every relayed row.
-    private readonly Dictionary<string, IAssistantChannelGateway> _assistantChannels = new(StringComparer.Ordinal);
+    // The legacy typed Claude profile's own models and effort levels, which only the desktop's option catalog holds.
+    protected virtual IReadOnlyList<string> LegacyClaudeModels => [];
 
-    public void AddSettings(Func<Control> createView) =>
-        contributionSink.AddPluginSettings(pluginId, pluginName, createView);
+    protected virtual IReadOnlyList<string> LegacyClaudeEfforts => [];
 
-    public void AddSettings(Func<Control> createView, string category) =>
-        contributionSink.AddPluginSettings(pluginId, pluginName, createView, category);
+    // The one hop the assistant's gateway needs: none here, the desktop's goes through its UI thread (AC-1379).
+    protected virtual IAssistantSessionHost AssistantHostFor(IAssistantSessionHost host) => host;
+
+    public virtual bool HasSettings => false;
+
+    public virtual Task ShowSettingsAsync() => Task.CompletedTask;
+
+    public virtual void OnSettingsSaved(Action callback) => _NoWindow(nameof(OnSettingsSaved));
+
+    public virtual void AddSideMenuButton(string title, Action onInvoke) => _NoWindow(nameof(AddSideMenuButton));
+
+    public virtual SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
+    {
+        _NoWindow(nameof(AddSideMenuButtonWithBadge));
+        return new SideMenuButtonBadge();
+    }
+
+    public virtual void AddShortcut(PluginShortcut shortcut) => _NoWindow(nameof(AddShortcut));
+
+    public virtual void AddSessionHeaderAction(PluginSessionAction action) => _NoWindow(nameof(AddSessionHeaderAction));
+
+    public virtual void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
+        _NoWindow(nameof(AddSupervisedActivityProvider));
+
+    public virtual void AddToolbarAction(ToolbarAction action) => _NoWindow(nameof(AddToolbarAction));
+
+    public virtual void AddWidget(WidgetRegistration registration) => _NoWindow(nameof(AddWidget));
+
+    public virtual IReadOnlyList<WidgetRegistration> Widgets => [];
+
+    public virtual void AddDockPanel(DockPanelRegistration registration) => _NoWindow(nameof(AddDockPanel));
+
+    public virtual void AddCompanionTool(CompanionToolRegistration registration) => _NoWindow(nameof(AddCompanionTool));
+
+    public virtual IReadOnlyList<CompanionToolRegistration> CompanionTools => [];
+
+    public virtual void AddWorkspaceType(WorkspaceTypeRegistration registration) => _NoWindow(nameof(AddWorkspaceType));
+
+    public virtual IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
+
+    public virtual Task OpenWorkspaceAsync(string workspaceTypeId)
+    {
+        _NoWindow(nameof(OpenWorkspaceAsync));
+        return Task.CompletedTask;
+    }
+
+    // Exactly one callback, as the contract promises: with no dialog to show, nothing started.
+    public virtual Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null)
+    {
+        _NoWindow(nameof(ShowNewSessionDialogAsync));
+        onCancelled?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    public virtual void OpenHelp(string article, string? section = null) => _NoWindow(nameof(OpenHelp));
+
+    public virtual bool HasHelp(string article, string? section = null) => false;
+
+    // A toast with nobody to read it still says something, so it goes to the log at its own severity.
+    public virtual void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
+        _Logger()?.Log(
+            severity switch
+            {
+                PluginToastSeverity.Error => LogLevel.Error,
+                PluginToastSeverity.Warning => LogLevel.Warning,
+                _ => LogLevel.Information,
+            },
+            "Plugin {PluginId}: {Message}",
+            pluginId,
+            message);
 
     public IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution)
     {
@@ -112,43 +176,14 @@ internal sealed class CockpitHost(
             previous.Dispose();
         }
 
-        // AC-1379: the gateway keeps no thread of its own; this host makes the UI-thread hops it used to make itself.
         var gateway = new AssistantChannelGateway(
             contribution,
-            new UiThreadAssistantSessionHost(assistantHost),
+            AssistantHostFor(assistantHost),
             services.GetRequiredService<IConsentBroker>(),
             services.GetRequiredService<ILogger<AssistantChannelGateway>>());
         _assistantChannels[contribution.Id] = gateway;
 
         return gateway;
-    }
-
-    public bool HasSettings => contributionSink.HasPluginSettings(pluginId);
-
-    public Task ShowSettingsAsync() => contributionSink.OpenPluginSettingsAsync(pluginId);
-
-    public void AddSideMenuButton(string title, Action onInvoke) =>
-        contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
-
-    public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
-    {
-        var badge = new SideMenuButtonBadge();
-        contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
-        return badge;
-    }
-
-    public void AddShortcut(PluginShortcut shortcut) =>
-        contributionSink.AddPluginShortcut(shortcut);
-
-    public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)
-    {
-        // AC-1074: a toast is gone in seconds, and an error nobody was looking at is exactly what the log is for.
-        if (severity is PluginToastSeverity.Error)
-        {
-            services.GetService<ILogger<CockpitHost>>()?.LogError("Plugin {PluginId}: {Message}", pluginId, message);
-        }
-
-        services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
     }
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
@@ -159,132 +194,17 @@ internal sealed class CockpitHost(
         services.GetRequiredService<IConsentBroker>()
             .RequestConsentAsync(request with { Source = request.Source with { PluginId = pluginId } }, cancellationToken);
 
-    public void AddSideMenuSection(string title, Func<Control> createView) =>
-        contributionSink.AddPluginSideSection(pluginId, title, createView);
-
-    public void AddSessionHeaderAction(PluginSessionAction action) =>
-        contributionSink.AddPluginSessionHeaderAction(action);
-
-    public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
-        contributionSink.AddPluginSessionHeaderItem(createView);
-
-    public void AddSessionBanner(Func<IPluginSessionContext, Control> createView) =>
-        contributionSink.AddPluginSessionBannerItem(createView);
-
-    public void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
-        contributionSink.AddSupervisedActivityProvider(source);
-
-    public void AddToolbarAction(ToolbarAction action) =>
-        contributionSink.AddToolbarAction(pluginId, action);
-
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
-
-    // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
-    // instance builds its context long after load, and by then the widget id is the only thing linking it back
-    // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").
-    public void AddWidget(WidgetRegistration registration)
-    {
-        // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin
-        // cannot know what else is installed, and taking the cockpit down over a name clash is a worse answer
-        // than the widget being the one that was already there.
-        if (!services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions, declaredSecretKeys ?? []))
-        {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                "Widget type '{WidgetId}' is already contributed by another plugin; this registration is ignored",
-                registration.Id);
-        }
-    }
-
-    public IReadOnlyList<WidgetRegistration> Widgets =>
-        services.GetRequiredService<IWidgetRegistry>().Widgets;
-
-    // Unlike AddWidget, no storage/sessions travel with this registration: a dock panel's view factory takes no
-    // context, so a plugin that needs per-instance state builds its own IWidgetContext from what host.Storage and
-    // host.Sessions already give it.
-    public void AddDockPanel(DockPanelRegistration registration)
-    {
-        if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
-        {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                "Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored",
-                registration.Id);
-        }
-    }
-
-    // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
-    // tool's context is built long after load, and by then the tool id is the only thing linking it back here.
-    public void AddCompanionTool(CompanionToolRegistration registration)
-    {
-        if (!services.GetRequiredService<ICompanionToolRegistry>().Register(registration, storage, sessions))
-        {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                "Companion tool '{CompanionToolId}' is already contributed by another plugin; this registration is ignored",
-                registration.Id);
-        }
-    }
-
-    public IReadOnlyList<CompanionToolRegistration> CompanionTools =>
-        services.GetRequiredService<ICompanionToolRegistry>().Tools;
-
-    // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
-    // workspace of this type builds its context long after load, and by then the type id is the only thing linking
-    // it back here.
-    public void AddWorkspaceType(WorkspaceTypeRegistration registration)
-    {
-        // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin cannot
-        // know what else is installed, and taking the cockpit down over a name clash is a worse answer than the
-        // type being the one that was already there.
-        if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, storage, sessions))
-        {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                "Workspace type '{WorkspaceTypeId}' is already contributed by another plugin; this registration is ignored",
-                registration.Id);
-        }
-    }
-
-    public IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes =>
-        services.GetRequiredService<IWorkspaceTypeRegistry>().WorkspaceTypes;
-
-    // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
-    // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
-    // thread; a design-time/headless host (no view model resolved) simply does nothing.
-    public async Task OpenWorkspaceAsync(string workspaceTypeId)
-    {
-        // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
-        // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
-        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
-        {
-            return;
-        }
-
-        // AC-577: no CheckAccess() fast path, deliberately — that shortcut would let a test pass inline
-        // without proving anything about marshalling; a test for this belongs in Cockpit.App.ViewTests.
-        try
-        {
-            await UiThreadCall.DispatchAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
-        }
-        catch (UiUnavailableException exception)
-        {
-            // AC-1138: logged and passed on, not swallowed. A plugin that starts this from a menu button
-            // discards the task, and then the workspace not opening is all the operator has to go on — the
-            // reason would be nowhere. An awaiting caller still gets the exception.
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>()
-                .LogWarning(exception, "Opening workspace '{WorkspaceTypeId}' for plugin '{PluginId}' gave up waiting for the UI thread", workspaceTypeId, pluginId);
-            throw;
-        }
-    }
 
     public void AddProjectField(ProjectFieldRegistration registration)
     {
         // Refused means another plugin already registered this key. That is the agreed case, not a mistake — the
         // GitHub Issues and Pull Requests plugins both offer "which repository" so either one alone still shows the
-        // field — so this is logged at debug level, unlike the widget/workspace clashes above.
+        // field — so this is logged at debug level, unlike the widget/workspace clashes.
         if (!services.GetRequiredService<IProjectFieldRegistry>().Register(registration))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
-                "Project field '{ProjectFieldKey}' is already contributed; this registration is ignored",
-                registration.Key);
+            _Logger()?.LogDebug("Project field '{ProjectFieldKey}' is already contributed; this registration is ignored", registration.Key);
         }
     }
 
@@ -297,7 +217,7 @@ internal sealed class CockpitHost(
         // same reason AddProjectField logs at debug level rather than warning.
         if (!services.GetRequiredService<IProjectOwnershipRegistry>().Register(registration))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+            _Logger()?.LogDebug(
                 "Project '{ProjectId}' ownership is already claimed by another plugin; this registration is ignored",
                 registration.ProjectId);
         }
@@ -312,9 +232,7 @@ internal sealed class CockpitHost(
         // AddProjectField logs at debug rather than warning.
         if (!services.GetRequiredService<IProjectMemorySourceRegistry>().Register(registration))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
-                "Memory source '{MemorySourceScheme}' is already contributed; this registration is ignored",
-                registration.Scheme);
+            _Logger()?.LogDebug("Memory source '{MemorySourceScheme}' is already contributed; this registration is ignored", registration.Scheme);
         }
     }
 
@@ -330,9 +248,7 @@ internal sealed class CockpitHost(
         // AddProjectMemorySource logs at debug rather than warning.
         if (!services.GetRequiredService<IProjectMemorySourceRegistry>().RegisterFamily(family))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
-                "Memory source family '{MemorySourceFamilyKey}' is already declared; this registration is ignored",
-                family.Key);
+            _Logger()?.LogDebug("Memory source family '{MemorySourceFamilyKey}' is already declared; this registration is ignored", family.Key);
         }
     }
 
@@ -342,9 +258,7 @@ internal sealed class CockpitHost(
         // AddProjectMemorySource logs at debug rather than warning.
         if (!services.GetRequiredService<ISharedProjectSourceRegistry>().Register(source))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
-                "Shared-project source '{SharedProjectSourceKey}' is already contributed; this registration is ignored",
-                source.Key);
+            _Logger()?.LogDebug("Shared-project source '{SharedProjectSourceKey}' is already contributed; this registration is ignored", source.Key);
         }
     }
 
@@ -356,17 +270,7 @@ internal sealed class CockpitHost(
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
-        // No pane named and none selected means there is no project to read from — not an error, just nothing to say.
-        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane))
-        {
-            return null;
-        }
-
-        // Which project that pane belongs to is one question with one answer (AC-320), asked here rather than
-        // looked up again.
-        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
-        if (string.IsNullOrEmpty(projectId))
+        if (string.IsNullOrWhiteSpace(key) || await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)
         {
             return null;
         }
@@ -377,14 +281,7 @@ internal sealed class CockpitHost(
 
     public async Task<IReadOnlyList<string>> GetProjectFieldValuesAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
-        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane))
-        {
-            return [];
-        }
-
-        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
-        if (string.IsNullOrEmpty(projectId))
+        if (string.IsNullOrWhiteSpace(key) || await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)
         {
             return [];
         }
@@ -395,14 +292,7 @@ internal sealed class CockpitHost(
 
     public async Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId, CancellationToken cancellationToken)
     {
-        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
-        if (string.IsNullOrEmpty(pane))
-        {
-            return [];
-        }
-
-        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
-        if (string.IsNullOrEmpty(projectId))
+        if (await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)
         {
             return [];
         }
@@ -414,14 +304,28 @@ internal sealed class CockpitHost(
             .Select(resource => new ProjectMemoryRow(resource.Reference, resource.Label, resource.ReachesSessions))];
     }
 
+    // No pane named falls back to the selected one, which only a desktop has. Which project a pane belongs to is one
+    // question with one answer (AC-320); a host without that resolver asks the pane's own handle.
+    private async Task<string?> _ProjectOfAsync(string? paneId, CancellationToken cancellationToken)
+    {
+        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
+        if (string.IsNullOrEmpty(pane))
+        {
+            return null;
+        }
+
+        var projectId = services.GetService<ISessionProjectResolver>() is { } resolver
+            ? await resolver.ProjectIdOfAsync(pane, cancellationToken)
+            : services.GetService<ISessionRegistry>()?.Find(pane)?.ProjectId;
+        return string.IsNullOrEmpty(projectId) ? null : projectId;
+    }
+
     public void AddTrackerProvider(ITrackerProvider provider)
     {
         // First registration for a tracker id wins; a later one is logged and ignored rather than added beside it.
         if (!services.GetRequiredService<ITrackerProviderRegistry>().Register(provider))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                "Tracker '{TrackerId}' is already contributed by another plugin; this registration is ignored",
-                provider.TrackerId);
+            _Logger()?.LogWarning("Tracker '{TrackerId}' is already contributed by another plugin; this registration is ignored", provider.TrackerId);
         }
     }
 
@@ -434,9 +338,7 @@ internal sealed class CockpitHost(
         // plugins clashing. Nothing is lost by ignoring it, so this is a debug line rather than a warning.
         if (!services.GetRequiredService<ISessionResourceProviderRegistry>().Register(provider))
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
-                "Session-resource provider {Provider} is already registered; this registration is ignored",
-                provider.GetType().Name);
+            _Logger()?.LogDebug("Session-resource provider {Provider} is already registered; this registration is ignored", provider.GetType().Name);
         }
     }
 
@@ -500,49 +402,6 @@ internal sealed class CockpitHost(
     public IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates =>
         services.GetRequiredService<IAutopilotTemplateRegistry>().Registrations;
 
-    // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — checked when the
-    // dialog opens, not when the plugin is built, since settings and dialogs can register in any order.
-    public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        _ShowPluginDialogAsync(title, createContent, width, height, singleInstanceKey: null);
-
-    public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
-        // Scoped to the plugin, so a plugin only has to be unique within itself: two plugins picking "issues"
-        // are two windows, which is what they are. Without the scope the first plugin to open one would answer
-        // for the other, and the operator would act on the wrong repository.
-        _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{singleInstanceKey}");
-
-    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string? singleInstanceKey) =>
-        dialogHost.ShowDialogAsync(
-            title,
-            createContent,
-            width,
-            height,
-            onOpenSettings: contributionSink.HasPluginSettings(pluginId)
-                ? () => contributionSink.OpenPluginSettingsAsync(pluginId)
-                : null,
-            singleInstanceKey: singleInstanceKey);
-
-    // Delegates to the cockpit's own `MarkdownView` — no second parser, one markdown idiom for both the transcript and every plugin dialog.
-    public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
-
-    // AC-303: caps a plugin-supplied markdown body (e.g. a 65 KB GitHub issue) before synchronous rendering,
-    // which otherwise stalls the UI in an all-Auto grid; capped here, not in MarkdownView, since the transcript
-    // also renders through that control and must not be truncated.
-    private const int MaxPluginMarkdownCharacters = 64 * 1024;
-
-    // Nullable although the contract says otherwise: the caller is plugin code, which may well be compiled with
-    // nullable disabled, and passing null here used to render an empty view rather than throw. Dereferencing it
-    // would move that into an exception on the host's UI thread — the very shape AC-304 is about.
-    private static string? _CapForRendering(string? markdown) =>
-        markdown is { Length: > MaxPluginMarkdownCharacters }
-            ? string.Concat(
-                markdown.AsSpan(0, MaxPluginMarkdownCharacters),
-                "\n\n*(truncated — open the item in its tracker to read the rest)*")
-            : markdown;
-
-    public void OnSettingsSaved(Action callback) =>
-        contributionSink.AddSettingsSavedHandler(pluginId, callback);
-
     public void AddSessionProvider(SessionProviderRegistration registration) =>
         services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
 
@@ -563,25 +422,20 @@ internal sealed class CockpitHost(
                     // AC-256: asks the provider for its models instead of keeping the host's own copy of the
                     // Claude aliases, which had drifted out of cheapest-first order. Falls back to the catalogue
                     // only when there is no registration to ask (unloaded provider plugin, legacy typed config).
-                    ModelSuggestions = model?.Choices ?? (profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : []),
+                    ModelSuggestions = model?.Choices ?? (profile.Claude is not null ? LegacyClaudeModels : []),
                     // Cost is the provider's own estimate or nothing at all; the host never ranks or prices a model.
                     ModelCostEstimatesCheapestFirst = model?.CostEstimatesCheapestFirst ?? [],
                     // AC-1342: the same declared schema list_profiles and start_agent's option check read — a
                     // provider's own KnownValues for "effort", not a host-owned list. Null KnownValues (free-form or
                     // resolved only once live, Codex's own) reports empty, same as declaring no effort option at all.
                     EffortSuggestions = effort?.KnownValues?.Select(value => value.Value).ToList()
-                        ?? (profile.Claude is not null ? ClaudeEffortSuggestions : []),
+                        ?? (profile.Claude is not null ? LegacyClaudeEfforts : []),
                     // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
                     RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
                 };
             })
             .ToList();
     }
-
-    // AC-1342: the native/legacy-typed Claude profile's own effort levels — SessionOptionCatalog.Efforts mirrors
-    // ClaudeOptionChoices.EffortLevels (the plugin-declared list `_DeclaredEffortOption` reads for a plugin-routed
-    // profile), so a profile still on the pre-plugin typed config reports the same levels either way.
-    private static readonly IReadOnlyList<string> ClaudeEffortSuggestions = [.. SessionOptionCatalog.Efforts.Select(effort => effort.Value)];
 
     // The profile's model launch option, if its provider declares one, found via the well-known `Model`
     // key. Reads only statically declared options, not `ResolveOptionsAsync` — that hits a CLI, and this
@@ -635,8 +489,7 @@ internal sealed class CockpitHost(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                exception, "Plugin {PluginId}'s MCP server contribution '{ServerName}' failed to register.", pluginId, contribution.Name);
+            _Logger()?.LogWarning(exception, "Plugin {PluginId}'s MCP server contribution '{ServerName}' failed to register.", pluginId, contribution.Name);
             diagnostics.Record(pluginId, pluginName, "mcp-server", exception.Message);
         }
     }
@@ -659,8 +512,7 @@ internal sealed class CockpitHost(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                exception, "Plugin {PluginId}'s MCP server removal ('{ServerName}') failed.", pluginId, name);
+            _Logger()?.LogWarning(exception, "Plugin {PluginId}'s MCP server removal ('{ServerName}') failed.", pluginId, name);
             diagnostics.Record(pluginId, pluginName, "mcp-server", exception.Message);
         }
     }
@@ -818,8 +670,7 @@ internal sealed class CockpitHost(
         }
         catch (Exception exception)
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
-                exception, "A plugin failed to list its MCP servers while resolving an OAuth sign-in; leaving them out of the lookup.");
+            _Logger()?.LogWarning(exception, "A plugin failed to list its MCP servers while resolving an OAuth sign-in; leaving them out of the lookup.");
             return [];
         }
     }
@@ -908,71 +759,48 @@ internal sealed class CockpitHost(
             ? autoUpdateStore.SetAsync(cliName, enabled, cancellationToken)
             : Task.CompletedTask;
 
-    // Opens the New-session dialog (#AC-96) pre-filled from `prefill`; exactly one callback runs, `onStarted`
-    // or `onCancelled`. Routed through `CockpitViewModel` so the session is minted by the app's own launch
-    // path (worktree isolation, Duplicate's launch-result), not a second, divergent one.
-    public async Task ShowNewSessionDialogAsync(
-        NewSessionPrefill? prefill = null,
-        Action<string>? onStarted = null,
-        Action? onCancelled = null)
-    {
-        string? paneId;
-        try
-        {
-            // AC-577, no fast path — deliberately, and here it is not even a trade: what this marshals to is a
-            // modal dialog, which has nowhere to appear in a process without a dispatcher loop. An inline branch
-            // would turn "no UI thread" from a hang into a dialog nobody can answer.
-            var dialog = await UiThreadCall.DispatchAsync<Task<string?>>(() =>
-                services.GetService<CockpitViewModel>() is { } cockpit
-                    ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
-                    : Task.FromResult<string?>(null));
-
-            // AC-1138: the explicit type argument caps the hop onto the thread and hands the dialog's own task
-            // back unopened — what comes after is an operator reading a dialog, not a wait to cap. The
-            // unwrapping overload would have capped both.
-            paneId = await dialog;
-        }
-        catch (Exception ex)
-        {
-            // The exactly-one-callback contract has to hold even when the dialog or the launch throws: a plugin that
-            // bridges these callbacks to a TaskCompletionSource would otherwise wait forever. A failure is "nothing
-            // started" — log it and fall through to onCancelled rather than letting the exception drop both callbacks.
-            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>()
-                .LogError(ex, "Opening the New-session dialog for plugin '{PluginId}' failed", pluginId);
-            paneId = null;
-        }
-
-        if (paneId is not null)
-        {
-            onStarted?.Invoke(paneId);
-        }
-        else
-        {
-            onCancelled?.Invoke();
-        }
-    }
-
     public Task SetSessionStatusline(string paneId, string statusline) =>
-        _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
+        _ActOnSessionAsync(paneId, session => session.SetStatuslineAsync(statusline ?? string.Empty));
 
     public Task SetSessionName(string paneId, string name) =>
         string.IsNullOrWhiteSpace(name)
             ? Task.CompletedTask
-            : _MutateSessionAsync(paneId, session => session.SetNameDirectly(name));
+            : _ActOnSessionAsync(paneId, session => session.SetNameAsync(name));
 
     public Task SuggestSessionName(string paneId, string name) =>
         string.IsNullOrWhiteSpace(name)
             ? Task.CompletedTask
-            : _MutateSessionAsync(paneId, session => session.SuggestName(name));
+            : _ActOnSessionAsync(paneId, session => session.SuggestNameAsync(name));
 
     public Task SendToSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
-            : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
+            : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+
+    // A plugin or workflow may call from any thread, and the target may already be gone — a no-op then, never an
+    // error. Decided under the launcher's exclusion (F1), acted on outside it, and looked up again right before
+    // acting, so a pane that closed in between is left alone rather than written to (AC-1392).
+    private async Task _ActOnSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> act)
+    {
+        if (string.IsNullOrEmpty(paneId)
+            || services.GetService<ISessionRegistry>() is not { } registry
+            || services.GetService<ISessionLauncher>() is not { } launcher)
+        {
+            return;
+        }
+
+        if (await launcher.RunExclusiveAsync(() => registry.Find(paneId)).ConfigureAwait(false) is not { } decided
+            || !ReferenceEquals(registry.Find(paneId), decided))
+        {
+            return;
+        }
+
+        await act(decided).ConfigureAwait(false);
+    }
 
     // AC-1338: the same inbox a session's `notify cockpit-assistant` lands in, with this plugin as the stated sender —
-    // the shape CiWatcher/SessionWatcher already use for a non-pane sender. The assistant is not in FindSession
-    // (deliberately unwakeable through SendToSessionAsync), so this is a plugin's only door to it.
+    // the shape CiWatcher/SessionWatcher already use for a non-pane sender. The assistant is not in the registry's
+    // panes (deliberately unwakeable through SendToSessionAsync), so this is a plugin's only door to it.
     public Task<bool> NotifyAssistantAsync(string kind, string body)
     {
         if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(body) || services.GetService<IAgentMessageInbox>() is not { } inbox)
@@ -992,38 +820,38 @@ internal sealed class CockpitHost(
     private const int MaxAssistantNotifyLength = 6_000;
     private const string AssistantNotifyTruncationMarker = " … (the rest of this message was cut off)";
 
-    public IPluginSessionBinding BindToSession(string paneId)
+    // The registry's snapshot read is safe from any thread, so this needs no hop; the binding reads it again on
+    // every use rather than keeping anything of the pane.
+    public IPluginSessionBinding BindToSession(string paneId) =>
+        !string.IsNullOrEmpty(paneId) && services.GetService<ISessionRegistry>() is { } registry && registry.Find(paneId) is not null
+            ? new PluginSessionBinding(paneId, registry, sessions, SendToSessionAsync)
+            : new DetachedSessionBinding(paneId ?? string.Empty);
+
+    public Task<PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken) =>
+        CreateRunWorktreeAsync(repositoryDirectory, label, baseRef: null, cancellationToken);
+
+    // AC-1337: forking from `baseRef`'s remote tip (an epic run's collection branch) instead of the checkout's own
+    // branch when one is given. Null when there is no worktree manager or `repositoryDirectory` is no repository.
+    public async Task<PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, string? baseRef, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(paneId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        if (services.GetService<IWorktreeManager>() is not { } worktrees
+            || string.IsNullOrWhiteSpace(repositoryDirectory)
+            || await worktrees.DetectRepositoryAsync(repositoryDirectory, cancellationToken).ConfigureAwait(false) is null)
         {
-            return new DetachedSessionBinding(paneId ?? string.Empty);
+            return null;
         }
 
-        // FindSession walks the session collections, which only the UI thread may do while panes come and go.
-        bool IsLive() => cockpit.FindSession(paneId) is not null;
-
-        return UiThreadCall.Run(IsLive)
-            ? new CockpitSessionBinding(paneId, cockpit, sessions, SendToSessionAsync)
-            : new DetachedSessionBinding(paneId);
+        var worktree = await worktrees.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, baseRef: baseRef, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return new PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
-    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, System.Threading.CancellationToken cancellationToken) =>
-        services.GetService<CockpitViewModel>() is { } cockpit
-            ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
-            : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
-
-    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, string? baseRef, System.Threading.CancellationToken cancellationToken) =>
-        services.GetService<CockpitViewModel>() is { } cockpit
-            ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, baseRef, cancellationToken)
-            : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
-
-    public async Task<Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, System.Threading.CancellationToken cancellationToken)
+    public async Task<GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, CancellationToken cancellationToken)
     {
         // No worktree manager (or no path) means the host cannot tell — Unknown, which the caller treats as needing
         // isolation, never as a licence to run free.
         if (string.IsNullOrWhiteSpace(directory) || services.GetService<IWorktreeManager>() is not { } worktrees)
         {
-            return Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus.Unknown;
+            return GitDirectoryStatus.Unknown;
         }
 
         // DetectRepositoryAsync returns null both for a true non-repository and for a probe failure on a real
@@ -1033,18 +861,18 @@ internal sealed class CockpitHost(
         return GitDirectoryStatusResolver.Resolve(directory, confirmedRepository);
     }
 
-    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths> GetRememberedWorkingPathsAsync(System.Threading.CancellationToken cancellationToken)
+    public async Task<PluginRememberedWorkingPaths> GetRememberedWorkingPathsAsync(CancellationToken cancellationToken)
     {
         if (services.GetService<IWorkingPathHistoryStore>() is not { } store)
         {
-            return Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths.Empty;
+            return PluginRememberedWorkingPaths.Empty;
         }
 
         var history = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return new Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths(history.Favorites, history.Recent);
+        return new PluginRememberedWorkingPaths(history.Favorites, history.Recent);
     }
 
-    public async Task RememberWorkingPathAsync(string directory, System.Threading.CancellationToken cancellationToken)
+    public async Task RememberWorkingPathAsync(string directory, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(directory) || services.GetService<IWorkingPathHistoryStore>() is not { } store)
         {
@@ -1054,52 +882,17 @@ internal sealed class CockpitHost(
         await store.RecordRecentAsync(directory, cancellationToken).ConfigureAwait(false);
     }
 
-    // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
-    // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
-    private Task _MutateSessionAsync(string paneId, Action<SessionPanelViewModel> mutate)
+    private ILogger? _Logger() => services.GetService<ILoggerFactory>()?.CreateLogger<PluginBackendHost>();
+
+    // Once per plugin, not per call: one line says this plugin's window contributions are dropped, and why.
+    private void _NoWindow(string member)
     {
-        if (string.IsNullOrEmpty(paneId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        if (Interlocked.Exchange(ref _saidWindowless, 1) == 0)
         {
-            return Task.CompletedTask;
+            _Logger()?.LogInformation(
+                "Plugin {PluginId} called {Member}, and this backend has no window: its window contributions are ignored.",
+                pluginId,
+                member);
         }
-
-        void Apply()
-        {
-            if (cockpit.FindSession(paneId) is { } target)
-            {
-                mutate(target);
-            }
-        }
-
-        // AC-577: fast path here, unlike this file's other two dispatcher sites — usually called on the UI
-        // thread and marshals a field write rather than a dialog, so the inline CheckAccess() branch costs
-        // nothing; a test covering that branch belongs in Cockpit.App.ViewTests, not here.
-        return UiThreadCall.RunAsync(Apply);
     }
-
-    // AC-1033. `article` is resolved against this plugin's own branch first, then as written, so a plugin
-    // names its own page with the id it gave the file and can still point at one of ours — without repeating
-    // its own id, which would be a second place its name is written down.
-    public Control CreateHelpHint(string article, string? section = null, string? label = null) =>
-        _Help() is { } help
-            ? new HelpHint(help, help.Resolve(pluginId, article, section), label, $"a “?” in {pluginName}")
-            : new Panel { IsVisible = false };
-
-    public void OpenHelp(string article, string? section = null) =>
-        _Help()?.Open(_Help()!.Resolve(pluginId, article, section), $"a link in {pluginName}");
-
-    public bool HasHelp(string article, string? section = null) =>
-        _Help() is { } help && help.Contains(help.Resolve(pluginId, article, section));
-
-    private HelpService? _Help() => services.GetService<HelpService>();
-
-    // Maps by name, not ordinal — same reasoning as _ToServerScope below.
-    private static ToastSeverity _ToToastSeverity(PluginToastSeverity severity) => severity switch
-    {
-        PluginToastSeverity.Success => ToastSeverity.Success,
-        PluginToastSeverity.Warning => ToastSeverity.Warning,
-        PluginToastSeverity.Error => ToastSeverity.Error,
-        _ => ToastSeverity.Information,
-    };
-
 }

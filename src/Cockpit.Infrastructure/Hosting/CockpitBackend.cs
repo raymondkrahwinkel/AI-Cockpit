@@ -5,21 +5,30 @@ using Cockpit.Core;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Plugins;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Infrastructure.Hosting;
 
@@ -28,6 +37,7 @@ namespace Cockpit.Infrastructure.Hosting;
 public sealed class CockpitBackend
 {
     private Task? _reconcile;
+    private bool _pluginsInitialized;
 
     private CockpitBackend(ServiceProvider services) => Services = services;
 
@@ -84,8 +94,9 @@ public sealed class CockpitBackend
     }
 
     // Core, Infrastructure and the no-frontend defaults, then whatever `frontend` adds; the last registration wins,
-    // so a frontend's own seams replace the defaults.
-    public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null)
+    // so a frontend's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
+    // so a plugin's ConfigureServices registers on top of all of it (#14).
+    public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null, PluginStartup plugins = PluginStartup.None)
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(loggerFactory);
@@ -95,6 +106,10 @@ public sealed class CockpitBackend
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
         _AddNoFrontendDefaults(services);
         frontend?.Invoke(services);
+        if (plugins != PluginStartup.None)
+        {
+            _LoadPlugins(services, loggerFactory, plugins == PluginStartup.SafeMode);
+        }
 
         CockpitBackend? built = null;
         services.AddSingleton(_ => built ?? throw new InvalidOperationException("The backend is resolved from its own container only once built."));
@@ -125,6 +140,35 @@ public sealed class CockpitBackend
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
     }
 
+    // AC-1392: plugin phase 2's backend half, where the desktop had it in App — before the planners and the restore.
+    // The declared secret keys first, or ciphertext could reach a plugin; the terminal and shell switches before any
+    // session can start; then every plugin's Initialize with the host `hostFor` builds, a windowless one by default.
+    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null, Action? secretKeysDeclared = null)
+    {
+        if (Services.GetService<PluginManager>() is not { } plugins)
+        {
+            return;
+        }
+
+        var declared = Services.GetRequiredService<IPluginSecretFieldStore>().LoadAsync().GetAwaiter().GetResult()
+            .Concat(plugins.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
+            .ToList();
+        if (declared.Count > 0)
+        {
+            SecretKeyHolder.Shared.Declare(declared);
+            secretKeysDeclared?.Invoke();
+        }
+
+        // AC-34/AC-1066: a session that launches before the operator ever opens Options still gets the saved choice.
+        Services.GetRequiredService<ITerminalAccessSwitch>().Enabled =
+            Services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
+        Services.GetRequiredService<IShellAccessSwitch>().Enabled =
+            Services.GetRequiredService<IShellAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
+
+        plugins.Initialize(hostFor ?? _BackendHostFor());
+        _pluginsInitialized = true;
+    }
+
     // AC-1380's planners. Never before `Start`: the worktree planner's crash net assumes the startup sweep has run, and
     // the rest read a registry the reconcile's roster decides. The Depot watcher polls only what its `BoundProjects`
     // names, which a frontend that owns a project list sets before this.
@@ -133,6 +177,12 @@ public sealed class CockpitBackend
         if (_reconcile is null)
         {
             throw new InvalidOperationException("The planners start after the startup reconcile, and Start has not run it yet.");
+        }
+
+        // AC-1392: nor before the plugins' Initialize, which registers the providers and endpoints a planner may reach.
+        if (Services.GetService<PluginManager>() is not null && !_pluginsInitialized)
+        {
+            throw new InvalidOperationException("The planners start after the plugins' Initialize, and InitializePlugins has not run it yet.");
         }
 
         // AC-1380: the session registry reads are thread-safe from any thread (AC-1373), and every planner below
@@ -222,6 +272,109 @@ public sealed class CockpitBackend
         await sessionStateStore.CompactAsync(restorablePaneIds).ConfigureAwait(false);
     }
 
+    // Plugin phase 1 (#14): install what this build ships, discover, and instantiate and configure each plugin that may
+    // load; a failure is logged and the backend continues without plugins. Safe mode discovers but loads none (AC-478).
+    private static void _LoadPlugins(IServiceCollection services, ILoggerFactory loggerFactory, bool safeMode)
+    {
+        var diagnostics = new PluginDiagnostics();
+        services.AddSingleton(diagnostics);
+        var manager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), diagnostics, safeMode);
+        try
+        {
+            // Before discovery, for first-run availability; best-effort, so a failure cannot hide installed plugins.
+            _InstallBundledPlugins(loggerFactory);
+#if DEBUG
+            // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes.
+            _RefreshDevPlugins(loggerFactory);
+#endif
+
+            // The one pass that applies a staged update or a marked removal: no plugin is loaded yet.
+            var discovered = new PluginBootstrap()
+                .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
+            manager.LoadAndConfigure(discovered, services, new PluginActivator(loggerFactory.CreateLogger<PluginActivator>()).Activate);
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<CockpitBackend>().LogError(exception, "Plugin discovery failed; continuing without plugins.");
+        }
+
+        services.AddSingleton(manager);
+    }
+
+    private static void _InstallBundledPlugins(ILoggerFactory loggerFactory)
+    {
+        var bundledRoot = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName);
+
+        try
+        {
+            var installed = new BundledPluginInstaller(loggerFactory.CreateLogger<BundledPluginInstaller>())
+                .InstallAsync(bundledRoot, PluginBootstrap.PluginsRoot)
+                .GetAwaiter()
+                .GetResult();
+
+            if (installed.Count > 0)
+            {
+                loggerFactory.CreateLogger<CockpitBackend>().LogInformation(
+                    "Installed the plugins shipped with this build: {Plugins}", string.Join(", ", installed));
+            }
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<CockpitBackend>().LogWarning(
+                exception, "Could not install the bundled plugins; continuing with whatever is already installed.");
+        }
+    }
+
+#if DEBUG
+    // Refreshes already-installed first-party plugins from their freshly built output (see DevPluginInstaller).
+    private static void _RefreshDevPlugins(ILoggerFactory loggerFactory)
+    {
+        try
+        {
+            var refreshed = new DevPluginInstaller(loggerFactory.CreateLogger<DevPluginInstaller>())
+                .InstallAsync(PluginBootstrap.PluginsRoot)
+                .GetAwaiter()
+                .GetResult();
+
+            if (refreshed.Count > 0)
+            {
+                loggerFactory.CreateLogger<CockpitBackend>().LogInformation(
+                    "Refreshed first-party plugins from the dev build: {Plugins}", string.Join(", ", refreshed));
+            }
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<CockpitBackend>().LogWarning(
+                exception, "Could not refresh dev plugins; continuing with whatever is already installed.");
+        }
+    }
+#endif
+
+    // The windowless host for every plugin, sharing one observer, one actions surface and one cache file (AC-1294).
+    private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> _BackendHostFor()
+    {
+        var registrationStore = Services.GetRequiredService<IPluginRegistrationStore>();
+        var secretFieldStore = Services.GetRequiredService<IPluginSecretFieldStore>();
+        var cache = PluginCacheStore.ForStateRoot(Services.GetService<ILogger<PluginCacheStore>>());
+        var sessions = new PluginBackendSessionObserver(Services.GetRequiredService<ISessionRegistry>());
+        var actions = new PluginBackendActions(
+            Services.GetRequiredService<ISessionProfileStore>(),
+            Services.GetRequiredService<IDelegationService>(),
+            Services.GetService<ISessionLauncher>());
+        var diagnostics = Services.GetRequiredService<PluginDiagnostics>();
+
+        return (discovered, plugin) => new PluginBackendHost(
+            discovered.FolderId,
+            discovered.Manifest.Name,
+            Services,
+            PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
+            sessions,
+            actions,
+            diagnostics,
+            plugin.GetType(),
+            cache.CreateFor(discovered.FolderId));
+    }
+
     // AC-1378: the launcher is built over the desks as saved, the first time something asks for it; a desktop that
     // registers its own never reads them here.
     private static void _AddNoFrontendDefaults(IServiceCollection services)
@@ -248,4 +401,13 @@ public sealed class CockpitBackend
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();
         services.AddSingleton<IDesktopDisplays, NoDesktopDisplays>();
     }
+}
+
+// AC-1392: whether Build runs plugin phase 1. None for a backend that carries no plugins (a test, a probe); SafeMode
+// discovers them but instantiates none (AC-478).
+public enum PluginStartup
+{
+    None,
+    Load,
+    SafeMode,
 }

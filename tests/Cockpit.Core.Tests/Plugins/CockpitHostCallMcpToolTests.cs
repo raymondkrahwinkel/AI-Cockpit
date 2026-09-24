@@ -11,11 +11,11 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.CallMcpToolAsync"/> (AC-502) — the plugin-facing bridge onto the app's own
+/// <see cref="DesktopPluginHost.CallMcpToolAsync"/> (AC-502) — the plugin-facing bridge onto the app's own
 /// <see cref="IMcpToolInvoker"/>, added so a plugin (the project editor's Depot picker) can call a tool on its own
 /// contributed MCP server before any session exists, without ever seeing the bearer token the invoker used.
 /// <para>
-/// Review fix: scoped by <see cref="CockpitHost._IsKnownMcpServerNameAsync"/> — the shared registry (any
+/// Review fix: scoped by <see cref="DesktopPluginHost._IsKnownMcpServerNameAsync"/> — the shared registry (any
 /// <see cref="AddMcpServer"/> caller ends up here) or any plugin's own <see cref="IPluginMcpProvider.GetMcpServers()"/>
 /// (AC-504's per-project delivery model, Depot's own since that ticket). Every test below registers its server
 /// through a stateful <see cref="IMcpServerStore"/> fake, so <see cref="ICockpitHost.AddMcpServer"/> and
@@ -168,7 +168,7 @@ public class CockpitHostCallMcpToolTests
         Assert.Equal("[NotFound] '.cockpit/project.json' was not found in project 'new-project'.", result.Error);
     }
 
-    private static async Task<CockpitHost> _BuildHostWithRegisteredServerAsync(
+    private static async Task<DesktopPluginHost> _BuildHostWithRegisteredServerAsync(
         string? serverName, IMcpToolInvoker? invoker, PluginDiagnostics? diagnostics = null, IPluginMcpProvider? mcpProvider = null)
     {
         var collection = new ServiceCollection();
@@ -197,7 +197,7 @@ public class CockpitHostCallMcpToolTests
         collection.AddSingleton(store);
 
         var services = collection.BuildServiceProvider();
-        var host = new CockpitHost(
+        var host = new DesktopPluginHost(
             "depot",
             "Depot",
             services,
