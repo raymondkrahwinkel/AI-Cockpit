@@ -312,6 +312,17 @@ internal sealed class NodeSessionMcpTools(
                 });
             }
 
+            // AC-1367: a key may start only what it could see afterwards, and a session without a project is visible
+            // only to a key with every project. A pairing is not held to this (AC-795).
+            if (projectId is not { Length: > 0 } && !_Caller().AllowsSession(allowedProfile.Label, null, pairing))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = "The scope of this connect key is limited to certain projects, so a start must name one of them. Call list_node_projects for the ones it does.",
+                });
+            }
+
             if (await _ActiveWorkspaceIdAsync().ConfigureAwait(false) is not { } workspaceId)
             {
                 return _Serialize(new { ok = false, error = "This node has no desk that can hold a session just now." });
@@ -584,7 +595,7 @@ internal sealed class NodeSessionMcpTools(
                 capability = key.Capability.ToString().ToLowerInvariant(),
                 expiresAt = key.ExpiresAt,
                 scope = _ScopeJson(key.EffectiveScope()),
-                note ="This is the only time the key is shown. Store it now.",
+                note = "This is the only time the key is shown. Store it now.",
             });
         }
         catch (Exception exception)

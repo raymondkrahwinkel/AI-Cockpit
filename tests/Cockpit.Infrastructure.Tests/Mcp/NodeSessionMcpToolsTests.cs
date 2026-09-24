@@ -177,10 +177,12 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         new("testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: scope);
 
     // AC-1367 criteria 1 and 2: a key scoped to one project cannot start in another, and a key without the bypass
-    // grant cannot start a profile that skips its approvals — each refused with the scope as the reason.
+    // grant cannot start a profile that skips its approvals — each refused with the scope as the reason. Nor can it
+    // start without a project, which would leave a session it could not see or stop.
     [Theory]
     [InlineData(AllowedProfile, "project-not-in-scope", "scope of this connect key")]
     [InlineData(UnattendedProfile, null, "mayStartBypassProfiles")]
+    [InlineData(AllowedProfile, null, "must name one of them")]
     public async Task Start_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReason(string profile, string? projectId, string reason)
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId, KeyScopedToTheAllowedProject);

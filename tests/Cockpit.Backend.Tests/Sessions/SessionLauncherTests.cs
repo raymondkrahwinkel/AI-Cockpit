@@ -48,10 +48,11 @@ public class SessionLauncherTests
     [Fact]
     public async Task AnSdkStart_WithoutAnApp_IsInTheRegistry_TakesItsPrompt_AndFormsTheAnswer()
     {
-        var started = await _Launcher().StartSessionAsync(_Request(PaneSessionKind.Sdk, prompt: "hello"));
+        var started = await _Launcher().StartSessionAsync(_Request(PaneSessionKind.Sdk, prompt: "hello", projectId: "project-1"));
 
         var handle = Assert.Single(_registry.All);
-        Assert.Equal((started?.PaneId, (bool?)true), (handle.PaneId, started?.PromptDelivered));
+        // AC-1367: the project rides on the handle, which a project-scoped connect key's visibility is decided on.
+        Assert.Equal((started?.PaneId, (bool?)true, "project-1"), (handle.PaneId, started?.PromptDelivered, handle.ProjectId));
         await _runtime.Received(1).SendUserMessageAsync("hello", Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
 
         _Raise(new AssistantTextCompleted { SessionId = "S1", Text = "hello back" }, new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "hello back", IsError = false });
@@ -130,9 +131,9 @@ public class SessionLauncherTests
         _manager,
         new RecordingTime(_steps));
 
-    private SessionLaunchRequest _Request(PaneSessionKind? kind, string? prompt = null) => new(
+    private SessionLaunchRequest _Request(PaneSessionKind? kind, string? prompt = null, string? projectId = null) => new(
         _desk.Id, new SessionProfile("work", new ClaudeConfig("/fake/.claude")), prompt, WorkingDirectory: null, SessionName: null, kind,
-        LaunchOptions: null, IsolateInWorktree: null, ProjectId: null, StartedByTheAssistant: false);
+        LaunchOptions: null, IsolateInWorktree: null, ProjectId: projectId, StartedByTheAssistant: false);
 
     private AssistantAgentGateway _Gateway()
     {

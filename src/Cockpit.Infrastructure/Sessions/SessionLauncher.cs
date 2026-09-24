@@ -77,7 +77,7 @@ public sealed class SessionLauncher(
         var name = string.IsNullOrWhiteSpace(request.SessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : request.SessionName.Trim();
         var host = new SessionHost<QueuedPrompt>(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
         var handle = new SessionHostHandle(
-            paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, request.WorkingDirectory, profile.Label, host);
+            paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, request.WorkingDirectory, profile.Label, host, request.ProjectId);
 
         // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
         if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && _Register(handle)).ConfigureAwait(false))
