@@ -152,6 +152,10 @@ public sealed class CockpitBackend
         }
 
         _pluginSettingsSeeded = true;
+
+        // ponytail: blocks on its store loads, as the whole plugin startup does (_LoadPlugins, PluginStorage.ForPlugin):
+        // synchronous by design, before the UI or on its thread with loads that never capture it. Ceiling: an async
+        // startup that awaits these, once a frontend needs one.
         var declared = Services.GetRequiredService<IPluginSecretFieldStore>().LoadAsync().GetAwaiter().GetResult()
             .Concat(plugins.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
             .ToList();

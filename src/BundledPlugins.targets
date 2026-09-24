@@ -62,7 +62,7 @@
     <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.FanOut\Cockpit.Plugin.FanOut.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
-    <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
+    <!-- Claude as a provider plugin (Phase 4): Claude used to be a core feature and is now a plugin like the
          others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
          and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
     <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"

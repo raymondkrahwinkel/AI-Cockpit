@@ -101,17 +101,21 @@ public class PluginSessionBindingTests
     // AC-1392: the plugin host looks a pane up before it acts, and the pane can close in between; the handle asks
     // again inside the UI callback that acts, so a pane no longer live takes nothing.
     [Fact]
-    public void APaneHandle_WhoseSessionIsNoLongerLive_TakesNoTextAndNoName() => Dispatcher.UIThread.Invoke(() =>
+    public async Task APaneHandle_WhoseSessionIsNoLongerLive_TakesNoTextAndNoName()
     {
-        var session = new SessionViewModel();
-        var originalTitle = session.Title;
-        var handle = new SessionPanelHandle(session, isEmbedded: false, () => null, isLive: () => false);
+        var (sent, named, inputText, title, originalTitle) = await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var session = new SessionViewModel();
+            var originalTitle = session.Title;
+            var handle = new SessionPanelHandle(session, isEmbedded: false, () => null, isLive: () => false);
 
-        var sent = handle.InjectAndSubmitAsync("anyone there?").GetAwaiter().GetResult();
-        var named = handle.SetNameAsync("AC-1392").GetAwaiter().GetResult();
+            var sent = await handle.InjectAndSubmitAsync("anyone there?");
+            var named = await handle.SetNameAsync("AC-1392");
+            return (sent, named, session.InputText, session.Title, originalTitle);
+        });
 
-        Assert.Equal((false, false, string.Empty, originalTitle), (sent, named, session.InputText, session.Title));
-    });
+        Assert.Equal((false, false, string.Empty, originalTitle), (sent, named, inputText, title));
+    }
 
     private static (ICockpitHost Host, CockpitViewModel Cockpit, SessionViewModel Session) _HostWithOneSession()
     {
