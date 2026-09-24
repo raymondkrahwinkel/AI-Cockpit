@@ -1,4 +1,4 @@
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Microsoft.Extensions.Logging.Abstractions;
 

@@ -1,4 +1,3 @@
-using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -6,7 +5,7 @@ namespace Cockpit.Core.Tests.Plugins;
 /// <summary>
 /// <see cref="PluginDiagnostics.ForFolder"/> (#184): a folder can accumulate more than one recorded failure —
 /// a compatibility warning at load time, then a runtime failure from a contribution that throws afterwards
-/// (e.g. <see cref="CockpitHost.AddMcpServer"/>). The manager row needs the plugin's current state, which is
+/// (e.g. <see cref="PluginBackendHost.AddMcpServer"/>). The manager row needs the plugin's current state, which is
 /// the last one recorded, not the first.
 /// </summary>
 public class PluginDiagnosticsTests

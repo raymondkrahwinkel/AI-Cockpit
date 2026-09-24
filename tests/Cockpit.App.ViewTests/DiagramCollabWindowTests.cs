@@ -9,7 +9,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Plugins;
@@ -605,7 +604,7 @@ public class DiagramCollabWindowTests
     }
 
     // Live for the one pane the fake cockpit is running, detached for anything else — the same split
-    // CockpitHost.BindToSession makes.
+    // DesktopPluginHost.BindToSession makes.
     internal sealed class FakeBinding(string paneId) : IPluginSessionBinding
     {
         public string PaneId => paneId;

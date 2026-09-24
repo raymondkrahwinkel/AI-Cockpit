@@ -10,7 +10,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.AddSharedProjectSource"/>/<see cref="CockpitHost.RemoveSharedProjectSource"/> (AC-245):
+/// <see cref="DesktopPluginHost.AddSharedProjectSource"/>/<see cref="DesktopPluginHost.RemoveSharedProjectSource"/> (AC-245):
 /// the host's forwarding half of <see cref="ISharedProjectSourceRegistry"/>, exercised through the real DI-resolved
 /// registry rather than a mock — <c>Cockpit.Backend.Tests.Projects.SharedProjectSourceRegistryTests</c> already
 /// covers the registry's own rules in isolation. Mirrors <see cref="CockpitHostProjectMemorySourceTests"/>.
@@ -73,7 +73,7 @@ public class CockpitHostSharedProjectSourceTests
         services.AddServices(typeof(SharedProjectSourceRegistry).Assembly);
         var provider = services.BuildServiceProvider();
 
-        return new CockpitHost(
+        return new DesktopPluginHost(
             "test-plugin",
             "Test Plugin",
             provider,

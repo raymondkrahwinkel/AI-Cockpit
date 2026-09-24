@@ -1,4 +1,3 @@
-using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;

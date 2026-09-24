@@ -456,7 +456,11 @@
          to its UI part, whose other half and ICockpitUiHost live in the new Cockpit.Plugins.Abstractions.UI.
          A plugin that uses either sets minHostVersion 0.39.0. Additions only — a minor; major and
          abstractionsVersion stay 2. -->
-    <Version>1.67.0</Version>
+    <!-- 1.68.0 (AC-1392): ICockpitHost.AddSettings(Func<Control>), AddSideMenuSection and the four-argument
+         ShowDialogAsync got no-op default bodies, so a backend host with no window need not name Avalonia. No
+         member added or removed and no plugin has to change; F2.14 (AC-1369) removes the three with the rest of
+         the window members. A minor; major and abstractionsVersion stay 2. -->
+    <Version>1.68.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

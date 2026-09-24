@@ -43,4 +43,9 @@
                       ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
+  <!-- AC-1392: the nine bundled plugins beside the output, built but never referenced, so a backend without App can
+       be shown loading them from bundled-plugins the way the desktop does. Here rather than in Cockpit.Backend.Tests:
+       loading them brings Avalonia into the process until the flip (F2.14), which that suite guards against. -->
+  <Import Project="..\..\src\BundledPlugins.targets" />
+
 </Project>

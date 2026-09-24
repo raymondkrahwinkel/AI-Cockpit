@@ -8,7 +8,10 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.39.0: the plugin contract gains its window half next to the existing one (AC-1389): the new
+    <!-- 0.40.0: a backend with no App loads plugins and runs their backend part (AC-1392): plugin discovery, loading and
+         Initialize moved into the backend's startup steps, with a host that needs no window. No new plugin-facing
+         member, so no plugin raises its minHostVersion for this.
+         0.39.0: the plugin contract gains its window half next to the existing one (AC-1389): the new
          Cockpit.Plugins.Abstractions.UI with ICockpitPluginUi/ICockpitUiHost, a channel between a plugin's
          backend and UI part (ICockpitHost.Channel), and uiAssembly/uiEntryType in plugin.json, which also lets a
          plugin be only a UI part. A plugin that uses any of these sets minHostVersion 0.39.0.
@@ -283,7 +286,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.39.0</VersionPrefix>
+    <VersionPrefix>0.40.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

@@ -1,9 +1,8 @@
 using Avalonia.Input.Platform;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Delegation;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
@@ -15,11 +14,8 @@ public sealed class PluginActions(
     Func<IClipboard?> clipboardFactory,
     ISessionDialogService dialogService,
     ISessionProfileStore profileStore,
-    IDelegationService delegation) : ICockpitActions
+    PluginBackendActions backend) : ICockpitActions
 {
-    private static readonly TimeSpan DefaultPatience = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan Beat = TimeSpan.FromMilliseconds(500);
-
     public bool HasActiveSession => cockpit.SelectedSession is not null;
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") =>
@@ -52,50 +48,12 @@ public sealed class PluginActions(
             }
         });
 
-    // #67, #69: hands work to another profile as a background task via the cockpit's own delegation service,
-    // so it is refused by the same rules and shows up in the delegated-tasks view like any agent's delegation.
+    // #67, #69, AC-1392: delegation needs no window, so it is the backend's, whose rules and tasks view it shares.
     public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
-        DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission: null);
+        backend.DelegateAsync(profileLabel, prompt, workingDirectory, timeout);
 
-    // AC-971: `permission` left null runs the task read-only, whatever the target profile would allow — a plugin
-    // that wants a task to change files says so, the same as an agent does on delegate_task.
-    public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission)
-    {
-        var task = await delegation
-            .DelegateAsync(new DelegationRequest(profileLabel, prompt, WorkingDirectory: workingDirectory, RequestedPermission: permission))
-            .ConfigureAwait(false);
-
-        var deadline = DateTimeOffset.UtcNow + (timeout ?? DefaultPatience);
-
-        // Polled rather than awaited on an event: the service's TasksChanged says *something* changed, and turning
-        // that into "my task finished" is a subscription this call would have to unwind on every exit path. Half a
-        // second of latency on a task that takes minutes is not worth that.
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            if (delegation.GetTask(task.TaskId) is not { } current)
-            {
-                throw new InvalidOperationException($"The task handed to '{profileLabel}' disappeared before it answered.");
-            }
-
-            switch (current.Status)
-            {
-                case DelegatedTaskStatus.Completed:
-                    return current.Result ?? string.Empty;
-
-                case DelegatedTaskStatus.Failed:
-                    throw new InvalidOperationException($"'{profileLabel}' failed: {current.Error ?? "no reason given"}");
-
-                case DelegatedTaskStatus.Stopped:
-                    throw new InvalidOperationException($"The task handed to '{profileLabel}' was stopped.");
-            }
-
-            await Task.Delay(Beat).ConfigureAwait(false);
-        }
-
-        // The task is left running: it is real work, it is visible in the tasks view, and killing it because the
-        // caller grew impatient would throw away whatever it had done.
-        throw new TimeoutException($"'{profileLabel}' had not answered after {(timeout ?? DefaultPatience).TotalMinutes:0} minutes. The task is still running — it is in the delegated tasks view.");
-    }
+    public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission) =>
+        backend.DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission);
 
     // Both overloads are implemented, and the unnamed one delegates to the named one — never the other way around.
     // The interface's defaults run in the opposite direction, so an implementation that delegated the same way they

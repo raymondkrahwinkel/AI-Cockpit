@@ -6,13 +6,12 @@ using Cockpit.Infrastructure.Plugins;
 namespace Cockpit.Backend.Tests.Plugins;
 
 // AC-1391: the pluginloader, storage and UI-free registries moved from Cockpit.App without a behaviour change.
-// PluginManager/PluginActivator stayed behind — see the ticket's final comment (their AC-1389 ICockpitUiHost
-// surface pulls Avalonia.Controls into the process merely by loading the type, which BackendWithoutAppTests guards).
+// AC-1392: PluginManager/PluginActivator followed once their UI phase moved to the desktop's PluginUiManager.
 public class MovedPluginTypesArchitectureTests
 {
     public static IEnumerable<object[]> MovedTypes { get; } =
     [
-        [typeof(PluginLoadContext)], [typeof(PluginStorage)],
+        [typeof(PluginManager)], [typeof(PluginActivator)], [typeof(PluginLoadContext)], [typeof(PluginStorage)],
         [typeof(PluginCacheStore)], [typeof(PluginDiagnostics)], [typeof(PluginFailure)], [typeof(PluginIssueSeverity)],
         [typeof(PluginPendingApproval)], [typeof(PluginIntentRegistry)], [typeof(IPluginIntentRegistry)],
         [typeof(AutopilotTemplateRegistry)], [typeof(IAutopilotTemplateRegistry)],

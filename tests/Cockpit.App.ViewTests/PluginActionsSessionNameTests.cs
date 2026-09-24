@@ -4,6 +4,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Infrastructure.Plugins;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -61,7 +62,7 @@ public class PluginActionsSessionNameTests
                 () => null,
                 Substitute.For<ISessionDialogService>(),
                 Substitute.For<ISessionProfileStore>(),
-                Substitute.For<IDelegationService>());
+                new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
             return (actions, session);
         });

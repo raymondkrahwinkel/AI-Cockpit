@@ -575,6 +575,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a cockpit running without its window, the backend on its own, now loads the installed plugins and
+  runs their background part: the providers, workflow steps and agent tools they add are there without a desktop.
+  Anything a plugin would show in a window is left out there. On the desktop, plugins look and work as before. For
+  plugin authors, the SDK no longer requires `AddSettings`, `AddSideMenuSection` and `ShowDialogAsync` to be
+  implemented by a host.
 - changed: the diagram, whiteboard and wireframe windows now reach their shared documents over the plugin's own
   channel instead of the cockpit's internals; they look and work as before. An agent asking a cockpit without a
   window to open one now hears that nothing opened, rather than being told it did.

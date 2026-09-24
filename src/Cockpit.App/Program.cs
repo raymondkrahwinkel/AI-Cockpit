@@ -14,7 +14,6 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
-using Cockpit.Plugins.Abstractions;
 using Velopack;
 
 namespace Cockpit.App;
@@ -90,7 +89,12 @@ sealed class Program
         // Up front, before anything resolves a tool or spawns a session: the PATH repair and the stale-process sweep.
         CockpitBackend.RepairProcess(loggerFactory);
 
-        var backend = CockpitBackend.Build(loggerFactory, services => _AddDesktop(services, loggerFactory, args));
+        // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
+        // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
+        var backend = CockpitBackend.Build(
+            loggerFactory,
+            services => _AddDesktop(services, loggerFactory),
+            args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load);
         Services = backend.Services;
 
         if (args.Contains("--audio-spike"))
@@ -154,8 +158,8 @@ sealed class Program
     }
 
     // The desktop's own registrations on top of the backend's: its scanned services, which replace the backend's
-    // no-frontend defaults, then the plugins, which may register services of their own (#14).
-    private static void _AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory, string[] args)
+    // no-frontend defaults. The plugins' own registrations follow in the backend's plugin phase 1 (#14).
+    private static void _AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory)
     {
         services.AddServices(typeof(Program).Assembly);
 
@@ -164,42 +168,14 @@ sealed class Program
         services.AddSingleton(provider => ActivatorUtilities.CreateInstance<AssistantSessionHost>(
             provider, new UiThreadControllerPresence(provider.GetRequiredService<INodeControllerPresence>())));
 
-        // Discover plugins before building the container so selected plugins can register services (#14), with
-        // failures isolated. Safe mode is a UI-independent command-line escape hatch that still discovers plugins
-        // for pending removals and management, but skips loading them (AC-478).
-        var safeMode = args.Contains(PluginManager.SafeModeArgument);
-        var pluginDiagnostics = new PluginDiagnostics();
-        services.AddSingleton(pluginDiagnostics);
-        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics, safeMode);
-        try
-        {
-            // Install bundled former-core plugins before discovery for first-run availability. This is best-effort
-            // so failure cannot hide operator-installed plugins.
-            _InstallBundledPlugins(loggerFactory);
-#if DEBUG
-            // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes,
-            // so a rebuild lands in the sandbox without a hand copy. A release has no plugins-dev to find.
-            _RefreshDevPlugins(loggerFactory);
-#endif
+        // AC-1392: the UI half of the plugin lifecycle, over the manager the backend's plugin phase 1 registers.
+        services.AddSingleton(provider => new PluginUiManager(
+            loggerFactory.CreateLogger<PluginUiManager>(),
+            provider.GetRequiredService<PluginDiagnostics>(),
+            provider.GetRequiredService<PluginManager>()));
 
-            // The startup pass, which is the only thing that applies a staged update or a marked removal: this is
-            // the one moment no plugin is loaded yet, which is the whole reason both are deferred to a restart.
-            // Every other discovery in the app (the plugin manager's, the update checker's) reads and no more.
-            var discoveredPlugins = new PluginBootstrap()
-                .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
-            var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
-            pluginManager.LoadAndConfigure(discoveredPlugins, services, pluginActivator.Activate);
-        }
-        catch (Exception exception)
-        {
-            loggerFactory.CreateLogger<Program>().LogError(exception, "Plugin discovery failed; continuing without plugins.");
-        }
-
-        services.AddSingleton(pluginManager);
-
-        // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed,
-        // so it is registered after the manager it asks. Nothing is scanned until the help is first opened or
-        // a `?` asks whether its target exists.
+        // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed.
+        // Nothing is scanned until the help is first opened or a `?` asks whether its target exists.
         services.AddSingleton<HelpService>();
 
         services.AddSessionPanes();
@@ -354,60 +330,6 @@ sealed class Program
         };
         watchdog.Start();
     }
-
-    // Puts the plugins this build ships into the operator's plugins directory (see BundledPluginInstaller).
-    // Best-effort: a plugin that cannot be copied is logged and skipped, and the app carries on with whatever
-    // is already installed — a bundled plugin is a convenience, not a dependency.
-    private static void _InstallBundledPlugins(ILoggerFactory loggerFactory)
-    {
-        var bundledRoot = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName);
-
-        try
-        {
-            var installed = new BundledPluginInstaller(loggerFactory.CreateLogger<BundledPluginInstaller>())
-                .InstallAsync(bundledRoot, PluginBootstrap.PluginsRoot)
-                .GetAwaiter()
-                .GetResult();
-
-            if (installed.Count > 0)
-            {
-                loggerFactory.CreateLogger<Program>().LogInformation(
-                    "Installed the plugins shipped with this build: {Plugins}", string.Join(", ", installed));
-            }
-        }
-        catch (Exception exception)
-        {
-            loggerFactory.CreateLogger<Program>().LogWarning(
-                exception, "Could not install the bundled plugins; continuing with whatever is already installed.");
-        }
-    }
-
-#if DEBUG
-    // Refreshes already-installed first-party plugins from their freshly built output (see DevPluginInstaller):
-    // the dev-machine half of the "installed copy does not move with source" fix. Best-effort and DEBUG only —
-    // it only refreshes what is installed, never installs anything new, and finds nothing off a dev checkout.
-    private static void _RefreshDevPlugins(ILoggerFactory loggerFactory)
-    {
-        try
-        {
-            var refreshed = new DevPluginInstaller(loggerFactory.CreateLogger<DevPluginInstaller>())
-                .InstallAsync(PluginBootstrap.PluginsRoot)
-                .GetAwaiter()
-                .GetResult();
-
-            if (refreshed.Count > 0)
-            {
-                loggerFactory.CreateLogger<Program>().LogInformation(
-                    "Refreshed first-party plugins from the dev build: {Plugins}", string.Join(", ", refreshed));
-            }
-        }
-        catch (Exception exception)
-        {
-            loggerFactory.CreateLogger<Program>().LogWarning(
-                exception, "Could not refresh dev plugins; continuing with whatever is already installed.");
-        }
-    }
-#endif
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()

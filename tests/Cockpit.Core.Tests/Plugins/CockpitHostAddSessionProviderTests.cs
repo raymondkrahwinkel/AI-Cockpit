@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.AddSessionProvider"/> (#45): a plugin's registration reaches the shared
+/// <see cref="DesktopPluginHost.AddSessionProvider"/> (#45): a plugin's registration reaches the shared
 /// <see cref="IPluginProviderRegistry"/> singleton resolved from the host's service provider — the same
 /// registry <c>SessionDriverFactory</c> consults when starting a plugin-backed session.
 /// </summary>
@@ -20,7 +20,7 @@ public class CockpitHostAddSessionProviderTests
     {
         var registry = new PluginProviderRegistry();
         var services = new ServiceCollection().AddSingleton<IPluginProviderRegistry>(registry).BuildServiceProvider();
-        var host = new CockpitHost(
+        var host = new DesktopPluginHost(
             "gemini-provider",
             "Gemini Provider",
             services,

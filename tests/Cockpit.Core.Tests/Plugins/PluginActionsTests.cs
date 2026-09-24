@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -17,7 +18,7 @@ public class PluginActionsTests
     public void HasActiveSession_ReflectsTheSelectedSession()
     {
         var cockpit = new CockpitViewModel();
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         cockpit.SelectedSession = new SessionViewModel();
         Assert.True(actions.HasActiveSession);
@@ -32,7 +33,7 @@ public class PluginActionsTests
         var cockpit = new CockpitViewModel();
         var session = new SessionViewModel();
         cockpit.SelectedSession = session;
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         await actions.InjectIntoActiveSessionAsync("issue #42: fix the thing");
 
@@ -43,7 +44,7 @@ public class PluginActionsTests
     public async Task InjectIntoActiveSessionAsync_NoActiveSession_DoesNotThrow()
     {
         var cockpit = new CockpitViewModel { SelectedSession = null };
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         var act = () => actions.InjectIntoActiveSessionAsync("x");
 
@@ -56,7 +57,7 @@ public class PluginActionsTests
         // Avalonia 12's IClipboard.SetTextAsync is an extension over SetDataAsync(DataTransfer), so assert
         // a clipboard write happened rather than binding to the exact member the extension calls.
         var clipboard = Substitute.For<IClipboard>();
-        var actions = new PluginActions(new CockpitViewModel(), () => clipboard, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
+        var actions = new PluginActions(new CockpitViewModel(), () => clipboard, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         await actions.SetClipboardTextAsync("copied");
 
@@ -66,7 +67,7 @@ public class PluginActionsTests
     [Fact]
     public async Task SetClipboardTextAsync_NoClipboard_DoesNotThrow()
     {
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         var act = () => actions.SetClipboardTextAsync("x");
 
@@ -85,7 +86,7 @@ public class PluginActionsTests
             new SessionProfile("Private", new ClaudeConfig("/home/raymond/.claude-private")),
         ]));
 
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), profiles, Substitute.For<IDelegationService>());
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), profiles, new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         var act = () => actions.StartSessionAsync("Wrok", "do the thing");
 
@@ -99,7 +100,7 @@ public class PluginActionsTests
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync().Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));
 
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), profiles, Substitute.For<IDelegationService>());
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), profiles, new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
 
         var act = () => actions.StartSessionAsync("Work");
 
@@ -112,7 +113,7 @@ public class PluginActionsTests
     {
         var delegation = _Delegation(_Task(DelegatedTaskStatus.Completed, result: "Done — 3 files changed"));
 
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), delegation);
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), delegation));
 
         Assert.Equal("Done — 3 files changed", (await actions.DelegateAsync("reviewer", "review the diff")));
     }
@@ -124,7 +125,7 @@ public class PluginActionsTests
         // go — a comment on a ticket saying nothing at all, and a run that reports green.
         var delegation = _Delegation(_Task(DelegatedTaskStatus.Failed, error: "the model refused"));
 
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), delegation);
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), delegation));
 
         var act = () => actions.DelegateAsync("reviewer", "review the diff");
 
@@ -139,7 +140,7 @@ public class PluginActionsTests
         // caller grew impatient would discard whatever it had already done.
         var delegation = _Delegation(_Task(DelegatedTaskStatus.Running));
 
-        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), delegation);
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), delegation));
 
         var act = () => actions.DelegateAsync("reviewer", "review the diff", timeout: TimeSpan.Zero);
 

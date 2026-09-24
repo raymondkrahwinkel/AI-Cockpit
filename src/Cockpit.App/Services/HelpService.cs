@@ -14,7 +14,7 @@ public sealed class HelpService
     private HelpIndex? _index;
     private HelpWindow? _window;
 
-    public HelpService(PluginManager plugins) => _sources = () => _FromPlugins(plugins);
+    public HelpService(PluginUiManager plugins) => _sources = () => _FromPlugins(plugins);
 
     // A knowledge base over exactly these assemblies and no plugin manager behind it — what a headless render
     // stages a scene from, and what a test builds a known index with.
@@ -91,7 +91,7 @@ public sealed class HelpService
 
     // The app's own assembly is registered exactly the way a plugin's is. If the core documentation took a
     // path of its own, this would be a plugin feature with an exception standing beside it.
-    private static IEnumerable<HelpDocumentSource> _FromPlugins(PluginManager plugins)
+    private static IEnumerable<HelpDocumentSource> _FromPlugins(PluginUiManager plugins)
     {
         yield return new HelpDocumentSource(HelpOwner.Core, typeof(HelpService).Assembly);
 

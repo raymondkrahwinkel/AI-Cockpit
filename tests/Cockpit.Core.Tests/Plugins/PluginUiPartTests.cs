@@ -27,7 +27,7 @@ public class PluginUiPartTests
         manager.LoadAndConfigure([withUi, backendOnly], new ServiceCollection(), candidate => new BackendPart(candidate.FolderId));
         var hosts = new Dictionary<string, ICockpitUiHost>();
 
-        manager.InitializeUi(PluginActivator.ActivateUi, (discovered, _) => hosts[discovered.FolderId] = Substitute.For<ICockpitUiHost>());
+        _UiManager(manager, new PluginDiagnostics()).InitializeUi(PluginUiManager.ActivateUi, (discovered, _) => hosts[discovered.FolderId] = Substitute.For<ICockpitUiHost>());
 
         Assert.Equal(["with-ui"], hosts.Keys);
         Assert.Same(hosts["with-ui"], RecordingUiPart.LastHost.Value);
@@ -43,7 +43,7 @@ public class PluginUiPartTests
         manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => backend);
         manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
 
-        manager.InitializeUi(PluginActivator.ActivateUi, (_, _) => Substitute.For<ICockpitUiHost>());
+        _UiManager(manager, diagnostics).InitializeUi(PluginUiManager.ActivateUi, (_, _) => Substitute.For<ICockpitUiHost>());
 
         var failure = Assert.Single(diagnostics.Failures);
         Assert.Equal("initialize-ui", failure.Phase);
@@ -63,7 +63,7 @@ public class PluginUiPartTests
         var uiHost = Substitute.For<ICockpitUiHost>();
 
         manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
-        manager.InitializeUi(PluginActivator.ActivateUi, (_, _) => uiHost);
+        _UiManager(manager, new PluginDiagnostics()).InitializeUi(PluginUiManager.ActivateUi, (_, _) => uiHost);
 
         Assert.Equal(1, plugin.InitializeCount);
         Assert.Same(uiHost, plugin.UiHost);
@@ -79,7 +79,7 @@ public class PluginUiPartTests
         var ui = new RecordingUiPart();
 
         manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new BackendPart($"activation {++backendActivations}"));
-        manager.InitializeUi((_, _) => ui, (_, _) => Substitute.For<ICockpitUiHost>());
+        _UiManager(manager, new PluginDiagnostics()).InitializeUi((_, _) => ui, (_, _) => Substitute.For<ICockpitUiHost>());
 
         Assert.Equal(0, backendActivations);
         Assert.NotNull(ui.Host);
@@ -127,6 +127,9 @@ public class PluginUiPartTests
     };
 
     private static PluginManager _Manager(PluginDiagnostics diagnostics) => new(NullLogger<PluginManager>.Instance, diagnostics);
+
+    private static PluginUiManager _UiManager(PluginManager backend, PluginDiagnostics diagnostics) =>
+        new(NullLogger<PluginUiManager>.Instance, diagnostics, backend);
 
     private static DiscoveredPlugin _Discovered(string id, string? uiAssembly, string? uiEntryType) => new(
         AppContext.BaseDirectory, id,

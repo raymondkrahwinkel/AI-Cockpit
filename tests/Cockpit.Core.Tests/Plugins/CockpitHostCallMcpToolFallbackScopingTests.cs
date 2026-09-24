@@ -13,7 +13,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// AC-499: <see cref="CockpitHost.CallMcpToolAsync"/> hands <see cref="IMcpToolInvoker.InvokeAsync"/> a
+/// AC-499: <see cref="DesktopPluginHost.CallMcpToolAsync"/> hands <see cref="IMcpToolInvoker.InvokeAsync"/> a
 /// caller-scoped fallback candidate list (<c>callerFallbackServers</c>) built from this plugin's <em>own</em>
 /// <see cref="IPluginMcpProvider"/> contributions only — never another plugin's, even though those live in the
 /// same container-wide <c>services.GetServices&lt;IPluginMcpProvider&gt;()</c> set and even though the separate
@@ -49,7 +49,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
     [Fact]
     public async Task NoOwnPluginTypeSupplied_TheFallbackIsEmpty()
     {
-        // Every existing CockpitHost test that never passes ownPluginType (the vast majority) must keep behaving
+        // Every existing DesktopPluginHost test that never passes ownPluginType (the vast majority) must keep behaving
         // exactly as before this fix — an empty fallback, same as if AC-499 had never touched this path.
         var invoker = Substitute.For<IMcpToolInvoker>();
         IReadOnlyList<McpServerConfig>? captured = null;
@@ -103,7 +103,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
         Assert.Equal("No enabled MCP server named \"Other: Server\".", accepted.Error);
     }
 
-    private static CockpitHost _BuildHost(IMcpToolInvoker invoker, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
+    private static DesktopPluginHost _BuildHost(IMcpToolInvoker invoker, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
     {
         var collection = new ServiceCollection().AddSingleton(invoker);
         foreach (var provider in providers)
@@ -116,7 +116,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
         collection.AddSingleton(store);
 
         var services = collection.BuildServiceProvider();
-        return new CockpitHost(
+        return new DesktopPluginHost(
             "own",
             "Own Plugin",
             services,
@@ -132,7 +132,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
 
     // Two distinct concrete types standing in for "this plugin's own IPluginMcpProvider" and "some other plugin's" —
     // the exact shape the real Depot plugin uses (services.AddSingleton<IPluginMcpProvider>(this)), which is why
-    // CockpitHost's own scoping matches by the provider's concrete runtime type.
+    // DesktopPluginHost's own scoping matches by the provider's concrete runtime type.
     private sealed class _FakeMcpProviderA(IReadOnlyList<McpServerContribution> servers) : IPluginMcpProvider
     {
         public IReadOnlyList<McpServerContribution> GetMcpServers() => servers;

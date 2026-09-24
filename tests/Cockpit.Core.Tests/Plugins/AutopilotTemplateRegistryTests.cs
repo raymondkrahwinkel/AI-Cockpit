@@ -85,7 +85,7 @@ public class AutopilotTemplateRegistryTests
     private sealed class OlderHost : SessionHeaderItemTests.HostWithoutHeaderItems;
 
     private static ICockpitHost NewHost(string pluginId, IServiceProvider services) =>
-        new CockpitHost(
+        new DesktopPluginHost(
             pluginId,
             pluginId,
             services,

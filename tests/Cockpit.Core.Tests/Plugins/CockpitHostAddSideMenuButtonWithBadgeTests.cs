@@ -10,9 +10,9 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.AddSideMenuButtonWithBadge"/> (AC-516): a badge-carrying side-menu launcher forwards to
+/// <see cref="DesktopPluginHost.AddSideMenuButtonWithBadge"/> (AC-516): a badge-carrying side-menu launcher forwards to
 /// the contribution sink's badge-carrying overload, tagged with the plugin id like every other menu contribution —
-/// and, unlike <see cref="CockpitHost.AddSideMenuButton"/>, hands the plugin back a live handle it keeps to update
+/// and, unlike <see cref="DesktopPluginHost.AddSideMenuButton"/>, hands the plugin back a live handle it keeps to update
 /// the counter later.
 /// </summary>
 public class CockpitHostAddSideMenuButtonWithBadgeTests
@@ -80,7 +80,7 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
         Assert.NotNull(badge); // the plugin still gets a real handle back, even though this sink never renders it
     }
 
-    private static CockpitHost _BuildHost(IPluginContributionSink sink) =>
+    private static DesktopPluginHost _BuildHost(IPluginContributionSink sink) =>
         new(
             "github-pull-requests",
             "GitHub Pull Requests",

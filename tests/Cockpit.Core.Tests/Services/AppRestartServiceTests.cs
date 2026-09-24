@@ -1,4 +1,4 @@
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.Services;

@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.ClaimProjectOwnership"/>/<see cref="CockpitHost.GetProjectFieldOwnership"/> (AC-604): the
+/// <see cref="DesktopPluginHost.ClaimProjectOwnership"/>/<see cref="DesktopPluginHost.GetProjectFieldOwnership"/> (AC-604): the
 /// host's forwarding half of <see cref="IProjectOwnershipRegistry"/>, exercised through the real DI-resolved
 /// registry rather than a mock — <see cref="ProjectOwnershipRegistryTests"/> already covers the registry's own rules.
 /// </summary>
@@ -51,7 +51,7 @@ public class CockpitHostProjectOwnershipTests
         services.AddServices(typeof(ProjectOwnershipRegistry).Assembly);
         var provider = services.BuildServiceProvider();
 
-        return new CockpitHost(
+        return new DesktopPluginHost(
             "test-plugin",
             "Test Plugin",
             provider,

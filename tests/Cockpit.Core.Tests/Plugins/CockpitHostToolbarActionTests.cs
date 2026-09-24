@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="CockpitHost.AddToolbarAction"/> (AC-91): a plugin's Sessions-toolbar action reaches the running UI
+/// <see cref="DesktopPluginHost.AddToolbarAction"/> (AC-91): a plugin's Sessions-toolbar action reaches the running UI
 /// through the contribution sink, tagged with the plugin id — the same wiring as the other status-bar/menu
 /// contributions — so the toolbar can render its button (and #72 order/hide can apply).
 /// </summary>
@@ -27,7 +27,7 @@ public class CockpitHostToolbarActionTests
         sink.Received(1).AddToolbarAction("docker", action);
     }
 
-    private static CockpitHost _BuildHost(IPluginContributionSink sink) =>
+    private static DesktopPluginHost _BuildHost(IPluginContributionSink sink) =>
         new(
             "docker",
             "Docker",

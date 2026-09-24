@@ -1108,7 +1108,7 @@ public class CockpitViewModelTests
 
     // #52: a settings-Save should let a plugin's already-built contributions (e.g. a side-menu section that
     // fetched data once at construction) refresh without an app restart. CockpitViewModel is the
-    // IPluginContributionSink every CockpitHost is built against, so it's the seam that routes a save for one
+    // IPluginContributionSink every DesktopPluginHost is built against, so it's the seam that routes a save for one
     // plugin's id to only that plugin's registered callbacks.
     [Fact]
     public void SettingsSaved_RunsOnlyTheHandlersRegisteredForThatPluginId()
