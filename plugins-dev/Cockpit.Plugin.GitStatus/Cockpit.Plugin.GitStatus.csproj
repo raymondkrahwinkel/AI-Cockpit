@@ -18,6 +18,8 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,7 +27,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
-    <ProjectReference Include="UI\Cockpit.Plugin.GitStatus.UI.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <!-- AC-1392: built in this project's own configuration. Without it MSBuild strips Configuration off a reference
+         made outside a solution, the UI part lands in bin/Debug, and a Release copy of the plugin has no UI assembly;
+         discovery then skips the whole plugin, as its manifest names a file that is not there. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.GitStatus.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
