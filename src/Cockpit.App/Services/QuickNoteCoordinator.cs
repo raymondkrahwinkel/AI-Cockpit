@@ -1,12 +1,12 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
-using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 

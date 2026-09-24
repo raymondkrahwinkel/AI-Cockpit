@@ -431,6 +431,8 @@ inline	tests/Cockpit.App.ViewTests/WindowAutomationSuppressionTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	1
+inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
+inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 inline	tests/Cockpit.Core.Tests/Agents/AgentInboxTurnNoticeTests.cs	1
 inline	tests/Cockpit.Core.Tests/Assistant/AssistantConsentBypassPolicyTests.cs	1
 inline	tests/Cockpit.Core.Tests/Claude/OpenAiCompatSessionDriverTests.cs	1
@@ -476,8 +478,6 @@ inline	tests/Cockpit.Core.Tests/Plugins/PluginDiagnosticsTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginHostVersionGateTests.cs	2
 inline	tests/Cockpit.Core.Tests/Plugins/PluginVersionSingleSourceTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/ProjectMemorySourceReachabilityResultTests.cs	1
-inline	tests/Cockpit.Core.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
-inline	tests/Cockpit.Core.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 inline	tests/Cockpit.Core.Tests/Profiles/SessionProfileStoreTests.cs	1
 inline	tests/Cockpit.Core.Tests/Projects/ProjectResourceTests.cs	2
 inline	tests/Cockpit.Core.Tests/Screenshots/ScreenshotCoordinatorTests.cs	1
@@ -622,6 +622,10 @@ summary	tests/Cockpit.App.ViewTests/WhiteboardAccessIntegrationTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	2
+summary	tests/Cockpit.Backend.Tests/Plugins/McpOAuthTokenAdoptionTests.cs	1
+summary	tests/Cockpit.Backend.Tests/Plugins/PluginStorageTests.cs	1
+summary	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
+summary	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 summary	tests/Cockpit.Core.Tests/Backup/BackupSelectionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/ConPtyProcessExitTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/EmbeddedAutopilotPermissionModeTests.cs	1
@@ -661,13 +665,9 @@ summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolFallbackScopingT
 summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/GitHubModelsProviderPluginLoadTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/GitHubPullRequestsPluginLoadTests.cs	1
-summary	tests/Cockpit.Core.Tests/Plugins/McpOAuthTokenAdoptionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/PluginDeferredChangesTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/PluginHostVersionGateTests.cs	1
-summary	tests/Cockpit.Core.Tests/Plugins/PluginStorageTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/PluginVersionSingleSourceTests.cs	1
-summary	tests/Cockpit.Core.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
-summary	tests/Cockpit.Core.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/WorkflowTemplateStoreTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/YouTrackPluginLoadTests.cs	1
 summary	tests/Cockpit.Core.Tests/Projects/ProjectResourceSendsContentTests.cs	1

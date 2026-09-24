@@ -17,7 +17,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.Core.Worktrees;
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;

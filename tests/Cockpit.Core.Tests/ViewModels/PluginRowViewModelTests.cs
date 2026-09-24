@@ -1,6 +1,6 @@
-using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.ViewModels;
 

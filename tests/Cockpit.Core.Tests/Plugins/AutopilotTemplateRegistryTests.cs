@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;

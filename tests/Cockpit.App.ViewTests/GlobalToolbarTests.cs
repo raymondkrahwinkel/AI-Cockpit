@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Services;
 using Cockpit.App.Views;

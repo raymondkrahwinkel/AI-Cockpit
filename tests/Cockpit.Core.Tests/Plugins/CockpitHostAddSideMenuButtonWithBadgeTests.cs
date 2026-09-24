@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;

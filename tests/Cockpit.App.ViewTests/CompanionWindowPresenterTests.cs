@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Layout;

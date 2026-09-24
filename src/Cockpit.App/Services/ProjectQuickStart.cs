@@ -1,4 +1,4 @@
-using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;

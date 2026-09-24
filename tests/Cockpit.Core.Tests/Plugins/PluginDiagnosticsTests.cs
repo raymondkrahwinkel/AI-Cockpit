@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
 

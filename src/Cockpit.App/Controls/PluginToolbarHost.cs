@@ -6,8 +6,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Plugins;
 
 namespace Cockpit.App.Controls;
 

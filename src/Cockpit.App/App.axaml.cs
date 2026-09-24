@@ -27,6 +27,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -547,7 +548,7 @@ public partial class App : Application
 
         // One store for every plugin's cache, read once here (AC-1294): what a plugin can rebuild stays out of
         // `cockpit.json`, where a settings restore would have replaced it with the source machine's copy.
-        var pluginCache = PluginCacheStore.ForStateRoot();
+        var pluginCache = PluginCacheStore.ForStateRoot(Program.Services.GetService<ILogger<PluginCacheStore>>());
 
         // Register plugin-declared secret key names before reading settings, or ciphertext could reach a plugin
         // and remain in a backup labelled credential-free. The names themselves require no key.
