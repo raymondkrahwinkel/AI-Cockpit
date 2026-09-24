@@ -69,14 +69,14 @@ public class PluginManifestTests
         Assert.Equal((null, "Clock.dll", "Clock.Ui"), (manifest?.EntryAssembly, manifest?.UiAssembly, manifest?.UiEntryType));
     }
 
-    // AC-1389 counter-proof: the manifests already in the repository read exactly as they did — an entry assembly,
-    // no UI part.
+    // AC-1389 counter-proof: the manifests in the repository still parse and name an assembly to load. Since AC-1390
+    // a plugin may split in two or be only a UI part, so which of the two it names is no longer pinned here.
     [Theory]
     [MemberData(nameof(InRepoManifests))]
-    public void TryParse_EveryInRepoManifest_StillParsesAsABackendOnlyPlugin(string manifestPath)
+    public void TryParse_EveryInRepoManifest_StillParsesAndNamesAnAssembly(string manifestPath)
     {
         Assert.True(PluginManifest.TryParse(File.ReadAllText(manifestPath), out var manifest, out var error), error);
-        Assert.Equal([manifest?.EntryAssembly ?? "(none)"], manifest?.Assemblies ?? []);
+        Assert.NotEmpty(manifest?.Assemblies ?? []);
     }
 
     public static TheoryData<string> InRepoManifests()
