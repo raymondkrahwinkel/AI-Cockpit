@@ -5,7 +5,7 @@
   "identity": "Cockpit.Plugin.Template",
   "name": "Cockpit plugin",
   "shortName": "cockpit-plugin",
-  "description": "A starter Cockpit plugin: an ICockpitPlugin that contributes a left-menu section which injects text into the active session.",
+  "description": "A starter Cockpit plugin in two parts: an ICockpitPlugin backend part and, in UI/, an ICockpitPluginUi part that contributes a left-menu dialog and talks to the backend over the plugin channel.",
   "sourceName": "Cockpit.Plugin.Sample",
   "tags": {
     "language": "C#",
