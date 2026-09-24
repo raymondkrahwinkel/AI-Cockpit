@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Configuration;
 
@@ -125,7 +126,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
             if (found is { } key && key.IsUsableAt(now))
             {
-                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant);
+                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope());
                 _lastUsed[key.Prefix] = now;
             }
             else if (state is not null && state.LockedUntil > now)
@@ -175,7 +176,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     }
 
     // The raw key is in the return value and nowhere else — not in the log, the audit or cockpit.json.
-    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, CancellationToken cancellationToken = default)
+    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, ConnectKeyScope? scope = null, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -200,7 +201,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                 }
                 while (_AllKeys().Any(existing => string.Equals(existing.Prefix, _PrefixOf(secret), StringComparison.Ordinal)));
 
-                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, now.AddDays(days), HoldsAssistant: holdsAssistant);
+                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, now.AddDays(days), HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default);
                 next = [.. _persisted, key];
             }
 
@@ -269,6 +270,47 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
             _logger.LogInformation("Revoked connect key {Prefix}.", prefix);
             await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    // AC-1367: false when no live key carries this prefix. Saved before it counts, like an issue; the next request
+    // is authenticated against the replaced record, so an open client is held to the new scope from its next call.
+    public async Task<bool> UpdateScopeAsync(string prefix, ConnectKeyScope scope, NodeCaller updatedBy, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            List<ConnectKey> next;
+            lock (_gate)
+            {
+                if (_AllKeys().FirstOrDefault(key => key.RevokedAt is null && string.Equals(key.Prefix, prefix, StringComparison.Ordinal)) is not { } target)
+                {
+                    return false;
+                }
+
+                if (target.IsBootstrap)
+                {
+                    throw new InvalidOperationException("The bootstrap key keeps its full scope: it is for first setup only. Issue your own key with the scope you want and revoke the bootstrap key.");
+                }
+
+                next = [.. _persisted.Select(key => ReferenceEquals(key, target) ? key with { Scope = scope } : key)];
+            }
+
+            await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
+            lock (_gate)
+            {
+                _persisted = next;
+            }
+
+            _logger.LogInformation("Changed the scope of connect key {Prefix}.", prefix);
+            await _audit.RecordAsync(new NodeAccessAuditEntry(_time.GetUtcNow(), updatedBy.Credential, updatedBy.KeyPrefix, updatedBy.RemoteAddress, "set_connect_key_scope", "scope changed", prefix), cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally
@@ -429,7 +471,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         }
 
         _logger.LogInformation("Bootstrap connect key {Prefix} is active.", prefix);
-        return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true);
+        return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true, Scope: ConnectKeyScope.Everything);
     }
 
     private Task _SaveAsync(List<ConnectKey> keys, CancellationToken cancellationToken) =>
@@ -477,9 +519,24 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
 // AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
 // Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
-internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false)
+// AC-1367: `Scope` is the key's, snapshotted with the request; a pairing has none and answers from its broker.
+internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null)
 {
     public bool ByConnectKey => KeyPrefix is not null;
+
+    // AC-1367: the one scope check for every node tool and API route. A pairing keeps the bypass and permission
+    // grants it always had (AC-1318/AC-1323); its profiles and projects are the broker's live grant.
+    public bool AllowsProfile(string profileLabel, INodePairingBroker pairing) =>
+        ByConnectKey ? _KeyScope.AllowsProfile(profileLabel) : pairing.IsProfileAllowed(profileLabel);
+
+    public bool AllowsProject(string projectId, INodePairingBroker pairing) =>
+        ByConnectKey ? _KeyScope.AllowsProject(projectId) : pairing.IsProjectAllowed(projectId);
+
+    public bool MayStartBypass => !ByConnectKey || _KeyScope.MayStartBypassProfiles;
+
+    public bool MayAnswerPermissions => !ByConnectKey || _KeyScope.MayAnswerPermissions;
+
+    private ConnectKeyScope _KeyScope => Scope ?? ConnectKeyScope.Default;
 
     public string Credential => ByConnectKey ? "connect key" : "pairing";
 
