@@ -21,6 +21,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
@@ -323,8 +324,9 @@ public class AssistantBindSharedProjectTests : IDisposable
         var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
-        var gateway = Dispatcher.UIThread.Invoke(() => new AssistantAgentGateway(
+        var gateway = Dispatcher.UIThread.Invoke(() => AssistantAgentGatewayGraph.Over(
             _NewCockpit(projects),
+            new SessionRegistry(),
             _Profiles(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             Substitute.For<IWorkspaceAgentGateway>(),

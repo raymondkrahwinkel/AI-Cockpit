@@ -23,6 +23,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
@@ -987,8 +988,9 @@ public class AssistantAgentGatewayTests
             var profiles = Substitute.For<ISessionProfileStore>();
             profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));
 
-            var built = new AssistantAgentGateway(
+            var built = AssistantAgentGatewayGraph.Over(
                 _Cockpit(),
+                new SessionRegistry(),
                 profiles,
                 Substitute.For<IAssistantSpawnAuditLog>(),
                 Substitute.For<IWorkspaceAgentGateway>(),
@@ -1048,7 +1050,8 @@ public class AssistantAgentGatewayTests
         IPluginProviderRegistry? pluginProviders = null,
         IWorktreeManager? worktreeManager = null)
     {
-        var cockpit = host ?? _Cockpit();
+        var sessions = new SessionRegistry();
+        var cockpit = host ?? _Cockpit(sessions);
         cockpit.Workspaces.Settings = settings;
 
         var profiles = Substitute.For<ISessionProfileStore>();
@@ -1057,8 +1060,9 @@ public class AssistantAgentGatewayTests
 
         var trail = new RecordingSpawnTrail();
         return (
-            new AssistantAgentGateway(
+            AssistantAgentGatewayGraph.Over(
                 cockpit,
+                sessions,
                 profiles,
                 trail,
                 Substitute.For<IWorkspaceAgentGateway>(),
@@ -1078,8 +1082,9 @@ public class AssistantAgentGatewayTests
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(known));
 
-        return new AssistantAgentGateway(
+        return AssistantAgentGatewayGraph.Over(
             _Cockpit(),
+            new SessionRegistry(),
             profiles,
             new RecordingSpawnTrail(),
             Substitute.For<IWorkspaceAgentGateway>(),
@@ -1132,7 +1137,7 @@ public class AssistantAgentGatewayTests
         return cockpit;
     }
 
-    private static CockpitViewModel _Cockpit()
+    private static CockpitViewModel _Cockpit(SessionRegistry? sessions = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -1159,7 +1164,8 @@ public class AssistantAgentGatewayTests
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
             voiceSettingsStore,
-            terminalSettingsStore);
+            terminalSettingsStore,
+            sessionRegistry: sessions);
     }
 
     private sealed class RecordingSpawnTrail : IAssistantSpawnAuditLog

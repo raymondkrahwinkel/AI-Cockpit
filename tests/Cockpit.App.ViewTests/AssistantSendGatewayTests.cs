@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -211,7 +212,8 @@ public class AssistantSendGatewayTests
 
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, GatewayParts Parts) _Gateway()
     {
-        var cockpit = new CockpitViewModel();
+        var sessions = new SessionRegistry();
+        var cockpit = new CockpitViewModel(sessionRegistry: sessions);
         cockpit.Sessions.Clear();
 
         var parts = new GatewayParts(
@@ -219,8 +221,9 @@ public class AssistantSendGatewayTests
             Substitute.For<IAgentMessageInbox>(),
             Substitute.For<IAgentNotifyAuditLog>());
 
-        var gateway = new AssistantAgentGateway(
+        var gateway = AssistantAgentGatewayGraph.Over(
             cockpit,
+            sessions,
             Substitute.For<ISessionProfileStore>(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             parts.Agents,

@@ -17,12 +17,4 @@ public static class ProfileDisplay
             ? $"{label} ({providerLabel})"
             : $"{label} ({providerLabel} - {model})";
     }
-
-    // The model of a profile's local provider, or `null` for a Claude profile.
-    public static string? ModelOf(SessionProfile profile) => profile.ProviderConfig switch
-    {
-        OllamaConfig ollama => ollama.Model,
-        LmStudioConfig lmStudio => lmStudio.Model,
-        _ => null,
-    };
 }

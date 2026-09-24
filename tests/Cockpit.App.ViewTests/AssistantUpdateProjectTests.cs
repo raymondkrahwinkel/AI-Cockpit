@@ -1,5 +1,4 @@
 using Avalonia.Threading;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
@@ -22,6 +21,8 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -107,8 +108,9 @@ public class AssistantUpdateProjectTests
         var projects = new ProjectsViewModel(store, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
-        var gateway = Dispatcher.UIThread.Invoke(() => new AssistantAgentGateway(
+        var gateway = Dispatcher.UIThread.Invoke(() => AssistantAgentGatewayGraph.Over(
             _NewCockpit(projects),
+            new SessionRegistry(),
             _Profiles(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             Substitute.For<IWorkspaceAgentGateway>(),

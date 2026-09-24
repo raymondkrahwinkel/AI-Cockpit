@@ -50,7 +50,7 @@ public static class SessionWatchEvents
 // stuck, stops producing output, or matches a pattern. Unlike `CiWatcher` (watches every checkout), nothing is
 // watched until `watch_session` says so. No `IAttentionNotifier`: it is the assistant's own business, not a toast.
 public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatcher>? logger = null)
-    : ISingletonService, IDisposable
+    : ISessionWatcher, ISingletonService, IDisposable
 {
     // Short enough that "it finished" is news while the operator is still asking, and cheap enough to afford at that
     // rate: a tick reads collections the UI already holds, and reads nothing at all when nothing is armed.
@@ -218,6 +218,13 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
     // Disarms a pane. False when nothing was armed on it, which is worth saying rather than reporting a stop of
     // something that was never running.
     public bool Unwatch(string paneId) => _watches.Remove(paneId);
+
+    // AC-1375: the gateway's own door, onto the thread the probe reads the session list on — the hop the gateway
+    // made itself before it moved to Infrastructure.
+    Task<AssistantWatchResult> ISessionWatcher.WatchAsync(string paneId, IReadOnlyList<string>? events, int? afterMinutes, string? pattern) =>
+        UiThreadCall.RunAsync(() => WatchAsync(paneId, events, afterMinutes, pattern));
+
+    Task<bool> ISessionWatcher.UnwatchAsync(string paneId) => UiThreadCall.RunAsync(() => Unwatch(paneId));
 
     // One look at every armed pane. Public because the tests drive it directly rather than waiting on the timer —
     // the same seam `CiWatcher.RunOnceAsync` opens.

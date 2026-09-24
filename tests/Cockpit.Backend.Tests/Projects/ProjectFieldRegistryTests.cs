@@ -1,8 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.App.Plugins;
+using Cockpit.Core;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
-namespace Cockpit.Core.Tests.Plugins;
+namespace Cockpit.Backend.Tests.Projects;
 
 /// <summary>
 /// Which project fields the editor ends up drawing (AC-317). Two plugins registering the same key is the agreed

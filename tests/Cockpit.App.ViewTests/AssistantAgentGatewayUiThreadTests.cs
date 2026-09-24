@@ -18,6 +18,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
@@ -172,6 +173,7 @@ public class AssistantAgentGatewayUiThreadTests
         var terminal = Substitute.For<ITerminalSettingsStore>();
         terminal.LoadAsync().Returns(new TerminalSettings());
 
+        var sessions = new SessionRegistry();
         cockpit = new CockpitViewModel(
             () => new SessionViewModel(),
             () => new TtyViewModel(),
@@ -187,7 +189,8 @@ public class AssistantAgentGatewayUiThreadTests
             terminal,
             // Embed refuses a graph without both of these; the gateway keeps its own profile store, which is what
             // the spawn path reads.
-            sessionProfileStore: Substitute.For<ISessionProfileStore>());
+            sessionProfileStore: Substitute.For<ISessionProfileStore>(),
+            sessionRegistry: sessions);
 
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
@@ -196,8 +199,9 @@ public class AssistantAgentGatewayUiThreadTests
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
 
         return (
-            new AssistantAgentGateway(
+            AssistantAgentGatewayGraph.Over(
                 cockpit,
+                sessions,
                 profiles,
                 Substitute.For<IAssistantSpawnAuditLog>(),
                 Substitute.For<IWorkspaceAgentGateway>(),

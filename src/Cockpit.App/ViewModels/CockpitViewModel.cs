@@ -8633,6 +8633,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StartedByTheAssistant = startedByTheAssistant,
         };
 
+        // AC-1375: asked again after the last await above, since the desk the caller decided on can close while the
+        // project resolves and composes. Nothing awaits between here and AddSession, so no pane lands where no tab shows it.
+        if (!Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == workspaceId && workspace.Type == WorkspaceType.Sessions))
+        {
+            return null;
+        }
+
         // Non-interactive (AC-719): a failed isolation refuses with a reason instead of raising a modal on the main
         // window — the chat window's Allow row is answered by an operator who may be looking at another desk
         // entirely, and a dialog they never see would stall this turn on a question it cannot report (criterion 7).

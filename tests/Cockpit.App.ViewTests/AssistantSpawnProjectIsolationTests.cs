@@ -27,6 +27,7 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -414,6 +415,7 @@ public class AssistantSpawnProjectIsolationTests
         LiveSessionRegistry? liveSessions = null,
         SessionRegistry? sessionRegistry = null)
     {
+        var sessions = sessionRegistry ?? new SessionRegistry();
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
 
@@ -461,13 +463,14 @@ public class AssistantSpawnProjectIsolationTests
             projects: projects,
             projectQuickStart: quickStart,
             liveSessions: liveSessions,
-            sessionRegistry: sessionRegistry);
+            sessionRegistry: sessions);
         cockpit.Workspaces.Settings = settings;
 
         var trail = new RecordingSpawnTrail();
         return (
-            new AssistantAgentGateway(
+            AssistantAgentGatewayGraph.Over(
                 cockpit,
+                sessions,
                 profileStore,
                 trail,
                 Substitute.For<IWorkspaceAgentGateway>(),
