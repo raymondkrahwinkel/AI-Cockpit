@@ -84,6 +84,7 @@
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
     <!-- Vendored terminal renderer (MIT), patched in-tree — see third_party/Exclr8.Terminal. -->
     <ProjectReference Include="..\..\third_party\Exclr8.Terminal\Exclr8.Terminal.csproj" />
   </ItemGroup>

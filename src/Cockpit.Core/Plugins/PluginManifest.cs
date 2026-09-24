@@ -9,18 +9,24 @@ public sealed record PluginManifest(
     string Id,
     string Name,
     string Version,
-    string EntryAssembly,
+    string? EntryAssembly,
     int AbstractionsVersion,
     string? EntryType,
     string? MinHostVersion,
     string? Description,
     string? Author,
-    IReadOnlyList<string>? SecretKeys = null)
+    IReadOnlyList<string>? SecretKeys = null,
+    string? UiAssembly = null,
+    string? UiEntryType = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
     // as ciphertext. (Omitted: the install-time credential-intent framing; see ticket.)
     public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
+
+    // AC-1389: the assemblies the loader reads, backend part first. A UI-only plugin (a clock) has no entryAssembly,
+    // and a plugin not yet split in two has no uiAssembly; parsing refuses one with neither.
+    public IEnumerable<string> Assemblies => new[] { EntryAssembly, UiAssembly }.OfType<string>();
 
     public static bool TryParse(string json, out PluginManifest? manifest, out string? error)
     {
@@ -49,10 +55,17 @@ public sealed record PluginManifest(
 
             if (!TryGetNonEmptyString(root, "id", out var id)
                 || !TryGetNonEmptyString(root, "name", out var name)
-                || !TryGetNonEmptyString(root, "version", out var version)
-                || !TryGetNonEmptyString(root, "entryAssembly", out var entryAssembly))
+                || !TryGetNonEmptyString(root, "version", out var version))
             {
-                error = "Missing required string field (id, name, version, entryAssembly).";
+                error = "Missing required string field (id, name, version).";
+                return false;
+            }
+
+            var entryAssembly = TryGetNonEmptyString(root, "entryAssembly", out var entry) ? entry : null;
+            var uiAssembly = TryGetNonEmptyString(root, "uiAssembly", out var ui) ? ui : null;
+            if (entryAssembly is null && uiAssembly is null)
+            {
+                error = "Missing both 'entryAssembly' and 'uiAssembly': a plugin names at least one assembly to load.";
                 return false;
             }
 
@@ -74,7 +87,9 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "minHostVersion"),
                 GetOptionalString(root, "description"),
                 GetOptionalString(root, "author"),
-                GetOptionalStrings(root, "secretKeys"));
+                GetOptionalStrings(root, "secretKeys"),
+                uiAssembly,
+                GetOptionalString(root, "uiEntryType"));
             return true;
         }
     }

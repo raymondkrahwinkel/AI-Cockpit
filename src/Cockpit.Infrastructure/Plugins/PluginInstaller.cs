@@ -87,16 +87,19 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                     $"This plugin needs {CockpitProduct.DisplayName} {manifest.MinHostVersion} or later, but this cockpit is {hostVersion}.");
             }
 
-            // AC-1159: rejects a rooted entryAssembly or one that walks out of stagingDir via `..` or a
-            // mid-path symlink, before the closure hash below is ever computed over it.
-            if (!PluginEntryPath.TryResolve(stagingDir, manifest.EntryAssembly, out var entryPath))
+            // AC-1159: rejects a rooted assembly path or one that walks out of stagingDir via `..` or a
+            // mid-path symlink, before the closure hash below is ever computed over it. AC-1389: the UI part's too.
+            foreach (var assembly in manifest.Assemblies)
             {
-                return PluginInstallResult.Failure($"The entry assembly path '{manifest.EntryAssembly}' is not allowed.");
-            }
+                if (!PluginEntryPath.TryResolve(stagingDir, assembly, out var assemblyPath))
+                {
+                    return PluginInstallResult.Failure($"The assembly path '{assembly}' is not allowed.");
+                }
 
-            if (!File.Exists(entryPath))
-            {
-                return PluginInstallResult.Failure($"The archive is missing its entry assembly '{manifest.EntryAssembly}'.");
+                if (!File.Exists(assemblyPath))
+                {
+                    return PluginInstallResult.Failure($"The archive is missing its assembly '{assembly}'.");
+                }
             }
 
             var folderId = _ResolveFolderId(manifest.Id);

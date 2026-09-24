@@ -451,7 +451,12 @@
          denies) so a plugin can put a deadline on a prompt and have it taken down, denied, when it runs out. A
          plugin that relies on that sets minHostVersion 0.38.0. Additions only — a minor; major and
          abstractionsVersion stay 2. -->
-    <Version>1.66.0</Version>
+    <!-- 1.67.0 (AC-1389): added ICockpitHost.Channel (default keeps nothing) with IPluginBackendChannel,
+         PluginChannelEvent and PluginChannelUnknownActionException — the backend half of a plugin's own channel
+         to its UI part, whose other half and ICockpitUiHost live in the new Cockpit.Plugins.Abstractions.UI.
+         A plugin that uses either sets minHostVersion 0.39.0. Additions only — a minor; major and
+         abstractionsVersion stay 2. -->
+    <Version>1.67.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

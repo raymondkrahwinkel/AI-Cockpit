@@ -44,9 +44,9 @@ internal sealed class PluginDiscovery : ISingletonService
                 continue;
             }
 
-            // AC-1159: rejects a rooted entryAssembly or one that walks out of `folder` via `..` or a
-            // mid-path symlink, before the closure hash below is ever computed over it.
-            if (!PluginEntryPath.TryResolve(folder, manifest.EntryAssembly, out var entryPath) || !File.Exists(entryPath))
+            // AC-1159: rejects a rooted assembly path or one that walks out of `folder` via `..` or a
+            // mid-path symlink, before the closure hash below is ever computed over it. AC-1389: the UI part's too.
+            if (!manifest.Assemblies.All(assembly => PluginEntryPath.TryResolve(folder, assembly, out var path) && File.Exists(path)))
             {
                 continue;
             }
