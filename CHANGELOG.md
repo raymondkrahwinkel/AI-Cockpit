@@ -665,6 +665,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session the assistant starts on a desk that is closed at that same moment is now refused, instead of
+  starting anyway and running on a desk no tab shows any more.
 - fixed: the Slack plugin no longer downloads a file sent by someone who is not allowed to talk to the assistant;
   who sent it is checked first.
 - fixed: a plugin's saved setting or declared credential field name could be lost if you quit right after it was
