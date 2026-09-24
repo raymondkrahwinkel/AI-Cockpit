@@ -17,7 +17,7 @@ public class StatusHintSeparationTests
     [Fact]
     public void Wireframe_WithNoFileAndNoSelection_SeparatorSitsVisiblyBetweenStatusAndHint()
     {
-        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe"), null);
+        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), null, WireframeDocument.New("Test wireframe"), null);
         var window = _Show(body, width: 960, height: 680);
 
         var saveStatus = _Field<TextBlock>(body, "_saveStatus");
@@ -40,7 +40,7 @@ public class StatusHintSeparationTests
         // AC-981: the separator only makes sense between two texts — with nothing selected and no connection in
         // progress, DiagramWorkspaceBody's hint is genuinely empty, so a bare "No file yet ·" trailing dot would be
         // worse than the overlap this ticket fixes.
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, DiagramDocument.New("Test diagram"), null);
         var window = _Show(body, width: 900, height: 640);
 
         var hint = _Field<TextBlock>(body, "_handHint");
@@ -55,7 +55,7 @@ public class StatusHintSeparationTests
     [Fact]
     public void Diagram_WhileConnecting_SeparatorSitsVisiblyBetweenStatusAndHint()
     {
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, DiagramDocument.New("Test diagram"), null);
         var window = _Show(body, width: 900, height: 640);
 
         var connect = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Connect"));

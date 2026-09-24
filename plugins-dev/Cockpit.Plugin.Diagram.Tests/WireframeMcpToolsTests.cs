@@ -31,7 +31,7 @@ public class WireframeMcpToolsTests
         builtHost.CurrentMcpCallerPaneId.Returns((string?)null);
         builtHost.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
         host = builtHost;
-        return (new WireframeMcpTools(builtHost, registry, new DiagramSettings(new FakePluginStorage())), registry, asked);
+        return (new WireframeMcpTools(builtHost, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(builtHost, wireframes: registry)), registry, asked);
     }
 
     private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Open(ConsentOutcome outcome, string name = Name)
@@ -406,7 +406,7 @@ public class WireframeMcpToolsTests
         var host = Substitute.For<ICockpitHost>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new DiagramSettings(new FakePluginStorage()) { SkipWireframeConsent = true };
-        var tools = new WireframeMcpTools(host, registry, settings);
+        var tools = new WireframeMcpTools(host, registry, settings, TestChannel.Desktop(host, wireframes: registry));
 
         var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
         Dispatcher.UIThread.RunJobs();

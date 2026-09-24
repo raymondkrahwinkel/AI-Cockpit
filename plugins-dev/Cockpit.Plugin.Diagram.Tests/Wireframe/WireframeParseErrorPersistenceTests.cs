@@ -21,7 +21,7 @@ public class WireframeParseErrorPersistenceTests
     {
         var registry = new WireframeAccessRegistry();
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-1", "Typo", BrokenSource), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-1", "Typo", BrokenSource), sessionPaneId: null);
 
         var window = new Window { Content = body, Width = 1200, Height = 900 };
         window.Show();
@@ -52,7 +52,7 @@ public class WireframeParseErrorPersistenceTests
     {
         var registry = new WireframeAccessRegistry();
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-2", "Typo", BrokenSource), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-2", "Typo", BrokenSource), sessionPaneId: null);
 
         var window = new Window { Content = body, Width = 1200, Height = 900 };
         window.Show();
@@ -76,7 +76,7 @@ public class WireframeParseErrorPersistenceTests
         var registry = new WireframeAccessRegistry();
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
         var source = "screen \"Login\"\n  button \"Ok\"\nscherm \"Typo\"";
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-3", "Login", source), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-3", "Login", source), sessionPaneId: null);
 
         var window = new Window { Content = body, Width = 1200, Height = 900 };
         window.Show();

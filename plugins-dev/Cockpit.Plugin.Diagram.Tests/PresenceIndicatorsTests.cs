@@ -35,7 +35,7 @@ public class PresenceIndicatorsTests
     public void NoCoupling_TheWholeControlIsHidden()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
@@ -48,7 +48,7 @@ public class PresenceIndicatorsTests
     public void CoupledWithZeroCapability_IsVisible_AndBothPipsAreIdle()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
@@ -66,7 +66,7 @@ public class PresenceIndicatorsTests
     public void CoupledWithRead_ShowsTheReadingPipAndLine()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
 
@@ -83,7 +83,7 @@ public class PresenceIndicatorsTests
     public void AFreshNonOperatorEdit_SwitchesTheAgentPipAndLineToWriting()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         presence.SetSession("pane-a", "Werksessie");
@@ -105,7 +105,7 @@ public class PresenceIndicatorsTests
     public void OperatorHold_SwitchesTheOperatorPipToWriting()
     {
         var registry = new ActivityStripTests.FakeDiagramRegistry();
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: true));
@@ -125,7 +125,7 @@ public class PresenceIndicatorsTests
         var registry = new ActivityStripTests.FakeDiagramRegistry();
         // Already there before the window opened — not part of "since I've been watching".
         registry.Seed("surface-1", DiagramEntry("e0", "operator", "renamed A to \"Begin\""));
-        var journal = new DiagramActivityJournal(registry);
+        var journal = new DiagramActivityJournal(TestChannel.Diagram(registry));
         var presence = new PresenceIndicators("surface-1", journal, journal);
         var window = _Show(presence);
         registry.SetCoupling("surface-1", new DiagramCoupling("pane-a", CanRead: true, CanEdit: true));
@@ -151,7 +151,7 @@ public class PresenceIndicatorsTests
     public void Whiteboard_NoCoupling_IsAlsoHidden_ThenVisibleOnceCoupled()
     {
         var registry = new ActivityStripTests.FakeWhiteboardRegistry();
-        var journal = new WhiteboardActivityJournal(registry);
+        var journal = new WhiteboardActivityJournal(TestChannel.Whiteboard(registry));
         var presence = new PresenceIndicators("board-1", journal, journal);
         var window = _Show(presence);
 

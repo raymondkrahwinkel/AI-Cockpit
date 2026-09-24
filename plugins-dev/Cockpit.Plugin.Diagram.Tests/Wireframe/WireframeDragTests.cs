@@ -146,7 +146,7 @@ public class WireframeDragTests
     {
         var registry = new RecordingRegistry(Source);
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-1", "Instellingen", Source), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-1", "Instellingen", Source), sessionPaneId: null);
 
         // Big enough that the design canvas fits at close to true size, so every component is a comfortable target
         // and the slop a click is allowed cannot swallow a drag.

@@ -1,14 +1,11 @@
-using Avalonia.Threading;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Whiteboard;
-using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Wireframe;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram;
@@ -37,7 +34,7 @@ public sealed class DiagramPlugin : ICockpitPlugin, ICockpitPluginUi
     private ICockpitHost? _host;
     private DiagramChannel? _channel;
     private IPluginUiChannel? _uiChannel;
-    private IDisposable? _openSubscription;
+    private SurfaceWindowOpener? _opener;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -88,38 +85,15 @@ public sealed class DiagramPlugin : ICockpitPlugin, ICockpitPluginUi
 
     public void InitializeUi(ICockpitUiHost host)
     {
+        // The windows still take the backend host for everything but the registries; F2.13 moves them to this one.
+        var backend = _host ?? throw new InvalidOperationException("InitializeUi ran before Initialize.");
         _uiChannel = host.Channel;
-        _openSubscription = host.Channel.Subscribe(DiagramChannel.OpenSurface, _OnOpenSurface);
-        host.Channel.InvokeAsync(DiagramChannel.AttachUi, default).GetAwaiter().GetResult();
+        _opener = new SurfaceWindowOpener(backend, host.Channel);
     }
 
     public void Dispose()
     {
-        _openSubscription?.Dispose();
+        _opener?.Dispose();
         _channel?.Dispose();
-    }
-
-    // An agent's open_* tool asked for a window (after the operator's consent, in the backend part). Posted, since
-    // the event arrives on the tool's thread; the window couples to the calling session the way it always did.
-    private void _OnOpenSurface(PluginChannelEvent channelEvent)
-    {
-        if (_host is not { } host)
-        {
-            return;
-        }
-
-        var payload = channelEvent.Payload;
-        var surfaceId = DiagramChannel.ReadString(payload, 0);
-        var kind = DiagramChannel.ReadString(payload, 1);
-        var title = DiagramChannel.ReadString(payload, 2);
-        var source = payload[3].GetString() ?? "";
-        var caller = DiagramChannel.ReadString(payload, 4);
-        var channel = _uiChannel;
-        Dispatcher.UIThread.Post(() => _ = kind switch
-        {
-            DiagramChannel.WhiteboardPrefix => WhiteboardWindow.OpenAsync(host, channel, new WhiteboardDocument(surfaceId, title), caller),
-            DiagramChannel.WireframePrefix => WireframeWindow.OpenAsync(host, channel, new WireframeDocument(surfaceId, title, source), caller),
-            _ => DiagramWindow.OpenAsync(host, channel, new DiagramDocument(surfaceId, title, source), caller),
-        });
     }
 }

@@ -28,7 +28,7 @@ public class WhiteboardMcpToolsTests
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        return (new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, host, asked);
+        return (new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, whiteboards: registry)), registry, host, asked);
     }
 
     // AC-1007: the image travels as its own content block, not a base64 field a text-only tool result carries.
@@ -79,7 +79,7 @@ public class WhiteboardMcpToolsTests
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(_ => new ConsentDecision(approve ? ConsentOutcome.Approved : ConsentOutcome.Denied));
-        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
+        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, whiteboards: registry));
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant(Session, "board-1", WhiteboardCapability.Read);
 
@@ -302,7 +302,7 @@ public class WhiteboardMcpToolsTests
                 registry.Grant("someone-else", "board-1"); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
+        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, whiteboards: registry));
 
         var json = _Meta(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
@@ -369,7 +369,7 @@ public class WhiteboardMcpToolsTests
         var host = Substitute.For<ICockpitHost>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new DiagramSettings(new FakePluginStorage()) { SkipWhiteboardConsent = true };
-        var tools = new WhiteboardMcpTools(host, registry, settings);
+        var tools = new WhiteboardMcpTools(host, registry, settings, TestChannel.Desktop(host, whiteboards: registry));
 
         var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
         Dispatcher.UIThread.RunJobs();

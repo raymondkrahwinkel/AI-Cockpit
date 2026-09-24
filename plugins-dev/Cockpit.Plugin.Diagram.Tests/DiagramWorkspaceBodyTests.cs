@@ -14,7 +14,7 @@ public class DiagramWorkspaceBodyTests
     [Fact]
     public void EmptyDiagram_OpensAt100PercentZoom_NotTheClampedFit()
     {
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, DiagramDocument.New("Test diagram"), null);
         var window = _Show(body);
 
         Assert.Equal("100%", _ZoomLabelText(body));
@@ -25,7 +25,7 @@ public class DiagramWorkspaceBodyTests
     [Fact]
     public void EmptyDiagram_ShowsTheEmptyStateHint_UntilANodeExists()
     {
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, DiagramDocument.New("Test diagram"), null);
         var window = _Show(body);
 
         var overlay = Assert.Single(body.GetVisualDescendants().OfType<WhiteboardCanvasControl.EmptyStateOverlay>());
@@ -38,7 +38,7 @@ public class DiagramWorkspaceBodyTests
     public void DiagramWithNodes_NeverShowsTheEmptyStateHint_AndFitsInsteadOf100Percent()
     {
         var document = DiagramDocument.New("Test diagram", "flowchart LR\nA-->B");
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), document, null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, document, null);
         var window = _Show(body);
 
         var overlay = Assert.Single(body.GetVisualDescendants().OfType<WhiteboardCanvasControl.EmptyStateOverlay>());

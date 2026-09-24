@@ -1,7 +1,12 @@
 using System.Text.Json;
+using Avalonia.Threading;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
+using Cockpit.Plugin.Diagram.Whiteboard;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Wireframe;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.UI;
 using static Cockpit.Plugin.Diagram.DiagramChannel;
@@ -210,4 +215,35 @@ internal sealed class WireframeChannelClient : SurfaceChannelClient
     public void ReleaseComponent(string surfaceId, string componentId) => Send(P + nameof(F.ReleaseComponent), surfaceId, componentId);
 
     public string? PeekText(string surfaceId) => Invoke<string>(P + nameof(F.PeekText), surfaceId);
+}
+
+// The UI part's end of an agent's open_* tool: the backend asked the operator's consent, this opens the window.
+// Attaching tells the backend a UI part is listening, so without one the tool answers opened: false instead.
+internal sealed class SurfaceWindowOpener : IDisposable
+{
+    private readonly IDisposable _subscription;
+
+    public SurfaceWindowOpener(ICockpitHost host, IPluginUiChannel channel)
+    {
+        _subscription = channel.Subscribe(OpenSurface, channelEvent => _Open(host, channel, channelEvent.Payload));
+        channel.InvokeAsync(AttachUi, default).GetAwaiter().GetResult();
+    }
+
+    public void Dispose() => _subscription.Dispose();
+
+    // Posted: the event arrives on the tool's thread. The window couples to the calling session as it always did.
+    private static void _Open(ICockpitHost host, IPluginUiChannel channel, JsonElement payload)
+    {
+        var surfaceId = ReadString(payload, 0);
+        var kind = ReadString(payload, 1);
+        var title = ReadString(payload, 2);
+        var source = payload[3].GetString() ?? "";
+        var caller = ReadString(payload, 4);
+        Dispatcher.UIThread.Post(() => _ = kind switch
+        {
+            WhiteboardPrefix => WhiteboardWindow.OpenAsync(host, channel, new WhiteboardDocument(surfaceId, title), caller),
+            WireframePrefix => WireframeWindow.OpenAsync(host, channel, new WireframeDocument(surfaceId, title, source), caller),
+            _ => DiagramWindow.OpenAsync(host, channel, new DiagramDocument(surfaceId, title, source), caller),
+        });
+    }
 }

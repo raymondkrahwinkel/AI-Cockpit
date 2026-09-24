@@ -14,6 +14,8 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Diagrams;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -454,6 +456,7 @@ public class DiagramCollabWindowTests
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
+        DiagramPluginUi.Initialize(plugin, host, host.Hub);
         return (plugin, host);
     }
 
@@ -499,13 +502,20 @@ public class DiagramCollabWindowTests
 
         public List<FakeBinding> Bindings { get; } = [];
 
+        // AC-1400: the plugin channel's hub; DiagramPluginUi hands the UI part the same one.
+        public PluginChannelHub Hub { get; } = new(NullLogger<PluginChannelHub>.Instance);
+
+        public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
+
         public IServiceProvider Services { get; }
 
         public ICockpitActions Actions { get; } = new NoActions();
 
         public IPluginStorage Storage { get; } = new MemoryStorage();
 
-        public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
+        public FakeSessions Sessions { get; } = new();
+
+        ICockpitSessionObserver ICockpitHost.Sessions => Sessions;
 
         private Control? _listDialogContent;
 
@@ -531,6 +541,7 @@ public class DiagramCollabWindowTests
         public void EndSession(string paneId)
         {
             Registry.SessionEnded(paneId);
+            Sessions.Close(paneId);
             foreach (var binding in Bindings.Where(binding => binding.PaneId == paneId))
             {
                 binding.End();
@@ -616,6 +627,10 @@ public class DiagramCollabWindowTests
 
     private sealed class FakeSessions : ICockpitSessionObserver
     {
+        public event EventHandler<string>? SessionClosed;
+
+        public void Close(string paneId) => SessionClosed?.Invoke(this, paneId);
+
         public string? ActiveSessionWorkingDirectory => null;
 
         public string? ActivePaneId => "pane-a";

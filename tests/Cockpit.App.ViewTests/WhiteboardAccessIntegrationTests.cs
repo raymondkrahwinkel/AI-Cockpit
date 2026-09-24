@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -107,6 +109,7 @@ public class WhiteboardAccessIntegrationTests
         var registry = new WhiteboardAccessRegistry();
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
+        DiagramPluginUi.Initialize(plugin, host, host.Hub);
 
         // AC-850/AC-896: the whiteboard is no longer a workspace type — the "Whiteboards" toolbar action opens the
         // list dialog, whose header's "New whiteboard" button opens the board as a window bound to the active
@@ -154,6 +157,11 @@ public class WhiteboardAccessIntegrationTests
 
     private sealed class RecordingHost(IWhiteboardAccessRegistry registry) : ICockpitHost
     {
+        // AC-1400: the plugin channel's hub; DiagramPluginUi hands the UI part the same one.
+        public PluginChannelHub Hub { get; } = new(NullLogger<PluginChannelHub>.Instance);
+
+        public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
+
         public List<ToolbarAction> ToolbarActions { get; } = [];
 
         public List<string> DialogKeys { get; } = [];

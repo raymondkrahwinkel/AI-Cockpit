@@ -24,7 +24,7 @@ public class CollabBarOverflowTests
         var registry = new ActivityStripTests.FakeWhiteboardRegistry();
         var host = new ActivityStripTests.FakeHost(whiteboard: registry);
         var document = new WhiteboardDocument(title: "Test whiteboard");
-        var body = new WhiteboardWorkspaceBody(host, document, null);
+        var body = new WhiteboardWorkspaceBody(host, host.UiChannel, document, null);
         var window = _Show(body, width: 900, height: 640);
 
         registry.SetCoupling(document.Id, new WhiteboardCoupling("a-very-long-session-name-that-runs-on", CanRead: false));
@@ -41,7 +41,7 @@ public class CollabBarOverflowTests
         var registry = new ActivityStripTests.FakeDiagramRegistry();
         var host = new ActivityStripTests.FakeHost(registry);
         var document = DiagramDocument.New("Test diagram");
-        var body = new DiagramWorkspaceBody(host, document, null);
+        var body = new DiagramWorkspaceBody(host, host.UiChannel, document, null);
         var window = _Show(body, width: 900, height: 640);
 
         registry.SetCoupling(document.Id, new DiagramCoupling("a-very-long-session-name-that-runs-on", CanRead: false, CanEdit: false));
@@ -58,7 +58,7 @@ public class CollabBarOverflowTests
         var registry = new FakeWireframeRegistry();
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
         var document = WireframeDocument.New("Test wireframe");
-        var body = new WireframeWorkspaceBody(host, document, null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, document, null);
         var window = _Show(body, width: 960, height: 680);
 
         registry.SetCoupling(document.Id, new WireframeCoupling("a-very-long-session-name-that-runs-on", CanRead: false, CanEdit: false));

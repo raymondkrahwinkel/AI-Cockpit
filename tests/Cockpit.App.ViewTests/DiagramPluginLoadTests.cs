@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -42,6 +44,7 @@ public class DiagramPluginLoadTests
 
         var host = new RecordingHost();
         plugin.Initialize(host);
+        DiagramPluginUi.Initialize(plugin, host, host.Hub);
 
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
         // type any more, only toolbar actions: one list opener per surface (AC-896 moved "Nieuw ..." into that
@@ -124,6 +127,11 @@ public class DiagramPluginLoadTests
 
     private sealed class RecordingHost : ICockpitHost
     {
+        // AC-1400: the plugin channel's hub; DiagramPluginUi hands the UI part the same one.
+        public PluginChannelHub Hub { get; } = new(NullLogger<PluginChannelHub>.Instance);
+
+        public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
+
         public List<WorkspaceTypeRegistration> WorkspaceTypes { get; } = [];
 
         public List<ToolbarAction> ToolbarActions { get; } = [];
