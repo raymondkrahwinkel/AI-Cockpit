@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "entryAssembly": "Cockpit.Plugin.Sample.dll",
   "entryType": "Cockpit.Plugin.Sample.SamplePlugin",
+  "uiAssembly": "Cockpit.Plugin.Sample.UI.dll",
+  "uiEntryType": "Cockpit.Plugin.Sample.UI.SampleUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.1.0",
+  "minHostVersion": "0.39.0",
   "description": "A starter Cockpit plugin — replace this with your own.",
   "author": "You"
 }

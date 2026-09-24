@@ -161,171 +161,51 @@
                       SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
-  <!-- A single-file build is one file, so the bundled plugins ride inside it: the same dll/deps/plugin.json are
-       embedded as resources under their folder names, and BundledPluginResources unpacks them at startup. Only for
-       single-file — a normal build keeps its folder, which is what a developer edits and rebuilds.
+  <!-- AC-1390: the bundled plugins, by project folder and installed folder id. Each one's files are taken from its
+       output folder by wildcard (*.dll, *.deps.json, plugin.json) rather than by name, so a plugin that splits into
+       a backend and a UI part, two assemblies in that one folder, needs no change in this file. -->
+  <ItemGroup>
+    <BundledPlugin Include="TranscriptSearch" FolderId="transcript-search" />
+    <BundledPlugin Include="GitStatus" FolderId="git-status" />
+    <BundledPlugin Include="Clock" FolderId="clock" />
+    <BundledPlugin Include="UsageTrend" FolderId="usage-trend" />
+    <BundledPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
+    <BundledPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
+    <BundledPlugin Include="Autopilot" FolderId="autopilot" />
+    <BundledPlugin Include="FanOut" FolderId="fan-out" />
+    <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+  </ItemGroup>
 
-       The plugins are project references, so they are built before this project compiles; the item is added in a
-       target rather than at the top level because at evaluation time those files do not exist yet on a clean
-       checkout, and MSBuild refuses an EmbeddedResource pointing at nothing. -->
-  <Target Name="EmbedBundledPlugins" BeforeTargets="PrepareForBuild" Condition="'$(PublishSingleFile)' == 'true'">
+  <!-- Resolved in a target, after the plugins are built: at evaluation time, and before ResolveProjectReferences,
+       a clean checkout has no output folder yet and a wildcard would quietly match nothing. -->
+  <Target Name="ResolveBundledPluginFiles">
     <ItemGroup>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.dll">
-        <LogicalName>bundled-plugins/transcript-search/Cockpit.Plugin.TranscriptSearch.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.deps.json">
-        <LogicalName>bundled-plugins/transcript-search/Cockpit.Plugin.TranscriptSearch.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\plugin.json">
-        <LogicalName>bundled-plugins/transcript-search/plugin.json</LogicalName>
-      </EmbeddedResource>
+      <_BundledPluginOutput Include="@(BundledPlugin->'$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')"
+                            PluginName="%(BundledPlugin.Identity)" />
+      <BundledPluginFile Include="%(_BundledPluginOutput.Identity)*.dll;%(_BundledPluginOutput.Identity)*.deps.json;%(_BundledPluginOutput.Identity)plugin.json"
+                         FolderId="%(_BundledPluginOutput.FolderId)" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(_BundledPluginOutput.Identity)plugin.json') Or !Exists('%(_BundledPluginOutput.Identity)Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll')"
+           Text="Bundled plugin %(_BundledPluginOutput.PluginName) has no plugin.json or Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll in %(_BundledPluginOutput.Identity); was it built for $(Configuration)?" />
+  </Target>
 
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll">
-        <LogicalName>bundled-plugins/git-status/Cockpit.Plugin.GitStatus.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json">
-        <LogicalName>bundled-plugins/git-status/Cockpit.Plugin.GitStatus.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json">
-        <LogicalName>bundled-plugins/git-status/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <!-- The clock was missing here while its predecessor was bundled: it was copied beside the exe but never
-           embedded, so a single file handed over on its own carried two of the three bundled plugins and no
-           widget at all. -->
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.dll">
-        <LogicalName>bundled-plugins/clock/Cockpit.Plugin.Clock.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.deps.json">
-        <LogicalName>bundled-plugins/clock/Cockpit.Plugin.Clock.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\plugin.json">
-        <LogicalName>bundled-plugins/clock/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.dll">
-        <LogicalName>bundled-plugins/usage-trend/Cockpit.Plugin.UsageTrend.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.deps.json">
-        <LogicalName>bundled-plugins/usage-trend/Cockpit.Plugin.UsageTrend.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\plugin.json">
-        <LogicalName>bundled-plugins/usage-trend/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll">
-        <LogicalName>bundled-plugins/example-workspace/Cockpit.Plugin.ExampleWorkspace.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json">
-        <LogicalName>bundled-plugins/example-workspace/Cockpit.Plugin.ExampleWorkspace.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json">
-        <LogicalName>bundled-plugins/example-workspace/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.dll">
-        <LogicalName>bundled-plugins/example-companion-tool/Cockpit.Plugin.ExampleCompanionTool.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.deps.json">
-        <LogicalName>bundled-plugins/example-companion-tool/Cockpit.Plugin.ExampleCompanionTool.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\plugin.json">
-        <LogicalName>bundled-plugins/example-companion-tool/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll">
-        <LogicalName>bundled-plugins/autopilot/Cockpit.Plugin.Autopilot.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json">
-        <LogicalName>bundled-plugins/autopilot/Cockpit.Plugin.Autopilot.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json">
-        <LogicalName>bundled-plugins/autopilot/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.dll">
-        <LogicalName>bundled-plugins/fan-out/Cockpit.Plugin.FanOut.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.deps.json">
-        <LogicalName>bundled-plugins/fan-out/Cockpit.Plugin.FanOut.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\plugin.json">
-        <LogicalName>bundled-plugins/fan-out/plugin.json</LogicalName>
-      </EmbeddedResource>
-
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll">
-        <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.dll</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json">
-        <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.deps.json</LogicalName>
-      </EmbeddedResource>
-      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json">
-        <LogicalName>bundled-plugins/claude-provider/plugin.json</LogicalName>
-      </EmbeddedResource>
+  <!-- A single-file build is one file, so the bundled plugins ride inside it: the same files are embedded as
+       resources under their folder names, and BundledPluginResources unpacks them at startup. Only for single-file:
+       a normal build keeps its folder, which is what a developer edits and rebuilds. -->
+  <Target Name="EmbedBundledPlugins" AfterTargets="ResolveProjectReferences" DependsOnTargets="ResolveBundledPluginFiles"
+          Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <EmbeddedResource Include="@(BundledPluginFile)"
+                        LogicalName="bundled-plugins/%(BundledPluginFile.FolderId)/%(BundledPluginFile.Filename)%(BundledPluginFile.Extension)" />
     </ItemGroup>
   </Target>
 
-  <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish">
-    <ItemGroup>
-      <TranscriptSearchFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.dll;
-                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.deps.json;
-                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\plugin.json" />
-      <GitStatusFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll;
-                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json;
-                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json" />
-      <ClockFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.dll;
-                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.deps.json;
-                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\plugin.json" />
-      <UsageTrendFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.dll;
-                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.deps.json;
-                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\plugin.json" />
-      <ExampleWorkspaceFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll;
-                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json;
-                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json" />
-      <ExampleCompanionToolFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.dll;
-                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.deps.json;
-                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\plugin.json" />
-      <AutopilotFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll;
-                              $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json;
-                              $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json" />
-      <FanOutFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.dll;
-                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.deps.json;
-                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\plugin.json" />
-      <ClaudeProviderFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll;
-                                    $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json;
-                                    $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json" />
-    </ItemGroup>
-    <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(OutDir)bundled-plugins\transcript-search" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-workspace" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(ExampleCompanionToolFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-companion-tool" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(OutDir)bundled-plugins\autopilot" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(OutDir)bundled-plugins\fan-out" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
-
-    <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
-         cockpit missing the features that used to be core. -->
-    <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(PublishDir)bundled-plugins\transcript-search"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(PublishDir)bundled-plugins\git-status"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(PublishDir)bundled-plugins\clock"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(PublishDir)bundled-plugins\usage-trend"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <!-- The example workspace and Autopilot were copied beside the exe but never into a publish: a publish that is
-         not single-file shipped a cockpit without them, since only EmbedBundledPlugins covers that route. -->
-    <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(PublishDir)bundled-plugins\example-workspace"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(ExampleCompanionToolFiles)" DestinationFolder="$(PublishDir)bundled-plugins\example-companion-tool"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(PublishDir)bundled-plugins\autopilot"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(PublishDir)bundled-plugins\fan-out"
-          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
-    <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(PublishDir)bundled-plugins\claude-provider"
+  <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a cockpit
+       missing the features that used to be core. -->
+  <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish" DependsOnTargets="ResolveBundledPluginFiles">
+    <Copy SourceFiles="@(BundledPluginFile)" DestinationFolder="$(OutDir)bundled-plugins\%(BundledPluginFile.FolderId)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledPluginFile)" DestinationFolder="$(PublishDir)bundled-plugins\%(BundledPluginFile.FolderId)"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
   </Target>
 </Project>

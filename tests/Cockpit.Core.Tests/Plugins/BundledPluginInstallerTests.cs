@@ -42,6 +42,20 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.Contains("transcript-search", _registrations.Seeded);
     }
 
+    // AC-1390: a bundled plugin split in two arrives with its UI part, and the pin covers it.
+    [Fact]
+    public async Task ASplitBundledPlugin_ArrivesWithItsUiAssembly()
+    {
+        _WriteBundled("git-status", "1.9.2");
+        await File.WriteAllTextAsync(Path.Combine(_bundled, "git-status", "Cockpit.Plugin.git-status.UI.dll"), "ui");
+
+        await NewSut().InstallAsync(_bundled, _plugins);
+
+        var folder = Path.Combine(_plugins, "git-status");
+        Assert.Equal("ui", await File.ReadAllTextAsync(Path.Combine(folder, "Cockpit.Plugin.git-status.UI.dll")));
+        Assert.Equal(await PluginClosureHash.OfInstalledFolderAsync(folder), _registrations.Saved["git-status"].PinnedSha256);
+    }
+
     // The store owns every version after the first seed: a newer bundled build arriving in a later app version
     // must not overwrite what the operator is running, or a store update would be silently undone each start.
     [Fact]

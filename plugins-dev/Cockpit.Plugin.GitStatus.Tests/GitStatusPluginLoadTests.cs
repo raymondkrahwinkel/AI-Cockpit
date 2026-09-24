@@ -1,20 +1,19 @@
+using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
+using Cockpit.Plugin.GitStatus.UI;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
-// What `GitStatusPlugin.Initialize` registers (AC-522): one settings view, one session-header item,
-// the workflow steps — and, the point of this test, no side-menu button and no side-menu section. Before
-// AC-522 this same count would have found one side-menu button ("Git status"); its absence here is the
-// regression this guards against.
-//
-// Mirrors the counting pattern `YouTrackPluginLoadTests` uses in the host's own test suite, kept local
-// here instead: a host test that references a plugins-dev project pulls it into the main solution, which this
-// repo deliberately keeps separate — this project already references the plugin directly, so no
-// `PluginActivator`/reflection loading is needed to prove the same thing.
+// What each part registers. The backend part (AC-1390): the workflow steps and the channel actions the UI part
+// asks, and nothing with a window. The UI part: one settings view and one session-header item, and no side-menu
+// button or section, whose absence is the regression AC-522 guards against.
 public class GitStatusPluginLoadTests
 {
     [Fact]
-    public void Initialize_RegistersTheHeaderItemAndWorkflowSteps_ButNoSideMenuButtonOrSection()
+    public void Initialize_RegistersTheWorkflowStepsAndTheChannelActions_ButNothingWithAWindow()
     {
         var plugin = new GitStatusPlugin();
         plugin.ConfigureServices(new ServiceCollection());
@@ -22,12 +21,26 @@ public class GitStatusPluginLoadTests
         var host = new FakeCockpitHost(new FakeCockpitActions());
         plugin.Initialize(host);
 
-        Assert.Equal(1, host.SettingsRegistered);
-        Assert.Equal(1, host.SessionHeaderItemsRegistered);
+        Assert.Equal(0, host.SettingsRegistered);
+        Assert.Equal(0, host.SessionHeaderItemsRegistered);
         Assert.Equal(GitWorkflowSteps.All().Count(), host.WorkflowSteps.Count);
-        Assert.Empty(host.SideMenuButtons);
-        Assert.Empty(host.SideMenuSections);
+        Assert.Equal(["branch", "head-file", "status"], host.Bridge.Actions.Order());
 
         plugin.Dispose();
+
+        Assert.Empty(host.Bridge.Actions);
+    }
+
+    [Fact]
+    public void InitializeUi_RegistersTheSettingsAndTheHeaderItem_ButNoSideMenuButtonOrSection()
+    {
+        var host = Substitute.For<ICockpitUiHost>();
+
+        new GitStatusUi().InitializeUi(host);
+
+        host.Received(1).AddSettings(Arg.Any<Func<Control>>());
+        host.Received(1).AddSessionHeaderItem(Arg.Any<Func<IPluginSessionContext, Control>>());
+        host.DidNotReceive().AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>());
+        host.DidNotReceive().AddSideMenuSection(Arg.Any<string>(), Arg.Any<Func<Control>>());
     }
 }

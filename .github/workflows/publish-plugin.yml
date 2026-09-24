@@ -360,11 +360,15 @@ jobs:
             echo "::error::The zip has no plugin.json at its root — the installer would find no manifest."
             exit 1
           fi
-          entry="$(jq -r '.entryAssembly' "$MANIFEST")"
-          if ! printf '%s\n' "$listing" | grep -qx "$entry"; then
-            echo "::error::The zip has no $entry at its root, the assembly plugin.json names as the entry point."
-            exit 1
-          fi
+          # AC-1390: a plugin split in two names a uiAssembly beside its entryAssembly, and a UI-only plugin names
+          # just that one; every assembly the manifest names has to be in the zip.
+          for key in entryAssembly uiAssembly; do
+            assembly="$(jq -r --arg key "$key" '.[$key] // empty' "$MANIFEST")"
+            if [ -n "$assembly" ] && ! printf '%s\n' "$listing" | grep -qxF "$assembly"; then
+              echo "::error::The zip has no $assembly at its root, the assembly plugin.json names as its $key."
+              exit 1
+            fi
+          done
 
           # A published version the store will never offer is the failure this whole pipeline is about, so it
           # is checked rather than assumed: the version going out has to be the highest this plugin has.

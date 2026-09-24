@@ -1035,6 +1035,45 @@ your plugin (the type-identity pitfall — see [Overview](#overview)). Reference
 Your **own** dependencies (a NuGet the host doesn't provide) are referenced normally — they ship in your
 folder and the loader resolves them from there via the `.deps.json`.
 
+### A backend part and a UI part {#a-backend-part-and-a-ui-part}
+
+A plugin with anything to show is two assemblies in one plugin folder (AC-1390): a **backend part** with your
+`ICockpitPlugin`, which works without a window and never names Avalonia, and a **UI part** with your
+`ICockpitPluginUi` (see [the UI part](API-REFERENCE.md#the-ui-part)). The template scaffolds exactly this, and
+the bundled git status plugin is the worked example:
+
+```
+plugins-dev/Cockpit.Plugin.X/
+  Cockpit.Plugin.X.csproj        backend part: Abstractions, never Avalonia
+  plugin.json                    entryAssembly + entryType, uiAssembly + uiEntryType
+  Contracts/*.cs                 optional: types both parts share, as source
+  UI/Cockpit.Plugin.X.UI.csproj  UI part: Abstractions + Abstractions.UI + Avalonia
+```
+
+- **The UI project lives inside the plugin folder**, not beside it. The version guard, the store publish and CI's
+  change classification all key on the plugin folder, so a change to the UI part counts as a change to the
+  plugin and needs a version bump like any other.
+- **One output folder.** The UI project sets `<BaseOutputPath>..\bin\</BaseOutputPath>`, and the backend project
+  keeps it out of its own sources and orders the build with a reference that references no assembly:
+
+  ```xml
+  <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+  ...
+  <ProjectReference Include="UI\Cockpit.Plugin.X.UI.csproj" ReferenceOutputAssembly="false" Private="false" />
+  ```
+
+  `dotnet build Cockpit.Plugin.X.csproj` then leaves both dlls and both `.deps.json` files in one `bin/` folder,
+  which is all the store zip, the bundle and the dev refresh take. Nothing in CI or the publish workflow needs to
+  know there are two projects.
+- **The UI part never references the backend part.** It reaches it over the plugin's own channel, JSON in both
+  directions: the backend part registers `host.Channel.Handle(action, handler)` in `Initialize`, the UI part
+  calls `host.Channel.InvokeAsync(action, payload)`. Types both sides use go in `Contracts/` and are linked into
+  the UI project as source (`<Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />`),
+  never shared as an assembly. That keeps the UI part working when the backend part runs in another process.
+- **Both parts reference the shared assemblies compile-only**, exactly as above; `Cockpit.Plugins.Abstractions.UI`
+  is one of them.
+- **Set `minHostVersion` to `0.39.0` or later**, the first host that loads a UI part.
+
 ### Match the host's versions {#match-the-hosts-versions}
 
 A plugin is bound to the host's Avalonia major (and the abstractions major). Reference the **same Avalonia
@@ -1200,7 +1239,8 @@ neither):
 | Asset | What it is |
 |---|---|
 | `Cockpit.Plugins.Abstractions.<version>.nupkg` | **The one to use.** A normal package: it brings the Avalonia, DI-abstractions and Material.Icons versions the host ships along with it, and carries the usage notes as its readme. |
-| `cockpit-plugin-sdk-<version>.zip` | The bare assembly plus its XML docs, for a `<Reference>` with a `HintPath`. No dependency information — you wire those three yourself. |
+| `Cockpit.Plugins.Abstractions.UI.<version>.nupkg` | The window half, for a plugin's [UI part](#a-backend-part-and-a-ui-part). Same version as the SDK package, which it depends on, plus Avalonia. |
+| `cockpit-plugin-sdk-<version>.zip` | The bare assemblies (the SDK and its UI half) plus their XML docs, for a `<Reference>` with a `HintPath`. No dependency information — you wire those yourself. |
 
 - [Latest release](https://github.com/raymondkrahwinkel/AI-Cockpit/releases/latest) — a contract version you can
   pin to. Its version is the SDK's own semver (`1.27.0` today), not the host's release number: the host and the
@@ -1524,6 +1564,10 @@ to prove their own SDK extension points end to end from outside the host, not be
 **Autopilot** and **Fan-out** are bundled because they are first-class features of the cockpit itself — the
 issue-to-PR pipeline and running several agents on one task at once — not something bundling merely defaults on,
 the way the clock is.
+
+A bundled plugin's files are taken from its output folder by wildcard (every `.dll`, every `.deps.json` and
+`plugin.json`), so a bundled plugin that splits into a backend and a UI part ships both without a change to the
+app's project file.
 
 Bundling never overrides the operator: a plugin they disable stays disabled and untouched on disk, and a version
 they updated past ours from the store is not rolled back — only a newer bundled version replaces an older

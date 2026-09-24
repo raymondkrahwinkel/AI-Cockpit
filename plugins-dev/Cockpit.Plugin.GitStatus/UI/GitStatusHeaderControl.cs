@@ -1,20 +1,19 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.GitStatus.Contracts;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitStatus;
+namespace Cockpit.Plugin.GitStatus.UI;
 
-// The git state of the repo a session is working in, shown in that session's own header bar: a coloured dot
-// (clean / has changes / not a repo) plus the branch, with the counts on hover. It belongs here rather than in
-// the sidebar because it describes one session, and the sidebar describes the cockpit — a section following
-// "whichever session is selected" says nothing about the other three panes on screen.
-// Refreshes when the session's working directory becomes known and when the session runs a git command; click
-// to open that session's review panel (AC-961).
+// The git state of a session's repo in that session's own header: a coloured dot plus the branch, counts on hover,
+// click to open that session's review panel (AC-961). What git says comes from the backend part over the
+// plugin's channel (AC-1390): this assembly runs no git itself.
 internal sealed class GitStatusHeaderControl : UserControl
 {
     // Who answers the click (AC-961). Asked per click and per render rather than once at construction: plugins
@@ -31,10 +30,9 @@ internal sealed class GitStatusHeaderControl : UserControl
     // settles, probe the branch cheaply as a backstop. Same window as the signal debounce: fire on the lull.
     private static readonly TimeSpan BranchProbeDebounce = TimeSpan.FromSeconds(2);
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginSessionContext _session;
     private readonly GitStatusSettings _settings;
-    private readonly GitStatusReader _reader = new();
     private readonly DispatcherTimer _signalRefresh;
     private readonly DispatcherTimer _branchProbe;
 
@@ -42,14 +40,14 @@ internal sealed class GitStatusHeaderControl : UserControl
     private readonly TextBlock _label;
     private readonly Button _row;
 
-    private GitRepoStatus? _current;
+    private GitStatusBadge? _current;
     private int _loadToken;
     private bool _isAttached;
 
     private FileSystemWatcher? _headWatcher;
     private string? _watchedHeadDirectory;
 
-    public GitStatusHeaderControl(ICockpitHost host, IPluginSessionContext session, GitStatusSettings settings)
+    public GitStatusHeaderControl(ICockpitUiHost host, IPluginSessionContext session, GitStatusSettings settings)
     {
         _host = host;
         _session = session;
@@ -107,7 +105,7 @@ internal sealed class GitStatusHeaderControl : UserControl
         _session.OutputProduced += _OnSessionOutput;
         // Toggling "show branch name" (AC-36) takes effect at once on every live header. Subscribed here and dropped
         // on detach — symmetric with the session events — so a transient header is never left rooted (unlike
-        // ICockpitHost.OnSettingsSaved, which has no unsubscribe).
+        // ICockpitUiHost.OnSettingsSaved, which has no unsubscribe).
         _settings.Changed += _OnSettingsChanged;
         _label.IsVisible = _settings.ShowBranchName;
         _ = _LoadAsync();
@@ -170,7 +168,7 @@ internal sealed class GitStatusHeaderControl : UserControl
                 }
             }
 
-            var branch = await GitCommand.CurrentBranchAsync(path, CancellationToken.None);
+            var branch = await _AskAsync<string>(GitStatusChannel.Branch, path) ?? string.Empty;
             // Re-check after the awaits rather than trusting a pre-await snapshot: detach may have torn the control
             // down, and a concurrent reload may already have applied this branch. Compare against the live _current.
             if (!_isAttached || branch.Length == 0 || _current is not { Error: null } current)
@@ -196,9 +194,7 @@ internal sealed class GitStatusHeaderControl : UserControl
     private async Task _EnsureHeadWatcherAsync()
     {
         var path = _session.WorkingDirectory;
-        var headFile = string.IsNullOrWhiteSpace(path)
-            ? null
-            : await GitHeadLocator.ResolveHeadFileAsync(path, CancellationToken.None);
+        var headFile = string.IsNullOrWhiteSpace(path) ? null : await _ResolveHeadFileAsync(path);
         var directory = headFile is null ? null : System.IO.Path.GetDirectoryName(headFile);
 
         // Detached while the git directory was resolving: OnDetachedFromVisualTree has already torn the control
@@ -243,6 +239,27 @@ internal sealed class GitStatusHeaderControl : UserControl
         }
     }
 
+    // Watching is best-effort, so a HEAD that cannot be resolved (no backend part answering, git failing) means
+    // no watcher rather than a fault out of a caller nobody awaits.
+    private async Task<string?> _ResolveHeadFileAsync(string path)
+    {
+        try
+        {
+            return await _AskAsync<string>(GitStatusChannel.HeadFile, path);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private async Task<T?> _AskAsync<T>(string action, string workingDirectory)
+    {
+        var payload = JsonSerializer.SerializeToElement(new GitStatusRequest(workingDirectory), GitStatusChannel.Json);
+        var answer = await _host.Channel.InvokeAsync(action, payload);
+        return answer.Deserialize<T>(GitStatusChannel.Json);
+    }
+
     private void _OnHeadChanged(object? sender, FileSystemEventArgs e) => Dispatcher.UIThread.Post(_ScheduleReload);
 
     private void _ScheduleReload()
@@ -281,7 +298,8 @@ internal sealed class GitStatusHeaderControl : UserControl
         var token = ++_loadToken;
         try
         {
-            var status = await _reader.ReadAsync(path, CancellationToken.None);
+            var status = await _AskAsync<GitStatusBadge>(GitStatusChannel.Status, path)
+                ?? throw new InvalidOperationException("The backend part answered no git status.");
             if (token != _loadToken)
             {
                 return;
@@ -300,7 +318,7 @@ internal sealed class GitStatusHeaderControl : UserControl
         }
     }
 
-    private void _Render(GitRepoStatus status)
+    private void _Render(GitStatusBadge status)
     {
         // A session working somewhere that is not a repository has nothing to say here, so the indicator stays
         // out of the header entirely rather than sitting there greyed out.
@@ -318,7 +336,7 @@ internal sealed class GitStatusHeaderControl : UserControl
         _label.IsVisible = _settings.ShowBranchName;
         // Only promise the click when the review panel is actually installed to answer it.
         var click = _CanReview ? "\n\nClick to review this session's uncommitted changes." : string.Empty;
-        ToolTip.SetTip(_row, $"{status.Name} · {status.Branch}\n{GitStatusSummary.Describe(status)}{click}");
+        ToolTip.SetTip(_row, $"{status.Summary}{click}");
     }
 
     private void _Render(string error)
