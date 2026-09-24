@@ -23,7 +23,7 @@ public class SessionWatcherProbeTests
         withRoute.Title.Returns("AC-1380 worker");
         withRoute.IsTerminal.Returns(false);
         withRoute.HasReadableTranscript.Returns(true);
-        withRoute.SessionStatus.Returns(SessionStatus.Busy);
+        withRoute.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Busy, true));
         withRoute.ReadTranscriptAsync(Arg.Any<int>()).Returns(new SessionTranscriptSlice(
             [new SessionTranscriptEntry("AssistantText", "cutting the branch", null), new SessionTranscriptEntry("ToolUse", "error: the build fell over", null)],
             TotalEntries: 7));
@@ -33,7 +33,7 @@ public class SessionWatcherProbeTests
         terminal.PaneId.Returns("pane-2");
         terminal.Title.Returns("shell");
         terminal.IsTerminal.Returns(true);
-        terminal.SessionStatus.Returns(SessionStatus.Idle);
+        terminal.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Idle, false));
         registry.Register(terminal);
 
         // AC-294: not a plain terminal, but a provider that records nothing readable (or whose pty is not up yet) —
@@ -43,7 +43,7 @@ public class SessionWatcherProbeTests
         unreadable.Title.Returns("codex, mid-launch");
         unreadable.IsTerminal.Returns(false);
         unreadable.HasReadableTranscript.Returns(false);
-        unreadable.SessionStatus.Returns(SessionStatus.Busy);
+        unreadable.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Busy, true));
         registry.Register(unreadable);
 
         var probe = SessionWatcher.ProbeOf(registry);

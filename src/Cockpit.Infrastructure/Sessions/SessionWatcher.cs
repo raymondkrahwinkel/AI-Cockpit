@@ -433,11 +433,14 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
             return null;
         }
 
-        var needsAttention = handle.SessionStatus is SessionStatus.NeedsAttention || handle.HasPendingConsent;
+        // AC-1374's snapshot, not the two properties read apart: this tick now runs on a threadpool thread, and
+        // a consent answered between two separate reads must not be seen as half of one state and half of another.
+        var wakeState = await handle.ReadWakeStateAsync().ConfigureAwait(false);
+        var needsAttention = wakeState.SessionStatus is SessionStatus.NeedsAttention || wakeState.HasPendingConsent;
 
         if (!handle.HasReadableTranscript)
         {
-            return new WatchedPane(handle.Title, handle.SessionStatus, needsAttention, false, 0, [], [],
+            return new WatchedPane(handle.Title, wakeState.SessionStatus, needsAttention, false, 0, [], [],
                 await handle.HasOutstandingBackgroundShellsAsync().ConfigureAwait(false));
         }
 
@@ -446,7 +449,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
 
         return new WatchedPane(
             handle.Title,
-            handle.SessionStatus,
+            wakeState.SessionStatus,
             needsAttention,
             true,
             slice.TotalEntries,
