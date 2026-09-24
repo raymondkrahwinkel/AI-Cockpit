@@ -25,6 +25,10 @@ public sealed class StaleClaimReaper : ISingletonService, IDisposable
     private readonly TimeProvider _time;
 
     private ITimer? _timer;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it.
+    private int _sweeping;
     private bool _disposed;
 
     public StaleClaimReaper(
@@ -72,20 +76,29 @@ public sealed class StaleClaimReaper : ISingletonService, IDisposable
     // in-memory, so a sweep that finds nothing costs a dictionary walk and no process at all.
     public void RunOnce()
     {
-        if (LivePaneIds is null)
+        // A sweep that outlasts the interval must not have a second one started on top of it: two of them
+        // forgetting the same pane's claims is one reporting a set the other has already cleared.
+        if (LivePaneIds is null || Interlocked.CompareExchange(ref _sweeping, 1, 0) != 0)
         {
             return;
         }
 
-        var live = LivePaneIds().ToHashSet(StringComparer.Ordinal);
-        var stale = _claimsAudit.ListAll().Where(claim => !live.Contains(claim.OwnerPaneId));
-
-        foreach (var group in stale.GroupBy(claim => claim.OwnerPaneId, StringComparer.Ordinal))
+        try
         {
-            // Forgotten per pane, not per claim: `Forget` drops everything that pane holds in one call, so calling
-            // it once per resource would report each of the later ones as if it had still been standing.
-            _claims.Forget(group.Key);
-            _Report(group.Key, [.. group.Select(claim => claim.Resource)]);
+            var live = LivePaneIds().ToHashSet(StringComparer.Ordinal);
+            var stale = _claimsAudit.ListAll().Where(claim => !live.Contains(claim.OwnerPaneId));
+
+            foreach (var group in stale.GroupBy(claim => claim.OwnerPaneId, StringComparer.Ordinal))
+            {
+                // Forgotten per pane, not per claim: `Forget` drops everything that pane holds in one call, so
+                // calling it once per resource would report each of the later ones as if it had still been standing.
+                _claims.Forget(group.Key);
+                _Report(group.Key, [.. group.Select(claim => claim.Resource)]);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sweeping, 0);
         }
     }
 

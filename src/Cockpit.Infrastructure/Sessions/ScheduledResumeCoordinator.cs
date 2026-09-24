@@ -91,6 +91,11 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
 
         _started = true;
 
+        // AC-1380: captured before the load, not after — the real store reads its file with `ConfigureAwait(false)`,
+        // which would otherwise strip the caller's context, the same landing-with-no-message-loop failure
+        // `UiThreadCall.DispatchAsync` used to exist here to work around. Null in a test built with no dispatcher.
+        _uiContext = SynchronizationContext.Current;
+
         try
         {
             await LoadAsync(cancellationToken);
@@ -111,10 +116,6 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
             return;
         }
 
-        // AC-1380: captured here rather than read fresh on every tick — this call is still the caller's own
-        // (App.axaml.cs, on the UI thread), while the tick itself runs on the timer's threadpool thread with none
-        // of its own. Null in a test built with no dispatcher, where a tick runs inline instead of posting nowhere.
-        _uiContext = SynchronizationContext.Current;
         _timer = _time.CreateTimer(_ => _OnTick(), null, _tickInterval, _tickInterval);
 
         _logger.LogInformation(

@@ -326,6 +326,46 @@ public class PlannerTimerTests
         }
     }
 
+    // AC-1380: the real store's `LoadAsync` reads its config file with `ConfigureAwait(false)` — exactly the kind
+    // of internal hop AC-368's `UiThreadCall.DispatchAsync` used to guard against. Proves the capture still lands
+    // against a store that hops the same way, not only one whose `LoadAsync` never truly yields.
+    [Fact]
+    public async Task ScheduledResumeCoordinator_ADueTick_StillPostsBack_WhenTheLoadHopsThreadsInternally()
+    {
+        var clock = new ManualClock();
+        var interval = TimeSpan.FromSeconds(30);
+        var sent = new List<string>();
+        var posted = 0;
+        var context = new RecordingSynchronizationContext(() => posted++);
+        var due = new ScheduledResume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on", Reason: null);
+        var store = new FailableStore(due) { OnLoad = async () => await Task.Run(() => { }).ConfigureAwait(false) };
+
+        using var coordinator = new ScheduledResumeCoordinator(store, toast: null, logger: null, interval, clock)
+        {
+            ResolveSession = _ => _Handle(sent),
+        };
+
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            await coordinator.StartAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        // The load's own internal hop makes `StartAsync`'s continuation itself post back once, before the tick
+        // ever runs — this baseline is that, not the tick's own post, which is the one thing under test here.
+        var baseline = posted;
+
+        clock.Advance(interval);
+
+        Assert.Equal(1, posted - baseline);
+        Assert.Equal("carry on", Assert.Single(sent));
+    }
+
     // AC-1380: ported off the deleted `ScheduledResumeTimerTests` (App.ViewTests), onto the fake clock. What that
     // file also proved — a DispatcherTimer built off the UI thread never ticks at all — no longer applies.
     [Fact]
