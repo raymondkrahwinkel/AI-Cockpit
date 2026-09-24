@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
@@ -2701,9 +2702,9 @@ internal static class Screenshotter
 
     // Bare-minimum IAssistantSessionHost: nothing mutates Session/Activity/UnavailableReason after a scene constructs
     // one, so PropertyChanged never actually has to fire — a single captured frame never sees a change.
-    private sealed class _FakeAssistantSessionHost : ViewModels.IAssistantSessionHost
+    private sealed class _FakeAssistantSessionHost : IAssistantSessionHost
     {
-        public ViewModels.SessionViewModel? Session { get; init; }
+        public IAssistantSession? Session { get; init; }
 
         public Cockpit.Core.Assistant.AssistantActivity Activity { get; init; }
 
@@ -2713,11 +2714,11 @@ internal static class Screenshotter
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 
-        public Task<ViewModels.SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
 
         // Same again: a still frame cannot show a restart, and a scene that tore its own session down would render
         // the empty state instead of the one its name promises.
-        public Task<ViewModels.SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<IAssistantSession?> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
 
         public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

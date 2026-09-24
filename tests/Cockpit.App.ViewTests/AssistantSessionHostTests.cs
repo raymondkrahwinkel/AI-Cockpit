@@ -13,6 +13,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -90,7 +91,7 @@ public class AssistantSessionHostTests
     {
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: false, slot: _ConfiguredSlot()));
 
-        var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
 
         Assert.Null(session);
         Assert.Null(host.Session);
@@ -104,7 +105,7 @@ public class AssistantSessionHostTests
         var host = Dispatcher.UIThread.Invoke(() =>
             _Host(enabled: true, slot: AssistantProfileSlot.Unset("The provider switch could not be completed.")));
 
-        var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
 
         Assert.Null(session);
         // The slot's reason, not one invented here: the operator is told what actually happened to their profile
@@ -656,7 +657,7 @@ public class AssistantSessionHostTests
             () => new SessionViewModel(new SessionManager(factory))));
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
 
-        var first = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var first = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
         Assert.NotNull(first);
         Assert.DoesNotContain(first!.Transcript, entry => entry.IsDivider);
 
@@ -1014,7 +1015,7 @@ public class AssistantSessionHostTests
             Thread.Sleep(10);
         }
 
-        return host.Session!;
+        return Assert.IsType<SessionViewModel>(host.Session);
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
@@ -1034,7 +1035,7 @@ public class AssistantSessionHostTests
         var host = Dispatcher.UIThread.Invoke(() => _Host(
             enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
 
-        var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
         Assert.NotNull(session);
         return (host, session!, driver);
     }
@@ -1094,7 +1095,7 @@ public class AssistantSessionHostTests
         var running = Dispatcher.UIThread.Invoke(() => new _RunningSession());
         Dispatcher.UIThread.Invoke(() => host.Session = running);
 
-        var kept = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var kept = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
         Assert.Same(running, kept);
         Assert.Same(running, host.Session);
 
@@ -1414,7 +1415,8 @@ public class AssistantSessionHostTests
             sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance);
 
         return new AssistantSessionHost(
-            cockpit ?? new CockpitViewModel(), settings, profiles, sessionState, sessionStateRecorder,
+            new SessionLauncherAdapter(cockpit ?? new CockpitViewModel()), new NodeControllerPresence(), settings, profiles,
+            sessionState, sessionStateRecorder,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance);
     }

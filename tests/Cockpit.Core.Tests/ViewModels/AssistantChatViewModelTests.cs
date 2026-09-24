@@ -20,8 +20,8 @@ public class AssistantChatViewModelTests
         var host = Substitute.For<IAssistantSessionHost>();
         host.Session.Returns(session);
         host.Activity.Returns(activity);
-        host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
-        host.RestartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
+        host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IAssistantSession?>(session));
+        host.RestartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IAssistantSession?>(session));
         host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         return host;
     }

@@ -8,13 +8,16 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
@@ -115,6 +118,12 @@ sealed class Program
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(Program).Assembly);
+
+        // AC-1379: the assistant's host lives in Infrastructure; on the desktop it hears a controller come and go on the
+        // UI thread, which its chip is bound to. The backend bootstrap registers it over the plain presence.
+        services.AddSingleton(provider => ActivatorUtilities.CreateInstance<AssistantSessionHost>(
+            provider, new UiThreadControllerPresence(provider.GetRequiredService<INodeControllerPresence>())));
+        services.AddSingleton<IAssistantSessionHost>(provider => provider.GetRequiredService<AssistantSessionHost>());
 
         // Discover plugins before building the container so selected plugins can register services (#14), with
         // failures isolated. Safe mode is a UI-independent command-line escape hatch that still discovers plugins

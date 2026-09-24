@@ -26,6 +26,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
 

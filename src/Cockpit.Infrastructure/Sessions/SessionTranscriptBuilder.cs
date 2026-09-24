@@ -3,10 +3,6 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// One row's new version, numbered on the backend-wide event counter so a stream can resume from a `Last-Event-ID` (F5).
-// The version counts this row's upserts; the store keeps no version of its own, its last line wins.
-public readonly record struct TranscriptRowUpsert(long Seq, int Version, TranscriptSnapshotEntry Row);
-
 // The row one event landed on, as a snapshot, and whether it landed in a sub-agent's lane rather than the top level.
 public readonly record struct TranscriptFold(TranscriptSnapshotEntry? Row, bool InSubAgentLane);
 
@@ -125,12 +121,13 @@ internal sealed class SessionTranscriptBuilder(
         _Publish(_Add(_Seed(entry), parent: null, publish: false));
     }
 
-    // Rows repainted from the store: held so later changes version them, never published or written back.
+    // Rows repainted from the store: held so later changes version them, never published or written back. AC-1379:
+    // counted as their first version, so a later change reads as a change (Version > 1) and not as a new row.
     public void Seed(IReadOnlyList<TranscriptSnapshotEntry> entries)
     {
         foreach (var entry in entries)
         {
-            _Add(_Seed(entry), parent: null, publish: false);
+            _Add(_Seed(entry), parent: null, publish: false).Version = 1;
         }
     }
 

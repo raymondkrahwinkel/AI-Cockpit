@@ -1,5 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Tests.Hotkeys;

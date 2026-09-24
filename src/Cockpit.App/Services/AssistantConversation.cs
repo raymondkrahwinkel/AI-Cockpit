@@ -16,7 +16,7 @@ internal sealed class AssistantConversation(IAssistantSessionHost host) : IAssis
     public Task<bool> ShowQuestionAsync(string question, string inputJson) =>
         UiThreadCall.RunAsync(() =>
         {
-            if (host.Session is not { } session)
+            if (host.View() is not { } session)
             {
                 return false;
             }

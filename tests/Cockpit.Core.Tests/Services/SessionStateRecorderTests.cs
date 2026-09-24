@@ -1,4 +1,3 @@
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;

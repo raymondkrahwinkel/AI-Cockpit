@@ -1,34 +1,33 @@
-using System.Collections.Specialized;
 using System.ComponentModel;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
-using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Images;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Assistant;
 
-// AC-1023: the app-level half of `IAssistantChannelGateway`, shaped like `AssistantAgentGateway` — same UI-thread
-// marshalling, and a refusal is a result rather than an exception. The identity check in `SendAsync` and the
-// prompt filtering further down are the security boundary itself, host-side so a plugin cannot skip them.
-internal sealed class AssistantChannelGateway : IAssistantChannelGateway
+// AC-1023: the host half of `IAssistantChannelGateway`, where a refusal is a result rather than an exception. The
+// identity check in `SendAsync` and the prompt filtering further down are the security boundary itself, host-side so
+// a plugin cannot skip them. AC-1379: no thread of its own — the app hands it a host that marshals to the UI thread.
+public sealed class AssistantChannelGateway : IAssistantChannelGateway
 {
     private readonly AssistantChannelContribution _channel;
     private readonly IAssistantSessionHost _host;
     private readonly IConsentBroker _consent;
     private readonly ILogger<AssistantChannelGateway> _logger;
 
-    // Row identity: the transcript's entries carry none of their own, and a streaming row is mutated in place, so a
-    // plugin needs something stable to recognise "the same message, longer" by. Reference-keyed, and the same
-    // dictionary is what tells us which entries we are subscribed to when the collection resets.
-    private readonly Dictionary<TranscriptEntryViewModel, Guid> _rowIds = new(ReferenceEqualityComparer.Instance);
+    // Row identity for a plugin, which needs something stable to recognise "the same message, longer" by: one Guid per
+    // row id, with the text and result last relayed so a change to anything else stays quiet. ponytail: a row from
+    // before the channel joined has no baseline, so its first change of any kind is relayed; seed one if that shows.
+    private readonly Dictionary<string, (Guid Id, string Text, string? ResultText)> _relayedRows = new(StringComparer.Ordinal);
 
     private readonly HashSet<Guid> _relayedPrompts = [];
 
-    private SessionViewModel? _observed;
+    private IAssistantSession? _observed;
     private bool _disposed;
 
     public AssistantChannelGateway(
@@ -46,9 +45,7 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         _consent.PromptOpened += _OnPromptOpened;
         _consent.PromptClosed += _OnPromptClosed;
 
-        // AC-1138: capped like the rest. This runs wherever the container first resolves the gateway, which can be
-        // an MCP request thread — where waiting out a starved UI thread would hang that agent's whole turn.
-        UiThreadCall.Run(() => _WatchSession(_host.Session));
+        _WatchSession(_host.Session);
     }
 
     public event EventHandler<AssistantChannelRow>? RowChanged;
@@ -86,12 +83,12 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.IgnoredSender();
         }
 
-        // Before the dispatch, so the decoding runs off the UI thread.
+        // Before the send, so the decoding runs on the caller's thread rather than the host's.
         var (accepted, refusal) = _Accept(images);
 
         try
         {
-            await _OnUiThreadAsync(() => _host.SendAsync(text, accepted, cancellationToken)).ConfigureAwait(false);
+            await _host.SendAsync(text, accepted, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -136,10 +133,6 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         return (accepted, refusals.Count == 0 ? null : string.Join("; ", refusals.Distinct()));
     }
 
-    // AC-1023: awaits the send finishing rather than only its start, and the inline branch spares a caller already
-    // on the UI thread a redundant dispatch. AC-1138 caps the hop for the callers that arrive off it.
-    private static Task _OnUiThreadAsync(Func<Task> work) => UiThreadCall.RunAsync(work);
-
     public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false)
     {
         lock (_relayedPrompts)
@@ -164,7 +157,7 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _consent.PromptOpened -= _OnPromptOpened;
         _consent.PromptClosed -= _OnPromptClosed;
-        UiThreadCall.Run(() => _WatchSession(null));
+        _WatchSession(null);
     }
 
     // ── transcript ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -173,113 +166,87 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
     {
         if (e.PropertyName is nameof(IAssistantSessionHost.Session) && !_disposed)
         {
-            Dispatcher.UIThread.Post(() => _WatchSession(_host.Session));
-        }
-    }
-
-    private void _WatchSession(SessionViewModel? next)
-    {
-        if (ReferenceEquals(_observed, next))
-        {
-            return;
-        }
-
-        if (_observed is not null)
-        {
-            _observed.Transcript.CollectionChanged -= _OnTranscriptChanged;
-        }
-
-        foreach (var entry in _rowIds.Keys)
-        {
-            entry.PropertyChanged -= _OnRowChanged;
-        }
-
-        _rowIds.Clear();
-        _observed = next;
-
-        if (next is null)
-        {
-            return;
-        }
-
-        next.Transcript.CollectionChanged += _OnTranscriptChanged;
-
-        // Attached without raising: a channel that joins mid-conversation relays what happens from now on, never a
-        // replay of everything already said.
-        foreach (var entry in next.Transcript)
-        {
-            _Attach(entry);
-        }
-    }
-
-    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (e.Action == NotifyCollectionChangedAction.Reset)
-        {
-            _WatchSession(null);
             _WatchSession(_host.Session);
+        }
+    }
+
+    private void _WatchSession(IAssistantSession? next)
+    {
+        lock (_relayedRows)
+        {
+            if (ReferenceEquals(_observed, next))
+            {
+                return;
+            }
+
+            if (_observed is not null)
+            {
+                _observed.RowUpserted -= _OnRowUpserted;
+            }
+
+            _relayedRows.Clear();
+            _observed = next;
+
+            if (next is not null)
+            {
+                next.RowUpserted += _OnRowUpserted;
+            }
+        }
+    }
+
+    // A row's first version is a row arriving; any later one is the same row changing — including a row that was
+    // already there when the channel joined, which is watched from here on but never replayed.
+    private void _OnRowUpserted(TranscriptRowUpsert upsert)
+    {
+        if (_disposed)
+        {
             return;
         }
 
-        foreach (var removed in e.OldItems?.OfType<TranscriptEntryViewModel>() ?? [])
+        var row = upsert.Row;
+        Guid id;
+        lock (_relayedRows)
         {
-            removed.PropertyChanged -= _OnRowChanged;
-            _rowIds.Remove(removed);
-        }
+            if (_relayedRows.TryGetValue(row.Id, out var relayed))
+            {
+                if (relayed.Text == row.Text && relayed.ResultText == row.ResultText)
+                {
+                    return;
+                }
 
-        foreach (var added in e.NewItems?.OfType<TranscriptEntryViewModel>() ?? [])
-        {
-            _Attach(added);
-            _Raise(added, isUpdate: false);
-        }
-    }
+                id = relayed.Id;
+            }
+            else
+            {
+                id = Guid.NewGuid();
+            }
 
-    private void _Attach(TranscriptEntryViewModel entry)
-    {
-        if (_rowIds.TryAdd(entry, Guid.NewGuid()))
-        {
-            entry.PropertyChanged += _OnRowChanged;
-        }
-    }
-
-    private void _OnRowChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (sender is TranscriptEntryViewModel entry
-            && e.PropertyName is nameof(TranscriptEntryViewModel.Text) or nameof(TranscriptEntryViewModel.ResultText))
-        {
-            _Raise(entry, isUpdate: true);
-        }
-    }
-
-    private void _Raise(TranscriptEntryViewModel entry, bool isUpdate)
-    {
-        if (_disposed || !_rowIds.TryGetValue(entry, out var id))
-        {
-            return;
+            _relayedRows[row.Id] = (id, row.Text, row.ResultText);
         }
 
         RowChanged?.Invoke(this, new AssistantChannelRow
         {
             Id = id,
-            Kind = _Kind(entry.Kind),
-            Text = entry.Text,
-            Timestamp = entry.Timestamp,
-            ToolName = entry.ToolName,
-            ResultText = entry.ResultText,
-            IsUpdate = isUpdate,
+            Kind = _Kind(row.Kind),
+            Text = row.Text,
+            Timestamp = row.Timestamp,
+            ToolName = row.ToolName,
+            ResultText = row.ResultText,
+            IsUpdate = upsert.Version > 1,
         });
     }
 
-    private static AssistantChannelRowKind _Kind(TranscriptEntryKind kind) => kind switch
+    // The row kinds as a snapshot spells them — `TranscriptEntryKind`'s names.
+    private static AssistantChannelRowKind _Kind(string kind) => kind switch
     {
-        TranscriptEntryKind.UserText => AssistantChannelRowKind.UserText,
-        TranscriptEntryKind.ToolUse => AssistantChannelRowKind.ToolUse,
-        TranscriptEntryKind.ToolResult => AssistantChannelRowKind.ToolResult,
-        TranscriptEntryKind.Thinking => AssistantChannelRowKind.Thinking,
-        TranscriptEntryKind.Question => AssistantChannelRowKind.Question,
-        TranscriptEntryKind.TurnCompleted => AssistantChannelRowKind.TurnCompleted,
-        TranscriptEntryKind.Error => AssistantChannelRowKind.Error,
-        TranscriptEntryKind.Divider => AssistantChannelRowKind.Divider,
+        "UserText" => AssistantChannelRowKind.UserText,
+        "ToolUse" => AssistantChannelRowKind.ToolUse,
+        "ToolResult" => AssistantChannelRowKind.ToolResult,
+        "Thinking" => AssistantChannelRowKind.Thinking,
+        "Question" => AssistantChannelRowKind.Question,
+        "TurnCompleted" => AssistantChannelRowKind.TurnCompleted,
+        "Error" => AssistantChannelRowKind.Error,
+        "Divider" => AssistantChannelRowKind.Divider,
         _ => AssistantChannelRowKind.AssistantText,
     };
 

@@ -8272,13 +8272,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private sealed class _ChatLeakSimHost : IAssistantSessionHost
     {
-        public SessionViewModel? Session { get; init; }
+        public IAssistantSession? Session { get; init; }
         public Cockpit.Core.Assistant.AssistantActivity Activity => Cockpit.Core.Assistant.AssistantActivity.Ready;
         public string? UnavailableReason => null;
         public string? DefaultWorkingDirectory => System.IO.Path.GetTempPath();
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
-        public Task<SessionViewModel?> EnsureStartedAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
-        public Task<SessionViewModel?> RestartAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<IAssistantSession?> EnsureStartedAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<IAssistantSession?> RestartAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
         public Task SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void SetSpeakReplies(bool speak) { }
         public Task ApplySettingsAsync(System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -8512,6 +8512,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.BelongsToNoWorkspace = true;
         session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
         _SeedSessionPreferences(session);
+
+        // AC-1379: the host outside the app seeds the assistant's speech through this rather than reading it off here.
+        session.AssistantVoice = () => (SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
 
         // The screenshot button in the chat window, with the region picker and its marking tools behind it
         // (AC-630). Missing here is why the assistant was the one session that could not be shown anything.

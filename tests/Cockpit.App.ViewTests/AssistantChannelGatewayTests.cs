@@ -1,7 +1,8 @@
 using SkiaSharp;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;

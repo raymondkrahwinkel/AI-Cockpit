@@ -1,6 +1,8 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
@@ -39,6 +41,17 @@ internal sealed class SessionLauncherAdapter(CockpitViewModel cockpit) : ISessio
 
     // Sessions only, never FindSession: CloseSessionAsync no-ops for an embedded pane, and the gateway has already
     // refused those with a reason of their own.
+    // AC-1379: the assistant's host calls these on the UI thread, as it always called the cockpit, so they do not hop.
+    public IAssistantSession? CreateAssistantSession() => cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
+
+    public void ReleaseAssistantSession(IAssistantSession session)
+    {
+        if (session is SessionPanelViewModel pane)
+        {
+            cockpit.ReleaseAssistantSession(pane);
+        }
+    }
+
     public Task StopSessionAsync(string paneId) =>
         UiThreadCall.RunAsync(() =>
             cockpit.Sessions.FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal)) is { } session

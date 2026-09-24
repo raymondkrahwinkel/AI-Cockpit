@@ -8,6 +8,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -16,6 +17,7 @@ using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
@@ -106,9 +108,10 @@ internal sealed class CockpitHost(
             previous.Dispose();
         }
 
+        // AC-1379: the gateway keeps no thread of its own; this host makes the UI-thread hops it used to make itself.
         var gateway = new AssistantChannelGateway(
             contribution,
-            assistantHost,
+            new UiThreadAssistantSessionHost(assistantHost),
             services.GetRequiredService<IConsentBroker>(),
             services.GetRequiredService<ILogger<AssistantChannelGateway>>());
         _assistantChannels[contribution.Id] = gateway;

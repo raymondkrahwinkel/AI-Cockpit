@@ -1,8 +1,6 @@
-using System.Collections.Specialized;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
-using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -10,21 +8,24 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Assistant;
 
 // AC-1013: Spins up the voice assistant's own session and owns it (AC-543, decision 3) — builds it and keeps the
 // only reference so "which session is the assistant" is settled by construction, starts lazily on first
-// hotkey/click, revives a dead instance on the same conversation, implements `IAssistantSessionHost` only as a test seam.
-public sealed partial class AssistantSessionHost : ObservableObject, ISingletonService, IAssistantSessionHost
+// hotkey/click, revives a dead instance on the same conversation. AC-1379: drives its session through `IAssistantSession`, so
+// it runs without the app; the app hands it a presence that raises on the UI thread, the backend the plain one.
+public sealed class AssistantSessionHost : IAssistantSessionHost
 {
     // AC-1013: Fixed pane id (not a fresh guid per launch) so the state store's last-conversation lookup keeps
     // matching across starts; also the identity the broad read tools check against (AC-544), kept in Core since
     // Infrastructure hosts those tools and two copies of a guardrail constant is one that can stop matching.
     internal const string AssistantPaneId = AssistantIdentity.PaneId;
 
-    private readonly CockpitViewModel _cockpit;
+    private readonly ISessionLauncher _launcher;
+    private readonly INodeControllerPresence _presence;
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
     private readonly ISessionStateStore _sessionState;
@@ -42,7 +43,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private Task? _defaultWorkingDirectoryLoad;
 
     public AssistantSessionHost(
-        CockpitViewModel cockpit,
+        ISessionLauncher launcher,
+        INodeControllerPresence presence,
         IAssistantSettingsStore settings,
         IAssistantProfileStore profiles,
         ISessionStateStore sessionState,
@@ -51,7 +53,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         IAssistantMemory memory,
         ILogger<AssistantSessionHost> logger)
     {
-        _cockpit = cockpit;
+        _launcher = launcher;
+        _presence = presence;
         _settings = settings;
         _profiles = profiles;
         _sessionState = sessionState;
@@ -62,28 +65,48 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         // AC-1321: a controller appearing or going away is re-read through the same path a settings save takes,
         // so the takeover is one more reason on the existing off state and not a second one.
-        _cockpit.PropertyChanged += (_, e) =>
+        _presence.Changed += (_, _) =>
         {
-            if (e.PropertyName == nameof(CockpitViewModel.ActiveController))
-            {
-                _ApplyTurnHold();
-                _ = ApplySettingsAsync();
-            }
+            _ApplyTurnHold();
+            _ = ApplySettingsAsync();
         };
     }
 
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     // The living assistant instance, or null while it has not been woken yet. The one reference there is.
-    [ObservableProperty]
-    private SessionViewModel? _session;
+    public IAssistantSession? Session
+    {
+        get => _session;
+        set
+        {
+            if (_Set(ref _session, value))
+            {
+                _OnSessionChanged();
+            }
+        }
+    }
+
+    private IAssistantSession? _session;
 
     // What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.
-    [ObservableProperty]
+    public AssistantActivity Activity
+    {
+        get => _activity;
+        private set => _Set(ref _activity, value);
+    }
+
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     // AC-1013: Why the assistant cannot be reached (off, no profile, or start failed), for the operator. Non-null
     // exactly while `Activity` is `AssistantActivity.Unavailable` — an unavailable chip that
     // doesn't say why sends someone into Options hunting for a setting that isn't the problem.
-    [ObservableProperty]
+    public string? UnavailableReason
+    {
+        get => _unavailableReason;
+        private set => _Set(ref _unavailableReason, value);
+    }
+
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Assistant.";
 
     // AC-740: the picker's fallback working directory before a session exists. Lazily loaded on first read
@@ -104,7 +127,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             var slot = await _profiles.LoadAsync(CancellationToken.None).ConfigureAwait(true);
             _defaultWorkingDirectory = slot.Profile?.DefaultWorkingDirectory;
-            OnPropertyChanged(nameof(DefaultWorkingDirectory));
+            _Raise(nameof(DefaultWorkingDirectory));
         }
         catch (Exception)
         {
@@ -185,28 +208,38 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
     // What speech-to-text is fetching right now, and how far along it is where that is known — shown on the chip
     // beside `AssistantActivity.Preparing`. Null whenever nothing is being prepared.
-    [ObservableProperty]
+    public string? PreparationStatus
+    {
+        get => _preparationStatus;
+        private set => _Set(ref _preparationStatus, value);
+    }
+
     private string? _preparationStatus;
 
-    [ObservableProperty]
+    public double? PreparationProgress
+    {
+        get => _preparationProgress;
+        private set => _Set(ref _preparationProgress, value);
+    }
+
     private double? _preparationProgress;
 
     // AC-1013: Brings the assistant up if not already (idempotent, replaces a dead instance). Never throws — the
     // callers are hotkey/click handlers with nowhere to put an exception; a failed start instead leaves
     // `Activity` on `Unavailable` with the reason set, so the chip says what the log used to say alone.
-    public Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+    public Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, cancellationToken);
 
     // AC-1013: Stands the assistant down and brings it straight back up on the same conversation, so a start-time
     // setting (e.g. `bypassPermissions`, choosable only at a start — bug #15) takes effect without closing the
     // cockpit. Keeps the conversation via the normal `_StartAsync`/`_ResolveResumeAsync` resume path, and reuses `_DisposeQuietlyAsync`.
-    public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
+    public Task<IAssistantSession?> RestartAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: false, cancellationToken);
 
     // AC-1261 criterion 1: the one entry point a clear runs through — the flyout row (which stops a running turn
     // first, criterion 6) and the `clear_conversation` tool's deferred execution (criterion 7) both call this and
     // nothing else. Same shape as AC-596's hand-over: `_StartAsync` remains the only place that archives.
-    public Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default) =>
+    public Task<IAssistantSession?> ClearConversationAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(
             replaceALiveInstance: true,
             startFresh: true,
@@ -221,7 +254,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // AC-1013: `replaceALiveInstance` — whether a healthy instance is torn down too (false =
     // `EnsureStartedAsync`'s idempotent lazy start, true = `RestartAsync`); one body so both take the
     // same start gate. `startFresh` — resume the conversation (default) or not (AC-596's hand-over).
-    private async Task<SessionViewModel?> _StartOrReplaceAsync(
+    private async Task<IAssistantSession?> _StartOrReplaceAsync(
         bool replaceALiveInstance,
         bool startFresh,
         CancellationToken cancellationToken,
@@ -232,7 +265,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             // AC-1321: no new turn while a controller holds the line — before the live-instance shortcut, since a
             // running conversation is allowed to finish its turn but not to take another.
-            if (_cockpit.ActiveController is { } controller)
+            if (_presence.Current is { } controller)
             {
                 _SetUnavailable(TakeoverReason(controller));
                 return null;
@@ -304,7 +337,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             // Attachment only: InjectAndSubmit returns on empty text, so the composer's own send path takes it —
             // which is the one that picks the pending attachments up.
-            session.SendCommand.Execute(null);
+            session.SubmitComposer();
             return;
         }
 
@@ -323,13 +356,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         if (Session is { } live)
         {
             live.ReadingLevel = settings.ReadingLevel;
-            _ApplySpeech(live, settings);
+            live.ApplySpeech(settings.SpeakReplies);
         }
 
         // AC-1327 criterion 1: a controller outranks every other unavailable reason, including the feature being
         // off — a connected node always has an assistant. Re-run on every transition, so falling back here
         // restores whichever reason applies without one.
-        if (_cockpit.ActiveController is { } controller)
+        if (_presence.Current is { } controller)
         {
             _SetUnavailable(TakeoverReason(controller));
             return;
@@ -365,7 +398,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
     }
 
-    private async Task<SessionViewModel?> _StartAsync(
+    private async Task<IAssistantSession?> _StartAsync(
         bool startFresh, CancellationToken cancellationToken, string? startFreshBecause = null)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
@@ -384,7 +417,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             return null;
         }
 
-        var session = _cockpit.CreateAssistantSession(AssistantPaneId);
+        var session = _launcher.CreateAssistantSession();
         if (session is null)
         {
             _SetUnavailable("This cockpit cannot start sessions.");
@@ -413,19 +446,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // ("No such file or directory"), and nothing guarantees another writer reached this root first.
         Directory.CreateDirectory(workingDirectory);
 
-        await session.StartConfiguredAsync(
+        // AC-1013: the session's own defaults are only the floor — the profile's own permission mode/model/effort ride
+        // the launch options below (the driver prefers those). See _LaunchOptions for what bypassPermissions means here.
+        await session.StartAsync(new AssistantLaunch(
             profile,
-            // AC-1013: App defaults only as the floor — the profile's own permission mode/model/effort ride the
-            // launch options below (the driver prefers those), so a profile that says nothing still starts as
-            // before. See _LaunchOptions for the full rule and what bypassPermissions means here.
-            SessionOptionCatalog.DefaultPermissionMode,
-            SessionOptionCatalog.DefaultModel,
-            SessionOptionCatalog.DefaultEffort,
-            workingDirectory: workingDirectory,
-            resume: resume,
+            workingDirectory,
+            resume,
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
-            enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
-            launchOptions: _LaunchOptions(
+            await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
+            _LaunchOptions(
                 profile,
                 slot.ReplacesStandingInstruction,
                 await _memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(true),
@@ -436,12 +465,12 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 // describes the general expectation, and the per-call `approval` field (AssistantAgentMcpTools)
                 // corrects it when only one source was switched off individually.
                 consentCardAsks: !settings.ConsentBypassAll),
-            readingLevel: settings.ReadingLevel).ConfigureAwait(true);
+            settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
         if (!_IsAlive(session))
         {
-            var reason = session.StartFailure ?? session.Status;
+            var reason = session.FailureReason;
             _logger.LogWarning("The assistant session was not running right after its start: {Reason}", reason);
             await _DisposeQuietlyAsync(session).ConfigureAwait(true);
             _SetUnavailable($"The assistant could not start: {reason}");
@@ -457,7 +486,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             workingDirectory,
             worktreePath: null,
             worktreeBranch: null,
-            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value,
+            permissionMode: SessionPermissionModes.Default,
             // AC-1261 criterion 3: `startFresh` covers both AC-596's hand-over and a clear, and neither changes
             // profile or working directory — the guard this forces needs telling, not inferring.
             forgetConversation: startFresh);
@@ -466,9 +495,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
         if (startFresh)
         {
-            session.Transcript.Add(new TranscriptEntryViewModel(
-                TranscriptEntryKind.Divider,
-                startFreshBecause ?? "Context was full — a new conversation starts here, picked up from a short note"));
+            session.AddDivider(startFreshBecause ?? "Context was full — a new conversation starts here, picked up from a short note");
         }
         else if (resume.Mode == SessionResumeMode.BySessionId)
         {
@@ -477,7 +504,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _WatchForUnresolvableResume(session);
         }
 
-        _ApplySpeech(session, settings);
+        session.ApplySpeech(settings.SpeakReplies);
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
@@ -487,25 +514,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // AC-1013: The wire that makes Thinking end — only the session knows when a turn finishes, not the host's
         // own hold/send/start/failure moments. Without it the chip is set on the way in but never on the way
         // out: every send after the first leaves it stuck on Thinking.
-        session.PropertyChanged += _OnSessionPropertyChanged;
+        session.StateChanged += _OnSessionStateChanged;
 
         _SyncActivityWithSession(session);
         return session;
-    }
-
-    // AC-1013: Seeds a starting session's speech (decision 2's "TTS erna") since nothing else does — otherwise a
-    // session started after the last Options save keeps bare defaults (`ReadResponsesAloud` false,
-    // `ReadAloudLanguage` "en"). Called from both start and `ApplySettingsAsync`; read-aloud is always verbatim (AC-542 decision 10, AC-546).
-    private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
-    {
-        // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
-        // sentence spent about as long synthesising as speaking, so every full stop came with an audible hole in
-        // it — for a surface whose entire output is speech, that is not a rough edge but the product.
-        session.ReadAloudAsOneUtterance = true;
-
-        session.TtsVoiceSid = _cockpit.SelectedTtsVoice.Sid;
-        session.ReadAloudLanguage = _cockpit.SelectedReadAloudLanguage.Code;
-        session.ReadResponsesAloud = settings.SpeakReplies;
     }
 
     // Turns speaking on or off on the live session, so the header toggle takes effect on the next reply rather
@@ -515,37 +527,27 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     {
         if (Session is { } session)
         {
-            session.ReadResponsesAloud = speak;
+            session.SpeakReplies(speak);
         }
     }
 
-    private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    // AC-1379: the session says which change it is — busy, waiting on the operator, or the fill moved. Its flag is what
+    // the old property-name filter carried beyond "reconsider": whether this change brings a newly read fill.
+    private void _OnSessionStateChanged(object? sender, bool fillWasJustRead)
     {
-        if (e.PropertyName is null
-                or nameof(SessionViewModel.IsBusy)
-                or nameof(SessionViewModel.HasPendingPermission)
-                // The cockpit's own consent gate (#AC-47) is a second way to be waiting on the operator, and it
-                // moves a different property than the SDK's permission does. Left out, the chip read "Ready" while
-                // a k8s or terminal request sat unanswered over the chat window.
-                or nameof(SessionPanelViewModel.PendingConsent)
-                // AC-596: the same three properties decide whether it may hand over, so the fill is watched here
-                // rather than on its own subscription — a context that crossed the line while it was still talking
-                // has to be reconsidered the moment it stops.
-                or nameof(SessionPanelViewModel.ContextUsedPercent)
-            && sender is SessionViewModel session)
+        if (sender is not IAssistantSession session)
         {
-            _SyncActivityWithSession(session);
-
-            // Whether this change carries a *new* fill figure or merely happens to be able to read the last one: the
-            // session refreshes the provider's limits after it has published IsBusy false, so the busy transition
-            // arrives with the previous turn's figure still standing. Why that matters: _HandOverIfTheContextIsFull.
-            _HandOverIfTheContextIsFull(
-                session,
-                fillWasJustRead: e.PropertyName is null or nameof(SessionPanelViewModel.ContextUsedPercent));
-
-            // AC-1261 criterion 7: a queued clear_conversation request runs the moment this same gate opens.
-            _TryExecutePendingConversationClear(session);
+            return;
         }
+
+        _SyncActivityWithSession(session);
+
+        // The session refreshes the provider's limits after it has published IsBusy false, so the busy transition
+        // arrives with the previous turn's figure still standing. Why that matters: _HandOverIfTheContextIsFull.
+        _HandOverIfTheContextIsFull(session, fillWasJustRead);
+
+        // AC-1261 criterion 7: a queued clear_conversation request runs the moment this same gate opens.
+        _TryExecutePendingConversationClear(session);
     }
 
     // AC-1261 criterion 7 (V2): marks a request rather than clearing now — clearing mid-turn would tear down the
@@ -574,14 +576,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
     // The same gate `_HandOverIfTheContextIsFull` uses (`ShouldHandOver`), reused rather than copied: contextUsedPercent
     // is given as always-over-the-line, so the busy/waiting-on-operator halves alone decide when a clear may run.
-    private void _TryExecutePendingConversationClear(SessionViewModel session)
+    private void _TryExecutePendingConversationClear(IAssistantSession session)
     {
         if (!_pendingConversationClear || !ReferenceEquals(session, Session))
         {
             return;
         }
 
-        if (!ShouldHandOver(double.PositiveInfinity, session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null))
+        if (!ShouldHandOver(double.PositiveInfinity, session.IsBusy, session.IsWaitingOnOperator))
         {
             return;
         }
@@ -590,7 +592,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _ = ClearConversationAsync();
     }
 
-    partial void OnSessionChanged(SessionViewModel? value)
+    private void _OnSessionChanged()
     {
         _pendingConversationClear = false;
         // A session that arrives while a controller already holds the line takes the hold with it — the start began
@@ -601,7 +603,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
     // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
     // AC-664: a provider that can summarise its own conversation is asked to, and the restart is what is left.
-    private void _HandOverIfTheContextIsFull(SessionViewModel session, bool fillWasJustRead)
+    private void _HandOverIfTheContextIsFull(IAssistantSession session, bool fillWasJustRead)
     {
         if (!ReferenceEquals(session, Session))
         {
@@ -625,10 +627,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         }
 
         // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
-        if (!session.CanTakeAPrompt || !ShouldHandOver(
-                session.ContextUsedPercent,
-                session.IsBusy,
-                session.HasPendingPermission || session.PendingConsent is not null))
+        if (!session.CanTakeAPrompt || !ShouldHandOver(session.ContextUsedPercent, session.IsBusy, session.IsWaitingOnOperator))
         {
             return;
         }
@@ -644,9 +643,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // the ask is what makes the fill move, so the condition that triggered it is still true when the reply lands.
     private bool _askedTheProviderToCompact;
 
-    private async Task _RelieveTheFullContextAsync(SessionViewModel session)
+    private async Task _RelieveTheFullContextAsync(IAssistantSession session)
     {
-        if (session.Capabilities.SupportsContextCompaction && !_askedTheProviderToCompact)
+        if (session.SupportsContextCompaction && !_askedTheProviderToCompact)
         {
             _askedTheProviderToCompact = true;
             _logger.LogInformation(
@@ -658,14 +657,12 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
                 // here — the provider reports it as a system line the transcript does not render — so the assistant's
                 // memory of the early part would quietly thin out with nothing to say that it had.
-                session.Transcript.Add(new TranscriptEntryViewModel(
-                    TranscriptEntryKind.Divider,
-                    "Context was full — the conversation so far was summarised and continues here"));
+                session.AddDivider("Context was full — the conversation so far was summarised and continues here");
                 return;
             }
         }
 
-        if (session.Capabilities.SupportsContextCompaction)
+        if (session.SupportsContextCompaction)
         {
             _logger.LogInformation(
                 "The assistant's context is {Fill:0}% full and compacting did not relieve it; restarting it on a fresh conversation.",
@@ -690,10 +687,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set
     // rather than the "done" set, so a status added later defaults to Ready, not Thinking.
-    private void _SyncActivityWithSession(SessionViewModel session) =>
+    private void _SyncActivityWithSession(IAssistantSession session) =>
         // Either kind of waiting counts: the SDK's own permission row, and the cockpit's consent gate for a
         // host-side tool. Both stop the turn dead until somebody clicks, and the chip's job is to say so.
-        Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null);
+        Activity = ActivityFor(Activity, session.IsBusy, session.IsWaitingOnOperator);
 
     // AC-1013: Pure function so it can be asserted directly. Reads both inputs raw rather than
     // `SessionPanelViewModel.SessionStatus`, whose `_needsAttention` stickiness once produced two wrong chips
@@ -732,27 +729,28 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // AC-684, criterion 4: a `BySessionId` resume the provider refuses surfaces as an immediate failed turn
     // (AC-539's `error_during_execution`), not an exception. The first row this fresh launch's transcript
     // receives decides it, once, since nothing has sent the provider a prompt yet to correlate against.
-    private void _WatchForUnresolvableResume(SessionViewModel session)
+    private void _WatchForUnresolvableResume(IAssistantSession session)
     {
-        void OnChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        void OnRow(TranscriptRowUpsert upsert)
         {
-            session.Transcript.CollectionChanged -= OnChanged;
+            session.RowUpserted -= OnRow;
 
-            if (e.NewItems?.Cast<TranscriptEntryViewModel>().FirstOrDefault()
-                    is { Kind: TranscriptEntryKind.TurnCompleted } entry
-                && ReferenceEquals(session, Session))
+            if (upsert.Row.Kind == TurnCompletedKind && ReferenceEquals(session, Session))
             {
-                _ = _RecoverFromUnresolvableResumeAsync(session, entry.Text);
+                _ = _RecoverFromUnresolvableResumeAsync(session, upsert.Row.Text);
             }
         }
 
-        session.Transcript.CollectionChanged += OnChanged;
+        session.RowUpserted += OnRow;
     }
+
+    // `TranscriptEntryKind.TurnCompleted` as a row snapshot spells it.
+    private const string TurnCompletedKind = "TurnCompleted";
 
     // Drops the session whose resume the provider refused and starts over clean, the same replace-a-dead-instance
     // shape `_RelieveTheFullContextAsync` uses for AC-596's hand-over — but with its own reason on the divider
     // rather than that one's "context was full", so the operator reads what actually happened.
-    private async Task _RecoverFromUnresolvableResumeAsync(SessionViewModel session, string reason)
+    private async Task _RecoverFromUnresolvableResumeAsync(IAssistantSession session, string reason)
     {
         _logger.LogInformation(
             "The assistant's earlier conversation could not be resumed ({Reason}); starting a new one.", reason);
@@ -855,14 +853,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             && defaults.TryGetValue(WellKnownPluginSessionOptions.PermissionMode, out var value)
             && !string.IsNullOrWhiteSpace(value)
                 ? value
-                : SessionOptionCatalog.DefaultPermissionMode.Value;
+                : SessionPermissionModes.Default;
 
-        return !string.Equals(mode, SessionOptionCatalog.BypassPermissionModeValue, StringComparison.Ordinal);
+        return !string.Equals(mode, SessionPermissionModes.Bypass, StringComparison.Ordinal);
     }
 
     // AC-1321: what the screen says while a controller holds the line. Local clock, short — it is read by someone
     // sitting at this machine. Shared with the chat view model so a scene without this host says the same thing.
-    internal static string TakeoverReason(ActiveController controller) =>
+    public static string TakeoverReason(ActiveController controller) =>
         $"Controlled by {controller.Name} since {controller.SinceUtc.ToLocalTime():HH:mm}. "
         + "Your assistant here comes back by itself when that connection drops.";
 
@@ -873,7 +871,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     {
         if (Session is { } live)
         {
-            live.TurnsHeldBecause = _cockpit.ActiveController is { } controller ? TakeoverReason(controller) : null;
+            live.TurnsHeldBecause = _presence.Current is { } controller ? TakeoverReason(controller) : null;
         }
     }
 
@@ -885,27 +883,23 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
     // Whether the instance is still usable. Asked of the session rather than remembered as a flag here: a runtime
     // can end without anything telling this class, which is exactly the quiet death that has to be noticed.
-    private static bool _IsAlive(SessionViewModel session) => session.IsSessionReady;
+    private static bool _IsAlive(IAssistantSession session) => session.IsSessionReady;
 
     // A teardown failure must not become the caller's problem: the instance is already out of Session by the time
     // this runs, so the worst case is a runtime that outlives its reference — worth a log line, not an exception
     // thrown at a hotkey handler.
-    private async Task _DisposeQuietlyAsync(SessionViewModel session)
+    private async Task _DisposeQuietlyAsync(IAssistantSession session)
     {
         // Before the dispose, and outside the try: the host wired this session up when it minted it, and that
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
-        session.PropertyChanged -= _OnSessionPropertyChanged;
-        _cockpit.ReleaseAssistantSession(session);
+        session.StateChanged -= _OnSessionStateChanged;
+        _launcher.ReleaseAssistantSession(session);
 
         // AC-1013: An unanswered consent card is answered here, and answered No — the broker has no timeout of
         // its own, so a card left open would hang its tool call for the life of the process. Denied, not dropped:
         // an action nobody approved must not become one nobody refused either. Done here (not in the restart) so the replace-a-dead-instance path gets it too.
-        if (session.PendingConsent is { } consent)
-        {
-            consent.DenyCommand.Execute(null);
-            session.PendingConsent = null;
-        }
+        session.DenyPendingConsent();
 
         try
         {
@@ -916,4 +910,18 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _logger.LogWarning(exception, "The previous assistant session could not be disposed cleanly.");
         }
     }
+
+    private bool _Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
+        field = value;
+        _Raise(name);
+        return true;
+    }
+
+    private void _Raise(string? name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

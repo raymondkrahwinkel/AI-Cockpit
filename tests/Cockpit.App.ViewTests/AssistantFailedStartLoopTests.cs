@@ -24,6 +24,8 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -179,7 +181,7 @@ public sealed class AssistantFailedStartLoopTests
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>([]);
 
         var host = new AssistantSessionHost(
-            cockpit, settings, profiles, sessionState,
+            new SessionLauncherAdapter(cockpit), new NodeControllerPresence(), settings, profiles, sessionState,
             new SessionStateRecorder(sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             catalog, Substitute.For<IAssistantMemory>(), NullLogger<AssistantSessionHost>.Instance);
 
