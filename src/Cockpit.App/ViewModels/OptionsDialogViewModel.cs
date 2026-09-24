@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 
@@ -89,7 +90,7 @@ public sealed partial class AssistantOptionsViewModel(
             {
                 var slot = await _profileStore.LoadAsync(cancellationToken).ConfigureAwait(true);
                 ProfileLabel = slot.Profile is { } record
-                    ? ProfileDisplay.Format(record.Label, record.Provider, ProfileDisplay.ModelOf(record))
+                    ? ProfileDisplay.Format(record.Label, record.Provider, ProfileModel.Of(record))
                     : null;
                 ProfileUnsetReason = slot.UnsetReason;
             }

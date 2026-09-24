@@ -18,7 +18,7 @@ public sealed class ProfileDisplayConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is SessionProfile profile
-            ? ProfileDisplay.Format(profile.Label, profile.Provider, ProfileDisplay.ModelOf(profile), PluginProviderName(profile))
+            ? ProfileDisplay.Format(profile.Label, profile.Provider, ProfileModel.Of(profile), PluginProviderName(profile))
             : value?.ToString();
 
     // The specific plugin provider's display name for a Plugin-provider profile, or null for a built-in provider.

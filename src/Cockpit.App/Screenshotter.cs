@@ -544,7 +544,7 @@ internal static class Screenshotter
         // the assistant's one and only surface).
         ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
         ["assistant-chat-question"] = (_, _) => _AssistantChatQuestion(),
-        // AC-1018: the broker route (AssistantAgentGateway.AskStructuredQuestionAsync) builds its row with Kind =
+        // AC-1018: the broker route (AssistantConversation.ShowQuestionAsync) builds its row with Kind =
         // Question, not ToolUse like the scene above — the gap that let the card silently never render live.
         ["assistant-chat-question-broker"] = (_, _) => _AssistantChatBrokerQuestion(),
 
@@ -2636,7 +2636,7 @@ internal static class Screenshotter
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
-    // AC-1018: same card, built the way AssistantAgentGateway.AskStructuredQuestionAsync actually builds it
+    // AC-1018: same card, built the way AssistantConversation.ShowQuestionAsync actually builds it
     // (Kind = Question, IsPendingBrokerAnswer = true) rather than through ToolUseRequested/PermissionRequested —
     // the route _BuildAskUserQuestionSession takes, and the one that never fails.
     private static AssistantChatWindow _AssistantChatBrokerQuestion()

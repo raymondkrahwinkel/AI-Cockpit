@@ -1,5 +1,4 @@
 using Avalonia.Threading;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
@@ -22,6 +21,8 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -107,8 +108,10 @@ public class AssistantUpdateProjectTests
         var projects = new ProjectsViewModel(store, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
-        var gateway = Dispatcher.UIThread.Invoke(() => new AssistantAgentGateway(
-            _NewCockpit(projects),
+        var sessions = new SessionRegistry();
+        var gateway = Dispatcher.UIThread.Invoke(() => AssistantAgentGatewayGraph.Over(
+            _NewCockpit(projects, sessions),
+            sessions,
             _Profiles(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             Substitute.For<IWorkspaceAgentGateway>(),
@@ -139,7 +142,7 @@ public class AssistantUpdateProjectTests
         return profiles;
     }
 
-    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects)
+    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects, SessionRegistry sessions)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -167,6 +170,7 @@ public class AssistantUpdateProjectTests
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            projects: projects);
+            projects: projects,
+            sessionRegistry: sessions);
     }
 }

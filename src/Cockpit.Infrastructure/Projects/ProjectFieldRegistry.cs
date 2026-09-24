@@ -1,12 +1,14 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 
-namespace Cockpit.App.Plugins;
+namespace Cockpit.Infrastructure.Projects;
 
+// AC-1375: moved from Cockpit.App.Plugins, kept out of Core for the same reason ISharedProjectSourceRegistry is —
+// its signature needs ProjectFieldRegistration, a Plugins.Abstractions type.
 /// <summary>
 /// Holds the project fields plugins register (<c>ICockpitHost.AddProjectField</c>, AC-317), so the project editor can
 /// draw them without depending on the plugins that contribute them. A registry of its own, the same shape as
-/// <see cref="ITrackerProviderRegistry"/>. Empty until a plugin that links projects to something is installed.
+/// <c>ITrackerProviderRegistry</c>. Empty until a plugin that links projects to something is installed.
 /// </summary>
 public interface IProjectFieldRegistry
 {

@@ -1,7 +1,17 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
+
+// AC-1375: the same opener behind a seam, for the assistant gateway that moved to Infrastructure. Adds no shell-out
+// of its own, so `ExternalLinkSingleSourceTests` still finds exactly one opener.
+internal sealed class ExternalLinkOpener : IExternalLinkOpener, ISingletonService
+{
+    public bool TryParseWebAddress(string? url, [NotNullWhen(true)] out Uri? address) => ExternalLink.TryParseWebAddress(url, out address);
+
+    public bool TryOpen(Uri address) => ExternalLink.TryOpen(address);
+}
 
 // AC-315: Hands a web address to whatever the operator browses with, the only thing in `Cockpit.App` that does
 // (only `http`/`https` reach the shell, a failed browser start must not take the UI thread with it), replacing

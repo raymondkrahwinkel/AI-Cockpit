@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Nodes;
-using Cockpit.App.Plugins;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
@@ -16,24 +14,25 @@ using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Assistant;
 
-// AC-545/AC-436: app-level half of `IAssistantAgentGateway` — records every spawn/stop outcome (including
-// refusals) and enforces that the named desk exists and can hold a session, but does not scope which desk a
-// spawn may land on (decided upstream via `SpawnTarget`) nor gate operator consent (already raised as an Allow/Deny row before the call reaches here).
+// AC-545/AC-436: records every spawn/stop outcome, refusals included, and enforces that the named desk can hold a
+// session; which desk (`SpawnTarget`) and consent (an Allow/Deny row) are settled upstream. AC-1375: multi-field
+// decisions run in `ISessionLauncher.RunExclusiveAsync`, and the action after it re-checks its own precondition.
 internal sealed class AssistantAgentGateway(
-    CockpitViewModel cockpit,
+    ISessionRegistry sessions,
+    ISessionLauncher launcher,
+    IProjectEditor projectEditor,
+    ISessionWatcher watcher,
+    IAssistantConversation conversation,
+    IExternalLinkOpener links,
     ISessionProfileStore profiles,
     IAssistantSpawnAuditLog auditLog,
     IWorkspaceAgentGateway agents,
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
-    SessionWatcher watcher,
-    IAssistantSessionHost assistantSessionHost,
     IWorktreeManager? worktreeManager = null,
-    ISharedProjectSourceRegistry? sharedProjectSources = null,
-    IMcpServerCatalog? mcpServerCatalog = null,
     IProjectFieldRegistry? projectFields = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
@@ -58,137 +57,135 @@ internal sealed class AssistantAgentGateway(
 
     private async Task<AgentSpawnResult> _SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken)
     {
-        // Read off the UI thread before anything is marshalled: this is file-backed and the only genuinely slow step
-        // in the whole call.
+        // Read before anything else: this is file-backed and the only genuinely slow step in the whole call.
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-        return await _OnUiThreadAsync(async () =>
+        // The desk is the one thing read from shared state; the start below checks it again as the pane lands, since
+        // resolving the project in between gives a close the chance to run.
+        var workspace = await launcher.RunExclusiveAsync(() => _FindWorkspace(request.Target.WorkspaceId)).ConfigureAwait(false);
+        if (workspace is null)
         {
-            var workspace = _FindWorkspace(request.Target.WorkspaceId);
-            if (workspace is null)
-            {
-                return await _RefuseSpawnAsync(request, workspaceName: null,
-                    $"There is no workspace with id '{request.Target.WorkspaceId}'. List the workspaces and name one of those.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+            return await _RefuseSpawnAsync(request, workspaceName: null,
+                $"There is no workspace with id '{request.Target.WorkspaceId}'. List the workspaces and name one of those.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            // A dashboard would take the session and never draw it — the pane would run, cost money and be
-            // unreachable. Refusing is the kinder half of that pair.
-            if (workspace.Type != WorkspaceType.Sessions)
-            {
-                return await _RefuseSpawnAsync(request, workspace.Name,
-                    $"'{workspace.Name}' is a {workspace.Type} desk and cannot show a session. Name a Sessions desk, or ask for a new one to be made.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        // A dashboard would take the session and never draw it — the pane would run, cost money and be
+        // unreachable. Refusing is the kinder half of that pair.
+        if (workspace.Type != WorkspaceType.Sessions)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                $"'{workspace.Name}' is a {workspace.Type} desk and cannot show a session. Name a Sessions desk, or ask for a new one to be made.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            // AC-773: the project named by id, if any — looked up via `CockpitViewModel.FindProjectByIdAsync`,
-            // never re-derived here. An unknown id is refused rather than silently falling back to a folder guess.
-            Project? project = null;
-            if (request.ProjectId is { Length: > 0 } requestedProjectId)
-            {
-                project = await cockpit.FindProjectByIdAsync(requestedProjectId).ConfigureAwait(true);
-                if (project is null)
-                {
-                    return await _RefuseSpawnAsync(request, workspace.Name,
-                        $"There is no project with id '{requestedProjectId}'. Call list_projects and name one of those.",
-                        cancellationToken).ConfigureAwait(true);
-                }
-            }
-
-            // The label to look up: the caller's own, or — only when they left it out — the resolved project's
-            // default (AC-773). An explicit label always wins; it is never merged with or overruled by the project.
-            var profileLabel = string.IsNullOrWhiteSpace(request.ProfileLabel) ? project?.DefaultProfileLabel : request.ProfileLabel;
-            if (string.IsNullOrWhiteSpace(profileLabel))
+        // AC-773: the project named by id, if any — looked up via `ISessionLauncher.FindProjectByIdAsync`, never
+        // re-derived here. An unknown id is refused rather than silently falling back to a folder guess.
+        Project? project = null;
+        if (request.ProjectId is { Length: > 0 } requestedProjectId)
+        {
+            project = await launcher.FindProjectByIdAsync(requestedProjectId).ConfigureAwait(false);
+            if (project is null)
             {
                 return await _RefuseSpawnAsync(request, workspace.Name,
-                    project is null
-                        ? "A profile is required; name one or give a projectId whose DefaultProfileLabel can be used."
-                        : $"Project '{project.Name}' has no DefaultProfileLabel set, so a profile must be named explicitly.",
-                    cancellationToken).ConfigureAwait(true);
+                    $"There is no project with id '{requestedProjectId}'. Call list_projects and name one of those.",
+                    cancellationToken).ConfigureAwait(false);
             }
+        }
 
-            // By label and never by "the first one that looks close": the profile decides provider and model, so a
-            // near-miss is a bill the operator did not agree to (AC-436 guardrail 6).
-            var profile = known.FirstOrDefault(candidate =>
-                string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
-            if (profile is null)
-            {
-                var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(p => $"'{p.Label}'"));
-                return await _RefuseSpawnAsync(request, workspace.Name,
-                    $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        // The label to look up: the caller's own, or — only when they left it out — the resolved project's
+        // default (AC-773). An explicit label always wins; it is never merged with or overruled by the project.
+        var profileLabel = string.IsNullOrWhiteSpace(request.ProfileLabel) ? project?.DefaultProfileLabel : request.ProfileLabel;
+        if (string.IsNullOrWhiteSpace(profileLabel))
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                project is null
+                    ? "A profile is required; name one or give a projectId whose DefaultProfileLabel can be used."
+                    : $"Project '{project.Name}' has no DefaultProfileLabel set, so a profile must be named explicitly.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            var (requestedKind, kindRefusal) = _ParseKind(request.Kind);
-            if (kindRefusal is not null)
-            {
-                return await _RefuseSpawnAsync(request, workspace.Name, kindRefusal, cancellationToken).ConfigureAwait(true);
-            }
+        // By label and never by "the first one that looks close": the profile decides provider and model, so a
+        // near-miss is a bill the operator did not agree to (AC-436 guardrail 6).
+        var profile = known.FirstOrDefault(candidate =>
+            string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
+        if (profile is null)
+        {
+            var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(p => $"'{p.Label}'"));
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            if (requestedKind == SessionKind.Tty && !cockpit.ProfileHasTtyRoute(profile))
-            {
-                return await _RefuseSpawnAsync(request, workspace.Name,
-                    $"'{profile.Label}' has no terminal route of its own, so it can only run as an SDK session.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        var (requestedKind, kindRefusal) = _ParseKind(request.Kind);
+        if (kindRefusal is not null)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name, kindRefusal, cancellationToken).ConfigureAwait(false);
+        }
 
-            // AC-648/AC-649: checked against the provider's own declared capabilities, not a list kept here — an
-            // unknown key is refused with a reason instead of reaching the CLI as a flag it doesn't take.
-            // `permission-mode` is always refused — see `SpawnOptionOverrides.NeverOverridable`.
-            var registration = profile.ProviderConfig is PluginProviderConfig plugin
-                ? pluginProviders.Resolve(plugin.ProviderId)
-                : null;
-            var (launchOptions, optionRefusal) = SpawnOptionOverrides.Merge(
-                registration?.DisplayName ?? profile.Provider.ToString(),
-                registration?.Capabilities,
-                profile.Defaults?.OptionDefaults,
-                request.OptionOverrides);
-            if (optionRefusal is not null)
-            {
-                return await _RefuseSpawnAsync(request, workspace.Name, optionRefusal, cancellationToken).ConfigureAwait(true);
-            }
+        if (requestedKind == PaneSessionKind.Tty && !launcher.ProfileHasTtyRoute(profile))
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                $"'{profile.Label}' has no terminal route of its own, so it can only run as an SDK session.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            // AC-719: refused categorically, like permission-mode — a caller that could dial isolation down per
-            // spawn is one hop from the working-tree contamination isolation exists to prevent.
-            if (request.IsolateInWorktree == false)
-            {
-                return await _RefuseSpawnAsync(request, workspace.Name,
-                    "'isolate: false' is not something a spawn may ask for — that would run it in the operator's real "
-                    + "checkout. Leave it out to use the project's own isolation setting, or ask for isolate: true.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        // AC-648/AC-649: checked against the provider's own declared capabilities, not a list kept here — an
+        // unknown key is refused with a reason instead of reaching the CLI as a flag it doesn't take.
+        // `permission-mode` is always refused — see `SpawnOptionOverrides.NeverOverridable`.
+        var registration = profile.ProviderConfig is PluginProviderConfig plugin
+            ? pluginProviders.Resolve(plugin.ProviderId)
+            : null;
+        var (launchOptions, optionRefusal) = SpawnOptionOverrides.Merge(
+            registration?.DisplayName ?? profile.Provider.ToString(),
+            registration?.Capabilities,
+            profile.Defaults?.OptionDefaults,
+            request.OptionOverrides);
+        if (optionRefusal is not null)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name, optionRefusal, cancellationToken).ConfigureAwait(false);
+        }
 
-            var started = await cockpit.StartSessionOnWorkspaceAsync(
-                workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
-                launchOptions, request.IsolateInWorktree, explicitProjectId: project?.Id,
-                // AC-1300: the relation is stamped on here, at the one moment the caller is known, rather than read
-                // back out of the spawn trail later — a trail records what happened, not what is still true.
-                startedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant).ConfigureAwait(true);
+        // AC-719: refused categorically, like permission-mode — a caller that could dial isolation down per
+        // spawn is one hop from the working-tree contamination isolation exists to prevent.
+        if (request.IsolateInWorktree == false)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                "'isolate: false' is not something a spawn may ask for — that would run it in the operator's real "
+                + "checkout. Leave it out to use the project's own isolation setting, or ask for isolate: true.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            if (started is not { } pane)
-            {
-                // Null means the cockpit has no session factories or the launch declined — both are states the
-                // operator can be told about, and neither is an exception.
-                return await _RefuseSpawnAsync(request, workspace.Name,
-                    "The cockpit could not start a session just now.", cancellationToken).ConfigureAwait(true);
-            }
+        var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
+            workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
+            launchOptions, request.IsolateInWorktree, project?.Id,
+            // AC-1300: the relation is stamped on here, at the one moment the caller is known, rather than read
+            // back out of the spawn trail later — a trail records what happened, not what is still true.
+            StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)).ConfigureAwait(false);
 
-            await _RecordAsync(new AssistantSpawnAuditEntry(
-                DateTimeOffset.Now,
-                AssistantSpawnAction.Start,
-                request.Target.Caller,
-                request.Target.CallerPaneId,
-                workspace.Id,
-                workspace.Name,
-                profile.Label,
-                request.WorkingDirectory,
-                pane.PaneId,
-                pane.Name,
-                Refusal: null,
-                ProjectId: project?.Id), cancellationToken).ConfigureAwait(true);
+        if (started is not { } pane)
+        {
+            // Null means the cockpit has no session factories, the launch declined, or the desk closed before the
+            // pane landed — all states the operator can be told about, and none is an exception.
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                "The cockpit could not start a session just now.", cancellationToken).ConfigureAwait(false);
+        }
 
-            return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
-        }).ConfigureAwait(false);
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Start,
+            request.Target.Caller,
+            request.Target.CallerPaneId,
+            workspace.Id,
+            workspace.Name,
+            profile.Label,
+            request.WorkingDirectory,
+            pane.PaneId,
+            pane.Name,
+            Refusal: null,
+            ProjectId: project?.Id), cancellationToken).ConfigureAwait(false);
+
+        return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
     }
 
     public async Task<AgentStopResult> StopAsync(
@@ -209,58 +206,69 @@ internal sealed class AssistantAgentGateway(
         }
     }
 
-    private Task<AgentStopResult> _StopAsync(string paneId, SpawnCaller caller, string? callerPaneId, CancellationToken cancellationToken) =>
-        _OnUiThreadAsync(async () =>
+    private async Task<AgentStopResult> _StopAsync(string paneId, SpawnCaller caller, string? callerPaneId, CancellationToken cancellationToken)
+    {
+        // First, and by identity rather than by whether it happens to be findable: the assistant is not in the
+        // registry's panes, but that is where it sits, not a rule — and a rule is what "the assistant does not end
+        // itself mid-sentence" needs to be.
+        if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
         {
-            // First, and by identity rather than by whether it happens to be findable: the assistant is not in
-            // Sessions, so today FindSession already misses it — but that is where it sits, not a rule, and a rule is
-            // what "the assistant does not end itself mid-sentence" needs to be.
-            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-            {
-                return await _RefuseStopAsync(paneId, "That is my own session, and I do not get to end it.", cancellationToken)
-                    .ConfigureAwait(true);
-            }
+            return await _RefuseStopAsync(paneId, "That is my own session, and I do not get to end it.", cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-            // Looked up in Sessions, NOT via FindSession (which also reaches embedded panes like an Autopilot
-            // step): CloseSessionAsync silently no-ops for panes it doesn't hold, so going through FindSession
-            // would report a stop that never happened while the session kept running and spending.
-            if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
-            {
-                var elsewhere = cockpit.FindSession(paneId);
-                return await _RefuseStopAsync(paneId, elsewhere is null
-                        ? $"There is no session with pane id '{paneId}' — it may already have been closed."
-                        : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot close it. Whoever started it ends it.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        var (pane, refusal) = await launcher.RunExclusiveAsync(
+            () => _GridAgentPane(paneId, "so I cannot close it. Whoever started it ends it.")).ConfigureAwait(false);
+        if (pane is null)
+        {
+            return await _RefuseStopAsync(paneId, refusal ?? string.Empty, cancellationToken).ConfigureAwait(false);
+        }
 
-            // The same "is there an agent on the other end" test the read gateway lists by, so what can be stopped is
-            // exactly what could be seen. A plain terminal has a pane id and no agent.
-            if (!session.ShowPluginHeaderItems)
-            {
-                return await _RefuseStopAsync(paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken)
-                    .ConfigureAwait(true);
-            }
+        await launcher.StopSessionAsync(paneId).ConfigureAwait(false);
 
-            var name = session.Title;
-            var workspaceId = session.WorkspaceId;
-            await cockpit.StopSessionForAssistantAsync(session).ConfigureAwait(true);
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Stop,
+            // Who actually asked, not who used to be the only one who could (AC-795).
+            caller,
+            callerPaneId,
+            pane.WorkspaceId,
+            pane.WorkspaceName,
+            pane.ProfileLabel,
+            WorkingDirectory: null,
+            paneId,
+            pane.Title,
+            Refusal: null), cancellationToken).ConfigureAwait(false);
 
-            await _RecordAsync(new AssistantSpawnAuditEntry(
-                DateTimeOffset.Now,
-                AssistantSpawnAction.Stop,
-                // Who actually asked, not who used to be the only one who could (AC-795).
-                caller,
-                callerPaneId,
-                workspaceId ?? string.Empty,
-                _FindWorkspace(workspaceId)?.Name,
-                session.ActiveProfileLabel,
-                WorkingDirectory: null,
-                paneId,
-                name,
-                Refusal: null), cancellationToken).ConfigureAwait(true);
+        return AgentStopResult.Stopped(paneId, pane.Title);
+    }
 
-            return AgentStopResult.Stopped(paneId, name);
-        });
+    // The grid pane `paneId` names, as the moment of deciding saw it, or why there is none — the lookup stop, prompt
+    // and handover share, so what can be acted on is exactly what the read gateway lists. Runs inside
+    // RunExclusiveAsync: the registry also holds embedded panes (an Autopilot step), which only their owner may drive.
+    private (GridAgentPane? Pane, string? Refusal) _GridAgentPane(string paneId, string embeddedRefusal)
+    {
+        if (sessions.Find(paneId) is not { } session)
+        {
+            return (null, $"There is no session with pane id '{paneId}' — it may already have been closed.");
+        }
+
+        if (session.IsEmbedded)
+        {
+            return (null, $"'{session.Title}' runs inside a workspace's own surface rather than as a pane, {embeddedRefusal}");
+        }
+
+        // A plain terminal has a pane id and no agent on the other end.
+        if (session.IsTerminal)
+        {
+            return (null, $"'{session.Title}' is a terminal pane, not an agent session.");
+        }
+
+        return (new GridAgentPane(session, session.Title, session.WorkspaceId,
+            _FindWorkspace(session.WorkspaceId)?.Name, session.ActiveProfileLabel), null);
+    }
+
+    private sealed record GridAgentPane(ISessionHandle Session, string Title, string WorkspaceId, string? WorkspaceName, string? ProfileLabel);
 
     public async Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
     {
@@ -320,60 +328,48 @@ internal sealed class AssistantAgentGateway(
         return AgentMessageResult.Refused(reason);
     }
 
-    public Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(async () =>
+    public async Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default)
+    {
+        // The same three refusals as StopAsync, in the same order and for the same reasons — see the comments
+        // there. A pane the assistant may not end is a pane it may not speak as either.
+        if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
         {
-            // The same three refusals as StopAsync, in the same order and for the same reasons — see the comments
-            // there. A pane the assistant may not end is a pane it may not speak as either.
-            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-            {
-                return await _RefusePromptAsync(paneId, "That is my own session, and I do not get to hand myself a turn.", cancellationToken).ConfigureAwait(true);
-            }
+            return await _RefusePromptAsync(paneId, "That is my own session, and I do not get to hand myself a turn.", cancellationToken).ConfigureAwait(false);
+        }
 
-            if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
-            {
-                var elsewhere = cockpit.FindSession(paneId);
-                return await _RefusePromptAsync(paneId, elsewhere is null
-                        ? $"There is no session with pane id '{paneId}' — it may already have been closed."
-                        : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot hand it a turn. Whoever started it drives it.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        var (pane, refusal) = await launcher.RunExclusiveAsync(
+            () => _GridAgentPane(paneId, "so I cannot hand it a turn. Whoever started it drives it.")).ConfigureAwait(false);
+        if (pane is null)
+        {
+            return await _RefusePromptAsync(paneId, refusal ?? string.Empty, cancellationToken).ConfigureAwait(false);
+        }
 
-            if (!session.ShowPluginHeaderItems)
-            {
-                return await _RefusePromptAsync(paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken).ConfigureAwait(true);
-            }
-
-            // Asked before handing anything over: a pane still coming up holds exactly one brief, so a second
-            // arriving first would otherwise be held by SubmitPromptWhenReady and misread as belonging to this
-            // call. The model is told plainly, so delivered:false doesn't read as an invitation to retry.
-            if (session.HasPromptWaitingToBeDelivered)
-            {
-                return await _RefusePromptAsync(
-                    paneId,
-                    $"'{session.Title}' is still starting and already has a turn waiting. It gets the one it was given first; this one was not accepted.",
-                    cancellationToken).ConfigureAwait(true);
-            }
-
-            // Held rather than dropped when the session is still coming up, and the caller is told which of the two
-            // happened — see SessionPanelViewModel.SubmitPromptWhenReady.
-            var delivered = session.SubmitPromptWhenReady(prompt);
-
-            await _RecordAsync(new AssistantSpawnAuditEntry(
-                DateTimeOffset.Now,
-                AssistantSpawnAction.Prompt,
-                SpawnCaller.Assistant,
-                CallerPaneId: null,
-                session.WorkspaceId ?? string.Empty,
-                _FindWorkspace(session.WorkspaceId)?.Name,
-                session.ActiveProfileLabel,
-                WorkingDirectory: null,
+        // Held rather than dropped when the session is still coming up, and the caller is told which of the two
+        // happened. Null when a pane still coming up already holds its one brief: a second one arriving first would
+        // otherwise be misread as belonging to this call. Told plainly, so it doesn't read as an invitation to retry.
+        if (await pane.Session.SubmitPromptWhenReadyAsync(prompt).ConfigureAwait(false) is not { } delivered)
+        {
+            return await _RefusePromptAsync(
                 paneId,
-                session.Title,
-                Refusal: null), cancellationToken).ConfigureAwait(true);
+                $"'{pane.Title}' is still starting and already has a turn waiting. It gets the one it was given first; this one was not accepted.",
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            return AgentPromptResult.Handed(paneId, session.Title, delivered);
-        });
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Prompt,
+            SpawnCaller.Assistant,
+            CallerPaneId: null,
+            pane.WorkspaceId,
+            pane.WorkspaceName,
+            pane.ProfileLabel,
+            WorkingDirectory: null,
+            paneId,
+            pane.Title,
+            Refusal: null), cancellationToken).ConfigureAwait(false);
+
+        return AgentPromptResult.Handed(paneId, pane.Title, delivered);
+    }
 
     private async Task<AgentPromptResult> _RefusePromptAsync(string paneId, string reason, CancellationToken cancellationToken)
     {
@@ -388,17 +384,14 @@ internal sealed class AssistantAgentGateway(
             WorkingDirectory: null,
             paneId,
             SessionName: null,
-            reason), cancellationToken).ConfigureAwait(true);
+            reason), cancellationToken).ConfigureAwait(false);
 
         return AgentPromptResult.Refused(reason);
     }
 
-    public Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() => Task.FromResult(_RenameSession(paneId, name)));
-
     // Not on the spawn trail, and deliberately: that record exists because a spawn starts a process and spends
     // money. A rename costs nothing, is reversible, and shows up on the operator's own screen as it happens.
-    private AssistantRenameResult _RenameSession(string paneId, string name)
+    public async Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default)
     {
         var trimmed = name.Trim();
         if (trimmed.Length == 0)
@@ -407,49 +400,47 @@ internal sealed class AssistantAgentGateway(
         }
 
         // By identity rather than by whether it happens to be findable — the same rule, and the same reason, as
-        // _StopAsync: the assistant sits outside Sessions today, but that is where it sits and not a rule.
+        // _StopAsync: the assistant sits outside the registry's panes, but that is where it sits and not a rule.
         if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
         {
             return AssistantRenameResult.Refused("That is my own session, and I do not get to name it.");
         }
 
-        if (cockpit.SetSessionName(paneId, trimmed))
+        if (await launcher.SetSessionNameAsync(paneId, trimmed).ConfigureAwait(false))
         {
             return AssistantRenameResult.Renamed(trimmed);
         }
 
-        // SetSessionName reaches Sessions only, so false past the guards above means the pane is not one the cockpit
-        // holds. FindSession separates the two cases the assistant can actually be looking at, because it lists
-        // embedded panes and would otherwise be told they had closed.
-        var elsewhere = cockpit.FindSession(paneId);
-        return AssistantRenameResult.Refused(elsewhere is null
-            ? $"There is no session with pane id '{paneId}' — it may already have been closed."
-            : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot rename it.");
+        // SetSessionNameAsync reaches the grid only, so false past the guards above means the pane is not one the
+        // grid holds. The registry separates the two cases the assistant can actually be looking at, because it
+        // lists embedded panes and would otherwise be told they had closed.
+        return AssistantRenameResult.Refused(sessions.Find(paneId) is { } elsewhere
+            ? $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so I cannot rename it."
+            : $"There is no session with pane id '{paneId}' — it may already have been closed.");
     }
 
-    public Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(async () =>
+    public async Task<AssistantRenameResult> RenameWorkspaceAsync(string workspaceId, string name, CancellationToken cancellationToken = default)
+    {
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0)
         {
-            var trimmed = name.Trim();
-            if (trimmed.Length == 0)
-            {
-                return AssistantRenameResult.Refused("A workspace needs a name; that one was empty.");
-            }
+            return AssistantRenameResult.Refused("A workspace needs a name; that one was empty.");
+        }
 
-            // Looked up here rather than left to the rename itself, which returns silently for a desk it cannot
-            // find — and a silent no-op would come back to the assistant as a rename that happened.
-            if (_FindWorkspace(workspaceId) is not { } workspace)
-            {
-                return AssistantRenameResult.Refused(
-                    $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
-            }
+        // Looked up here rather than left to the rename itself, which returns silently for a desk it cannot
+        // find — and a silent no-op would come back to the assistant as a rename that happened.
+        if (await launcher.RunExclusiveAsync(() => _FindWorkspace(workspaceId)).ConfigureAwait(false) is not { } workspace)
+        {
+            return AssistantRenameResult.Refused(
+                $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
+        }
 
-            await cockpit.Workspaces.RenameWorkspaceAsync((workspace.Id, trimmed)).ConfigureAwait(true);
-            return AssistantRenameResult.Renamed(trimmed);
-        });
+        await launcher.RenameWorkspaceAsync(workspace.Id, trimmed).ConfigureAwait(false);
+        return AssistantRenameResult.Renamed(trimmed);
+    }
 
     public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));
+        launcher.RunExclusiveAsync(_ListWorkspaces);
 
     // AC-647/AC-649: profiles straight off the store (no UI thread — this reads a file, not the cockpit's
     // collections). Each profile's config is reported via the provider's own declared schema, so Claude's
@@ -471,7 +462,7 @@ internal sealed class AssistantAgentGateway(
                     // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
                     // to resolve "a Claude one" by.
                     registration?.DisplayName ?? profile.Provider.ToString(),
-                    ProfileDisplay.ModelOf(profile))
+                    ProfileModel.Of(profile))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
                 };
@@ -487,78 +478,73 @@ internal sealed class AssistantAgentGateway(
             return null;
         }
 
-        return await _OnUiThreadAsync(async () =>
-        {
-            var created = await cockpit.Workspaces.CreateSessionsWorkspaceAsync(trimmed).ConfigureAwait(true);
-            return (AssistantWorkspaceRow?)new AssistantWorkspaceRow(
-                created.Id, created.Name, created.Type.Id, CanHostSessions: true, SessionCount: 0, IsActive: true);
-        }).ConfigureAwait(false);
+        var created = await launcher.CreateSessionsWorkspaceAsync(trimmed).ConfigureAwait(false);
+        return new AssistantWorkspaceRow(
+            created.Id, created.Name, created.Type.Id, CanHostSessions: true, SessionCount: 0, IsActive: true);
     }
 
     // AC-1013: closes an empty sessions desk only (narrower than the tab's ✕, which closes the desk and
     // everything on it behind a dialog naming what's lost). No dialog here, so sessions must be stopped first via
     // `stop_agent`; non-sessions desks are refused wholesale since a consent card can't enumerate their contents.
-    public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(async () =>
-        {
-            if (_FindWorkspace(workspaceId) is not { } workspace)
-            {
-                return WorkspaceRemovalResult.Refused(
-                    $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
-            }
-
-            // The button's own gate, asked rather than re-derived — CanClose is what greys out the ✕, and the two
-            // reasons it says no for are worth telling apart out loud.
-            if (!cockpit.Workspaces.CanClose(workspaceId))
-            {
-                return WorkspaceRemovalResult.Refused(workspace.Type == WorkspaceType.Projects
-                    ? $"'{workspace.Name}' is the projects overview. It is always there, and closing it is not something anyone can do."
-                    : $"'{workspace.Name}' is the only desk left, and the cockpit always needs one to show.");
-            }
-
-            // Before the session count, because that count is about sessions and a desk of another type has none —
-            // it would read as empty and the close would go through.
-            if (workspace.Type != WorkspaceType.Sessions)
-            {
-                return WorkspaceRemovalResult.Refused(
-                    $"'{workspace.Name}' is not a sessions desk — it is a {workspace.Type.Id} desk, and this tool only closes the ones that hold sessions. What is on it is not sessions I can count or stop, so closing it is the operator's own to do from its tab. Nothing is lost by asking them.");
-            }
-
-            var occupants = _CountEverythingOn(workspaceId);
-            if (occupants > 0)
-            {
-                return WorkspaceRemovalResult.Refused(occupants == 1
-                    ? $"There is still 1 session on '{workspace.Name}'. Stop it first — I do not close a desk with work still on it."
-                    : $"There are still {occupants} sessions on '{workspace.Name}'. Stop them first — I do not close a desk with work still on it.");
-            }
-
-            await cockpit.CloseWorkspaceAsync(workspaceId).ConfigureAwait(true);
-            return WorkspaceRemovalResult.Removed(workspace.Name);
-        });
-
-    // How many sessions closing this desk would take with it, using the same placement rule `list_workspaces`
-    // reports by. Wider than that roster deliberately: not filtered on `ShowPluginHeaderItems`, so a plain
-    // terminal (not counted in the roster) is still counted here — the close would kill its pty just the same.
-    private int _CountEverythingOn(string workspaceId)
+    public async Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
-        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
-        return cockpit.AllSessions().Count(session => string.Equals(
-            SessionWorkspacePlacement.Resolve(session, firstSessionsWorkspaceId), workspaceId, StringComparison.Ordinal));
+        var (workspace, refusal) = await launcher.RunExclusiveAsync(() => _DecideRemoval(workspaceId)).ConfigureAwait(false);
+        if (workspace is null)
+        {
+            return WorkspaceRemovalResult.Refused(refusal ?? string.Empty);
+        }
+
+        // Counted and closed in one step, so a session landing on the desk after the decision above is counted
+        // rather than closed along with it.
+        var occupants = await launcher.CloseWorkspaceIfEmptyAsync(workspaceId).ConfigureAwait(false);
+        if (occupants > 0)
+        {
+            return WorkspaceRemovalResult.Refused(occupants == 1
+                ? $"There is still 1 session on '{workspace.Name}'. Stop it first — I do not close a desk with work still on it."
+                : $"There are still {occupants} sessions on '{workspace.Name}'. Stop them first — I do not close a desk with work still on it.");
+        }
+
+        return WorkspaceRemovalResult.Removed(workspace.Name);
+    }
+
+    private (Workspace? Workspace, string? Refusal) _DecideRemoval(string workspaceId)
+    {
+        if (_FindWorkspace(workspaceId) is not { } workspace)
+        {
+            return (null, $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
+        }
+
+        // The button's own gate, asked rather than re-derived — CanClose is what greys out the ✕, and the two
+        // reasons it says no for are worth telling apart out loud.
+        if (!launcher.CanCloseWorkspace(workspaceId))
+        {
+            return (null, workspace.Type == WorkspaceType.Projects
+                ? $"'{workspace.Name}' is the projects overview. It is always there, and closing it is not something anyone can do."
+                : $"'{workspace.Name}' is the only desk left, and the cockpit always needs one to show.");
+        }
+
+        // Before the session count, because that count is about sessions and a desk of another type has none —
+        // it would read as empty and the close would go through.
+        if (workspace.Type != WorkspaceType.Sessions)
+        {
+            return (null, $"'{workspace.Name}' is not a sessions desk — it is a {workspace.Type.Id} desk, and this tool only closes the ones that hold sessions. What is on it is not sessions I can count or stop, so closing it is the operator's own to do from its tab. Nothing is lost by asking them.");
+        }
+
+        return (workspace, null);
     }
 
     private IReadOnlyList<AssistantWorkspaceRow> _ListWorkspaces()
     {
-        var settings = cockpit.Workspaces.Settings;
-        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(settings);
+        var settings = launcher.Workspaces;
 
         // AC-543: counted via the same placement rule the read path uses, not each session's own stamp, so this
         // roster never disagrees with the sidebar. The assistant is excluded — it is the one asking.
-        var counts = cockpit.AllSessions()
-            .Where(session => session.ShowPluginHeaderItems
+        var counts = sessions.All
+            .Where(session => !session.IsTerminal
                 && !string.Equals(session.PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-            .Select(session => SessionWorkspacePlacement.Resolve(session, firstSessionsWorkspaceId))
-            .Where(id => id is not null)
-            .GroupBy(id => id!, StringComparer.Ordinal)
+            .Select(session => session.PlacedWorkspaceId)
+            .OfType<string>()
+            .GroupBy(id => id, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
         return
@@ -579,19 +565,19 @@ internal sealed class AssistantAgentGateway(
     // The route asked for, or null for "whatever the profile is set to". A word that is neither is refused rather
     // than read as the default: the operator said a route out loud, and starting the other one would look like it
     // worked. "cli" and "terminal" are accepted for tty because those are the words people actually say.
-    private static (SessionKind? Kind, string? Refusal) _ParseKind(string? kind) =>
+    private static (PaneSessionKind? Kind, string? Refusal) _ParseKind(string? kind) =>
         kind?.Trim().ToLowerInvariant() switch
         {
             null or "" => (null, null),
-            "sdk" => (SessionKind.Sdk, null),
-            "tty" or "cli" or "terminal" => (SessionKind.Tty, null),
+            "sdk" => (PaneSessionKind.Sdk, null),
+            "tty" or "cli" or "terminal" => (PaneSessionKind.Tty, null),
             var other => (null, $"'{other}' is not a route I know — it is either sdk or tty."),
         };
 
     private Workspace? _FindWorkspace(string? workspaceId) =>
         workspaceId is null
             ? null
-            : cockpit.Workspaces.Settings.Workspaces.FirstOrDefault(
+            : launcher.Workspaces.Workspaces.FirstOrDefault(
                 workspace => string.Equals(workspace.Id, workspaceId, StringComparison.Ordinal));
 
     private async Task<AgentSpawnResult> _RefuseSpawnAsync(
@@ -609,7 +595,7 @@ internal sealed class AssistantAgentGateway(
             PaneId: null,
             SessionName: null,
             reason,
-            ProjectId: request.ProjectId), cancellationToken).ConfigureAwait(true);
+            ProjectId: request.ProjectId), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Refused(reason);
     }
@@ -627,124 +613,112 @@ internal sealed class AssistantAgentGateway(
             WorkingDirectory: null,
             paneId,
             SessionName: null,
-            reason), cancellationToken).ConfigureAwait(true);
+            reason), cancellationToken).ConfigureAwait(false);
 
         return AgentStopResult.Refused(reason);
     }
 
     // AC-640: the watcher decides everything — whether the pane resolves, whether it keeps a transcript, whether the
-    // pattern compiles — because it is the half that has to live with the answer every tick. What happens here is
-    // only getting onto the thread its probe reads the session list on.
+    // pattern compiles — because it is the half that has to live with the answer every tick.
     public Task<AssistantWatchResult> WatchSessionAsync(
         string paneId,
         IReadOnlyList<string>? events,
         int? afterMinutes = null,
         string? pattern = null,
         CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() => watcher.WatchAsync(paneId, events, afterMinutes, pattern));
+        watcher.WatchAsync(paneId, events, afterMinutes, pattern);
 
     public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() => Task.FromResult(watcher.Unwatch(paneId)));
+        watcher.UnwatchAsync(paneId);
 
     // AC-719 ronde B: re-owns a worktree the assistant made for itself onto a running session, via the same
     // ReattachAsync primitive the reattach guard in _ResolveIsolatedWorkingDirectoryAsync uses. Every refusal here
     // is hard, not best-effort — a wrong target could pull a worktree out from under a session that needed it.
-    public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(async () =>
+    public async Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default)
+    {
+        if (worktreeManager is null)
         {
-            if (worktreeManager is null)
-            {
-                return await _RefuseHandoverAsync(path, paneId, "Worktree management is not available here.", cancellationToken).ConfigureAwait(true);
-            }
+            return await _RefuseHandoverAsync(path, paneId, "Worktree management is not available here.", cancellationToken).ConfigureAwait(false);
+        }
 
-            if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-            {
-                return await _RefuseHandoverAsync(path, paneId, "That is my own session; a worktree cannot be handed to it.", cancellationToken).ConfigureAwait(true);
-            }
+        if (string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+        {
+            return await _RefuseHandoverAsync(path, paneId, "That is my own session; a worktree cannot be handed to it.", cancellationToken).ConfigureAwait(false);
+        }
 
-            var full = Path.GetFullPath(path);
-            var record = (await worktreeManager.ListAsync(cancellationToken).ConfigureAwait(true))
-                .FirstOrDefault(candidate => string.Equals(Path.GetFullPath(candidate.Path), full, _PathComparison));
-            if (record is null)
-            {
-                return await _RefuseHandoverAsync(path, paneId, "No managed worktree at that path — call worktree_list for the current paths.", cancellationToken).ConfigureAwait(true);
-            }
+        var full = Path.GetFullPath(path);
+        var record = (await worktreeManager.ListAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(Path.GetFullPath(candidate.Path), full, _PathComparison));
+        if (record is null)
+        {
+            return await _RefuseHandoverAsync(path, paneId, "No managed worktree at that path — call worktree_list for the current paths.", cancellationToken).ConfigureAwait(false);
+        }
 
-            if (!string.Equals(record.SessionId, AssistantIdentity.PaneId, StringComparison.Ordinal))
-            {
-                return await _RefuseHandoverAsync(record.Path, paneId, "That worktree is not mine to hand over — it belongs to a different session.", cancellationToken).ConfigureAwait(true);
-            }
+        if (!string.Equals(record.SessionId, AssistantIdentity.PaneId, StringComparison.Ordinal))
+        {
+            return await _RefuseHandoverAsync(record.Path, paneId, "That worktree is not mine to hand over — it belongs to a different session.", cancellationToken).ConfigureAwait(false);
+        }
 
-            if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
-            {
-                var elsewhere = cockpit.FindSession(paneId);
-                return await _RefuseHandoverAsync(record.Path, paneId, elsewhere is null
-                        ? $"There is no session with pane id '{paneId}' — it may already have been closed."
-                        : $"'{elsewhere.Title}' runs inside a workspace's own surface rather than as a pane, so a worktree cannot be handed to it.",
-                    cancellationToken).ConfigureAwait(true);
-            }
+        var (pane, refusal) = await launcher.RunExclusiveAsync(
+            () => _GridAgentPane(paneId, "so a worktree cannot be handed to it.")).ConfigureAwait(false);
+        if (pane is null)
+        {
+            return await _RefuseHandoverAsync(record.Path, paneId, refusal ?? string.Empty, cancellationToken).ConfigureAwait(false);
+        }
 
-            if (!session.ShowPluginHeaderItems)
-            {
-                return await _RefuseHandoverAsync(record.Path, paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken)
-                    .ConfigureAwait(true);
-            }
+        WorktreeRecord? reattached;
+        try
+        {
+            reattached = await worktreeManager.TransferAsync(record.Path, AssistantIdentity.PaneId, paneId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (WorktreeAdmissionException exception)
+        {
+            return await _RefuseHandoverAsync(record.Path, paneId, exception.Message, cancellationToken).ConfigureAwait(false);
+        }
 
-            WorktreeRecord? reattached;
-            try
-            {
-                reattached = await worktreeManager.TransferAsync(record.Path, AssistantIdentity.PaneId, paneId, cancellationToken).ConfigureAwait(true);
-            }
-            catch (WorktreeAdmissionException exception)
-            {
-                return await _RefuseHandoverAsync(record.Path, paneId, exception.Message, cancellationToken).ConfigureAwait(true);
-            }
+        if (reattached is null)
+        {
+            return await _RefuseHandoverAsync(record.Path, paneId, "The worktree could not be re-owned — it may have just been removed.", cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-            if (reattached is null)
-            {
-                return await _RefuseHandoverAsync(record.Path, paneId, "The worktree could not be re-owned — it may have just been removed.", cancellationToken)
-                    .ConfigureAwait(true);
-            }
+        await pane.Session.SetWorktreeBranchAsync(reattached.Branch).ConfigureAwait(false);
 
-            session.WorktreeBranch = reattached.Branch;
+        await _RecordAsync(new AssistantSpawnAuditEntry(
+            DateTimeOffset.Now,
+            AssistantSpawnAction.Handover,
+            SpawnCaller.Assistant,
+            CallerPaneId: null,
+            pane.WorkspaceId,
+            pane.WorkspaceName,
+            Profile: null,
+            WorkingDirectory: reattached.Path,
+            paneId,
+            pane.Title,
+            Refusal: null), cancellationToken).ConfigureAwait(false);
 
-            await _RecordAsync(new AssistantSpawnAuditEntry(
-                DateTimeOffset.Now,
-                AssistantSpawnAction.Handover,
-                SpawnCaller.Assistant,
-                CallerPaneId: null,
-                session.WorkspaceId ?? string.Empty,
-                _FindWorkspace(session.WorkspaceId)?.Name,
-                Profile: null,
-                WorkingDirectory: reattached.Path,
-                paneId,
-                session.Title,
-                Refusal: null), cancellationToken).ConfigureAwait(true);
+        return WorktreeHandoverResult.HandedOver(reattached.Path, reattached.Branch, pane.Title);
+    }
 
-            return WorktreeHandoverResult.HandedOver(reattached.Path, reattached.Branch, session.Title);
-        });
-
-    // AC-587: the assistant's own door onto `ExternalLink` — the one shell-out for a web address in
-    // `Cockpit.App` (`ExternalLinkSingleSourceTests`). No UI-thread hop: `Process.Start` touches no view-model
-    // state, unlike every other member on this class.
+    // AC-587: the assistant's own door onto the app's one link opener (`ExternalLinkSingleSourceTests`), reached
+    // through `IExternalLinkOpener` since this class left the app (AC-1375).
     public Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default)
     {
-        if (!ExternalLink.TryParseWebAddress(url, out var address))
+        if (!links.TryParseWebAddress(url, out var address))
         {
             return Task.FromResult(OpenUrlResult.Refused(
                 $"'{url}' is not an absolute http(s) address, so there is nothing to open."));
         }
 
-        return Task.FromResult(ExternalLink.TryOpen(address)
+        return Task.FromResult(links.TryOpen(address)
             ? OpenUrlResult.Opened(address.AbsoluteUri)
             : OpenUrlResult.Refused($"The browser would not open '{address.AbsoluteUri}'."));
     }
 
     // AC-1261 criterion 7 (V4): the assistant's own door onto `AssistantSessionHost.RequestConversationClear` —
-    // exists for the same reason `OpenUrlAsync` does. No UI-thread hop: the host's own gate reads properties
-    // already published off the UI thread by its property-changed subscription.
+    // exists for the same reason `OpenUrlAsync` does.
     public Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(ClearConversationResult.Requested(alreadyQueued: !assistantSessionHost.RequestConversationClear()));
+        Task.FromResult(ClearConversationResult.Requested(alreadyQueued: !conversation.RequestConversationClear()));
 
     private async Task<WorktreeHandoverResult> _RefuseHandoverAsync(
         string path, string paneId, string reason, CancellationToken cancellationToken)
@@ -760,7 +734,7 @@ internal sealed class AssistantAgentGateway(
             WorkingDirectory: path,
             paneId,
             SessionName: null,
-            reason), cancellationToken).ConfigureAwait(true);
+            reason), cancellationToken).ConfigureAwait(false);
 
         return WorktreeHandoverResult.Refused(reason);
     }
@@ -775,20 +749,7 @@ internal sealed class AssistantAgentGateway(
         IReadOnlyList<string>? resourceReferences = null,
         CancellationToken cancellationToken = default)
     {
-        if (sharedProjectSources is null)
-        {
-            return AssistantProjectBindResult.Refused(
-                "No connection on this machine offers shared projects, so there is nothing to add from.");
-        }
-
-        // Registry and visibility filter read in one UI-thread hop: `SharedProjectSourceRegistry` is a plain
-        // dictionary mutated on the UI thread by plugin settings screens, so reading `Sources` from this Kestrel
-        // request thread would risk a torn read — same reason `AssistantReadGateway` reads it there too.
-        var (sources, boundIds, hiddenIds) = await _OnUiThreadAsync(() =>
-        {
-            var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
-            return Task.FromResult((sharedProjectSources.Sources, bound, hidden));
-        }).ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = await projectEditor.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
 
         if (sources.Count == 0)
         {
@@ -866,29 +827,14 @@ internal sealed class AssistantAgentGateway(
                 $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.");
         }
 
-        var (viewModel, error) = await SharedProjectBindingDialogViewModel
-            .CreateAsync(id, source.SourceName, source, profiles, cancellationToken).ConfigureAwait(false);
-        if (viewModel is null)
+        var (composed, composeRefusal) = await projectEditor
+            .ComposeSharedProjectAsync(id, source, directory, profile.Label, resourceReferences, cancellationToken).ConfigureAwait(false);
+        if (composed is null)
         {
-            // Definition read failed — unreachable, signed out, or the project gone since list_shared_projects.
-            // Arrives as `SharedProjectBindingResult.Failed`, not an exception, and is passed on rather than
-            // summarised: "could not add it" tells the operator nothing they can act on.
-            return AssistantProjectBindResult.Refused(error ?? "Could not read this project's definition.");
+            return AssistantProjectBindResult.Refused(composeRefusal ?? "Could not read this project's definition.");
         }
 
-        // The "Choose…" route, not the "Clone…" one — so, exactly as `ApplyPickedDirectory` does for the operator's
-        // own pick, the shared definition's `GitUrl` is dropped: the folder was pointed at rather than cloned from
-        // it, and keeping the URL would claim a provenance nothing here established.
-        viewModel.ApplyPickedDirectory(directory);
-        viewModel.SelectedProfileLabel = profile.Label;
-
-        if (_FillResourceRows(viewModel, resourceReferences) is { } rowRefusal)
-        {
-            return AssistantProjectBindResult.Refused(rowRefusal);
-        }
-
-        var stored = await _OnUiThreadAsync(
-            () => cockpit.Projects.AddBoundProjectAsync(viewModel.ToProject())).ConfigureAwait(false);
+        var stored = await projectEditor.AddBoundProjectAsync(composed).ConfigureAwait(false);
 
         return AssistantProjectBindResult.Bound(stored.Id, stored.Name, source.SourceName, stored.SourceDirectory);
     }
@@ -908,14 +854,6 @@ internal sealed class AssistantAgentGateway(
         IReadOnlyDictionary<string, string>? pluginFields = null,
         CancellationToken cancellationToken = default)
     {
-        // AC-799 review finding 8: production DI always registers a real `IMcpServerCatalog` (`ISingletonService`,
-        // scanned), so this is unreachable there. Kept as a refusal — the same shape `sharedProjectSources` being
-        // null takes below — rather than a no-op catalog that nothing past this line would ever actually read.
-        if (mcpServerCatalog is null)
-        {
-            return AssistantProjectCreateResult.Refused("MCP servers are not available here, so a project cannot be created.");
-        }
-
         // AC-799 review finding 10: the cheap, purely local checks first, and the network round trip
         // (`_FindSharedProjectByNameAsync`, one call per configured source) last — a typo'd folder or an unknown
         // plugin-field key should not wait on a colleague's server before being reported.
@@ -937,22 +875,14 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectCreateResult.Refused(unknownProfileError);
         }
 
-        var project = await _OnUiThreadAsync(async () =>
+        var (project, composeRefusal) = await projectEditor.ComposeNewProjectAsync(
+            name, description, sourceDirectory, behaviorPrompt, isolateInWorktreeByDefault, category, defaultProfileLabel,
+            cancellationToken).ConfigureAwait(false);
+
+        if (composeRefusal is not null)
         {
-            var viewModel = await ProjectDialogViewModel.CreateAsync(
-                null, profiles, mcpServerCatalog, cancellationToken: cancellationToken)
-                .ConfigureAwait(true);
-
-            viewModel.Name = name;
-            viewModel.Description = description ?? string.Empty;
-            viewModel.SourceDirectory = sourceDirectory ?? string.Empty;
-            viewModel.BehaviorPrompt = behaviorPrompt ?? string.Empty;
-            viewModel.IsolateInWorktreeByDefault = isolateInWorktreeByDefault;
-            viewModel.Category = category ?? string.Empty;
-            viewModel.SelectedProfileLabel = string.IsNullOrWhiteSpace(defaultProfileLabel) ? null : defaultProfileLabel.Trim();
-
-            return viewModel.CanSave ? viewModel.ToProject() : null;
-        }).ConfigureAwait(false);
+            return AssistantProjectCreateResult.Refused(composeRefusal);
+        }
 
         if (project is null)
         {
@@ -973,32 +903,31 @@ internal sealed class AssistantAgentGateway(
             PluginFields = pluginFields ?? ReadOnlyDictionary<string, string>.Empty,
         };
 
-        var stored = await _OnUiThreadAsync(() => cockpit.Projects.AddNewProjectAsync(withDynamicFields)).ConfigureAwait(false);
+        var stored = await projectEditor.AddNewProjectAsync(withDynamicFields).ConfigureAwait(false);
         return AssistantProjectCreateResult.Created(stored.Id, stored.Name);
     }
 
     // AC-1059: read side of `UpdateProjectAsync`, so the MCP tool can build a before/after card without this
     // gateway ever raising consent itself (that stays the caller's job, same split every other tool here keeps).
-    public Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() =>
-        {
-            var project = cockpit.Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId);
-            return Task.FromResult(project is null
-                ? null
-                : new AssistantProjectSnapshot(
-                    project.Id,
-                    project.Name,
-                    project.Description,
-                    project.SourceDirectory,
-                    project.DefaultProfileLabel,
-                    project.BehaviorPrompt,
-                    project.IsolateInWorktreeByDefault,
-                    project.McpOverlay.EnabledServerNames,
-                    project.Category,
-                    project.PluginFields,
-                    project.GitUrl,
-                    project.MemoryRef));
-        });
+    public async Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default)
+    {
+        var project = await projectEditor.FindProjectAsync(projectId).ConfigureAwait(false);
+        return project is null
+            ? null
+            : new AssistantProjectSnapshot(
+                project.Id,
+                project.Name,
+                project.Description,
+                project.SourceDirectory,
+                project.DefaultProfileLabel,
+                project.BehaviorPrompt,
+                project.IsolateInWorktreeByDefault,
+                project.McpOverlay.EnabledServerNames,
+                project.Category,
+                project.PluginFields,
+                project.GitUrl,
+                project.MemoryRef);
+    }
 
     // AC-1059: patches only the named fields onto the stored project, never `ProjectDialogViewModel.ToProject()`'s
     // full rebuild — the shape that silently dropped `Resources` (AC-483) and still drops `LastOpenedAt` today.
@@ -1037,8 +966,7 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectUpdateResult.Refused(unknownProfileError);
         }
 
-        var stored = await _OnUiThreadAsync(() =>
-            Task.FromResult(cockpit.Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId))).ConfigureAwait(false);
+        var stored = await projectEditor.FindProjectAsync(projectId).ConfigureAwait(false);
         if (stored is null)
         {
             return AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.");
@@ -1128,7 +1056,7 @@ internal sealed class AssistantAgentGateway(
             updated = updated with { PluginFields = merged };
         }
 
-        var result = await _OnUiThreadAsync(() => cockpit.Projects.UpdateStoredProjectAsync(updated)).ConfigureAwait(false);
+        var result = await projectEditor.UpdateStoredProjectAsync(updated).ConfigureAwait(false);
         return result is null
             ? AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.")
             : AssistantProjectUpdateResult.Updated(result.Id, result.Name);
@@ -1155,28 +1083,19 @@ internal sealed class AssistantAgentGateway(
     }
 
     // The same registry and per-source timeout `list_shared_projects` itself reads through
-    // (`ProjectsViewModel._ListWithTimeoutAsync`), not a second copy of either — a source that is slow, signed
+    // (`SharedProjectSourceLister.ListWithTimeoutAsync`), not a second copy of either — a source that is slow, signed
     // out or unreachable is skipped rather than failing the whole check. Null when nothing matches.
     private async Task<(string SourceName, string Id, string Name)?> _FindSharedProjectByNameAsync(
         string name, CancellationToken cancellationToken)
     {
-        if (sharedProjectSources is null)
-        {
-            return null;
-        }
-
-        var (sources, boundIds, hiddenIds) = await _OnUiThreadAsync(() =>
-        {
-            var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
-            return Task.FromResult((sharedProjectSources.Sources, bound, hidden));
-        }).ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = await projectEditor.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
 
         if (sources.Count == 0)
         {
             return null;
         }
 
-        var results = await Task.WhenAll(sources.Select(source => ProjectsViewModel._ListWithTimeoutAsync(source, cancellationToken)))
+        var results = await Task.WhenAll(sources.Select(source => SharedProjectSourceLister.ListWithTimeoutAsync(source, cancellationToken)))
             .ConfigureAwait(false);
 
         foreach (var (source, result) in sources.Zip(results))
@@ -1245,60 +1164,22 @@ internal sealed class AssistantAgentGateway(
         return $"'{string.Join("', '", unknown)}' is not a plugin field this cockpit knows. The registered keys are: {knownList}.";
     }
 
-    // AC-246: fills machine-specific resource rows the shared definition names but carries no reference for.
-    // Positional, not keyed by label, since two rows can share a label. A blank row is silently dropped by the
-    // dialog (fine when the operator sees the empty box); here nobody would, so it's refused with rows spelled out.
-    private static string? _FillResourceRows(SharedProjectBindingDialogViewModel viewModel, IReadOnlyList<string>? references)
-    {
-        var rows = viewModel.ResourceRows;
-        var given = references?.Where(reference => !string.IsNullOrWhiteSpace(reference)).ToList() ?? [];
-
-        if (given.Count != rows.Count)
-        {
-            return rows.Count == 0
-                ? "This project names no resources whose location is this machine's own, so there is nothing to pass in resources."
-                : $"This project names {rows.Count} resource(s) whose location is this machine's own, and the shared definition does not carry them. "
-                    + "Ask the operator for a local path for each, then call again with resources holding one entry per row, in this order: "
-                    + string.Join("; ", rows.Select((row, index) => $"{index + 1}. {row.DisplayLabel}"))
-                    + ".";
-        }
-
-        for (var index = 0; index < rows.Count; index++)
-        {
-            rows[index].Reference = given[index].Trim();
-        }
-
-        return null;
-    }
-
-    // AC-955: reaches the assistant's own session via `AssistantSessionHost.Session`, not `cockpit.Sessions`
-    // (the assistant sits outside that list by design — see `StopAsync`'s remark). No audit trail, unlike a
-    // spawn: showing a question costs nothing and starts nothing.
-    public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+    // AC-955: reaches the assistant's own session through `IAssistantConversation`, not the registry (the assistant
+    // sits outside its panes by design — see `StopAsync`'s remark). No audit trail, unlike a spawn: showing a
+    // question costs nothing and starts nothing.
+    public async Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
         string question,
         IReadOnlyList<(string Label, string? Description)> options,
         bool multiSelect,
         bool allowOther,
         string? header,
-        CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() =>
-        {
-            if (assistantSessionHost.Session is not { } session)
-            {
-                return Task.FromResult(AskStructuredQuestionResult.Refused(
-                    "My own session is not running, so there is nowhere to show this card."));
-            }
-
-            var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, question)
-            {
-                InputJson = inputJson,
-                QuestionPrompts = AskUserQuestionViewModel.Parse(inputJson),
-                IsPendingBrokerAnswer = true,
-            });
-
-            return Task.FromResult(AskStructuredQuestionResult.Shown());
-        });
+        CancellationToken cancellationToken = default)
+    {
+        var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
+        return await conversation.ShowQuestionAsync(question, inputJson).ConfigureAwait(false)
+            ? AskStructuredQuestionResult.Shown()
+            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+    }
 
     // A mirror of the native AskUserQuestion tool's own `questions` array (AC-715), one entry, so
     // `AskUserQuestionViewModel.Parse` reads it unchanged rather than needing a second parser.
@@ -1328,13 +1209,9 @@ internal sealed class AssistantAgentGateway(
 
     // AC-1324: the controller operator's click on a row this cockpit is stopped on — the same path as a click in
     // the pane itself. Not the assistant's own session: nobody answers that one but its operator, here.
+    // Only an SDK session's handle answers by tool-use id; a TTY session's prompts are its CLI's own.
     public Task<bool> RespondToPermissionAsync(string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() =>
-            !string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal) && cockpit.FindSession(paneId) is SessionViewModel session
-                ? session.RespondToPermissionByIdAsync(toolUseId, allow)
-                : Task.FromResult(false));
-
-    // Runs `work` on the UI thread — inline when already there, so a test on the UI thread pays for
-    // no redundant dispatch. Capped from a request thread, and abandoned past the cap (AC-1138).
-    private static Task<T> _OnUiThreadAsync<T>(Func<Task<T>> work) => UiThreadCall.RunAsync(work);
+        !string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal) && sessions.Find(paneId) is { } session
+            ? session.RespondToPermissionByIdAsync(toolUseId, allow)
+            : Task.FromResult(false);
 }

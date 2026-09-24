@@ -23,6 +23,7 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.App.Services;
 

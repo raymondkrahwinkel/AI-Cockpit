@@ -21,6 +21,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
@@ -323,8 +324,10 @@ public class AssistantBindSharedProjectTests : IDisposable
         var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
-        var gateway = Dispatcher.UIThread.Invoke(() => new AssistantAgentGateway(
-            _NewCockpit(projects),
+        var sessions = new SessionRegistry();
+        var gateway = Dispatcher.UIThread.Invoke(() => AssistantAgentGatewayGraph.Over(
+            _NewCockpit(projects, sessions),
+            sessions,
             _Profiles(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             Substitute.For<IWorkspaceAgentGateway>(),
@@ -358,7 +361,7 @@ public class AssistantBindSharedProjectTests : IDisposable
         return source;
     }
 
-    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects)
+    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects, SessionRegistry sessions)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -386,7 +389,8 @@ public class AssistantBindSharedProjectTests : IDisposable
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            projects: projects);
+            projects: projects,
+            sessionRegistry: sessions);
     }
 
     private sealed class _FakeRegistry(IReadOnlyList<ISharedProjectSource> initialSources) : ISharedProjectSourceRegistry

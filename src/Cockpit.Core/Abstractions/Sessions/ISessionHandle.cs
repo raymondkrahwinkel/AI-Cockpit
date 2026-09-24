@@ -121,9 +121,15 @@ public interface ISessionHandle
     Task<bool> SendPromptAsync(string prompt);
 
     /// <summary>
-    /// Submits <paramref name="prompt"/> now, or holds it until the session is ready; false when it is refused.
+    /// Submits <paramref name="prompt"/> now (true) or holds it until the session is ready (false), in the same step
+    /// as checking that no earlier prompt is still held; null, accepting nothing, when one is (AC-1375).
     /// </summary>
-    Task<bool> SubmitPromptWhenReadyAsync(string prompt);
+    Task<bool?> SubmitPromptWhenReadyAsync(string prompt);
+
+    /// <summary>
+    /// Records <paramref name="branch"/> as the branch of the worktree this session now owns (AC-719).
+    /// </summary>
+    Task SetWorktreeBranchAsync(string? branch);
 
     /// <summary>
     /// Answers the pending permission prompt for <paramref name="toolUseId"/>; false when no such prompt is open.

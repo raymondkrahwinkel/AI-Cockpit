@@ -64,7 +64,12 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
 
     public Task<bool> SendPromptAsync(string prompt) => UiThreadCall.RunAsync(() => pane.SendPromptAsync(prompt));
 
-    public Task<bool> SubmitPromptWhenReadyAsync(string prompt) => UiThreadCall.RunAsync(() => pane.SubmitPromptWhenReady(prompt));
+    // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a
+    // second one arriving between the two would otherwise be held and misread as belonging to this call.
+    public Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
+        UiThreadCall.RunAsync(() => pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt));
+
+    public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => pane.WorktreeBranch = branch);
 
     // Only an SDK session holds permission prompts by tool-use id; a TTY session's are the CLI's own.
     public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow) => pane is SessionViewModel sdk
