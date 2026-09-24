@@ -1,4 +1,3 @@
-using Cockpit.Infrastructure.Plugins;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -19,6 +18,7 @@ using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Projects;
