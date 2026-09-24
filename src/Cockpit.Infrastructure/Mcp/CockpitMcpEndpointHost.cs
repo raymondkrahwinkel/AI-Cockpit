@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -227,6 +228,14 @@ internal sealed class CockpitMcpEndpointHost
             }
 
             var app = builder.Build();
+
+            // AC-1383: marked by path before the door below decides, so it can tell a backend API call from a tool call.
+            app.Use(async (context, next) =>
+            {
+                McpRequestContext.MarkBackendApi(context.Request.Path.StartsWithSegments("/api"));
+                await next(context).ConfigureAwait(false);
+            });
+
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40),
             // and AC-1148: nor does one this endpoint's own mount decision never granted.
             McpAuthMiddleware.Require(
@@ -237,6 +246,13 @@ internal sealed class CockpitMcpEndpointHost
                 bindNodeListener ? _nodeSharedSecret : null,
                 connectKeys);
             app.MapMcp("/mcp");
+
+            // AC-1383: the backend API sits behind the node listener's door, so it is only there when that listener is.
+            if (connectKeys is not null)
+            {
+                BackendApiRoutes.Map(app, _services);
+            }
+
             _apps.Add(app);
 
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -332,8 +348,8 @@ internal sealed class CockpitMcpEndpointHost
         var allowed = McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
 
         // A caller holds the line only after authorization and a granted node scope. Pairing holds by default;
-        // a connect key holds only when it requests ownership of this node's assistant.
-        if (allowed && nodeScopeGranted && McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true } && _services.GetService<NodeControllerPresence>() is { } presence)
+        // a connect key holds only when it requests ownership. AC-1383: a backend API call never holds, whatever key.
+        if (allowed && nodeScopeGranted && McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true } && !McpRequestContext.IsBackendApiRequest && _services.GetService<NodeControllerPresence>() is { } presence)
         {
             // ponytail: holding keys and the pairing share one controller and inbox. Use a lease per credential
             // if multiple controllers need separate ownership.
