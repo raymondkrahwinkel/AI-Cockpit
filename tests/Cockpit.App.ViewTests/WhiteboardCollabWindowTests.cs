@@ -140,7 +140,7 @@ public class WhiteboardCollabWindowTests
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
         var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
         var plugin = new PluginActivator(NullLogger<PluginActivator>.Instance).Activate(discovered);
         Assert.NotNull(plugin);

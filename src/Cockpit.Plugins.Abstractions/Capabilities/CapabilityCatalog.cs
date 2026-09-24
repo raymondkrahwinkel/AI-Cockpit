@@ -124,6 +124,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "plugins.channel",
+            "Talking to its own UI",
+            "Answers its own UI part's calls and sends it events. It never reaches another plugin.",
+            CapabilityRisk.Ambient,
+            "0.39.0",
+            ["ICockpitHost.Channel"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",

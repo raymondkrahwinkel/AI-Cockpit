@@ -28,7 +28,7 @@ public class YouTrackPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
         var discovered = new DiscoveredPlugin(folder, "youtrack", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);

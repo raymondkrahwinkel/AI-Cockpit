@@ -56,7 +56,42 @@ public class PluginManifestTests
 
         Assert.False(PluginManifest.TryParse(json, out var manifest, out var error));
         Assert.Null(manifest);
-        Assert.NotNull(error);
+        Assert.Contains("'entryAssembly' and 'uiAssembly'", error);
+    }
+
+    // AC-1389: a plugin that is only a UI part (a clock) names no backend assembly.
+    [Fact]
+    public void TryParse_UiAssemblyWithoutEntryAssembly_Parses()
+    {
+        var json = """{"id":"clock","name":"Clock","version":"1.0.0","uiAssembly":"Clock.dll","uiEntryType":"Clock.Ui","abstractionsVersion":2}""";
+
+        Assert.True(PluginManifest.TryParse(json, out var manifest, out var error), error);
+        Assert.Equal((null, "Clock.dll", "Clock.Ui"), (manifest?.EntryAssembly, manifest?.UiAssembly, manifest?.UiEntryType));
+    }
+
+    // AC-1389 counter-proof: the manifests already in the repository read exactly as they did — an entry assembly,
+    // no UI part.
+    [Theory]
+    [MemberData(nameof(InRepoManifests))]
+    public void TryParse_EveryInRepoManifest_StillParsesAsABackendOnlyPlugin(string manifestPath)
+    {
+        Assert.True(PluginManifest.TryParse(File.ReadAllText(manifestPath), out var manifest, out var error), error);
+        Assert.Equal([manifest?.EntryAssembly ?? "(none)"], manifest?.Assemblies ?? []);
+    }
+
+    public static TheoryData<string> InRepoManifests()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "Cockpit.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        Assert.NotNull(root);
+        return new TheoryData<string>(Directory.GetFiles(Path.Combine(root.FullName, "plugins-dev"), "plugin.json", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal));
     }
 
     [Fact]
