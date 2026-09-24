@@ -39,6 +39,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   call, even for a controller that is already connected, and `list_connect_keys` shows each key's scope. Existing
   keys keep every profile and project and can still answer permissions, but they can no longer start a bypass
   profile until you allow it. Pairing is unchanged.
+- added: project file paths are checked against the project folder, including links that lead outside it.
 - added: the first routes of the backend API on the node's HTTPS listener, for a connect key only: `GET /api/v1/whoami`
   (who the key is, any capability) and `GET /api/v1/keys` (the key list, admin only). The pairing secret, the app key
   and session tokens are refused, and a call over the API never counts as a controller holding the assistant.
