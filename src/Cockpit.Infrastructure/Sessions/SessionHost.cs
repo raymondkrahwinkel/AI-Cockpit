@@ -218,8 +218,35 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // Whether this host writes a transcript at all; the design-time and most test graphs have no store.
     public bool RecordsTranscript => _transcriptStore is not null;
 
-    // Creates the runtime and starts listening to it; the caller starts it. Split so the caller can count the session's
-    // working life from the moment a runtime exists (AC-251), not from when the launch it waits on returns.
+    // AC-251: the session's working life starts when its runtime exists, not when the launch it waits on returns.
+    public DateTimeOffset? StartedAt { get; private set; }
+
+    // AC-1378: the one start both the desktop pane and the backend launcher run, in the order the pane always ran it.
+    // Null when this host cannot launch; a launch that throws leaves the attached runtime in `Runtime`.
+    public async Task<ISessionRuntime?> StartAsync(SessionStart start)
+    {
+        if (start.Profile is { } profile)
+        {
+            StartLoginPoll(profile);
+        }
+
+        PreApprove(start.PreApprovedTools, start.PreApproveAllTools);
+        var launchOptions = SessionStart.WithPaneId(start.LaunchOptions, _paneId());
+        if (!CanLaunch)
+        {
+            return null;
+        }
+
+        var runtime = Attach(start.Profile);
+        StartedAt = _time.GetLocalNow();
+        await runtime.StartAsync(
+            start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
+            launchOptions, start.ProjectId);
+        StartUsageCatchUp();
+        return runtime;
+    }
+
+    // Creates the runtime and starts listening to it; the caller starts it.
     public ISessionRuntime Attach(SessionProfile? profile)
     {
         if (_manager is null)

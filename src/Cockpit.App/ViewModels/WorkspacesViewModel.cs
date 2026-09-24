@@ -276,13 +276,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     }
 
     // AC-1013: Whether closing this workspace would do anything. False for the last one — the cockpit...
-    public bool CanClose(string workspaceId) =>
-        Settings.Workspaces.Count > 1
-        && Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
-        // The projects overview is a fixture: always there, exactly once, never closed. Answering false here is
-        // what greys its ✕ and its menu entry; WorkspaceSettings refuses the removal itself, so a caller that
-        // does not ask still cannot take it away.
-        && workspace.Type != WorkspaceType.Projects;
+    // Answering false is what greys the ✕ and the menu entry of the last desk and of the projects overview, a fixture.
+    public bool CanClose(string workspaceId) => Settings.CanClose(workspaceId);
 
     [RelayCommand]
     private Task CloseWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));

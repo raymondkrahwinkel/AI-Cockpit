@@ -103,6 +103,12 @@ public sealed record WorkspaceSettings
         }).WithActive(active ?? remaining[0].Id);
     }
 
+    // Whether `WithoutWorkspace` would remove `workspaceId`: never the last desk, never the projects overview (AC-1013).
+    public bool CanClose(string workspaceId) =>
+        Workspaces.Count > 1
+        && Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
+        && workspace.Type != WorkspaceType.Projects;
+
     // These settings with `workspace` swapped in by id (a no-op when it holds no such workspace).
     public WorkspaceSettings WithUpdated(Workspace workspace) =>
         this with { Workspaces = [.. Workspaces.Select(existing => existing.Id == workspace.Id ? workspace : existing)] };
