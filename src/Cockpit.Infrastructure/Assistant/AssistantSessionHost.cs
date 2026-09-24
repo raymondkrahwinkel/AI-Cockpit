@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -16,7 +17,7 @@ namespace Cockpit.Infrastructure.Assistant;
 // AC-1013: Owns the voice assistant's own session (AC-543, decision 3) and keeps the only reference, starts it lazily
 // and revives a dead one on the same conversation. AC-1379: drives it through `IAssistantSession`, so it runs without
 // the app; the app hands it a presence that raises on the UI thread, the backend the plain one.
-public sealed class AssistantSessionHost : IAssistantSessionHost
+public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonService
 {
     // AC-1013: Fixed pane id (not a fresh guid per launch) so the state store's last-conversation lookup keeps
     // matching across starts; also the identity the broad read tools check against (AC-544), kept in Core since
