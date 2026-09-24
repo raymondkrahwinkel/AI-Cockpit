@@ -13,7 +13,6 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Markdown;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -37,14 +36,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-409: written on a live permission-mode switch (see `OnSelectedPermissionModeChanged`). Null in the design-time/unit-test graph, where the switch simply is not persisted.
     private readonly SessionStateRecorder? _sessionStateRecorder;
 
-    // AC-1090: Cockpit's own copy of this pane's conversation. Null in the design-time/unit-test graph; every
-    // other pane gets it from the container, which `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this
-    // to — an optional dependency nobody fills is a layer that exists and never runs.
-    private readonly ISessionTranscriptStore? _transcriptStore;
-
     // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
     // straight back would append a second version of every row on every restart.
     private bool _replayingRecordedTranscript;
+
+    // AC-1377: true while a host upsert is being drawn onto its row. The host already holds that version, so what the
+    // drawing changes here is not recorded back — that echo would write every streamed delta twice.
+    private bool _applyingHostRow;
+
+    // Every row drawn here by id, nested ones included, so an upsert lands on the row it names instead of adding one.
+    private readonly Dictionary<string, TranscriptEntryViewModel> _rowsById = new(StringComparer.Ordinal);
+
+    // The reply, fence and table a streamed answer is being split into (AC-1238/1265/1272), rebuilt from the rows' flags.
+    private List<TranscriptEntryViewModel>? _replyRows;
+    private List<TranscriptEntryViewModel>? _codeSpanRows;
+    private List<TranscriptEntryViewModel>? _tableSpanRows;
+
+    // The top-level rows the fold in flight added, in order.
+    private readonly List<TranscriptEntryViewModel> _addedByFold = [];
 
     // Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same registry
     // `Converters.ProfileDisplayConverter` uses for the profile picker, injected here rather than reaching into that
@@ -82,40 +91,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as `SessionPanelViewModel.McpServerSelection` just before `StartWithProfileAsync` reads them.
     private IReadOnlyDictionary<string, string>? _launchOptions;
 
-    private TranscriptEntryViewModel? _currentAssistantEntry;
-
-    // AC-1238: the rows one reply has been split across, and whether the row now open has already been finished
-    // by a blank line. A fresh list per reply — the rows of an older one keep pointing at their own.
-    private List<TranscriptEntryViewModel> _replyRows = [];
-    private bool _assistantBlockSealed;
-    private List<TranscriptEntryViewModel>? _codeSpanRows;
-    private bool _nextRowContinuesCodeBlock;
-
-    // AC-1272: the same shape as the fence pair above, for a table split by row count instead of by a blank
-    // line -- a continuation carries no header of its own, so route A2 shares column widths across the group.
-    private List<TranscriptEntryViewModel>? _tableSpanRows;
-    private bool _nextRowContinuesTable;
-
-    // The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors `_currentAssistantEntry`: contiguous thinking deltas append onto one row rather than spawning a row per delta.
-    private TranscriptEntryViewModel? _currentThinkingEntry;
-
-    // The provider block index of `_currentThinkingEntry`; a delta from a different block (e.g. Codex's raw reasoning vs. its summary) starts a fresh row so the two never concatenate.
-    private int _currentThinkingBlockIndex = -1;
-
     // Assistant-text rows added since the last `TurnCompleted` — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
-
-    // One sub-agent's own streaming state (AC-146).
-    private sealed class SubAgentLane(TranscriptEntryViewModel anchor)
-    {
-        public TranscriptEntryViewModel Anchor { get; } = anchor;
-        public TranscriptEntryViewModel? CurrentAssistantEntry { get; set; }
-        public TranscriptEntryViewModel? CurrentThinkingEntry { get; set; }
-        public int CurrentThinkingBlockIndex { get; set; } = -1;
-    }
-
-    // Live sub-agent lanes, keyed by the parent Task tool call's own tool_use_id. Cleared on every `TurnCompleted`: a sub-agent does not outlive the turn that spawned it.
-    private readonly Dictionary<string, SubAgentLane> _subAgentLanes = [];
 
     // One top-level tool call the turn is currently waiting on (AC-532).
     private readonly record struct ActiveToolCall(string ToolUseId, string Label, DateTimeOffset StartedAt);
@@ -382,67 +359,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Keep orphaned sub-agent text separate so it cannot merge into the top-level reply or be read aloud (AC-146).
-    private TranscriptEntryViewModel? _currentOrphanedSubAgentTextEntry;
-
-    // The transcript row for a tool call — the same shape wherever one is built, top-level or in a sub-agent lane.
-    private static TranscriptEntryViewModel _ToolUseRow(string toolUseId, string toolName, string inputJson) =>
-        new(TranscriptEntryKind.ToolUse, $"Tool: {toolName}({inputJson})")
-        {
-            ToolUseId = toolUseId,
-            ToolName = toolName,
-            InputJson = inputJson,
-        };
-
     // AC-1088: one clamped result in full, from the transcript the CLI writes anyway. Null whenever it cannot be
     // had — no reader, no session id yet, or a transcript that has been cleaned up or came from another machine.
     // Called off the UI thread; it reads a file and must stay as cheap to fail as it is to succeed.
     internal string? ReadFullToolResult(string toolUseId) =>
         _transcriptReader?.ReadToolResult(_profile, _cliSessionId, toolUseId);
-
-    // AC-1088 carries the call id onto the orphan row too: its output is clamped like any other, and without the
-    // id there is no way to find the whole of it back in the CLI's transcript.
-    private static TranscriptEntryViewModel _ToolResultRow(ToolResult toolResult) =>
-        new(TranscriptEntryKind.ToolResult, toolResult.Content)
-        {
-            IsResultError = toolResult.IsError,
-            ToolUseId = toolResult.ToolUseId,
-        };
-
-    // AC-996: the row a permission asks about, when no tool-use event ever brought one. Top-level even for a
-    // sub-agent's call: a row nested under a collapsed anchor is exactly the kind the operator cannot reach, and
-    // being asked is the whole reason this row exists.
-    private TranscriptEntryViewModel _AddOrphanPermissionRow(PermissionRequested permission)
-    {
-        var row = _ToolUseRow(permission.ToolUseId, permission.ToolName, permission.InputJson);
-        Transcript.Add(row);
-        return row;
-    }
-
-    // Null for a top-level event (no parent id) or one naming a parent this pane never saw the tool-use row for
-    // (AC-146).
-    private SubAgentLane? _ResolveSubAgentLane(string? parentToolUseId)
-    {
-        if (string.IsNullOrEmpty(parentToolUseId))
-        {
-            return null;
-        }
-
-        if (_subAgentLanes.TryGetValue(parentToolUseId, out var lane))
-        {
-            return lane;
-        }
-
-        var anchor = Transcript.LastOrDefault(t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == parentToolUseId);
-        if (anchor is null)
-        {
-            return null;
-        }
-
-        lane = new SubAgentLane(anchor);
-        _subAgentLanes[parentToolUseId] = lane;
-        return lane;
-    }
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private int _readAloudFlushedLength;
@@ -464,11 +385,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The most recently dispatched user turn (text + images), so a failed TurnCompleted row's Retry action
     // (AC-728) can resend exactly what was sent — the operator does not have to retype it.
     private (string Text, IReadOnlyList<Core.Sessions.ImageAttachment> Images)? _lastDispatchedUserTurn;
-
-    // AC-1031: set right after StopAsync's own InterruptAsync call succeeds, consumed by the next TurnCompleted —
-    // the CLI reports an interrupted turn the same way as a real driver failure, and this is the only place that
-    // knows the operator asked for the stop.
-    private bool _interruptRequested;
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
@@ -729,6 +645,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             foreach (TranscriptEntryViewModel entry in e.NewItems)
             {
+                _RegisterRow(entry);
                 entry.Session = this;
                 entry.ReadingLevel = ReadingLevel;
                 entry.PropertyChanged += _OnEntryPropertyChanged;
@@ -764,329 +681,133 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _RebuildVisibleTranscript();
     }
 
-    // AC-1238: a row that grows while the virtualising panel has it realised makes that panel's own StartU
-    // unstable (Avalonia's RealizedStackElements.ValidateStartU), after which it re-anchors on an average row
-    // height this one row is the whole of — measured as one painted frame per streamed chunk showing a different
-    // part of the transcript entirely. Finished markdown blocks become their own rows, so the row that grows is
-    // always the last and always small. The same stream delivered this way is green on all three of
-    // TranscriptStreamFlickerTests' readings with no other change (AC-1238, six of six runs).
-    private void _AppendAssistantProse(string delta)
+    // AC-1377: the host forms the rows and this draws them. An upsert lands on the row of its id or adds that row — at
+    // the top level, or under the anchor whose snapshot carries it (AC-146) — and is never recorded back.
+    private void _OnRowUpserted(TranscriptRowUpsert upsert)
     {
-        var pending = delta;
-        while (pending.Length > 0)
+        _applyingHostRow = true;
+        try
         {
-            var row = _OpenAssistantRow();
-            var end = _FinishedBlockEnd(row.Text, pending);
-            if (end < 0)
-            {
-                // AC-1265: a fence carries no blank line for the split above to find, so a code block used to
-                // grow as one row well past the viewport — the one shape AC-1238's guarantee never covered.
-                var fenceEnd = _OpenFenceLineEnd(row, pending);
-                if (fenceEnd >= 0)
-                {
-                    row.AppendText(pending[..fenceEnd]);
-                    _SealCodeSpanRow(row);
-                    pending = pending[fenceEnd..];
-                    continue;
-                }
-
-                // AC-1272: nor does a table have a blank line, and unlike a list or paragraph its continuation
-                // carries neither header nor separator -- bounded by row count like a fence, with TableSpanRows
-                // sharing the group's column widths across the split (route A2).
-                var tableEnd = _OpenTableLineEnd(row, pending);
-                if (tableEnd >= 0)
-                {
-                    row.AppendText(pending[..tableEnd]);
-                    _SealTableSpanRow(row);
-                    pending = pending[tableEnd..];
-                    continue;
-                }
-
-                // AC-1271: and neither does a tight list or one unbroken paragraph. Measured at 815-1415px in
-                // a 382px viewport, against 0 backward thumb jumps for prose. `_UnbrokenBlockEnd` still leaves
-                // a table alone -- the row-bound above is the only thing allowed to cut one.
-                var bound = _UnbrokenBlockEnd(row, pending);
-                if (bound < 0)
-                {
-                    row.AppendText(pending);
-                    return;
-                }
-
-                row.AppendText(pending[..bound]);
-                _assistantBlockSealed = true;
-                _codeSpanRows = null;
-                _FinalizeTableSpan();
-                pending = pending[bound..];
-                continue;
-            }
-
-            row.AppendText(pending[..end]);
-            _assistantBlockSealed = true;
-            _codeSpanRows = null;
-            _FinalizeTableSpan();
-            pending = pending[end..];
+            _DrawRow(upsert.Row, anchor: null);
+        }
+        finally
+        {
+            _applyingHostRow = false;
         }
     }
 
-    // Ends this row inside the fence it is in and lines the next one up to carry on inside it. Both sides are
-    // recorded outright: the row that opened the fence is not the row that closes it, and the frame each draws
-    // depends on which of the two it is.
-    private void _SealCodeSpanRow(TranscriptEntryViewModel row)
+    private void _DrawRow(TranscriptSnapshotEntry entry, TranscriptEntryViewModel? anchor)
     {
-        row.EndsInsideCodeBlock = true;
-        _assistantBlockSealed = true;
-        _nextRowContinuesCodeBlock = true;
+        if (_rowsById.TryGetValue(entry.Id, out var row))
+        {
+            _UpdateRow(row, entry);
+        }
+        else
+        {
+            row = _NewRow(entry);
+            _rowsById[entry.Id] = row;
+            if (anchor is null)
+            {
+                _addedByFold.Add(row);
+                Transcript.Add(row);
+            }
+            else
+            {
+                anchor.SubAgentRows.Add(row);
+            }
+        }
 
-        if (_codeSpanRows is null)
+        foreach (var nested in entry.SubAgentRows ?? [])
+        {
+            _DrawRow(nested, row);
+        }
+    }
+
+    // A row joins the reply, fence or table it continues when it is made (AC-1238/1265/1272); the row that opened a
+    // split fence or table joins its group once it is sealed, in `_UpdateRow`.
+    private TranscriptEntryViewModel _NewRow(TranscriptSnapshotEntry entry)
+    {
+        var kind = Enum.Parse<TranscriptEntryKind>(entry.Kind);
+        var row = new TranscriptEntryViewModel(kind, entry.Text, entry.Timestamp)
+        {
+            Id = entry.Id,
+            ToolName = entry.ToolName,
+            InputJson = entry.InputJson,
+            ToolUseId = entry.ToolUseId,
+            IsFailedTurnRow = entry.IsFailedTurnRow,
+            IsExpanded = kind == TranscriptEntryKind.Thinking,
+        };
+
+        if (entry.StartsReply)
+        {
+            _replyRows = [];
+        }
+
+        if (entry.StartsReply || entry.IsReplyContinuation)
+        {
+            _replyRows?.Add(row);
+            row.ReplyRows = _replyRows;
+        }
+
+        if (entry.StartsInsideCodeBlock)
+        {
+            _codeSpanRows?.Add(row);
+            row.CodeSpanRows = _codeSpanRows;
+        }
+
+        if (entry.StartsInsideTable)
+        {
+            _tableSpanRows?.Add(row);
+            row.TableSpanRows = _tableSpanRows;
+        }
+
+        _UpdateRow(row, entry);
+        return row;
+    }
+
+    private void _UpdateRow(TranscriptEntryViewModel row, TranscriptSnapshotEntry entry)
+    {
+        row.Text = entry.Text;
+        row.IsResultError = entry.IsResultError;
+        row.TruncatedFromChars = entry.TruncatedFromChars;
+        if (entry.ResultText is { } result && result != row.ResultText)
+        {
+            row.ApplyResult(result, entry.IsResultError, entry.TruncatedFromChars, entry.BackgroundTaskId);
+        }
+
+        row.PermissionDecision = entry.PermissionDecision;
+        row.IsPendingPermission = entry.IsPendingPermission;
+        row.ErrorKind = entry.ErrorKind ?? SessionErrorKind.Unknown;
+        row.RetryAfter = entry.RetryAfter;
+        row.IsReplyContinuation = entry.IsReplyContinuation;
+        row.IsReplyTail = !entry.ReplyContinuesBelow;
+        row.StartsInsideCodeBlock = entry.StartsInsideCodeBlock;
+        row.EndsInsideCodeBlock = entry.EndsInsideCodeBlock;
+        row.StartsInsideTable = entry.StartsInsideTable;
+        row.EndsInsideTable = entry.EndsInsideTable;
+        row.TableSpanRevision = entry.TableSpanRevision;
+
+        if (entry.EndsInsideCodeBlock && row.CodeSpanRows is null)
         {
             _codeSpanRows = [row];
             row.CodeSpanRows = _codeSpanRows;
         }
-    }
 
-    // Ends this row inside the table it is in and lines the next one up to carry it on -- the table equivalent
-    // of `_SealCodeSpanRow` above.
-    private void _SealTableSpanRow(TranscriptEntryViewModel row)
-    {
-        row.EndsInsideTable = true;
-        _assistantBlockSealed = true;
-        _nextRowContinuesTable = true;
-
-        if (_tableSpanRows is null)
+        if (entry.EndsInsideTable && row.TableSpanRows is null)
         {
             _tableSpanRows = [row];
             row.TableSpanRows = _tableSpanRows;
         }
     }
 
-    // A table's shared column widths can only be final once every fragment's own text is fixed, and a
-    // fragment sealed earlier is not touched again otherwise -- this is what asks it to look at
-    // SpannedTableText once more, on the group's last row as much as on any row before it.
-    private void _FinalizeTableSpan()
+    // A row drawn here, nested ones included, so the host's upsert for it lands on it rather than beside it.
+    private void _RegisterRow(TranscriptEntryViewModel entry)
     {
-        if (_tableSpanRows is null)
+        _rowsById.TryAdd(entry.Id, entry);
+        foreach (var nested in entry.SubAgentRowsForDisplay)
         {
-            return;
+            _RegisterRow(nested);
         }
-
-        foreach (var spanRow in _tableSpanRows)
-        {
-            spanRow.TableSpanRevision++;
-        }
-
-        _tableSpanRows = null;
-    }
-
-    // The row this reply is currently streaming into: the open one until a blank line finished it, a new one
-    // after that. A continuation carries neither the badge nor the name, so the group still reads as one reply.
-    private TranscriptEntryViewModel _OpenAssistantRow()
-    {
-        if (_currentAssistantEntry is { } open && !_assistantBlockSealed)
-        {
-            return open;
-        }
-
-        var continuing = _currentAssistantEntry is not null && _assistantBlockSealed;
-        if (continuing)
-        {
-            _currentAssistantEntry!.IsReplyTail = false;
-        }
-        else
-        {
-            _replyRows = [];
-
-            // A reply that ended mid-fence or mid-table must not hand its open one to the next reply
-            // (AC-1265, AC-1272).
-            _codeSpanRows = null;
-            _nextRowContinuesCodeBlock = false;
-            _FinalizeTableSpan();
-            _nextRowContinuesTable = false;
-        }
-
-        var row = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty)
-        {
-            IsReplyContinuation = continuing,
-            StartsInsideCodeBlock = continuing && _nextRowContinuesCodeBlock,
-            StartsInsideTable = continuing && _nextRowContinuesTable,
-        };
-
-        if (row.StartsInsideCodeBlock)
-        {
-            _codeSpanRows!.Add(row);
-            row.CodeSpanRows = _codeSpanRows;
-        }
-
-        if (row.StartsInsideTable)
-        {
-            _tableSpanRows!.Add(row);
-            row.TableSpanRows = _tableSpanRows;
-        }
-
-        _nextRowContinuesCodeBlock = false;
-        _nextRowContinuesTable = false;
-        _replyRows.Add(row);
-        row.ReplyRows = _replyRows;
-        _currentAssistantEntry = row;
-        _assistantBlockSealed = false;
-        Transcript.Add(row);
-        _currentTurnAssistantEntries.Add(row);
-        return row;
-    }
-
-    // Where in `pending` the blank line that finishes a markdown block ends, or -1 while the row is still inside
-    // one. A blank line inside a fenced code block finishes nothing, so the fences opened before it are counted.
-    private static int _FinishedBlockEnd(string existing, string pending)
-    {
-        var from = 0;
-        while (true)
-        {
-            var at = pending.IndexOf("\n\n", from, StringComparison.Ordinal);
-            if (at < 0)
-            {
-                return -1;
-            }
-
-            var end = at + 2;
-            if (_OpenFence(pending[..end], _OpenFence(existing)) is null)
-            {
-                return end;
-            }
-
-            from = end;
-        }
-    }
-
-    // How many lines a row of one code block carries before the next starts a new row. Set against the spread
-    // the transcript already has: the tallest prose row measured 419px in a 461px viewport (AC-1265), and this
-    // many monospaced lines sits under that, so a code row is no longer the outlier the panel re-anchors on.
-    private const int CodeBlockRowLines = 20;
-
-    // Where in `pending` an already-counted line total reaches `maxLines`, or -1 while it may keep growing.
-    // Shared by `_OpenFenceLineEnd` and `_OpenTableLineEnd` below: same shape, different bound and predicate.
-    private static int _LineBoundEnd(string pending, int existingLines, int maxLines)
-    {
-        var lines = existingLines;
-        for (var i = 0; i < pending.Length; i++)
-        {
-            if (pending[i] == '\n' && ++lines >= maxLines)
-            {
-                return i + 1;
-            }
-        }
-
-        return -1;
-    }
-
-    // The end of the line in `pending` that takes the open row to its line bound while a fence is still open,
-    // or -1 while it may keep growing. A fence opened inside `pending` is left to the next chunk: the row is
-    // still short then, and the case that matters is the one that keeps arriving.
-    private static int _OpenFenceLineEnd(TranscriptEntryViewModel row, string pending)
-    {
-        // The row's own text is not enough: a row continuing a split fence carries no opener, so reading only
-        // its text says the fence is closed and that second fragment then grows without a bound of its own.
-        var existing = row.Text;
-        return _OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null
-            ? -1
-            : _LineBoundEnd(pending, existing.AsSpan().Count('\n'), CodeBlockRowLines);
-    }
-
-    // AC-1272: a table row is one line, like a fenced code line, but far taller -- AC-1271 measured the
-    // unsplit table at 1261px over 15 rendered rows, ~84px each. This keeps a continuation fragment (the
-    // worst case: every counted line its own rendered row) under the smaller 382px viewport.
-    private const int TableFragmentLines = 4;
-
-    // The end of the line in `pending` that takes the open row to its table-row bound, or -1 while it may
-    // keep growing (including while it is not yet known to be a table at all). The one path allowed to cut a
-    // table: `_UnbrokenBlockEnd` below leaves every table alone, on purpose.
-    private static int _OpenTableLineEnd(TranscriptEntryViewModel row, string pending)
-    {
-        // An open fence is `_OpenFenceLineEnd`'s to bound, same as in `_UnbrokenBlockEnd` below -- without
-        // this, a pasted table example inside a still-streaming fence reads as a real table and the fence's
-        // own continuation is abandoned mid-block.
-        if (_OpenFence(row.Text, row.StartsInsideCodeBlock ? '`' : null) is not null)
-        {
-            return -1;
-        }
-
-        var open = row.StartsInsideTable ? row.Text : _OpenBlockText(row.Text);
-        return !row.StartsInsideTable && !_OpenBlockIsTable(open)
-            ? -1
-            : _LineBoundEnd(pending, open.AsSpan().Count('\n'), TableFragmentLines);
-    }
-
-    // How much markdown a row carries before the next one takes over, for a block with no blank line in it.
-    // Set from the measurement rather than guessed: the shapes that broke ran 0,24-0,42px of row height per
-    // character, so this stays under 260px in the 382px chat viewport and under 150px in the 461px pane.
-    private const int UnbrokenBlockCharacters = 600;
-
-    // Where in `pending` a block that will not end by itself gives the row up, or -1 while it may keep growing.
-    // A line boundary by preference, so a list item is never cut in half; a word boundary only when the block
-    // holds no line at all, which is the one paragraph shape that has no other seam to use.
-    private static int _UnbrokenBlockEnd(TranscriptEntryViewModel row, string pending)
-    {
-        // An open fence is `_OpenFenceLineEnd`'s to bound. Cutting one here would end the row without sealing
-        // it, and the fragment after it would carry no fence — AC-1265's split, minus the half that works.
-        if (_OpenFence(row.Text, row.StartsInsideCodeBlock ? '`' : null) is not null)
-        {
-            return -1;
-        }
-
-        var open = _OpenBlockText(row.Text);
-        var over = UnbrokenBlockCharacters - open.Length;
-        if (over >= pending.Length)
-        {
-            return -1;
-        }
-
-        var from = Math.Max(0, over);
-        if (open.Contains('\n', StringComparison.Ordinal) || pending.IndexOf('\n', 0) >= 0)
-        {
-            var line = pending.IndexOf('\n', from);
-            // A table is the one multi-line block this must leave alone: its continuation carries neither the
-            // header nor the separator row, so the fragment falls back to prose and the columns are gone.
-            return line < 0 || _OpenBlockIsTable(open + pending[..(line + 1)]) ? -1 : line + 1;
-        }
-
-        var word = pending.IndexOf(' ', from);
-        return word < 0 ? -1 : word + 1;
-    }
-
-    // The block this row is currently inside: everything after the last blank line, which is where
-    // `_FinishedBlockEnd` would have ended the row had there been one.
-    private static string _OpenBlockText(string text)
-    {
-        var last = text.LastIndexOf("\n\n", StringComparison.Ordinal);
-        return last < 0 ? text : text[(last + 2)..];
-    }
-
-    // Asked only at the moment a split would happen, not per streamed chunk: the parser walks the whole open
-    // block and this is the one place where paying for that is cheaper than a second rule about pipes.
-    private static bool _OpenBlockIsTable(string open) =>
-        MarkdownParser.Parse(open) is [.., { Kind: MarkdownBlockKind.Table }];
-
-    // ponytail: rescans the whole open row with Split per chunk — O(n²) and one allocation each; track fence state on the row if it shows up.
-    private static char? _OpenFence(string text, char? open = null)
-    {
-        foreach (var line in text.Split('\n'))
-        {
-            var content = line.AsSpan();
-            var indent = 0;
-            while (indent < content.Length && indent < 3 && content[indent] == ' ')
-            {
-                indent++;
-            }
-
-            content = content[indent..];
-            if (content.Length >= 3
-                && content[0] is '`' or '~'
-                && content[1] == content[0]
-                && content[2] == content[0])
-            {
-                open = open == content[0] ? null : open ?? content[0];
-            }
-        }
-
-        return open;
     }
 
     // Puts one row in or out of `VisibleTranscript` when — and only when — its visibility actually moved.
@@ -1193,13 +914,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         nameof(TranscriptEntryViewModel.SubAgentRowsForDisplay),
     ];
 
-    // AC-1090: fire-and-forget, same contract as `ISessionStateStore.RecordAsync` — a row that could not be
-    // recorded is logged by the store, never charged to the turn that produced it.
+    // AC-1377: a row this pane formed or changed itself goes to the host, which holds the transcript and writes it.
     private void _RecordRow(TranscriptEntryViewModel entry)
     {
-        if (_transcriptStore is { } store && !_replayingRecordedTranscript)
+        if (!_replayingRecordedTranscript && !_applyingHostRow)
         {
-            _ = store.AppendAsync(PaneId, TranscriptSnapshot.Capture(entry), CancellationToken.None);
+            _host.RecordRow(TranscriptSnapshot.Capture(entry));
         }
     }
 
@@ -1215,12 +935,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // difference, is the restore path's call, not this one's.
     public async Task ReplayRecordedTranscriptAsync(CancellationToken cancellationToken = default)
     {
-        if (_transcriptStore is not { } store)
+        if (!_host.RecordsTranscript)
         {
             return;
         }
 
-        var recorded = await store.TryLoadAsync(PaneId, cancellationToken).ConfigureAwait(true);
+        var recorded = await _host.LoadRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
         if (recorded is null)
         {
             // AC-1080: the session still starts, so without this row the operator faces an empty window that looks
@@ -1248,7 +968,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1090: rolls this pane's recorded conversation aside, for a launch that starts a new one rather than
     // continuing this one — a new conversation is a new log.
     public Task ArchiveRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
-        _transcriptStore?.ArchiveAsync(PaneId, cancellationToken) ?? Task.CompletedTask;
+        _host.ArchiveRecordedTranscriptAsync(cancellationToken);
 
     // Searched from the end: the row a permission lands on is the turn's newest, so this stops within a few rows
     // rather than walking a transcript that grows all session. -1 for a row already dropped from the transcript.
@@ -1388,7 +1108,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
-        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null);
+        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null);
         _eventQueue = new SessionEventQueue(Apply);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
@@ -1474,11 +1194,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         : base(usageHistory)
     {
         _transcriptReader = transcriptReader;
-        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger);
+        // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
+        // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
+        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
         _eventQueue = new SessionEventQueue(Apply);
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
-        _transcriptStore = transcriptStore;
         _pluginProviderRegistry = pluginProviderRegistry;
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
@@ -1496,11 +1217,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IAgentTurnInboxDelivery? turnInboxDelivery,
         IProfileLoginChecker? loginChecker,
         ISharedUsageCache? sharedUsageCache,
-        ILogger? logger)
+        ILogger? logger,
+        ISessionTranscriptStore? transcriptStore)
     {
         var host = new SessionHost<QueuedMessageViewModel>(
-            () => PaneId, sessionManager, TimeProvider.System, turnInboxDelivery, loginChecker, sharedUsageCache, logger);
+            () => PaneId, sessionManager, TimeProvider.System, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
         host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
+        host.RowUpserted += _OnRowUpserted;
         host.BusyChanged += _OnHostBusyChanged;
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
@@ -1728,10 +1451,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _RaiseActiveToolActivityChanged();
         }
 
-        _subAgentLanes.Clear();
+        _host.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
-        _currentAssistantEntry = null;
-        _currentOrphanedSubAgentTextEntry = null;
         _readAloudFlushedLength = 0;
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
@@ -1950,7 +1671,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             await _Runtime.InterruptAsync();
             Status = "Interrupted.";
-            _interruptRequested = true;
+            _host.InterruptRequested = true;
 
             // AC-943: a turn parked on a permission prompt is answered on the wire by the driver where it can be
             // (Claude, Codex); this sweep is the driver-agnostic half, clearing the row for every driver alike.
@@ -2263,9 +1984,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _lastDispatchedUserTurn = (text, images);
         // AC-1031: a stale flag from a Stop whose own TurnCompleted never arrived (crash, or the interrupt
         // landing after that turn's TurnCompleted already ran) must not paint this new turn's failure as one.
-        _interruptRequested = false;
-        _currentAssistantEntry = null;
-        _CloseThinkingRow();
+        _host.InterruptRequested = false;
         IsBusy = true;
         _needsAttention = false;
         _RecomputeStatus();
@@ -2645,6 +2364,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _RecomputeStatus();
         }
 
+        // AC-1377: the host forms the rows, drawn here as its upserts arrive; what follows is what this pane does
+        // with the row the event landed on, decided from that one snapshot.
+        _addedByFold.Clear();
+        var fold = _host.ApplyToTranscript(evt);
+        var landed = fold.Row is { } landedRow ? _rowsById[landedRow.Id] : null;
+
         switch (evt)
         {
             case SessionInitialized init:
@@ -2684,116 +2409,32 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextDelta delta:
-                // AC-146: a sub-agent's own streaming text accumulates onto its lane's row, nested under its
-                // Task tool-use anchor rather than into the top-level transcript — the operator's own reply and
-                // a sub-agent's internal narration must never merge into one row.
-                if (_ResolveSubAgentLane(delta.ParentToolUseId) is { } textLane)
+                // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
+                if (string.IsNullOrEmpty(delta.ParentToolUseId))
                 {
-                    textLane.CurrentThinkingEntry = null;
-                    if (textLane.CurrentAssistantEntry is null)
-                    {
-                        textLane.CurrentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
-                        textLane.Anchor.SubAgentRows.Add(textLane.CurrentAssistantEntry);
-                    }
-
-                    textLane.CurrentAssistantEntry.AppendText(delta.Text);
-                    break;
+                    _currentTurnAssistantEntries.AddRange(_addedByFold);
                 }
 
-                // AC-146: a parent id this pane never resolved to a lane (the anchor tool-use row was never
-                // seen) is an orphan, not a top-level chunk — shown, in its own separate entry so it can never
-                // merge into whatever the genuine top-level reply is doing, but never queued for read-aloud.
-                if (!string.IsNullOrEmpty(delta.ParentToolUseId))
-                {
-                    if (_currentOrphanedSubAgentTextEntry is null)
-                    {
-                        _currentOrphanedSubAgentTextEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
-                        Transcript.Add(_currentOrphanedSubAgentTextEntry);
-                    }
-
-                    _currentOrphanedSubAgentTextEntry.AppendText(delta.Text);
-                    break;
-                }
-
-                // Visible prose has started, so the reasoning block that preceded it is done: close the thinking
-                // row (AC-213) so a later thinking block opens a fresh row instead of appending onto this one.
-                _CloseThinkingRow();
-                _AppendAssistantProse(delta.Text);
                 break;
 
             case AssistantTextCompleted completed:
-                // A sub-agent's completed-text snapshot (some providers send one instead of streaming deltas)
-                // lands on its own lane the same way the streaming path above does, and never joins the
-                // top-level read-aloud queue below.
-                if (_ResolveSubAgentLane(completed.ParentToolUseId) is { } completedLane)
-                {
-                    completedLane.CurrentThinkingEntry = null;
-                    if (completedLane.CurrentAssistantEntry is not null)
-                    {
-                        completedLane.CurrentAssistantEntry = null;
-                    }
-                    else
-                    {
-                        completedLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text));
-                    }
-
-                    break;
-                }
-
-                // AC-146: same orphan handling as the streaming case above — never queued for read-aloud, never
-                // raises the output-text signal below.
+                // A sub-agent's own narration is not the session's answer to the operator, so it never reaches the
+                // read-aloud queue or the output-text signal (AC-146).
                 if (!string.IsNullOrEmpty(completed.ParentToolUseId))
                 {
-                    if (_currentOrphanedSubAgentTextEntry is not null)
-                    {
-                        _currentOrphanedSubAgentTextEntry = null;
-                    }
-                    else
-                    {
-                        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text));
-                    }
-
                     break;
                 }
 
-                _CloseThinkingRow();
-                if (_currentAssistantEntry is not null)
-                {
-                    // Streaming deltas already built the text; nothing further to append.
-                    _currentAssistantEntry = null;
-                }
-                else
-                {
-                    var completedEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text);
-                    Transcript.Add(completedEntry);
-                    _currentTurnAssistantEntries.Add(completedEntry);
-                }
-
-                // A sub-agent's own narration is not the session's answer to the operator, so it never reaches this
-                // signal either (kept inside the branch above).
+                _currentTurnAssistantEntries.AddRange(_addedByFold);
                 RaiseOutputText(completed.Text);
                 break;
 
             case ToolUseRequested toolUse:
-                // AC-146: a sub-agent's own tool call nests under its Task row instead of flattening into the
-                // top-level transcript — this is also how a sub-agent's tool call becomes an anchor a *further*
-                // nested lane could resolve against, though today's CLI only nests one level deep.
-                if (_ResolveSubAgentLane(toolUse.ParentToolUseId) is { } toolUseLane)
+                // AC-146: a sub-agent's own tool call nests under its Task row and is not what the turn waits on.
+                if (fold.InSubAgentLane || landed is not { } toolUseRow)
                 {
-                    toolUseLane.CurrentAssistantEntry = null;
-                    toolUseLane.CurrentThinkingEntry = null;
-                    toolUseLane.Anchor.SubAgentRows.Add(
-                        _ToolUseRow(toolUse.ToolUseId, toolUse.ToolName, toolUse.InputJson));
                     break;
                 }
-
-                // Close the current assistant text row so prose that streams *after* this tool call starts a
-                // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
-                // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
-                _currentAssistantEntry = null;
-                _CloseThinkingRow();
-                var toolUseRow = _ToolUseRow(toolUse.ToolUseId, toolUse.ToolName, toolUse.InputJson);
-                Transcript.Add(toolUseRow);
 
                 // AC-532: this top-level call is now outstanding — reuses the row's own ToolHeader ("Bash  ·
                 // dotnet build") rather than re-deriving a summary from the input JSON a second time.
@@ -2815,40 +2456,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case ToolResult toolResult:
-                // AC-146: a sub-agent's own tool result couples to its tool-use row inside that lane's nested
-                // rows, the same by-tool_use_id matching the top-level branch below uses — never the flat
-                // Transcript, and never the output/tool-activity signals a top-level result raises.
-                if (_ResolveSubAgentLane(toolResult.ParentToolUseId) is { } toolResultLane)
-                {
-                    var nestedToolUseEntry = toolResultLane.Anchor.SubAgentRows.LastOrDefault(
-                        t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == toolResult.ToolUseId);
-                    if (nestedToolUseEntry is not null)
-                    {
-                        nestedToolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
-                        _TrackBackgroundToolRow(nestedToolUseEntry);
-                    }
-                    else
-                    {
-                        toolResultLane.Anchor.SubAgentRows.Add(_ToolResultRow(toolResult));
-                    }
-
-                    break;
-                }
-
-                var toolUseEntry = Transcript.LastOrDefault(
-                    t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == toolResult.ToolUseId);
+                // The row the result coupled to (L14), or null when it fell back to a row of its own.
+                var toolUseEntry = landed is { Kind: TranscriptEntryKind.ToolUse } coupled ? coupled : null;
                 if (toolUseEntry is not null)
                 {
-                    // Couple the result to its tool-call row (L14) so it renders as an expandable
-                    // section beneath that call, instead of a detached row that loses which call it
-                    // belongs to — the pain with parallel tool calls.
-                    toolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
                     _TrackBackgroundToolRow(toolUseEntry);
                 }
-                else
+
+                // AC-146: a sub-agent's own result never raises the signals a top-level one does.
+                if (fold.InSubAgentLane)
                 {
-                    // No matching tool-use in view (e.g. a result arriving first): fall back to a row.
-                    Transcript.Add(_ToolResultRow(toolResult));
+                    break;
                 }
 
                 // AC-532: this call is no longer outstanding, whichever way it resolved — success, error, or a
@@ -2881,30 +2499,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case PermissionRequested permission:
-                // AC-146: a sub-agent's own tool call can need approval too — the row it responds to lives
-                // nested under its Task anchor rather than in the flat Transcript, so look there when the
-                // top-level search comes up empty.
-                var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId)
-                    ?? _ResolveSubAgentLane(permission.ParentToolUseId)?.Anchor.SubAgentRows.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
-
-                // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a
-                // prompt the autonomous run has no one to answer — that stall left the run stuck first on its own
-                // autopilot_step_done, then on the Bash its work needs.
-                if (_host.TryAutoAllow(permission))
+                // AC-215: the host allowed a pre-authorized tool of a self-driving run itself, so nobody is asked.
+                if (fold.Row is not { IsPendingPermission: true } || landed is not { } entry)
                 {
-                    if (entry is not null)
-                    {
-                        entry.PermissionDecision = "Allowed";
-                        entry.IsPendingPermission = false;
-                    }
-
                     break;
                 }
-
-                // AC-996: `_needsAttention` below is unconditional, while the consent card only exists where a row
-                // does — so a permission whose tool-use row never arrived parked the session on needs-attention
-                // with nothing to click. Give it a row of its own; the event carries all a row needs.
-                entry ??= _AddOrphanPermissionRow(permission);
 
                 // AC-715: an AskUserQuestion rides this same callback but asks for an answer, not consent —
                 // parse its questions here so the row renders them as choices instead of Allow/Deny over raw
@@ -2912,12 +2511,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 entry.QuestionPrompts = permission.ToolName == AskUserQuestionToolName
                     ? AskUserQuestionViewModel.Parse(permission.InputJson)
                     : null;
-                entry.IsPendingPermission = true;
                 // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
                 // flip the composer's activity band from "running" to "waiting for permission" so that reads
                 // as waiting on the operator rather than as the tool quietly still working.
                 _RaiseActiveToolActivityChanged();
 
+                // AC-996: the host gave a permission without a tool-use row one of its own, so there is always
+                // something to click while the session parks on needs-attention.
                 _needsAttention = true;
                 // Speak the lead-in the reply gave before this tool needs approval, rather than holding it back
                 // until the operator answers the prompt (AC-97).
@@ -2925,8 +2525,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
-            case Question question:
-                Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, question.Text));
+            case Question:
                 // Same as a permission prompt: a question pauses the turn, so speak what was said before it now.
                 _FlushPendingProseForReadAloud();
                 break;
@@ -2934,45 +2533,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case TurnCompleted turn:
                 // AC-1031: consumed once, right here — a turn's own IsError below must not keep reading this
                 // as "interrupted" once we've reported it, or a later genuine failure would render as one too.
-                var wasInterrupted = _interruptRequested;
-                _interruptRequested = false;
+                var wasInterrupted = _host.InterruptRequested;
+                _host.InterruptRequested = false;
 
-                // Only surface a turn row when it failed — a plain "Turn completed (success)" row is
-                // noise in the transcript (T4). The Done status still fires below.
-                if (turn.IsError && wasInterrupted)
+                if (fold.Row is { IsFailedTurnRow: true } && landed is { } failedTurnRow)
                 {
-                    // AC-1031: the operator asked for this stop — it is not a driver failure, so it gets none of
-                    // the failure card's severity styling, reason text, or Retry action (AC-720's "Signing in
-                    // again…" status row is the existing precedent for a plain TurnCompleted row like this).
-                    Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnCompleted, "Interrupted."));
-                }
-                else if (turn.IsError)
-                {
-                    // AC-720: the subtype alone ("error_during_execution") names nothing actionable — show
-                    // the provider's own reason (AC-410's Errors) when the event carries one.
-                    var reason = _TurnFailureReason(turn);
-                    // AC-939: classify that reason the same way a driver SessionError does (below), so a
-                    // recognised provider outage (e.g. Claude's "API Error: 529 …") renders through the
-                    // severity card instead of staying permanently Unknown.
-                    var errorKind = reason is null ? SessionErrorKind.Unknown : SessionErrorClassifier.Classify(reason);
-                    // AC-939: the subtype is contradictory once it reads "success" on a failed turn, and
-                    // redundant once a recognised reason already names what happened — drop it from the
-                    // title in both cases instead of always interpolating it.
-                    var dropsSubtype = turn.Subtype == "success" || errorKind != SessionErrorKind.Unknown;
-                    var title = dropsSubtype ? "Turn failed" : $"Turn failed ({turn.Subtype})";
-                    var failedTurnRow = new TranscriptEntryViewModel(
-                        TranscriptEntryKind.TurnCompleted,
-                        reason is null ? title : $"{title}: {reason}")
-                    {
-                        // AC-728: renders through the same severity card as a driver SessionError (AC-720) —
-                        // a failed turn is as much "a problem" as one.
-                        IsFailedTurnRow = true,
-                        ErrorKind = errorKind,
-                    };
-
                     // AC-939: an auth classification means Retry would just fail again — offer the same
                     // login-gate the SessionError branch below uses instead.
-                    if (errorKind == SessionErrorKind.AuthRequired && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+                    if (failedTurnRow.ErrorKind == SessionErrorKind.AuthRequired && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
                     {
                         failedTurnRow.ActionLabel = "Login";
                         failedTurnRow.ActionCommand = new RelayCommand(() => _StartLoginFlow(failedTurnRow));
@@ -2986,8 +2554,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                         failedTurnRow.ActionCommand = new RelayCommand(
                             () => _host.DispatchInBackground(new QueuedPrompt(lastTurn.Text, lastTurn.Images)));
                     }
-
-                    Transcript.Add(failedTurnRow);
                 }
 
                 // A failure here is a resume that was actually tried and refused (an expired conversation id makes
@@ -3014,12 +2580,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _readAloudFlushedLength = 0;
                 _spokenSomethingThisTurn = false;
                 _StopSignOfLifeClock();
-                _currentAssistantEntry = null;
-                _CloseThinkingRow();
-                // A sub-agent does not outlive the turn that spawned it (AC-146): a fresh Task call next turn
-                // gets a fresh anchor and lane, never one still holding a finished sub-agent's dangling state.
-                _subAgentLanes.Clear();
-                _currentOrphanedSubAgentTextEntry = null;
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
@@ -3056,24 +2616,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _host.CompleteTurn();
                 break;
 
-            case SessionError error:
-                var errorEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message)
-                {
-                    // AC-720: trust a driver that classified itself; otherwise fall back to the host's text
-                    // heuristic so an untyped driver still renders better than a guessed severity.
-                    ErrorKind = error.Kind == SessionErrorKind.Unknown
-                        ? SessionErrorClassifier.Classify(error.Message)
-                        : error.Kind,
-                    RetryAfter = error.RetryAfter,
-                };
-                // AC-713: re-checks the profile's own login gate rather than pattern-matching `error.Message`.
-                if (_profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+            case SessionError:
+                // AC-713: re-checks the profile's own login gate rather than pattern-matching the message.
+                if (landed is { } errorEntry && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
                 {
                     errorEntry.ActionLabel = "Login";
                     errorEntry.ActionCommand = new RelayCommand(() => _StartLoginFlow(errorEntry));
                 }
 
-                Transcript.Add(errorEntry);
                 // A session error ends the turn without a TurnCompleted, so drop this turn's images here too —
                 // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
                 ClearCurrentTurnImages();
@@ -3134,55 +2684,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
-            // The row is added at every reading level but only *renders* at Developer — its IsRowVisible gates it off
-            // at Focus/Simple, which stay calm (AC-138) (AC-213, AC-144).
-            case AssistantThinkingDelta thinkingDelta:
-                if (!string.IsNullOrEmpty(thinkingDelta.Thinking))
-                {
-                    // AC-146: a sub-agent's own reasoning stays in its lane, same rule as its text above.
-                    if (_ResolveSubAgentLane(thinkingDelta.ParentToolUseId) is { } thinkingLane)
-                    {
-                        if (thinkingLane.CurrentThinkingEntry is null || thinkingDelta.BlockIndex != thinkingLane.CurrentThinkingBlockIndex)
-                        {
-                            thinkingLane.CurrentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)
-                            {
-                                IsExpanded = true,
-                            };
-                            thinkingLane.CurrentThinkingBlockIndex = thinkingDelta.BlockIndex;
-                            thinkingLane.Anchor.SubAgentRows.Add(thinkingLane.CurrentThinkingEntry);
-                        }
-
-                        thinkingLane.CurrentThinkingEntry.AppendText(thinkingDelta.Thinking);
-                        break;
-                    }
-
-                    if (_currentThinkingEntry is null || thinkingDelta.BlockIndex != _currentThinkingBlockIndex)
-                    {
-                        _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)
-                        {
-                            IsExpanded = true,
-                        };
-                        _currentThinkingBlockIndex = thinkingDelta.BlockIndex;
-                        Transcript.Add(_currentThinkingEntry);
-                    }
-
-                    _currentThinkingEntry.AppendText(thinkingDelta.Thinking);
-                }
-
-                break;
-
             case RateLimitInfo:
             case UnknownEvent:
                 break;
         }
-    }
-
-    // Ends the currently-streaming reasoning row (AC-213) so the next thinking block, or the next turn, opens a
-    // fresh row instead of appending onto a stale one. Called wherever the assistant text row is likewise reset.
-    private void _CloseThinkingRow()
-    {
-        _currentThinkingEntry = null;
-        _currentThinkingBlockIndex = -1;
     }
 
     // Derives `SessionStatus` from the flags this view model already tracks: busy while a turn is in flight; see

@@ -31,6 +31,28 @@ public interface ISessionTurnGate
     void CompleteTurn();
 }
 
+/// <summary>
+/// The rows a session's events form, as upserts of the row model the transcript store keeps (AC-1377).
+/// </summary>
+public interface ISessionTranscript
+{
+    /// <summary>
+    /// Raised on the consumer's thread for every row a fold or a recorded row changed, in the order they changed.
+    /// </summary>
+    event Action<TranscriptRowUpsert>? RowUpserted;
+
+    /// <summary>
+    /// The consumer calls ApplyToTranscript for every event the host re-issues, in stream order; the host never folds an event on its own.
+    /// It forms or updates the rows that event touches on the consumer's thread, and returns the row it landed on.
+    /// </summary>
+    TranscriptFold ApplyToTranscript(SessionEvent evt);
+
+    /// <summary>
+    /// Records a row the consumer formed or changed itself, so the host's rows and the store stay one transcript.
+    /// </summary>
+    void RecordRow(TranscriptSnapshotEntry row);
+}
+
 // A prompt waiting for the turn in flight to end (T8). A consumer that sends more than the text it shows, such as a
 // reply prefix (AC-935), overrides `OutgoingText`; it is read when the prompt leaves, not when it was queued.
 public class QueuedPrompt(string text, IReadOnlyList<ImageAttachment> images)
@@ -57,7 +79,7 @@ internal static class SessionEventSequence
 // AC-1376 (F1.4): one SDK session's backend half, which `SessionViewModel` used to be: the runtime, the turn gate with
 // its queue, the funnel every turn leaves through, and the three clocks. No dispatcher: members run on the consumer's
 // thread and awaits resume there (no ConfigureAwait(false)); only the timer events arrive on the thread pool.
-public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
+public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript, IAsyncDisposable
     where TPrompt : QueuedPrompt
 {
     // Same as `ClaudeLoginStatus.MaxAge`: a tick mostly re-reads a cache another poll already refreshed (AC-713).
@@ -76,6 +98,10 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISharedUsageCache? _sharedUsageCache;
     private readonly ILogger? _logger;
+
+    // AC-1090: Cockpit's own copy of the conversation, written from here so a session without a view has one too.
+    private readonly ISessionTranscriptStore? _transcriptStore;
+    private readonly SessionTranscriptBuilder _transcript;
 
     // The sends and wire answers started where nothing can await them (a hold lifting, a turn ending), kept so the
     // host's own disposal does.
@@ -99,7 +125,8 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         IProfileLoginChecker? loginChecker = null,
         ISharedUsageCache? sharedUsageCache = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        ISessionTranscriptStore? transcriptStore = null)
     {
         _paneId = paneId;
         _manager = manager;
@@ -108,9 +135,13 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
         _loginChecker = loginChecker;
         _sharedUsageCache = sharedUsageCache;
         _logger = logger;
+        _transcriptStore = transcriptStore;
+        _transcript = new SessionTranscriptBuilder(time, TryAutoAllow, () => InterruptRequested, _OnRowChanged);
     }
 
     public event Action<SessionHostEvent>? EventAppended;
+
+    public event Action<TranscriptRowUpsert>? RowUpserted;
 
     public event Action? BusyChanged;
 
@@ -179,6 +210,13 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
     public bool PreApprovesAllTools { get; private set; }
 
     public IReadOnlyCollection<string> PreApprovedTools => _preApprovedTools;
+
+    // AC-1031: set once an interrupt the operator asked for went through, so the turn it ends is not drawn as a
+    // failure. The consumer clears it when that turn's TurnCompleted has been applied, or when a new turn starts.
+    public bool InterruptRequested { get; set; }
+
+    // Whether this host writes a transcript at all; the design-time and most test graphs have no store.
+    public bool RecordsTranscript => _transcriptStore is not null;
 
     // Creates the runtime and starts listening to it; the caller starts it. Split so the caller can count the session's
     // working life from the moment a runtime exists (AC-251), not from when the launch it waits on returns.
@@ -259,6 +297,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
         // The consumer may set IsBusy itself inside these handlers, where its own bookkeeping wants it; setting it
         // again here is then a no-op, and a consumer that does not still gets a gate that reads busy.
         TurnStarting?.Invoke(prompt);
+        _transcript.EndReply();
         IsBusy = true;
 
         try
@@ -356,6 +395,43 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, IAsyncDisposable
     {
         _inFlight.RemoveAll(pending => pending.IsCompleted);
         _inFlight.Add(task);
+    }
+
+    public TranscriptFold ApplyToTranscript(SessionEvent evt) => _transcript.Apply(evt);
+
+    public void RecordRow(TranscriptSnapshotEntry row) => _transcript.Record(row);
+
+    // A cleared context (AC-564) starts a new conversation in the same rows; the streaming state goes with it.
+    public void ResetTranscriptStreaming() => _transcript.ResetStreaming();
+
+    // AC-1090: the rows this pane recorded, held so later changes version them. Null when the log is there but could
+    // not be read, so the consumer can say so rather than show a pane with no history.
+    public async Task<IReadOnlyList<TranscriptSnapshotEntry>?> LoadRecordedTranscriptAsync(CancellationToken cancellationToken = default)
+    {
+        if (_transcriptStore is null)
+        {
+            return [];
+        }
+
+        var recorded = await _transcriptStore.TryLoadAsync(_paneId(), cancellationToken);
+        if (recorded is not null)
+        {
+            _transcript.Seed(recorded);
+        }
+
+        return recorded;
+    }
+
+    // AC-947: a new conversation is a new log.
+    public Task ArchiveRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
+        _transcriptStore?.ArchiveAsync(_paneId(), cancellationToken) ?? Task.CompletedTask;
+
+    // Not awaited, nor tracked for disposal: the store owns its debounced flush and never throws (AC-1151), and waiting
+    // on that window would hold every pane's close for up to five seconds.
+    private void _OnRowChanged(int version, TranscriptSnapshotEntry row)
+    {
+        _ = _transcriptStore?.AppendAsync(_paneId(), row, CancellationToken.None);
+        RowUpserted?.Invoke(new TranscriptRowUpsert(SessionEventSequence.Next(), version, row));
     }
 
     // AC-215: the tools a self-driving run allows without asking, since it has no one to answer a prompt.

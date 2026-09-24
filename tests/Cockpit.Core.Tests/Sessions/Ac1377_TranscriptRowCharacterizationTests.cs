@@ -33,7 +33,9 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         var ids = _Flatten(vm.Transcript).Select(row => row.Id).ToList();
         var live = _Render(vm.Transcript, ids);
         await log.DisposeAsync();
-        var restored = TranscriptSnapshot.Restore((await _Log().TryLoadAsync(vm.PaneId))!);
+        var recorded = await _Log().TryLoadAsync(vm.PaneId);
+        Assert.NotNull(recorded);
+        var restored = TranscriptSnapshot.Restore(recorded);
 
         Assert.Equal(LiveRows.ReplaceLineEndings("\n"), live);
         Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, ids));
@@ -45,7 +47,9 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         Directory.CreateDirectory(_root);
         File.Copy(Path.Combine(AppContext.BaseDirectory, "Sessions", "Fixtures", "ac1377-main-format.jsonl"), Path.Combine(_root, "main-pane.jsonl"));
 
-        var restored = TranscriptSnapshot.Restore((await _Log().TryLoadAsync("main-pane"))!);
+        var recorded = await _Log().TryLoadAsync("main-pane");
+        Assert.NotNull(recorded);
+        var restored = TranscriptSnapshot.Restore(recorded);
 
         Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, _Flatten(restored).Select(row => row.Id).ToList()));
     }

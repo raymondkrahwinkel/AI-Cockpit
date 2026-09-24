@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
@@ -673,14 +672,18 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // Couples a tool result to this tool-use row (L14), matched on tool_use_id in the session view model.
     public void SetResult(string content, bool isError)
     {
-        IsResultError = isError;
-
         // Read off the full content before it is clamped: the hand-off line naming the task id can sit anywhere in it.
-        BackgroundTaskId = _BackgroundTaskId(content);
-
         var clamped = ToolOutputBudget.Clamp(content);
-        TruncatedFromChars = content.Length > clamped.Length ? content.Length : 0;
-        ResultText = clamped;
+        ApplyResult(clamped, isError, content.Length > clamped.Length ? content.Length : 0, BackgroundTaskAnnouncement.TaskId(content));
+    }
+
+    // AC-1377: a result the session host already clamped and read, drawn as it came.
+    internal void ApplyResult(string resultText, bool isError, int truncatedFromChars, string? backgroundTaskId)
+    {
+        IsResultError = isError;
+        BackgroundTaskId = backgroundTaskId;
+        TruncatedFromChars = truncatedFromChars;
+        ResultText = resultText;
         OnPropertyChanged(nameof(IsBackgroundTool));
     }
 
@@ -960,25 +963,6 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         {
             return false;
         }
-    }
-
-    // The two sentences a hand-off to the background is announced with, in the tool result itself: "Command
-    // running in background with ID: <id>" (Bash) and "moved to the background as task <id>" (an MCP tool that
-    // overran, AC-1053). Measured against the real CLI rather than taken from documentation.
-    private static readonly Regex BackgroundTaskIdPattern = new(
-        @"background\s+(?:with\s+ID:\s*|as\s+task\s+)([A-Za-z0-9_-]+)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    // The provider's background-task id from a result that announces one, else null.
-    private static string? _BackgroundTaskId(string? resultText)
-    {
-        if (string.IsNullOrEmpty(resultText))
-        {
-            return null;
-        }
-
-        var match = BackgroundTaskIdPattern.Match(resultText);
-        return match.Success ? match.Groups[1].Value : null;
     }
 
     // Pretty-prints a JSON result for readability; leaves anything else untouched.
