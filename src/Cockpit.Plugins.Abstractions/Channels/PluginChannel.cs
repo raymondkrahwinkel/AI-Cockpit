@@ -11,13 +11,15 @@ public interface IPluginBackendChannel
 {
     /// <summary>
     /// Registers <paramref name="handler"/> for <paramref name="action"/>: what answers when this plugin's UI part
-    /// invokes it. Registering the same action twice throws, so which handler runs is never a question of order.
+    /// invokes it, until the returned handle is disposed — which a plugin does when it is disabled or reloaded.
+    /// Registering an action that is still registered throws, so which handler runs is never a question of order.
     /// </summary>
-    void Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler);
+    IDisposable Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler);
 
     /// <summary>
     /// Publishes an event named <paramref name="name"/> to this plugin's UI subscribers, on the calling thread. It
-    /// carries the backend's one sequence number, which rises with every event the backend publishes.
+    /// carries the backend's one sequence number, which rises with every event the backend publishes. A subscriber
+    /// that throws is logged and skipped; the others still receive the event, and the publisher never sees it.
     /// </summary>
     void Publish(string name, JsonElement payload);
 }
@@ -58,11 +60,19 @@ internal sealed class NullPluginBackendChannel : IPluginBackendChannel
     {
     }
 
-    public void Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
-    {
-    }
+    public IDisposable Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler) =>
+        NoRegistration.Instance;
 
     public void Publish(string name, JsonElement payload)
     {
+    }
+
+    private sealed class NoRegistration : IDisposable
+    {
+        public static readonly NoRegistration Instance = new();
+
+        public void Dispose()
+        {
+        }
     }
 }

@@ -92,7 +92,7 @@ public class PluginUiPartTests
     public async Task CockpitUiHost_ForwardsToTheSamePluginsCockpit(
         string member, Func<ICockpitUiHost, IReadOnlyList<string>, Task<object?>> read, object expected)
     {
-        var channels = new PluginChannelHub();
+        var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         channels.For("diagram").Handle("echo", (payload, _) => Task.FromResult(payload));
         var host = Substitute.For<ICockpitHost>();
         host.Sessions.ActivePaneId.Returns("pane-7");

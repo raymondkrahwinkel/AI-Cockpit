@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -8,7 +9,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1389: every plugin's channel between its backend and UI part, keyed by plugin id so one plugin never reaches
 // another's actions or events (that is what intents are for). Events are numbered on the backend's one counter
 // (F1.4), so a remote stream (F5) resumes over plugin events and session events alike.
-public sealed class PluginChannelHub : ISingletonService
+public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingletonService
 {
     private readonly object _gate = new();
     private readonly Dictionary<(string PluginId, string Action), Func<JsonElement, CancellationToken, Task<JsonElement>>> _handlers = [];
@@ -16,7 +17,7 @@ public sealed class PluginChannelHub : ISingletonService
 
     public IPluginBackendChannel For(string pluginId) => new BackendChannel(this, pluginId);
 
-    public void Handle(string pluginId, string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
+    public IDisposable Handle(string pluginId, string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
     {
         lock (_gate)
         {
@@ -26,6 +27,8 @@ public sealed class PluginChannelHub : ISingletonService
                     $"Plugin '{pluginId}' already registered a channel handler for action '{action}'. Each action has one handler.");
             }
         }
+
+        return new Registration(() => _Unhandle((pluginId, action), handler));
     }
 
     public Task<JsonElement> InvokeAsync(string pluginId, string action, JsonElement payload, CancellationToken cancellationToken)
@@ -53,9 +56,17 @@ public sealed class PluginChannelHub : ISingletonService
             subscribers = _subscribers.TryGetValue((pluginId, name), out var list) ? [.. list] : [];
         }
 
+        // A throwing subscriber stays that plugin's problem: logged, and the rest still get the event.
         foreach (var subscriber in subscribers)
         {
-            subscriber(channelEvent);
+            try
+            {
+                subscriber(channelEvent);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "A subscriber of plugin {PluginId} threw on channel event {EventName}; the other subscribers still get it.", pluginId, name);
+            }
         }
     }
 
@@ -72,13 +83,25 @@ public sealed class PluginChannelHub : ISingletonService
             list.Add(handler);
         }
 
-        return new Subscription(this, (pluginId, name), handler);
+        return new Registration(() => _Unsubscribe((pluginId, name), handler));
     }
 
     // A copy the receiver may keep past an await, after the sender disposed the document it came from, as a
     // remote receiver always can. `default` (no payload) has no document to copy.
     private static JsonElement _Own(JsonElement payload) =>
         payload.ValueKind == JsonValueKind.Undefined ? payload : payload.Clone();
+
+    // Removes the handler only while it is still the registered one, so a stale handle cannot drop its successor.
+    private void _Unhandle((string PluginId, string Action) key, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
+    {
+        lock (_gate)
+        {
+            if (_handlers.TryGetValue(key, out var current) && current == handler)
+            {
+                _handlers.Remove(key);
+            }
+        }
+    }
 
     private void _Unsubscribe((string PluginId, string Name) key, Action<PluginChannelEvent> handler)
     {
@@ -93,14 +116,14 @@ public sealed class PluginChannelHub : ISingletonService
 
     private sealed class BackendChannel(PluginChannelHub hub, string pluginId) : IPluginBackendChannel
     {
-        public void Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler) =>
+        public IDisposable Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler) =>
             hub.Handle(pluginId, action, handler);
 
         public void Publish(string name, JsonElement payload) => hub.Publish(pluginId, name, payload);
     }
 
-    private sealed class Subscription(PluginChannelHub hub, (string PluginId, string Name) key, Action<PluginChannelEvent> handler) : IDisposable
+    private sealed class Registration(Action remove) : IDisposable
     {
-        public void Dispose() => hub._Unsubscribe(key, handler);
+        public void Dispose() => remove();
     }
 }

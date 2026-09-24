@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
 
@@ -8,22 +9,27 @@ namespace Cockpit.Backend.Tests.Plugins;
 // on the backend's one counter.
 public class PluginChannelHubTests
 {
+    // Also the handle: after a reload the plugin removes its handler and registers the action again, which throws
+    // while the first registration is still in place.
     [Fact]
-    public async Task InvokeAsync_ReachesTheSamePluginsHandler_AndReturnsItsAnswer()
+    public async Task InvokeAsync_ReachesTheSamePluginsHandler_AndReturnsItsAnswer_UntilItIsRemovedAndRegisteredAgain()
     {
-        var hub = new PluginChannelHub();
-        hub.For("diagram").Handle("list", (payload, _) =>
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        var registration = hub.For("diagram").Handle("list", (payload, _) =>
             Task.FromResult(JsonSerializer.SerializeToElement($"listed {payload.GetString()}")));
 
         var answer = await hub.InvokeAsync("diagram", "list", JsonSerializer.SerializeToElement("boards"), CancellationToken.None);
+        registration.Dispose();
+        using var reloaded = hub.For("diagram").Handle("list", (_, _) => Task.FromResult(JsonSerializer.SerializeToElement("reloaded")));
+        var afterReload = await hub.InvokeAsync("diagram", "list", JsonSerializer.SerializeToElement("boards"), CancellationToken.None);
 
-        Assert.Equal("listed boards", answer.GetString());
+        Assert.Equal(("listed boards", "reloaded"), (answer.GetString(), afterReload.GetString()));
     }
 
     [Fact]
     public async Task InvokeAsync_OnAnActionOnlyAnotherPluginHandles_IsAnUnknownAction_AndNeverRunsTheirHandler()
     {
-        var hub = new PluginChannelHub();
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         var othersHandlerRan = false;
         hub.For("diagram").Handle("list", (payload, _) =>
         {
@@ -38,12 +44,14 @@ public class PluginChannelHubTests
         Assert.False(othersHandlerRan);
     }
 
+    // A subscriber that throws, subscribed first, costs the one after it nothing and never reaches the publisher.
     [Fact]
     public void Publish_ReachesThatPluginsSubscribers_WithRisingSeq_AndNoOtherPlugins()
     {
-        var hub = new PluginChannelHub();
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         var received = new List<PluginChannelEvent>();
         var receivedByOther = new List<PluginChannelEvent>();
+        using var throwing = hub.Subscribe("diagram", "changed", _ => throw new InvalidOperationException("broken subscriber"));
         using var subscription = hub.Subscribe("diagram", "changed", received.Add);
         using var otherSubscription = hub.Subscribe("youtrack", "changed", receivedByOther.Add);
 

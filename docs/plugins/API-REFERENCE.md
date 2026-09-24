@@ -202,7 +202,9 @@ using var subscription = host.Channel.Subscribe("changed", e => Dispatcher.UIThr
 
 - A channel is per plugin: an action only another plugin registered throws
   `PluginChannelUnknownActionException`, the same as one nobody registered. Use intents to call another plugin.
-- Registering the same action twice throws.
+- `Handle` returns a handle: dispose it when the plugin is disabled or reloaded. Registering an action that is
+  still registered throws.
+- A subscriber that throws is logged and skipped; the other subscribers still get the event.
 - Every event carries `Seq`, the backend's one rising sequence number, shared with session events.
 - A subscriber runs on the publishing thread, not the UI thread: marshal before touching a control.
 - Payloads are copied on the way through, so a receiver may keep one after the sender disposed its document.
