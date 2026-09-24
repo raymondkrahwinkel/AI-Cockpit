@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
