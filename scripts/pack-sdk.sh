@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Packs the plugin SDK (Cockpit.Plugins.Abstractions) for a release page: the .nupkg an out-of-repo plugin
-# author references, plus a zip of the bare assembly for whoever would rather drop a <Reference> in than add
-# a feed.
+# Packs the plugin SDK (Cockpit.Plugins.Abstractions, and since AC-1390 its window half
+# Cockpit.Plugins.Abstractions.UI) for a release page: the .nupkgs an out-of-repo plugin author references, plus
+# a zip of the bare assemblies for whoever would rather drop a <Reference> in than add a feed.
 #
 # Why a GitHub release asset and not nuget.org: a package id on nuget.org is public and permanent, and this
 # one still moves — the product rename is undecided, and burning the id under a name that may change would
@@ -12,6 +12,7 @@
 # Example: scripts/pack-sdk.sh artifacts                  -> Cockpit.Plugins.Abstractions.1.27.0.nupkg
 #          scripts/pack-sdk.sh artifacts nightly.42       -> ...1.27.0-nightly.42.nupkg
 # Output:  <output-dir>/Cockpit.Plugins.Abstractions.<version>.nupkg
+#          <output-dir>/Cockpit.Plugins.Abstractions.UI.<version>.nupkg
 #          <output-dir>/cockpit-plugin-sdk-<version>.zip
 #
 # The suffix exists for the nightly. NuGet caches a restored package by id+version, so re-publishing changed
@@ -22,6 +23,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project="$repo_root/src/Cockpit.Plugins.Abstractions/Cockpit.Plugins.Abstractions.csproj"
+ui_project="$repo_root/src/Cockpit.Plugins.Abstractions.UI/Cockpit.Plugins.Abstractions.UI.csproj"
 
 output_dir="${1:?usage: scripts/pack-sdk.sh <output-dir> [version-suffix]}"
 suffix="${2:-}"
@@ -37,27 +39,34 @@ fi
 mkdir -p "$output_dir"
 output_dir="$(cd "$output_dir" && pwd)"
 
+# The UI package moves in step with the SDK (its csproj carries the same <Version>), so one version covers both,
+# and packing it references the SDK package at that same version.
 dotnet pack "$project" --configuration Release -p:Version="$version" --output "$output_dir"
+dotnet pack "$ui_project" --configuration Release -p:Version="$version" --output "$output_dir"
 
 # The zip holds exactly what a PackageReference would put on the compile line — the assembly and its XML docs
 # — and nothing more. The SDK's own dependencies (Avalonia, the DI abstractions, Material.Icons) come off
 # nuget.org like any other package; shipping copies of them here would invite the type-identity mistake the
 # guide warns about, which is also why the note below is in the zip rather than only in the docs.
 bin="$(dirname "$project")/bin/Release/net10.0"
+ui_bin="$(dirname "$ui_project")/bin/Release/net10.0"
 staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
 cp "$bin/Cockpit.Plugins.Abstractions.dll" "$bin/Cockpit.Plugins.Abstractions.xml" "$staging/"
+cp "$ui_bin/Cockpit.Plugins.Abstractions.UI.dll" "$ui_bin/Cockpit.Plugins.Abstractions.UI.xml" "$staging/"
 
 cat > "$staging/README.txt" <<EOF
 Cockpit plugin SDK $version
 
-  Cockpit.Plugins.Abstractions.dll   the contract every plugin compiles against
-  Cockpit.Plugins.Abstractions.xml   the XML docs, for IntelliSense
+  Cockpit.Plugins.Abstractions.dll      the contract every plugin compiles against
+  Cockpit.Plugins.Abstractions.xml      the XML docs, for IntelliSense
+  Cockpit.Plugins.Abstractions.UI.dll   the window half, for a plugin's UI part (ICockpitPluginUi)
+  Cockpit.Plugins.Abstractions.UI.xml   its XML docs
 
-Reference the assembly with <Private>false</Private> so your plugin folder does not ship a copy of it. The
+Reference the assemblies with <Private>false</Private> so your plugin folder does not ship a copy of them. The
 host loads its own, and two copies mean two different types with the same name — the host then silently
-ignores your plugin.
+ignores your plugin. Only a plugin's UI part references the .UI assembly; its backend part never does.
 
   <Reference Include="Cockpit.Plugins.Abstractions">
     <HintPath>lib\Cockpit.Plugins.Abstractions.dll</HintPath>
@@ -74,4 +83,5 @@ EOF
 ( cd "$staging" && zip -qr -X "$output_dir/cockpit-plugin-sdk-$version.zip" . )
 
 echo "Packed the plugin SDK $version into $output_dir:"
-ls -1 "$output_dir/Cockpit.Plugins.Abstractions.$version.nupkg" "$output_dir/cockpit-plugin-sdk-$version.zip"
+ls -1 "$output_dir/Cockpit.Plugins.Abstractions.$version.nupkg" "$output_dir/Cockpit.Plugins.Abstractions.UI.$version.nupkg" \
+  "$output_dir/cockpit-plugin-sdk-$version.zip"
