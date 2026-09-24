@@ -50,7 +50,7 @@ public class AssistantSessionHostThreadingTests
         var requester = Task.Run(() => host.RequestConversationClear());
         parked.Wait();
         var pump = Task.Run(() => _session.StateChanged += Raise.Event<EventHandler<bool>>(_session, false));
-        pump.Wait(TimeSpan.FromMilliseconds(200));
+        await Task.WhenAny(pump, Task.Delay(TimeSpan.FromMilliseconds(200)));
         release.Set();
         await Task.WhenAll(requester, pump);
 
