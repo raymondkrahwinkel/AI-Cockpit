@@ -48,21 +48,18 @@ public class SessionWatcherProbeTests
         registry.Register(unreadable);
 
         var probe = SessionWatcher.ProbeOf(registry);
-        var routed = await probe("pane-1", 6);
-        var plain = await probe("pane-2", 0);
-        var unrouted = await probe("pane-3", 0);
+        var routed = Assert.IsType<WatchedPane>(await probe("pane-1", 6));
+        var plain = Assert.IsType<WatchedPane>(await probe("pane-2", 0));
+        var unrouted = Assert.IsType<WatchedPane>(await probe("pane-3", 0));
 
-        Assert.NotNull(routed);
-        Assert.True(routed!.HasTranscript);
+        Assert.True(routed.HasTranscript);
         Assert.Equal(7, routed.TranscriptRows);
         Assert.Equal(["error: the build fell over"], routed.NewRows);
 
-        Assert.NotNull(plain);
-        Assert.False(plain!.HasTranscript);
+        Assert.False(plain.HasTranscript);
         Assert.Equal(0, plain.TranscriptRows);
 
-        Assert.NotNull(unrouted);
-        Assert.False(unrouted!.HasTranscript);
+        Assert.False(unrouted.HasTranscript);
         Assert.Equal(0, unrouted.TranscriptRows);
     }
 
@@ -77,9 +74,8 @@ public class SessionWatcherProbeTests
         waiting.ReadTranscriptAsync(Arg.Any<int>()).Returns(SessionTranscriptSlice.Empty);
         registry.Register(waiting);
 
-        var pane = await SessionWatcher.ProbeOf(registry)("pane-1", 0);
+        var pane = Assert.IsType<WatchedPane>(await SessionWatcher.ProbeOf(registry)("pane-1", 0));
 
-        Assert.NotNull(pane);
-        Assert.True(pane!.NeedsAttention);
+        Assert.True(pane.NeedsAttention);
     }
 }
