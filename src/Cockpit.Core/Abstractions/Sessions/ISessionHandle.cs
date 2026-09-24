@@ -116,6 +116,13 @@ public interface ISessionHandle
     Task<SessionTranscriptSlice> ReadTranscriptAsync(int count);
 
     /// <summary>
+    /// Whether this session has a record <see cref="ReadTranscriptAsync"/> can read back at all — a route, not
+    /// content (AC-294). False for a plain terminal, for a provider that records nothing readable, and before a
+    /// TTY session's pty is up; true for a session that has a route and has simply written nothing to it yet.
+    /// </summary>
+    bool HasReadableTranscript { get; }
+
+    /// <summary>
     /// Sends <paramref name="prompt"/> as the operator's next message; false when the session cannot take it.
     /// </summary>
     Task<bool> SendPromptAsync(string prompt);

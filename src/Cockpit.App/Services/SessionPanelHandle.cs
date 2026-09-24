@@ -62,6 +62,15 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
         _ => SessionTranscriptSlice.Empty,
     };
 
+    // AC-294: a route, not content — false for a plain terminal, for a provider with no reader, and before a TTY's
+    // pty is up. An SDK session always has one; it is in-memory rather than a file that could be missing.
+    public bool HasReadableTranscript => pane switch
+    {
+        SessionViewModel => true,
+        TtyViewModel tty => tty.HasReadableTranscript,
+        _ => false,
+    };
+
     public Task<bool> SendPromptAsync(string prompt) => UiThreadCall.RunAsync(() => pane.SendPromptAsync(prompt));
 
     // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a

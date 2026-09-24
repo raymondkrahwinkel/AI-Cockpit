@@ -10,6 +10,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions.Projects;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Cockpit.Backend.Tests;
@@ -76,13 +77,42 @@ public class PlannerTimerTests
         }
     }
 
-    private sealed class InMemoryScheduledResumeStore : IScheduledResumeStore
+    // `OnSave`/`OnLoad` let a test fail one specific call without a genuinely async store behind it.
+    private sealed class FailableStore(params ScheduledResume[] stored) : IScheduledResumeStore
     {
-        public Task<IReadOnlyList<ScheduledResume>> LoadAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ScheduledResume>>([]);
+        private List<ScheduledResume> _saved = [.. stored];
 
-        public Task SaveAsync(IReadOnlyList<ScheduledResume> resumes, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Func<Task>? OnSave { get; set; }
+
+        public Func<Task>? OnLoad { get; set; }
+
+        public async Task<IReadOnlyList<ScheduledResume>> LoadAsync(CancellationToken cancellationToken = default)
+        {
+            if (OnLoad is { } fail)
+            {
+                await fail();
+            }
+
+            return _saved;
+        }
+
+        public async Task SaveAsync(IReadOnlyList<ScheduledResume> resumes, CancellationToken cancellationToken = default)
+        {
+            if (OnSave is { } fail)
+            {
+                await fail();
+            }
+
+            _saved = [.. resumes];
+        }
+    }
+
+    private static ISessionHandle _Handle(List<string> sent)
+    {
+        var handle = Substitute.For<ISessionHandle>();
+        handle.CanTakeAPrompt.Returns(true);
+        handle.SendPromptAsync(Arg.Do<string>(sent.Add)).Returns(true);
+        return handle;
     }
 
     private static readonly TimeSpan CiInterval = TimeSpan.FromMinutes(5);
@@ -221,7 +251,7 @@ public class PlannerTimerTests
         handle.CanTakeAPrompt.Returns(true);
         handle.SendPromptAsync(Arg.Any<string>()).Returns(_ => { sent++; return Task.FromResult(true); });
 
-        using var coordinator = new ScheduledResumeCoordinator(new InMemoryScheduledResumeStore(), toast: null, logger: null, interval, clock)
+        using var coordinator = new ScheduledResumeCoordinator(new FailableStore(), toast: null, logger: null, interval, clock)
         {
             ResolveSession = _ => handle,
         };
@@ -233,6 +263,88 @@ public class PlannerTimerTests
         clock.Advance(tick ? interval : interval - TimeSpan.FromSeconds(1));
 
         Assert.Equal(tick ? 1 : 0, sent - baseline);
+    }
+
+    // AC-1380: ported off the deleted `ScheduledResumeTimerTests` (App.ViewTests), onto the fake clock. What that
+    // file also proved — a DispatcherTimer built off the UI thread never ticks at all — no longer applies.
+    [Fact]
+    public async Task ScheduledResumeCoordinator_ATickThatThrows_IsSurvived_AndTheSendAlreadyLanded()
+    {
+        var clock = new ManualClock();
+        var interval = TimeSpan.FromSeconds(30);
+        var sent = new List<string>();
+        var due = new ScheduledResume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on", Reason: null);
+        var store = new FailableStore(due) { OnSave = () => throw new IOException("the config file was locked") };
+        var logger = new CountingLogger();
+
+        using var coordinator = new ScheduledResumeCoordinator(store, toast: null, logger, interval, clock)
+        {
+            ResolveSession = _ => _Handle(sent),
+        };
+
+        await coordinator.StartAsync();
+        clock.Advance(interval);
+
+        Assert.Equal("carry on", Assert.Single(sent));
+        Assert.IsType<IOException>(logger.FirstError);
+    }
+
+    [Fact]
+    public async Task ScheduledResumeCoordinator_AStartThatFailed_CanBeStartedAgain()
+    {
+        // A config file held open for a moment, or one that does not parse, makes the load throw. If the claim on
+        // "already started" survives that, the scheduler is off for the rest of the run and says it is running —
+        // which is the exact shape of failure this ticket exists to remove.
+        var clock = new ManualClock();
+        var interval = TimeSpan.FromSeconds(30);
+        var sent = new List<string>();
+        var due = new ScheduledResume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on", Reason: null);
+        var store = new FailableStore(due) { OnLoad = () => throw new IOException("the config file was locked") };
+
+        using var coordinator = new ScheduledResumeCoordinator(store, toast: null, logger: null, interval, clock)
+        {
+            ResolveSession = _ => _Handle(sent),
+        };
+
+        await Assert.ThrowsAsync<IOException>(() => coordinator.StartAsync());
+
+        store.OnLoad = null;
+        await coordinator.StartAsync();
+        clock.Advance(interval);
+
+        Assert.Equal("carry on", Assert.Single(sent));
+    }
+
+    [Fact]
+    public async Task ScheduledResumeCoordinator_TwoStartsThatOverlap_OnlyOneOfThemStarts()
+    {
+        var logger = new CountingLogger();
+        using var coordinator = new ScheduledResumeCoordinator(new FailableStore(), toast: null, logger, TimeSpan.FromSeconds(30), new ManualClock());
+
+        await Task.WhenAll(coordinator.StartAsync(), coordinator.StartAsync());
+
+        Assert.Equal(1, logger.Started);
+    }
+
+    private sealed class CountingLogger : ILogger<ScheduledResumeCoordinator>
+    {
+        public int Started { get; private set; }
+
+        public Exception? FirstError { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (formatter(state, exception).Contains("Scheduled resumes are running"))
+            {
+                Started++;
+            }
+
+            FirstError ??= exception;
+        }
     }
 
     [Theory]

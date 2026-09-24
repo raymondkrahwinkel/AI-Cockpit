@@ -435,7 +435,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
 
         var needsAttention = handle.SessionStatus is SessionStatus.NeedsAttention || handle.HasPendingConsent;
 
-        if (handle.IsTerminal)
+        if (!handle.HasReadableTranscript)
         {
             return new WatchedPane(handle.Title, handle.SessionStatus, needsAttention, false, 0, [], [],
                 await handle.HasOutstandingBackgroundShellsAsync().ConfigureAwait(false));
