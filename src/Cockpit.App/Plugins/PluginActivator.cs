@@ -56,9 +56,12 @@ internal sealed class PluginActivator(ILogger<PluginActivator> logger)
             throw new InvalidOperationException($"The UI assembly path '{uiAssembly}' is outside the plugin's folder.");
         }
 
-        var context = (backend is null ? null : AssemblyLoadContext.GetLoadContext(backend.GetType().Assembly))
-            ?? new PluginLoadContext(uiPath);
-        var assembly = context.LoadFromAssemblyPath(uiPath);
+        var assembly = (backend is null ? null : AssemblyLoadContext.GetLoadContext(backend.GetType().Assembly)) switch
+        {
+            PluginLoadContext shared => shared.LoadAlongside(uiPath),
+            { } other => other.LoadFromAssemblyPath(uiPath),
+            null => new PluginLoadContext(uiPath).LoadFromAssemblyPath(uiPath),
+        };
 
         var uiType = _ResolveUiEntryType(assembly, manifest.UiEntryType)
             ?? throw new InvalidOperationException(

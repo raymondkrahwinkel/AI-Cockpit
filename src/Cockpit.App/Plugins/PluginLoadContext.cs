@@ -8,17 +8,24 @@ namespace Cockpit.App.Plugins;
 // identity. Non-collectible. AC-479: dependency isolation, NOT a security boundary — see PLUGIN-SDK.md.
 internal sealed class PluginLoadContext(string pluginMainAssemblyPath) : AssemblyLoadContext
 {
-    private readonly AssemblyDependencyResolver _resolver = new(pluginMainAssemblyPath);
+    private readonly List<AssemblyDependencyResolver> _resolvers = [new(pluginMainAssemblyPath)];
+
+    // AC-1389: a UI part loaded into its backend part's context brings its own deps.json, read after the backend's.
+    public Assembly LoadAlongside(string assemblyPath)
+    {
+        _resolvers.Add(new AssemblyDependencyResolver(assemblyPath));
+        return LoadFromAssemblyPath(assemblyPath);
+    }
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        var path = _resolver.ResolveAssemblyToPath(assemblyName);
+        var path = _resolvers.Select(resolver => resolver.ResolveAssemblyToPath(assemblyName)).FirstOrDefault(found => found is not null);
         return path is null ? null : LoadFromAssemblyPath(path);
     }
 
     protected override nint LoadUnmanagedDll(string unmanagedDllName)
     {
-        var path = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+        var path = _resolvers.Select(resolver => resolver.ResolveUnmanagedDllToPath(unmanagedDllName)).FirstOrDefault(found => found is not null);
         return path is null ? nint.Zero : LoadUnmanagedDllFromPath(path);
     }
 }

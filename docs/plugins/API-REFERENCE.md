@@ -168,7 +168,8 @@ public interface ICockpitPluginUi
 ```
 
 - **Where it comes from.** The manifest names it with `uiAssembly` (and optionally `uiEntryType`); the host
-  loads that assembly in the backend part's own load context. Without `uiAssembly`, a backend entry type that
+  loads that assembly in the backend part's own load context; `uiEntryType` without `uiAssembly` is refused.
+  Without `uiAssembly`, a backend entry type that
   also implements `ICockpitPluginUi` gets both calls — the way to move your UI registrations over before you
   split the assembly. A plugin that is only a UI part (a clock) leaves `entryAssembly` out.
 - **When.** After every plugin's `Initialize`, on the UI thread, once. A UI part that cannot load or throws is
@@ -195,7 +196,7 @@ host.Channel.Handle("list", async (payload, ct) => JsonSerializer.SerializeToEle
 host.Channel.Publish("changed", JsonSerializer.SerializeToElement(new { id }));
 
 // UI part, in InitializeUi:
-var items = await host.Channel.InvokeAsync("list", default, ct);
+var items = await host.Channel.InvokeAsync("list", JsonSerializer.SerializeToElement(new { }), ct);
 using var subscription = host.Channel.Subscribe("changed", e => Dispatcher.UIThread.Post(() => Refresh(e.Payload)));
 ```
 
@@ -204,6 +205,7 @@ using var subscription = host.Channel.Subscribe("changed", e => Dispatcher.UIThr
 - Registering the same action twice throws.
 - Every event carries `Seq`, the backend's one rising sequence number, shared with session events.
 - A subscriber runs on the publishing thread, not the UI thread: marshal before touching a control.
+- Payloads are copied on the way through, so a receiver may keep one after the sender disposed its document.
 
 ---
 

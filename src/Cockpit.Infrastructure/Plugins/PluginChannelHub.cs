@@ -38,7 +38,7 @@ public sealed class PluginChannelHub : ISingletonService
 
         return handler is null
             ? Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action))
-            : handler(payload, cancellationToken);
+            : handler(_Own(payload), cancellationToken);
     }
 
     public void Publish(string pluginId, string name, JsonElement payload)
@@ -49,7 +49,7 @@ public sealed class PluginChannelHub : ISingletonService
         Action<PluginChannelEvent>[] subscribers;
         lock (_gate)
         {
-            channelEvent = new PluginChannelEvent(name, SessionEventSequence.Next(), payload);
+            channelEvent = new PluginChannelEvent(name, SessionEventSequence.Next(), _Own(payload));
             subscribers = _subscribers.TryGetValue((pluginId, name), out var list) ? [.. list] : [];
         }
 
@@ -74,6 +74,11 @@ public sealed class PluginChannelHub : ISingletonService
 
         return new Subscription(this, (pluginId, name), handler);
     }
+
+    // A copy the receiver may keep past an await, after the sender disposed the document it came from, as a
+    // remote receiver always can. `default` (no payload) has no document to copy.
+    private static JsonElement _Own(JsonElement payload) =>
+        payload.ValueKind == JsonValueKind.Undefined ? payload : payload.Clone();
 
     private void _Unsubscribe((string PluginId, string Name) key, Action<PluginChannelEvent> handler)
     {

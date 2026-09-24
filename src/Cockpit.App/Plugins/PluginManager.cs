@@ -27,6 +27,9 @@ public sealed class PluginManager(
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
     private readonly Dictionary<DiscoveredPlugin, ICockpitPluginUi> _ui = [];
 
+    // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
+    private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
+
     // Both the host's abstractions version and how to read a plugin's are seams so a test can drive the
     // drift check without a real assembly; defaults read the host's own Abstractions and the plugin's
     // compile-time assembly reference (which no manifest can misstate).
@@ -210,6 +213,7 @@ public sealed class PluginManager(
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
+                _initializeFailed.Add(discovered);
                 diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", exception.Message);
             }
         }
@@ -222,7 +226,7 @@ public sealed class PluginManager(
         Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
         Func<DiscoveredPlugin, ICockpitPluginUi, ICockpitUiHost> hostFor)
     {
-        foreach (var (discovered, plugin) in _loaded)
+        foreach (var (discovered, plugin) in _loaded.Where(entry => !_initializeFailed.Contains(entry.Discovered)))
         {
             try
             {

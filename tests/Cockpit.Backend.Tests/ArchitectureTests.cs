@@ -40,7 +40,7 @@ public class ArchitectureTests
         var names = System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference")
             .Select(reference => (string?)reference.Attribute("Include"));
 
-        Assert.Equal((project, referencesAvalonia), (project, names.Contains("Avalonia")));
+        Assert.Equal((project, referencesAvalonia), (project, names.Any(name => name?.StartsWith("Avalonia", StringComparison.Ordinal) == true)));
     }
 
     private static string _RepositoryRoot()

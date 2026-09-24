@@ -69,6 +69,13 @@ public sealed record PluginManifest(
                 return false;
             }
 
+            var uiEntryType = GetOptionalString(root, "uiEntryType");
+            if (uiEntryType is not null && uiAssembly is null)
+            {
+                error = "'uiEntryType' needs 'uiAssembly': name the assembly the UI entry type is in.";
+                return false;
+            }
+
             if (!root.TryGetProperty("abstractionsVersion", out var abstractionsElement)
                 || abstractionsElement.ValueKind != JsonValueKind.Number
                 || !abstractionsElement.TryGetInt32(out var abstractionsVersion))
@@ -89,7 +96,7 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "author"),
                 GetOptionalStrings(root, "secretKeys"),
                 uiAssembly,
-                GetOptionalString(root, "uiEntryType"));
+                uiEntryType);
             return true;
         }
     }

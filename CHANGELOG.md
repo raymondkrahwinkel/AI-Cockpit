@@ -35,6 +35,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: the first routes of the backend API on the node's HTTPS listener, for a connect key only: `GET /api/v1/whoami`
   (who the key is, any capability) and `GET /api/v1/keys` (the key list, admin only). The pairing secret, the app key
   and session tokens are refused, and a call over the API never counts as a controller holding the assistant.
+- added: for plugin authors, the plugin SDK gains its window half next to the existing contract: a plugin can
+  put its screens in a separate UI part (`Cockpit.Plugins.Abstractions.UI`, named by `uiAssembly` in
+  `plugin.json`) that talks to its backend part only over the plugin's own channel, and a plugin can be only a UI
+  part. Nothing changes for the plugins you have; they load exactly as before.
 - added: the Discord plugin now talks to you in direct messages by default: leave the channel id blank and a DM
   from the one allowed account reaches the assistant and is answered in that DM. A channel stays available as an
   explicit choice (existing setups keep theirs), and a list of accounts or everyone still needs one. A message

@@ -67,7 +67,7 @@ internal sealed class CockpitUiHost(string pluginId, ICockpitHost host, IService
         if (registry.Resolve(providerId) is not { } registration)
         {
             throw new InvalidOperationException(
-                $"Plugin '{pluginId}' registered a config view for provider '{providerId}', which its backend part never registered.");
+                $"Plugin '{pluginId}' registered a config view for provider '{providerId}', which no plugin registered as a session provider.");
         }
 
         registry.Register(registration with { CreateConfigView = createView });

@@ -132,7 +132,8 @@ public interface ICockpitUiHost
 
     /// <summary>
     /// The live view of the embedded session <paramref name="paneId"/> (see <see cref="IEmbeddedSession"/>), the
-    /// same control on every call; null when no such embedded session is open.
+    /// same control on every call, and a control has one parent, so place it in one spot. Null when no such
+    /// embedded session is open; a session in the grid is not embedded.
     /// </summary>
     Control? CreateEmbeddedSessionView(string paneId);
 
