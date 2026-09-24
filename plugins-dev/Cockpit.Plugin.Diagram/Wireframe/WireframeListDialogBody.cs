@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
@@ -13,11 +14,13 @@ namespace Cockpit.Plugin.Diagram.Wireframe;
 internal sealed class WireframeListDialogBody : UserControl
 {
     private readonly ICockpitHost _host;
+    private readonly IPluginUiChannel? _channel;
     private readonly StackPanel _list;
 
-    public WireframeListDialogBody(ICockpitHost host)
+    public WireframeListDialogBody(ICockpitHost host, IPluginUiChannel? channel)
     {
         _host = host;
+        _channel = channel;
         _list = new StackPanel { Spacing = 6, Margin = new Thickness(12) };
 
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
@@ -70,7 +73,7 @@ internal sealed class WireframeListDialogBody : UserControl
             return;
         }
 
-        await WireframeWindow.OpenAsync(_host, WireframeDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
+        await WireframeWindow.OpenAsync(_host, _channel, WireframeDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<WireframeEntry> entries, int memoryRowCount)
@@ -122,7 +125,7 @@ internal sealed class WireframeListDialogBody : UserControl
 
             // Keyed on the file path (WireframeWindow.KeyFor), so opening the same wireframe again brings the
             // existing window forward instead of a second one.
-            _ = WireframeWindow.OpenAsync(_host, new WireframeDocument(entry.FilePath, entry.Title, entry.WireframeText, entry.FilePath), paneId);
+            _ = WireframeWindow.OpenAsync(_host, _channel, new WireframeDocument(entry.FilePath, entry.Title, entry.WireframeText, entry.FilePath), paneId);
         };
 
         var renameButton = new Button { Content = "Rename", Classes = { "Compact" } };

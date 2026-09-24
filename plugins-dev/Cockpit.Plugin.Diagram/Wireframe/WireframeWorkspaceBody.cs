@@ -13,6 +13,7 @@ using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.UI;
 using Kind = Cockpit.Core.Wireframe.Model.WireframeNodeKind;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
@@ -48,7 +49,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private static readonly Cursor _NoDropCursor = new(StandardCursorType.No);
 
     private readonly ICockpitHost _host;
-    private readonly IWireframeAccessRegistry? _registry;
+    private readonly WireframeChannelClient? _registry;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Panel _surface;
@@ -122,10 +123,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private string _savedText;
     private string? _fileAsLastSeen;
 
-    public WireframeWorkspaceBody(ICockpitHost host, WireframeDocument document, string? sessionPaneId)
+    // AC-1400: the registry through the plugin's channel, as in DiagramWorkspaceBody; no channel is "older host".
+    public WireframeWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = host.Services.GetService(typeof(IWireframeAccessRegistry)) as IWireframeAccessRegistry;
+        _registry = channel is null ? null : new WireframeChannelClient(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -203,7 +205,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         // AC-834: the session is named by whoever opened this window, never guessed. No pane id — or one whose
         // session is gone — lands on a not-live binding, which is the "no agent on this wireframe" state.
-        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, _RefreshCouplingBar);
+        _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, _RefreshCouplingBar);
         _RenderInto(document.Text);
         _RefreshHandEditBar();
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
@@ -244,6 +246,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             _registry.CouplingChanged -= _OnCouplingChanged;
             _registry.TextChanged -= _OnTextChanged;
             _registry.SurfaceClosed(_surfaceId);
+            _registry.Dispose();
         };
     }
 

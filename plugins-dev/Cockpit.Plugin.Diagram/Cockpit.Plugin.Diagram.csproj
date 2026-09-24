@@ -15,6 +15,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1400: ICockpitPluginUi and the UI half of the channel. Host-provided like Abstractions itself. -->
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
     <!-- Compile-only, same pattern as Avalonia below (AC-809): only IDiagramAccessRegistry's shape is needed at
          compile time, and PluginLoadContext falls the actual type through to the host's own already-loaded copy
          at runtime — a plugin cannot ship a second identity of a type the host hands it through host.Services. -->

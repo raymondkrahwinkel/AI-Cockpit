@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram;
 
@@ -12,10 +13,10 @@ internal static class DiagramWindow
 
     // `sessionPaneId` is the session the operator is already talking to — named by whoever opens the window, never
     // guessed here. Null opens the diagram with no agent on it, which is a state the surface draws.
-    public static Task OpenAsync(ICockpitHost host, DiagramDocument document, string? sessionPaneId) =>
+    public static Task OpenAsync(ICockpitHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId) =>
         host.ShowDialogAsync(
             document.Title,
-            () => new DiagramWorkspaceBody(host, document, sessionPaneId),
+            () => new DiagramWorkspaceBody(host, channel, document, sessionPaneId),
             KeyFor(document.Id),
             width: 900,
             height: 640);

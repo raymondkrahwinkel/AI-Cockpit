@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
@@ -14,11 +15,13 @@ namespace Cockpit.Plugin.Diagram.Whiteboard;
 internal sealed class WhiteboardListDialogBody : UserControl
 {
     private readonly ICockpitHost _host;
+    private readonly IPluginUiChannel? _channel;
     private readonly StackPanel _list;
 
-    public WhiteboardListDialogBody(ICockpitHost host)
+    public WhiteboardListDialogBody(ICockpitHost host, IPluginUiChannel? channel)
     {
         _host = host;
+        _channel = channel;
         _list = new StackPanel { Spacing = 6, Margin = new Thickness(12) };
 
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
@@ -72,7 +75,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
             return;
         }
 
-        await WhiteboardWindow.OpenAsync(_host, new WhiteboardDocument(title: quickStart.Name), quickStart.SessionPaneId);
+        await WhiteboardWindow.OpenAsync(_host, _channel, new WhiteboardDocument(title: quickStart.Name), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<WhiteboardEntry> entries, int memoryRowCount)
@@ -133,7 +136,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
 
             // Keyed on the file path (WhiteboardWindow.KeyFor), so opening the same board again brings the
             // existing window forward instead of a second one.
-            _ = WhiteboardWindow.OpenAsync(_host, document, paneId);
+            _ = WhiteboardWindow.OpenAsync(_host, _channel, document, paneId);
         };
 
         var deleteButton = new Button { Content = "Delete", Classes = { "Compact" } };

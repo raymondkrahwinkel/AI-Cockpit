@@ -1,13 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Avalonia.Threading;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Plugin.Diagram.Wireframe;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -17,7 +15,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-wireframe` MCP tools (AC-872), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the payload is the source text, a component is named by the stable id a read stamps on
 // it (AC-906), and there is no diff gate — the journal is the safety net.
-internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegistry registry, DiagramSettings settings)
+internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegistry registry, DiagramSettings settings, DiagramChannel channel)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -78,10 +76,10 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
             }
         }
 
-        Dispatcher.UIThread.Post(() =>
-            _ = WireframeWindow.OpenAsync(host, new WireframeDocument(surfaceId, title, source), caller));
+        // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
+        var opened = channel.RequestOpen(DiagramChannel.WireframePrefix, surfaceId, title, source, caller);
 
-        return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
+        return _Serialize(new { ok = true, id = surfaceId, name = title, opened });
     }
 
     [McpServerTool(Name = "read_wireframe", ReadOnly = true)]
