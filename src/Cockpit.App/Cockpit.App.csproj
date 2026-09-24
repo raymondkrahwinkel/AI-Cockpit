@@ -180,12 +180,13 @@
        a clean checkout has no output folder yet and a wildcard would quietly match nothing. -->
   <Target Name="ResolveBundledPluginFiles">
     <ItemGroup>
-      <_BundledPluginOutput Include="@(BundledPlugin->'$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')" />
+      <_BundledPluginOutput Include="@(BundledPlugin->'$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')"
+                            PluginName="%(BundledPlugin.Identity)" />
       <BundledPluginFile Include="%(_BundledPluginOutput.Identity)*.dll;%(_BundledPluginOutput.Identity)*.deps.json;%(_BundledPluginOutput.Identity)plugin.json"
                          FolderId="%(_BundledPluginOutput.FolderId)" />
     </ItemGroup>
-    <Error Condition="'@(BundledPlugin->Count())' != '@(BundledPluginFile->WithMetadataValue('Filename', 'plugin')->Count())'"
-           Text="A bundled plugin has no plugin.json in its output folder; was it built for $(Configuration)?" />
+    <Error Condition="!Exists('%(_BundledPluginOutput.Identity)plugin.json') Or !Exists('%(_BundledPluginOutput.Identity)Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll')"
+           Text="Bundled plugin %(_BundledPluginOutput.PluginName) has no plugin.json or Cockpit.Plugin.%(_BundledPluginOutput.PluginName).dll in %(_BundledPluginOutput.Identity); was it built for $(Configuration)?" />
   </Target>
 
   <!-- A single-file build is one file, so the bundled plugins ride inside it: the same files are embedded as
