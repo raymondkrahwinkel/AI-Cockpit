@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Cockpit.Plugin.GitStatus;
+namespace Cockpit.Plugin.GitStatus.UI;
 
 // Recognises, in a chunk of session output, a git command that could have changed the working tree or the
 // branch's ahead/behind — a commit, push, pull, checkout/switch, merge, rebase, reset, stash, and so on — so

@@ -1,6 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 
-namespace Cockpit.Plugin.GitStatus;
+namespace Cockpit.Plugin.GitStatus.UI;
 
 // The session-header indicator's one setting, persisted in the plugin's per-plugin storage.
 //
@@ -14,7 +14,7 @@ internal sealed class GitStatusSettings(IPluginStorage storage)
     private const string ShowBranchNameKey = "showBranchName";
 
     // Raised when a display setting changes, so a live session-header badge can update at once without a restart.
-    // Deliberately used instead of `ICockpitHost.OnSettingsSaved` (which has no unsubscribe): a per-session
+    // Deliberately used instead of `ICockpitUiHost.OnSettingsSaved` (which has no unsubscribe): a per-session
     // header is transient, so it subscribes on attach and unsubscribes on detach — no dead control is left rooted.
     public event Action? Changed;
 

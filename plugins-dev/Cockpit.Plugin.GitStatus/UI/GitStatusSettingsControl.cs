@@ -3,8 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitStatus;
+namespace Cockpit.Plugin.GitStatus.UI;
 
 // The settings view (opened from the plugin manager's gear): the session-header indicator's one setting —
 // whether it shows the branch name next to its status dot (AC-36). Implements `IPluginSettingsView`
@@ -18,7 +19,7 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
     private readonly GitStatusSettings _settings;
     private readonly CheckBox _showBranchName;
 
-    public GitStatusSettingsControl(ICockpitHost host, GitStatusSettings settings)
+    public GitStatusSettingsControl(ICockpitUiHost host, GitStatusSettings settings)
     {
         _settings = settings;
 
