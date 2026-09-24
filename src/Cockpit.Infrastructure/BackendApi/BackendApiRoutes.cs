@@ -20,6 +20,7 @@ internal static class BackendApiRoutes
     {
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(_DoorAsync);
+        EventsEndpoint.Map(api, services);
 
         api.MapGet("/whoami", () =>
         {

@@ -68,14 +68,6 @@ public class QueuedPrompt(string text, IReadOnlyList<ImageAttachment> images)
 // from a `Last-Event-ID` without renumbering (F5).
 public readonly record struct SessionHostEvent(long Seq, SessionEvent Event);
 
-// Outside the generic host on purpose: a static field on `SessionHost<TPrompt>` would be one counter per prompt type.
-internal static class SessionEventSequence
-{
-    private static long _last;
-
-    public static long Next() => Interlocked.Increment(ref _last);
-}
-
 // AC-1376 (F1.4): one SDK session's backend half, which `SessionViewModel` used to be: the runtime, the turn gate with
 // its queue, the funnel every turn leaves through, and the three clocks. No dispatcher: members run on the consumer's
 // thread and awaits resume there (no ConfigureAwait(false)); only the timer events arrive on the thread pool.
