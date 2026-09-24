@@ -115,6 +115,23 @@ public class PlannerTimerTests
         return handle;
     }
 
+    // xUnit installs its own SynchronizationContext for an async test, which `StartAsync` would otherwise capture
+    // as if it were a real, continuously-pumped UI dispatcher — it is not, so a posted tick would sit queued forever.
+    // Clearing it here is what makes a tick land inline instead, matching a coordinator built with no dispatcher at all.
+    private static async Task _StartWithNoAmbientContextAsync(ScheduledResumeCoordinator coordinator)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            await coordinator.StartAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
     private static readonly TimeSpan CiInterval = TimeSpan.FromMinutes(5);
 
     [Theory]
@@ -256,13 +273,57 @@ public class PlannerTimerTests
             ResolveSession = _ => handle,
         };
 
-        await coordinator.StartAsync();
+        await _StartWithNoAmbientContextAsync(coordinator);
         await coordinator.ScheduleAsync(new ScheduledResume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on", Reason: null));
         var baseline = sent;
 
         clock.Advance(tick ? interval : interval - TimeSpan.FromSeconds(1));
 
         Assert.Equal(tick ? 1 : 0, sent - baseline);
+    }
+
+    // AC-1380: `PendingChanged` reaches a bound view-model property, so a due tick has to land back on the thread
+    // that started the coordinator, not run raw on the timer's own threadpool thread — found in the independent
+    // review, which also confirmed a coordinator started with no context (every test above) still ticks inline.
+    [Fact]
+    public async Task ScheduledResumeCoordinator_ADueTick_PostsBackToTheThreadThatStartedIt()
+    {
+        var clock = new ManualClock();
+        var interval = TimeSpan.FromSeconds(30);
+        var sent = new List<string>();
+        var posted = 0;
+        var context = new RecordingSynchronizationContext(() => posted++);
+        var due = new ScheduledResume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on", Reason: null);
+
+        using var coordinator = new ScheduledResumeCoordinator(new FailableStore(due), toast: null, logger: null, interval, clock)
+        {
+            ResolveSession = _ => _Handle(sent),
+        };
+
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            await coordinator.StartAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        clock.Advance(interval);
+
+        Assert.Equal(1, posted);
+        Assert.Equal("carry on", Assert.Single(sent));
+    }
+
+    private sealed class RecordingSynchronizationContext(Action onPost) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            onPost();
+            d(state);
+        }
     }
 
     // AC-1380: ported off the deleted `ScheduledResumeTimerTests` (App.ViewTests), onto the fake clock. What that
@@ -282,7 +343,7 @@ public class PlannerTimerTests
             ResolveSession = _ => _Handle(sent),
         };
 
-        await coordinator.StartAsync();
+        await _StartWithNoAmbientContextAsync(coordinator);
         clock.Advance(interval);
 
         Assert.Equal("carry on", Assert.Single(sent));
@@ -309,7 +370,7 @@ public class PlannerTimerTests
         await Assert.ThrowsAsync<IOException>(() => coordinator.StartAsync());
 
         store.OnLoad = null;
-        await coordinator.StartAsync();
+        await _StartWithNoAmbientContextAsync(coordinator);
         clock.Advance(interval);
 
         Assert.Equal("carry on", Assert.Single(sent));

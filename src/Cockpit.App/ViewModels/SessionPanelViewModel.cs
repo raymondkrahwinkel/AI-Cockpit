@@ -916,9 +916,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     private ScheduledResumeCoordinator? _resumes;
 
-    // AC-1380: a due resume can now reach this off the UI thread (the coordinator's tick moved to a threadpool
-    // timer), but left unmarshalled: `PendingResumeLabel` is a plain string, and marshalling needs a running
-    // dispatcher a panel built directly in a test has none of.
+    // AC-1380: straight through — `ScheduledResumeCoordinator` itself now posts a due tick back to the thread that
+    // called `StartAsync` (the UI thread, in this app), so this still always runs where it always did.
     private void _OnPendingResumesChanged(object? sender, EventArgs e) => _SyncPendingResumeLabel();
 
     // Reads the pending line off the scheduler — the one place that decides what it says, so a resume that fired,

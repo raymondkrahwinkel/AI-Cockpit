@@ -26,6 +26,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
     private readonly TimeProvider _time;
     private readonly List<ScheduledResume> _pending = [];
     private ITimer? _timer;
+    private SynchronizationContext? _uiContext;
     private bool _started;
     private bool _disposed;
 
@@ -110,6 +111,10 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
             return;
         }
 
+        // AC-1380: captured here rather than read fresh on every tick — this call is still the caller's own
+        // (App.axaml.cs, on the UI thread), while the tick itself runs on the timer's threadpool thread with none
+        // of its own. Null in a test built with no dispatcher, where a tick runs inline instead of posting nowhere.
+        _uiContext = SynchronizationContext.Current;
         _timer = _time.CreateTimer(_ => _OnTick(), null, _tickInterval, _tickInterval);
 
         _logger.LogInformation(
@@ -264,7 +269,22 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         return true;
     }
 
-    private async void _OnTick()
+    // AC-1380: `PendingChanged` reaches a bound view-model property, so a due tick has to land back on the thread
+    // `StartAsync` captured rather than run raw on the timer's own threadpool thread — the same guarantee the tick
+    // had for free while it was still a `DispatcherTimer` on the UI thread.
+    private void _OnTick()
+    {
+        if (_uiContext is { } context)
+        {
+            context.Post(_ => _RunDueTickAsync(), null);
+        }
+        else
+        {
+            _RunDueTickAsync();
+        }
+    }
+
+    private async void _RunDueTickAsync()
     {
         try
         {
@@ -291,6 +311,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         ResolveSession = null;
         ReopenAndSend = null;
         PendingChanged = null;
+        _uiContext = null;
         _timer?.Dispose();
         _timer = null;
     }
