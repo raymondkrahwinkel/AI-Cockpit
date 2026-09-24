@@ -10,6 +10,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-403: once at startup, moves OAuth tokens an older build filed under a server's *name* onto the id it
 // is known by now (needed only for a minted, not derived, id, e.g. Depot). Must only run once, before any
 // rename could happen — matching by current name would let renamed servers adopt each other's token.
+
 // AC-1391: public — resolved by type across the assembly boundary in App.axaml.cs's plugin init.
 public sealed class McpOAuthTokenAdoption(
     IMcpOAuthTokenStore tokenStore,

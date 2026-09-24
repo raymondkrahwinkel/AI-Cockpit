@@ -5,6 +5,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-174: resolves `GitDirectoryStatus` fail-closed for the Autopilot isolation gate — a git probe
 // merely failing must never read as `NotARepository`, since that drops worktree isolation. "Not a
 // repository" is decided from the filesystem (presence of `.git` in an ancestor), not from the probe.
+
 // AC-1391: public — CockpitHost (Cockpit.App) still calls it directly across the assembly boundary.
 public static class GitDirectoryStatusResolver
 {
