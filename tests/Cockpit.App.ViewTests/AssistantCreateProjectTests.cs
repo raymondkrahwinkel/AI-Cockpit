@@ -356,9 +356,10 @@ public class AssistantCreateProjectTests : IDisposable
         var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
+        var sessions = new SessionRegistry();
         var gateway = Dispatcher.UIThread.Invoke(() => AssistantAgentGatewayGraph.Over(
-            _NewCockpit(projects),
-            new SessionRegistry(),
+            _NewCockpit(projects, sessions),
+            sessions,
             _Profiles(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             Substitute.For<IWorkspaceAgentGateway>(),
@@ -400,7 +401,7 @@ public class AssistantCreateProjectTests : IDisposable
         return source;
     }
 
-    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects)
+    private static CockpitViewModel _NewCockpit(ProjectsViewModel projects, SessionRegistry sessions)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -428,7 +429,8 @@ public class AssistantCreateProjectTests : IDisposable
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            projects: projects);
+            projects: projects,
+            sessionRegistry: sessions);
     }
 
     private sealed class _FakeRegistry(IReadOnlyList<ISharedProjectSource> initialSources) : ISharedProjectSourceRegistry
