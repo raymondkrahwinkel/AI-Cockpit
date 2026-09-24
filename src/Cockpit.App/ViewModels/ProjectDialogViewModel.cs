@@ -777,15 +777,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
                     return;
                 }
 
-                if (ConflictRequested is null)
+                // No one is listening to show the conflict window (a design-time instance, a test harness with no
+                // dialog service wired), or the source reported a conflict without the state to show or retry against
+                // — fail closed rather than silently overwrite or silently drop the edit.
+                if (ConflictRequested is null || result.LatestSnapshot is not { Checksum: { } latestChecksum } latest)
                 {
-                    // No one is listening to show the conflict window (a design-time instance, a test harness with
-                    // no dialog service wired) — fail closed rather than silently overwrite or silently drop the edit.
                     SaveError = "This project changed elsewhere; reopen it to see the latest version.";
                     return;
                 }
 
-                var resolution = await ConflictRequested.Invoke(operatorEdit, result.LatestSnapshot!).ConfigureAwait(true);
+                var resolution = await ConflictRequested.Invoke(operatorEdit, latest).ConfigureAwait(true);
                 if (resolution is null)
                 {
                     // The operator dismissed the conflict window — back to editing here, nothing written yet.
@@ -794,14 +795,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
                 if (resolution.TakeTheirs)
                 {
-                    _ApplyRemoteValues(result.LatestSnapshot!, writeBack.Baseline);
+                    _ApplyRemoteValues(latest, writeBack.Baseline);
                     CloseRequested?.Invoke(ToProject());
                     return;
                 }
 
                 // Merge only touched fields onto fresh remote state so a colleague's unrelated edits survive.
-                pendingEdit = _MergeOntoLatest(operatorEdit, writeBack.Baseline, result.LatestSnapshot!);
-                baseChecksum = result.LatestSnapshot!.Checksum!;
+                pendingEdit = _MergeOntoLatest(operatorEdit, writeBack.Baseline, latest);
+                baseChecksum = latestChecksum;
             }
         }
         finally
