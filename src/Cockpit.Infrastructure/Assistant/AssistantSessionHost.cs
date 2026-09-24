@@ -380,15 +380,15 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 return true;
             }
 
-            // Deliberately does not start anything: switching the feature on makes the assistant available, and
-            // the first hold or click is still what wakes it. A live session that was stood down for a controller
-            // (AC-1321) comes back to what it is doing rather than to Ready. A start that swapped the session in since
-            // the reading has set the chip itself, and the reading is not its session's.
+            // A start that swapped the session in since the reading has set the chip itself; the reading is not its.
             if (!ReferenceEquals(current, Session))
             {
                 return false;
             }
 
+            // Deliberately does not start anything: switching the feature on makes the assistant available, and
+            // the first hold or click is still what wakes it. A live session that was stood down for a controller
+            // (AC-1321) comes back to what it is doing rather than to Ready.
             if (current is null)
             {
                 Activity = AssistantActivity.Ready;
