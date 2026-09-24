@@ -16,7 +16,7 @@ public class SurfaceSessionBindingTests
     {
         var binding = new _FakeBinding("pane-1", live: true);
         var host = new _FakeHost(binding);
-        var surfaceBinding = new SurfaceSessionBinding(host, "pane-1", () => { });
+        var surfaceBinding = new SurfaceSessionBinding(host, null, "pane-1", () => { });
 
         await surfaceBinding.SendAsync("🗨️ Ask the agent · diagram \"Flow\" (id d1) — explain this");
 

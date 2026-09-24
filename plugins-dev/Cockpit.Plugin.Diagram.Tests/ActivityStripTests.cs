@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -229,7 +230,11 @@ public class ActivityStripTests
             IWireframeAccessRegistry? wireframe = null)
         {
             Services = new FakeServices(diagram, whiteboard, wireframe);
+            UiChannel = diagram is null && whiteboard is null && wireframe is null ? null : TestChannel.For(diagram, whiteboard, wireframe);
         }
+
+        // AC-1400: what a window reaches the registries through; null (no registry at all) is the "older host" state.
+        public IPluginUiChannel? UiChannel { get; }
 
         public List<string> Toasts { get; } = [];
 
@@ -294,7 +299,7 @@ public class ActivityStripTests
     {
         var registry = new FakeDiagramRegistry();
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
 
         Assert.Contains("No activity on this surface yet.", _Texts(strip));
@@ -308,7 +313,7 @@ public class ActivityStripTests
         var registry = new FakeDiagramRegistry();
         registry.Seed("surface-1", DiagramEntry("e1", "agent-pane", "added node N1 \"Foo\""));
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
 
         var texts = _Texts(strip);
@@ -324,7 +329,7 @@ public class ActivityStripTests
         var registry = new FakeDiagramRegistry();
         registry.Seed("surface-2", DiagramEntry("e1", "agent-pane", "added node N1 \"Foo\""));
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
 
         Assert.Contains("No activity on this surface yet.", _Texts(strip));
@@ -338,7 +343,7 @@ public class ActivityStripTests
         var registry = new FakeDiagramRegistry();
         registry.Seed("surface-1", DiagramEntry("e1", "operator", "renamed node A to \"Begin\""));
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
         strip.SetSession("pane-a", "Werksessie");
 
@@ -354,7 +359,7 @@ public class ActivityStripTests
         var registry = new FakeWhiteboardRegistry();
         registry.Seed("board-1", new WhiteboardHistoryEntry("e1", "pane-a", WhiteboardHistoryKind.Place, "obj-1", "placed a rectangle reading \"Foo\"", DateTime.Now, Reverted: false));
         var host = new FakeHost(whiteboard: registry);
-        var strip = new ActivityStrip(host, "board-1", new WhiteboardActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "board-1", new WhiteboardActivityJournal(TestChannel.Whiteboard(registry)), null);
         var window = _Show(strip);
 
         Assert.Contains("placed a rectangle reading \"Foo\"", _Texts(strip));
@@ -368,7 +373,7 @@ public class ActivityStripTests
         var registry = new FakeDiagramRegistry();
         registry.Seed("surface-1", DiagramEntry("e1", "pane-a", "added node N1 \"Foo\""));
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
         strip.SetSession("pane-a", "Werksessie");
 
@@ -393,7 +398,7 @@ public class ActivityStripTests
         var registry = new FakeDiagramRegistry();
         registry.Seed("surface-1", DiagramEntry("e1", "pane-a", "added node N1 \"Foo\"", reverted: true));
         var host = new FakeHost(registry);
-        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "surface-1", new DiagramActivityJournal(TestChannel.Diagram(registry)), null);
         var window = _Show(strip);
 
         var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));
@@ -408,7 +413,7 @@ public class ActivityStripTests
         var registry = new FakeWhiteboardRegistry();
         registry.Seed("board-1", new WhiteboardHistoryEntry("e1", "pane-a", WhiteboardHistoryKind.Erase, "obj-1", "erased an object", DateTime.Now, Reverted: false));
         var host = new FakeHost(whiteboard: registry);
-        var strip = new ActivityStrip(host, "board-1", new WhiteboardActivityJournal(registry), null);
+        var strip = new ActivityStrip(host, "board-1", new WhiteboardActivityJournal(TestChannel.Whiteboard(registry)), null);
         var window = _Show(strip);
 
         var revert = strip.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revert"));

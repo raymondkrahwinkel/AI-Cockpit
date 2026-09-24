@@ -23,7 +23,7 @@ public class WireframeMarkerOverlapTests
                 button "Log in" primary note:"Disabled until both fields are filled"
             """;
         var body = new WireframeWorkspaceBody(
-            new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe", source), null);
+            new ActivityStripTests.FakeHost(), null, WireframeDocument.New("Test wireframe", source), null);
         var window = _Show(body, width: 960, height: 680);
 
         var expectedTips = new[]

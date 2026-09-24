@@ -31,7 +31,7 @@ public class WireframeStateChipTests
     {
         var registry = new WireframeAccessRegistry();
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-1", "Inbox", Source), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-1", "Inbox", Source), sessionPaneId: null);
 
         var window = new Window { Content = body, Width = 1200, Height = 900 };
         window.Show();

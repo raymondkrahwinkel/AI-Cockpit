@@ -572,6 +572,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the diagram, whiteboard and wireframe windows now reach their shared documents over the plugin's own
+  channel instead of the cockpit's internals; they look and work as before. An agent asking a cockpit without a
+  window to open one now hears that nothing opened, rather than being told it did.
 - changed: for plugin authors, the plugin template now starts a plugin in two parts, a backend part and a UI
   part in its `UI/` folder that talk over the plugin's own channel, and the SDK release carries the UI half as its
   own package. Git status is the first plugin built that way; it looks and works exactly as before.

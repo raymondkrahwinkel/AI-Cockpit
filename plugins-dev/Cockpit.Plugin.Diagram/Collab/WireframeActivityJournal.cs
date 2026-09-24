@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.Diagram.Collab;
 // Adapts IWireframeAccessRegistry to ISurfaceActivityJournal and ISurfaceCouplingSource (AC-870/AC-873), the third
 // alongside DiagramActivityJournal and WhiteboardActivityJournal. Null when an older host has no registry to
 // resolve — same "no journal/coupling at all" state the other two leave ActivityStrip/PresenceIndicators in.
-internal sealed class WireframeActivityJournal(IWireframeAccessRegistry? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
+internal sealed class WireframeActivityJournal(WireframeChannelClient? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
 {
     private readonly Dictionary<Action<string, bool, bool>, Action<WireframeCouplingChange>> _couplingHandlers = new();
 

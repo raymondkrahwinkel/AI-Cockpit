@@ -27,7 +27,7 @@ public class DiagramMcpToolsTests
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        return (new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, host, asked);
+        return (new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, diagrams: registry)), registry, host, asked);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class DiagramMcpToolsTests
         var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
         host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ => new ConsentDecision(outcomes.Dequeue()));
-        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
+        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, diagrams: registry));
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
         await tools.ReadDiagram(Session, "Onboarding flow");
 
@@ -414,7 +414,7 @@ public class DiagramMcpToolsTests
                 registry.Grant("someone-else", "diagram-1", DiagramCapability.Read); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
+        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, diagrams: registry));
 
         var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
 
@@ -511,7 +511,7 @@ public class DiagramMcpToolsTests
         var host = Substitute.For<ICockpitHost>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new DiagramSettings(new FakePluginStorage()) { SkipDiagramConsent = true };
-        var tools = new DiagramMcpTools(host, registry, settings);
+        var tools = new DiagramMcpTools(host, registry, settings, TestChannel.Desktop(host, diagrams: registry));
 
         var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
         Dispatcher.UIThread.RunJobs();

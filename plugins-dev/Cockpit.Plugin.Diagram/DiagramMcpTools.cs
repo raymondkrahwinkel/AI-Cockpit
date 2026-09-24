@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Avalonia.Threading;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Consent;
@@ -12,7 +11,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
 // first. Deviations: `read_diagram` returns the surface as it stands (a state, not a stream), `edit_diagram`'s
 // consent text comes from SourceChangeSummary (AC-489), and the per-object tools (AC-852) write straight through.
-internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry registry, DiagramSettings settings)
+internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry registry, DiagramSettings settings, DiagramChannel channel)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -54,6 +53,12 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
+        // AC-1400: with no UI part there is no window to open, so the operator is not asked about one either.
+        if (!channel.HasUi)
+        {
+            return _Serialize(new { ok = true, name = title, opened = false });
+        }
+
         // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
         if (!settings.SkipDiagramConsent)
         {
@@ -70,15 +75,15 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
             }
         }
 
-        Dispatcher.UIThread.Post(() =>
-            _ = DiagramWindow.OpenAsync(host, new DiagramDocument(surfaceId, title, source), caller));
+        // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
+        var opened = channel.RequestOpen(DiagramChannel.DiagramPrefix, surfaceId, title, source, caller);
 
         return _Serialize(new
         {
             ok = true,
             id = surfaceId,
             name = title,
-            opened = true,
+            opened,
             fidelity = new { complete = fidelity.IsComplete, findings = fidelity.Findings },
         });
     }

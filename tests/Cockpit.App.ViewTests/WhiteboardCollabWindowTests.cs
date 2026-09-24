@@ -7,6 +7,8 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Whiteboard;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -147,6 +149,7 @@ public class WhiteboardCollabWindowTests
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
+        DiagramPluginUi.Initialize(plugin, host, host.Hub);
         return (plugin, host);
     }
 
@@ -196,6 +199,11 @@ public class WhiteboardCollabWindowTests
 
         public ConsentOutcome ConsentOutcome { get; set; } = ConsentOutcome.Approved;
 
+        // AC-1400: the plugin channel's hub; DiagramPluginUi hands the UI part the same one.
+        public PluginChannelHub Hub { get; } = new(NullLogger<PluginChannelHub>.Instance);
+
+        public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
+
         public IServiceProvider Services { get; }
 
         public ICockpitActions Actions { get; } = new NoActions();
@@ -228,6 +236,7 @@ public class WhiteboardCollabWindowTests
         public void EndSession(string paneId)
         {
             Registry.SessionEnded(paneId);
+            (Sessions as FakeSessions)?.Close(paneId);
             foreach (var binding in Bindings.Where(binding => binding.PaneId == paneId))
             {
                 binding.End();
@@ -317,6 +326,10 @@ public class WhiteboardCollabWindowTests
 
     private sealed class FakeSessions(string? activePaneId) : ICockpitSessionObserver
     {
+        public event EventHandler<string>? SessionClosed;
+
+        public void Close(string paneId) => SessionClosed?.Invoke(this, paneId);
+
         public string? ActiveSessionWorkingDirectory => null;
 
         public string? ActivePaneId => activePaneId;

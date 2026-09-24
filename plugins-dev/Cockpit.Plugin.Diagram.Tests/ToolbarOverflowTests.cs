@@ -24,7 +24,7 @@ public class ToolbarOverflowTests
     [InlineData(1200)]
     public void Diagram_EveryVisibleToolbarButtonIsReachable(double width)
     {
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), null, DiagramDocument.New("Test diagram"), null);
         var window = _Show(body, width, height: 640);
 
         _AssertAllReachable(window, body);
@@ -40,7 +40,7 @@ public class ToolbarOverflowTests
         // reports Flowchart, so this test wires up the real one instead, same as DiagramMcpToolsTests does.
         var registry = new DiagramAccessRegistry();
         var document = DiagramDocument.New("Test ER diagram", ErSource);
-        var body = new DiagramWorkspaceBody(new DiagramRegistryHost(registry), document, null);
+        var body = new DiagramWorkspaceBody(new DiagramRegistryHost(registry), TestChannel.For(registry), document, null);
         var window = _Show(body, width: 1200, height: 640);
 
         var attributes = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Attributes…"));
@@ -59,7 +59,7 @@ public class ToolbarOverflowTests
     [InlineData(1200)]
     public void Wireframe_EveryVisibleToolbarButtonIsReachable(double width)
     {
-        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe"), null);
+        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), null, WireframeDocument.New("Test wireframe"), null);
         var window = _Show(body, width, height: 680);
 
         _AssertAllReachable(window, body);
@@ -73,7 +73,7 @@ public class ToolbarOverflowTests
         // AC-973 criterion 4's wireframe case: two screens (so "← Overview" shows) zoomed into the one that
         // carries a state (so the state strip shows too) — both extra groups the ticket calls out by name.
         var document = WireframeDocument.New("Test wireframe", TwoScreensOneWithState);
-        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), document, null);
+        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), null, document, null);
         var window = _Show(body, width: 1200, height: 680);
         _ZoomIntoFirstScreen(body);
         Dispatcher.UIThread.RunJobs();

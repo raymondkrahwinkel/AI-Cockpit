@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Diagram.Collab;
 // Adapts IWhiteboardAccessRegistry to ISurfaceActivityJournal (AC-870) and ISurfaceCouplingSource (AC-879), merged
 // with the operator's own handlings (AC-912) so one strip shows both halves of the collaboration. Only a Place entry
 // can still be undone on the agent side — see WhiteboardHistoryKind's documented gap on Erase.
-internal sealed class WhiteboardActivityJournal(IWhiteboardAccessRegistry? registry, WhiteboardEditJournal? edits = null)
+internal sealed class WhiteboardActivityJournal(WhiteboardChannelClient? registry, WhiteboardEditJournal? edits = null)
     : ISurfaceActivityJournal, ISurfaceCouplingSource
 {
     // Same reason as DiagramActivityJournal's own map: CouplingChanged's flattened signature differs from the

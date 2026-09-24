@@ -14,6 +14,7 @@ using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Mermaider;
@@ -39,7 +40,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
     private readonly ICockpitHost _host;
-    private readonly IDiagramAccessRegistry? _registry;
+    private readonly DiagramChannelClient? _registry;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Avalonia.Svg.Skia.Svg _svg;
@@ -102,10 +103,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private int _glowGeneration;
     private bool _following;
 
-    public DiagramWorkspaceBody(ICockpitHost host, DiagramDocument document, string? sessionPaneId)
+    // AC-1400: the registry is reached through the plugin's channel; no channel, or a backend without the registry,
+    // is the "older host" state a missing registry was, and every `_registry is null` branch below still means that.
+    public DiagramWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
+        _registry = DiagramChannelClient.Connect(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -160,7 +163,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // AC-834: the session is named by whoever opened this window, never guessed — a not-live binding is the
         // "no agent on this diagram" state. Bound before the first _RenderInto (AC-849): its _RefreshHandEditBar
         // reads _sessionBinding.IsLive for the ask button, refreshed by the same coupling-change callback.
-        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
+        _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
         _RenderInto(document.MermaidText);
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
@@ -209,6 +212,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             _registry.ProposalChanged -= _OnProposalChanged;
             _registry.HistoryChanged -= _OnHistoryChanged;
             _registry.SurfaceClosed(_surfaceId);
+            _registry.Dispose();
         };
     }
 

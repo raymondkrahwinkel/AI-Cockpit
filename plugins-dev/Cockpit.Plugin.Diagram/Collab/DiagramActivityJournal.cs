@@ -2,10 +2,10 @@ using Cockpit.Core.Abstractions.Diagrams;
 
 namespace Cockpit.Plugin.Diagram.Collab;
 
-// Adapts IDiagramAccessRegistry to ISurfaceActivityJournal (AC-870) and ISurfaceCouplingSource (AC-879). Null when
-// an older host has no registry to resolve — same "no journal/coupling at all" state the registry-less branch left
-// ActivityStrip/PresenceIndicators in before these tickets.
-internal sealed class DiagramActivityJournal(IDiagramAccessRegistry? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
+// Adapts IDiagramAccessRegistry, reached through DiagramChannelClient since AC-1400, to ISurfaceActivityJournal
+// (AC-870) and ISurfaceCouplingSource (AC-879). Null when there is no channel — same "no journal/coupling at all"
+// state the registry-less branch left ActivityStrip/PresenceIndicators in before these tickets.
+internal sealed class DiagramActivityJournal(DiagramChannelClient? registry) : ISurfaceActivityJournal, ISurfaceCouplingSource
 {
     // Maps each subscriber's own delegate to the registry-shaped wrapper actually registered on the registry, so
     // remove detaches the exact same handler add attached — CouplingChanged's flattened signature differs from the

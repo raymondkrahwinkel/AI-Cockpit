@@ -1,5 +1,6 @@
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
 
@@ -13,10 +14,10 @@ internal static class WhiteboardWindow
 
     // `sessionPaneId` is the session already running that this board couples to on open (AC-842: no separate
     // session-picker dialog, the window model fixes the coupling at open time). Null opens with no agent on it.
-    public static Task OpenAsync(ICockpitHost host, WhiteboardDocument document, string? sessionPaneId) =>
+    public static Task OpenAsync(ICockpitHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId) =>
         host.ShowDialogAsync(
             document.Title,
-            () => new WhiteboardWorkspaceBody(host, document, sessionPaneId),
+            () => new WhiteboardWorkspaceBody(host, channel, document, sessionPaneId),
             KeyFor(document.Id),
             width: 900,
             height: 640);

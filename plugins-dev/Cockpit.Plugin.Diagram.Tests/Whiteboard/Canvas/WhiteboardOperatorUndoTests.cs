@@ -80,7 +80,7 @@ public class WhiteboardOperatorUndoTests
         var canvas = new WhiteboardCanvasControl(document);
         var window = _Show(canvas);
         var registry = new ActivityStripTests.FakeWhiteboardRegistry();
-        var journal = new WhiteboardActivityJournal(registry, canvas.Edits);
+        var journal = new WhiteboardActivityJournal(TestChannel.Whiteboard(registry), canvas.Edits);
 
         _PlaceShape(window, canvas, PlacedShapeKind.Rectangle, new Point(20, 20));
         _DrawStroke(window, canvas, from: new Point(200, 200), to: new Point(260, 200));
@@ -108,7 +108,7 @@ public class WhiteboardOperatorUndoTests
         var registry = new ActivityStripTests.FakeWhiteboardRegistry();
         registry.Seed(document.Id, new WhiteboardHistoryEntry(
             "agent-entry", "pane-1", WhiteboardHistoryKind.Place, Guid.NewGuid().ToString(), "placed a Rectangle", DateTime.Now.AddMinutes(-1), Reverted: false));
-        var journal = new WhiteboardActivityJournal(registry, canvas.Edits);
+        var journal = new WhiteboardActivityJournal(TestChannel.Whiteboard(registry), canvas.Edits);
 
         _PlaceShape(window, canvas, PlacedShapeKind.Rectangle, new Point(20, 20));
 

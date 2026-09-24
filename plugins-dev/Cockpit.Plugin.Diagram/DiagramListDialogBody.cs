@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Diagram;
@@ -14,11 +15,13 @@ namespace Cockpit.Plugin.Diagram;
 internal sealed class DiagramListDialogBody : UserControl
 {
     private readonly ICockpitHost _host;
+    private readonly IPluginUiChannel? _channel;
     private readonly StackPanel _list;
 
-    public DiagramListDialogBody(ICockpitHost host)
+    public DiagramListDialogBody(ICockpitHost host, IPluginUiChannel? channel)
     {
         _host = host;
+        _channel = channel;
         _list = new StackPanel { Spacing = 6, Margin = new Thickness(12) };
 
         var refresh = new Button { Content = "Refresh", Classes = { "Compact" } };
@@ -71,7 +74,7 @@ internal sealed class DiagramListDialogBody : UserControl
             return;
         }
 
-        await DiagramWindow.OpenAsync(_host, DiagramDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
+        await DiagramWindow.OpenAsync(_host, _channel, DiagramDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<DiagramEntry> entries, int memoryRowCount)
@@ -123,7 +126,7 @@ internal sealed class DiagramListDialogBody : UserControl
 
             // Keyed on the file path (DiagramWindow.KeyFor), so opening the same diagram again brings the
             // existing window forward instead of a second one.
-            _ = DiagramWindow.OpenAsync(_host, new DiagramDocument(entry.FilePath, entry.Title, entry.MermaidText, entry.FilePath), paneId);
+            _ = DiagramWindow.OpenAsync(_host, _channel, new DiagramDocument(entry.FilePath, entry.Title, entry.MermaidText, entry.FilePath), paneId);
         };
 
         var renameButton = new Button { Content = "Rename", Classes = { "Compact" } };

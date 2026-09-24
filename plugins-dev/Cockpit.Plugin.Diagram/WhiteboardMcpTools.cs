@@ -1,12 +1,9 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Avalonia.Threading;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
-using Cockpit.Plugin.Diagram.Whiteboard;
-using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -15,7 +12,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-whiteboard` MCP tools (AC-823), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the read payload is a base64 PNG snapshot, so the consent text names a screenshot; and
 // the write path (AC-854, reversing AC-820) only adds — no replace-the-board tool, no reach into operator work.
-internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessRegistry registry, DiagramSettings settings)
+internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessRegistry registry, DiagramSettings settings, DiagramChannel channel)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -51,6 +48,12 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
+        // AC-1400: with no UI part there is no window to open, so the operator is not asked about one either.
+        if (!channel.HasUi)
+        {
+            return _Serialize(new { ok = true, name = title, opened = false });
+        }
+
         // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
         if (!settings.SkipWhiteboardConsent)
         {
@@ -67,10 +70,10 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
             }
         }
 
-        Dispatcher.UIThread.Post(() =>
-            _ = WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(surfaceId, title), caller));
+        // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
+        var opened = channel.RequestOpen(DiagramChannel.WhiteboardPrefix, surfaceId, title, null, caller);
 
-        return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
+        return _Serialize(new { ok = true, id = surfaceId, name = title, opened });
     }
 
     [McpServerTool(Name = "read_whiteboard", ReadOnly = true)]

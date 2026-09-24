@@ -96,7 +96,7 @@ public class WireframePropertiesPanelSpaceTests
     {
         var registry = new RecordingRegistry(Source);
         var host = new ActivityStripTests.FakeHost(wireframe: registry);
-        var body = new WireframeWorkspaceBody(host, new WireframeDocument("wireframe-1", "Instellingen", Source), sessionPaneId: null);
+        var body = new WireframeWorkspaceBody(host, host.UiChannel, new WireframeDocument("wireframe-1", "Instellingen", Source), sessionPaneId: null);
 
         var window = new Window { Content = body, Width = 960, Height = 680 };
         window.Show();

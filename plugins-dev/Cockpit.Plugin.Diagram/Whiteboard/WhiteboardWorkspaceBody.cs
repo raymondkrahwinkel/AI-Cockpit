@@ -12,6 +12,7 @@ using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard;
@@ -26,8 +27,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private static readonly PixelSize SnapshotSize = new(1600, 1200);
 
     private readonly ICockpitHost _host;
-    private readonly IWhiteboardAccessRegistry? _registry;
-    private readonly IDiagramAccessRegistry? _diagrams;
+    private readonly IPluginUiChannel? _channel;
+    private readonly WhiteboardChannelClient? _registry;
+    private readonly DiagramChannelClient? _diagrams;
     private readonly IWhiteboardSnapshotRenderer _renderer = new WhiteboardSnapshotRenderer();
     private readonly WhiteboardControl _control;
     private readonly string _surfaceId;
@@ -58,11 +60,13 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private string _savedText;
     private string? _fileAsLastSeen;
 
-    public WhiteboardWorkspaceBody(ICockpitHost host, WhiteboardDocument document, string? sessionPaneId)
+    // AC-1400: both registries through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
+    public WhiteboardWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = host.Services.GetService(typeof(IWhiteboardAccessRegistry)) as IWhiteboardAccessRegistry;
-        _diagrams = host.Services.GetService(typeof(IDiagramAccessRegistry)) as IDiagramAccessRegistry;
+        _channel = channel;
+        _registry = WhiteboardChannelClient.Connect(channel);
+        _diagrams = DiagramChannelClient.Connect(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -112,7 +116,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         // Bound before the first _RefreshAskButton: that reads _sessionBinding.IsLive for the ask button. The same
         // callback that refreshes the coupling bar on a change refreshes that button too.
-        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshAskButton(); });
+        _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshAskButton(); });
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshAskButton();
@@ -151,6 +155,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             if (_diagrams is not null)
             {
                 _diagrams.ProposalChanged -= _OnProposalChanged;
+                _diagrams.Dispose();
             }
 
             if (_registry is null)
@@ -163,6 +168,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _registry.ObjectErased -= _OnObjectErased;
             _registry.HistoryChanged -= _OnHistoryChanged;
             _registry.SurfaceClosed(_surfaceId);
+            _registry.Dispose();
         };
     }
 
@@ -271,7 +277,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private void _ConvertToNew()
     {
         var document = DiagramDocument.New($"{_documentTitle} — diagram");
-        _ = DiagramWindow.OpenAsync(_host, document, _sessionBinding.LivePaneId);
+        _ = DiagramWindow.OpenAsync(_host, _channel, document, _sessionBinding.LivePaneId);
         _Convert(document.Id, document.Title);
     }
 
