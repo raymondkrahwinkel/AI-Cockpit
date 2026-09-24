@@ -18,9 +18,8 @@ using Cockpit.Infrastructure.Tests.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
-// AC-1383's acceptance on the real door: the endpoint host mounting cockpit-node with its HTTPS listener and the
-// loopback listener next to it, McpAuthMiddleware and ConnectKeyVerifier in front, the API behind them. The node
-// is paired with every scope granted, and a session is granted cockpit-node, so the middleware lets the pairing
+// AC-1383's acceptance on the real door: cockpit-node on loopback and HTTPS, the middleware and verifier in front.
+// The node is paired with every scope and a session is granted cockpit-node, so the middleware lets the pairing
 // secret and that session's token through: a refusal of either can only come from the API's own door.
 public sealed class BackendApiDoorTests
 {
