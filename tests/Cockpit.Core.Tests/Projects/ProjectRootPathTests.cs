@@ -38,20 +38,26 @@ public class ProjectRootPathTests
         var inside = Directory.CreateDirectory(Path.Combine(root, "inside")).FullName;
         var outside = Directory.CreateDirectory(Path.Combine(sandbox, "outside")).FullName;
         var link = Path.Combine(root, "link");
+        var rootAlias = Path.Combine(sandbox, "root-alias");
 
         try
         {
             Skip.IfNot(TryCreateDirectoryLink(link, targetInside ? inside : outside),
                 "This machine cannot create a junction or directory symlink.");
+            Skip.IfNot(TryCreateDirectoryLink(rootAlias, root),
+                "This machine cannot create a junction or directory symlink for the project root.");
 
             var accepted = ProjectRootPath.TryResolve(root, Path.Combine("link", "file.txt"), out _, out var refusal);
+            var aliasAccepted = ProjectRootPath.TryResolve(rootAlias, Path.Combine("inside", "file.txt"), out var resolved, out var aliasRefusal);
 
             Assert.Equal(targetInside, accepted);
             Assert.Equal(targetInside, refusal is null);
+            Assert.True(aliasAccepted, aliasRefusal);
+            Assert.Equal(Path.Combine(inside, "file.txt"), resolved);
         }
         finally
         {
-            RemoveLinkAndSandbox(link, sandbox);
+            RemoveLinkAndSandbox(link, rootAlias, sandbox);
         }
     }
 
@@ -79,11 +85,19 @@ public class ProjectRootPathTests
         }
     }
 
-    private static void RemoveLinkAndSandbox(string link, string sandbox)
+    private static void RemoveLinkAndSandbox(string link, string rootAlias, string sandbox)
     {
         try
         {
             Directory.Delete(link);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+
+        try
+        {
+            Directory.Delete(rootAlias);
         }
         catch (DirectoryNotFoundException)
         {

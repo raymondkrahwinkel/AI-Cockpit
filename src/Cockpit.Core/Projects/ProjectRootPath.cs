@@ -29,7 +29,10 @@ public static class ProjectRootPath
 
         try
         {
-            var rootFull = Path.GetFullPath(root);
+            var configuredRoot = Path.GetFullPath(root);
+            var rootFull = Directory.Exists(configuredRoot)
+                ? new DirectoryInfo(configuredRoot).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? configuredRoot
+                : configuredRoot;
             var candidate = Path.GetFullPath(Path.Combine(rootFull, relativePath));
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             var rootPrefix = Path.EndsInDirectorySeparator(rootFull) ? rootFull : rootFull + Path.DirectorySeparatorChar;
@@ -45,12 +48,9 @@ public static class ProjectRootPath
                 ? Array.Empty<string>()
                 : Path.GetRelativePath(rootFull, candidate).Split(Path.DirectorySeparatorChar);
 
-            for (var index = -1; index < segments.Length; index++)
+            for (var index = 0; index < segments.Length; index++)
             {
-                if (index >= 0)
-                {
-                    current = Path.Combine(current, segments[index]);
-                }
+                current = Path.Combine(current, segments[index]);
 
                 FileAttributes attributes;
                 try
@@ -59,11 +59,11 @@ public static class ProjectRootPath
                 }
                 catch (FileNotFoundException)
                 {
-                    break;
+                    continue;
                 }
                 catch (DirectoryNotFoundException)
                 {
-                    break;
+                    continue;
                 }
 
                 if ((attributes & FileAttributes.ReparsePoint) == 0)
@@ -81,9 +81,11 @@ public static class ProjectRootPath
                     refusal = "A link leaves the project root or cannot be resolved.";
                     return false;
                 }
+
+                current = target.FullName;
             }
 
-            fullPath = candidate;
+            fullPath = current;
             return true;
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException or

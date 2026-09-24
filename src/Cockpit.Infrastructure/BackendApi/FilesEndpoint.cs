@@ -31,7 +31,8 @@ internal static class FilesEndpoint
             return Results.NotFound();
         }
 
-        if (!ProjectRootPath.TryResolve(root, context.Request.Query["path"].ToString(), out var fullPath, out var refusal))
+        var relativePath = context.Request.Query["path"].ToString();
+        if (!ProjectRootPath.TryResolve(root, relativePath, out var fullPath, out var refusal))
         {
             return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_path", refusal ?? "Invalid path.");
         }
@@ -44,6 +45,16 @@ internal static class FilesEndpoint
         try
         {
             await using var file = File.OpenRead(fullPath);
+            // ponytail: a process with local project write/shell access can still swap a link between check and open.
+            // A handle-based path check (GetFinalPathNameByHandle/openat) is the upgrade if that process is untrusted.
+            var openedPath = new FileInfo(file.Name).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? file.Name;
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (!ProjectRootPath.TryResolve(root, relativePath, out var checkedAgain, out _) ||
+                !openedPath.Equals(checkedAgain, comparison))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_path", "The file changed outside the project root while it was opened.");
+            }
+
             if (file.Length > MaxBytes)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status413PayloadTooLarge, "file_too_large", "The file exceeds 1 MiB.");
