@@ -1,9 +1,8 @@
 namespace Cockpit.Plugins.Abstractions.UI;
 
-// AC-1389: the entry point of a plugin's UI part, named by the manifest's uiEntryType, or implemented by the
-// ICockpitPlugin entry type itself while a plugin moves its UI registrations over before it is split in two.
-// Activated only where there is a window, after the backend part's Initialize; disposed with the plugin when it
-// is IDisposable.
+// AC-1389: the UI part's entry point — the manifest's uiEntryType, or the ICockpitPlugin entry type itself while a
+// plugin moves its UI over before it splits. Activated only where there is a window, after the backend part's
+// Initialize; disposed with the plugin when it is IDisposable.
 public interface ICockpitPluginUi
 {
     /// <summary>
