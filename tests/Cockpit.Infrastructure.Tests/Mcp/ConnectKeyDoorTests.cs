@@ -39,6 +39,56 @@ public sealed class ConnectKeyDoorTests
 
     private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
 
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "laptop")]
+    public async Task ConnectKey_HoldsAssistantOnlyWhenRequested(bool holdsAssistant, string? expectedController)
+    {
+        await using var door = new _Door();
+        var issued = await door.Verifier(_Environment()).IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant);
+        await door.StartAsync(_Environment());
+        await using var client = await door.ClientAsync(issued.Secret);
+
+        await _CallAsync(client, "list_node_sessions", new());
+
+        Assert.Equal(expectedController, door.Presence.Current?.Name);
+    }
+
+    [Fact]
+    public async Task PairingSecret_StillHoldsAssistant()
+    {
+        await using var door = new _Door();
+        await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true });
+        await using var client = await door.ClientAsync(PairingSecret);
+
+        await _CallAsync(client, "list_node_sessions", new());
+
+        Assert.Equal("laptop", door.Presence.Current?.Name);
+    }
+
+    [Fact]
+    public async Task LegacyKeyDefaultsToNotHolding_IssuedKeyAndBootstrapAppearInList()
+    {
+        await using var door = new _Door();
+        var legacy = await door.Verifier(_Environment()).IssueAsync("legacy", ConnectKeyCapability.Operate, 30, Operator);
+        var config = JsonNode.Parse(await File.ReadAllTextAsync(door.ConfigPath)) ?? new JsonObject();
+        Assert.True(config["NodeConnectKeys"]?["Keys"]?.AsArray()[0]?.AsObject().Remove("HoldsAssistant"));
+        await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
+        await door.StartAsync(_Environment());
+        await using var legacyClient = await door.ClientAsync(legacy.Secret);
+        await _CallAsync(legacyClient, "list_node_sessions", new());
+        Assert.Null(door.Presence.Current);
+        await using var admin = await door.ClientAsync(Bootstrap);
+
+        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "holding", ["capability"] = "operate", ["holdsAssistant"] = true });
+        var listed = await _CallAsync(admin, "list_connect_keys", new());
+        var keys = listed["keys"]?.AsArray() ?? new JsonArray();
+
+        Assert.True(keys.Single(key => key?["prefix"]?.GetValue<string>() == issued["prefix"]?.GetValue<string>())?["holdsAssistant"]?.GetValue<bool>());
+        Assert.False(keys.Single(key => key?["label"]?.GetValue<string>() == "bootstrap")?["holdsAssistant"]?.GetValue<bool>());
+        Assert.False(keys.Single(key => key?["label"]?.GetValue<string>() == "legacy")?["holdsAssistant"]?.GetValue<bool>());
+    }
+
     // Criterion 1: a bootstrap key from a file, or from the variable as fallback, opens the door with no pairing and
     // nothing done on the node; with neither, or a key too short or too monotonous to be random, the same call is the
     // one refusal every failure gets. Either way the node lets go of both variables once it has read them.
@@ -296,6 +346,8 @@ public sealed class ConnectKeyDoorTests
 
         public NodeAccessAuditLog Audit { get; }
 
+        public NodeControllerPresence Presence { get; } = new();
+
         public string NodeUrl { get; private set; } = "";
 
         // The environment as the node sees it at startup; what the verifier lets go of disappears from it.
@@ -335,6 +387,7 @@ public sealed class ConnectKeyDoorTests
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
             services.AddSingleton<IAssistantMemory>(new NodeSessionMcpToolsTests.StubMemory());
             services.AddSingleton(Audit);
+            services.AddSingleton(Presence);
             services.AddSingleton(verifier);
 
             _host = new CockpitMcpEndpointHost(

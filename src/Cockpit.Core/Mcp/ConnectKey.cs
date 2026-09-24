@@ -19,7 +19,8 @@ public sealed record ConnectKey(
     DateTimeOffset CreatedAt,
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? RevokedAt = null,
-    bool IsBootstrap = false)
+    bool IsBootstrap = false,
+    bool HoldsAssistant = false)
 {
     public bool IsUsableAt(DateTimeOffset now) => RevokedAt is null && (ExpiresAt is not { } expiresAt || expiresAt > now);
 }
