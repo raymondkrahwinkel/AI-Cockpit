@@ -5,9 +5,8 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1378: one SDK session without a view model, as the registry hands it out, and the consumer its host asks for:
-// it applies every event to the transcript and ends the turn, the duties `SessionViewModel.Apply` has on the desktop.
-// One lock stands in for the desktop's UI thread, so the fold, the turn gate and the reads never interleave.
+// AC-1378: one SDK session without a view model and the consumer its host asks for, doing `SessionViewModel.Apply`'s
+// duties; one lock stands in for the UI thread so the fold, the turn gate and the reads never interleave.
 // AC-1379: also the assistant's session without the app, as `AssistantSessionHost` drives it.
 public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 {
