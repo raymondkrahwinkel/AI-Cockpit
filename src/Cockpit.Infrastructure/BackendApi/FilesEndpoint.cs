@@ -17,7 +17,8 @@ internal static class FilesEndpoint
 
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
-        api.MapGet("/projects/{id}/file", (Func<HttpContext, string, Task<IResult>>)((context, id) => ReadAsync(context, id, services))).RequireOperate();
+        api.MapGet("/projects/{id}/file", (Func<HttpContext, Task<IResult>>)(context =>
+            ReadAsync(context, context.Request.RouteValues["id"]?.ToString() ?? string.Empty, services))).RequireOperate();
     }
 
     internal static async Task<IResult> ReadAsync(HttpContext context, string id, IServiceProvider services)
