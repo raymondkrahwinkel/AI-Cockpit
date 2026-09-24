@@ -229,6 +229,9 @@ public sealed class CockpitBackend
         services.AddSingleton<ISessionLauncher>(provider =>
         {
             var workspaces = provider.GetRequiredService<IWorkspaceSettingsStore>();
+
+            // ponytail: blocks on the desk load; safe while the backend path has no SynchronizationContext to deadlock on.
+            // Ceiling: a host that resolves this on a context thread (a UI thread) could hang; then load the desks in Start.
             return new SessionLauncher(
                 workspaces.LoadAsync().GetAwaiter().GetResult(),
                 workspaces,
