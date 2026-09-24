@@ -2,13 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus.UI;
 
-// The session-header indicator's one setting, persisted in the plugin's per-plugin storage.
-//
-// AC-522 removed the plugin's dialog, and with it the only reader/writer of a manually configured repository
-// list this class used to keep under a "repos" key. Nothing here reads that key any more; an install from
-// before AC-522 may still carry it in storage, but it is inert — never deserialized, so it cannot fail to
-// load. `IPluginStorage` has no way to remove a stored key, so the JSON entry itself may outlive
-// the feature, harmlessly.
+// The header badge's one setting, in the plugin's storage. An install from before AC-522 may still carry the
+// removed repository list under "repos"; nothing reads that key, so it is inert, and IPluginStorage cannot
+// remove it.
 internal sealed class GitStatusSettings(IPluginStorage storage)
 {
     private const string ShowBranchNameKey = "showBranchName";

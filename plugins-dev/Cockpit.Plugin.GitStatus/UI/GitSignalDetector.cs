@@ -2,11 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.GitStatus.UI;
 
-// Recognises, in a chunk of session output, a git command that could have changed the working tree or the
-// branch's ahead/behind — a commit, push, pull, checkout/switch, merge, rebase, reset, stash, and so on — so
-// the session-following status section can refresh the moment the session touches the repo, instead of
-// showing stale counts. Substring/word-boundary based; narrow enough that ordinary prose about "git" does
-// not trigger it.
+// Recognises in session output a git command that could have moved the working tree or ahead/behind (commit,
+// push, checkout, rebase, stash, ...), so the header badge refreshes the moment the session touches the repo.
+// Word-boundary based, so ordinary prose about "git" does not trigger it.
 internal static class GitSignalDetector
 {
     private static readonly Regex GitMutation = new(

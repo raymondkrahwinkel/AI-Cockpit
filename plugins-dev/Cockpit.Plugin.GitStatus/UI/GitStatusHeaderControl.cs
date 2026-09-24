@@ -11,13 +11,9 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.GitStatus.UI;
 
-// The git state of the repo a session is working in, shown in that session's own header bar: a coloured dot
-// (clean / has changes / not a repo) plus the branch, with the counts on hover. It belongs here rather than in
-// the sidebar because it describes one session, and the sidebar describes the cockpit — a section following
-// "whichever session is selected" says nothing about the other three panes on screen.
-// Refreshes when the session's working directory becomes known and when the session runs a git command; click
-// to open that session's review panel (AC-961). What git says comes from the backend part over the plugin's
-// channel (AC-1390): this assembly runs no git itself.
+// The git state of a session's repo in that session's own header: a coloured dot plus the branch, counts on hover,
+// click to open that session's review panel (AC-961). What git says comes from the backend part over the
+// plugin's channel (AC-1390): this assembly runs no git itself.
 internal sealed class GitStatusHeaderControl : UserControl
 {
     // Who answers the click (AC-961). Asked per click and per render rather than once at construction: plugins
