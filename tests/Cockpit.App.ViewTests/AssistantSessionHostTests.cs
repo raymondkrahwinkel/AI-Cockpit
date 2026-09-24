@@ -1155,7 +1155,7 @@ public class AssistantSessionHostTests
     /// AC-1089 criterion 4: startup compaction drops state for every pane its roster does not name (AC-410), and the
     /// assistant owns no workspace pane — so each start erased its saved conversation id before the resume above
     /// could read it, and no <c>--resume</c> was ever sent. Drives the real roster and the real store the way
-    /// <c>Program.ReconcileWorktreesAndCompactStateAsync</c> does: a substituted store is exactly what hid this,
+    /// <c>CockpitBackend.ReconcileWorktreesAndCompactStateAsync</c> does: a substituted store is exactly what hid this,
     /// because the gap was between compaction and the read rather than inside either half.
     /// </summary>
     [Fact]

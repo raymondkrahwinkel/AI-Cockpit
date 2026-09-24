@@ -1,7 +1,7 @@
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;

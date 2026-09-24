@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.TestSupport;
 using NSubstitute;
@@ -12,7 +12,7 @@ namespace Cockpit.App.ViewTests;
 /// AC-410 design decision 4: <c>Program.cs</c> must reconcile the worktree registry against
 /// <see cref="SessionRestoreRoster.PaneIdsAsync"/>'s set, not an empty one — a worktree belonging to a pane a
 /// restore may still bring back must not read as an orphan and be swept, which was the bug before panes were
-/// persisted. Exercises the same call <c>Program.ReconcileWorktreesAndCompactStateAsync</c> makes
+/// persisted. Exercises the same call <c>CockpitBackend.ReconcileWorktreesAndCompactStateAsync</c> makes
 /// (<c>IWorktreeManager.ReconcileAsync</c> against the roster) against a real git repository, the way
 /// <c>WorktreeManagerTests</c> does — a fake git would not prove what git itself does with an orphaned worktree.
 /// </summary>

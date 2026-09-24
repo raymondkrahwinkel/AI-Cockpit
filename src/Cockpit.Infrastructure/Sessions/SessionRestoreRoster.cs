@@ -2,9 +2,9 @@ using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Workspaces;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1013/AC-410: AI-session panes to restore on start; Program.cs uses this live set so a
+// AC-1013/AC-410: AI-session panes to restore on start; the backend bootstrap uses this live set so a
 // not-yet-run worktree isn't misread as orphaned and pruned before it can be reattached.
 public static class SessionRestoreRoster
 {
@@ -17,7 +17,7 @@ public static class SessionRestoreRoster
                 .Select(pane => (workspace, pane)));
 
     // The pane ids `Panes` would enumerate, read fresh from `store` — what
-    // `Program.cs` uses before any view model exists, to hand the startup worktree reconcile and the
+    // `CockpitBackend` uses before any view model exists, to hand the startup worktree reconcile and the
     // session-state compaction the same set.
     public static async Task<IReadOnlySet<string>> PaneIdsAsync(IWorkspaceSettingsStore store, CancellationToken cancellationToken = default)
     {
