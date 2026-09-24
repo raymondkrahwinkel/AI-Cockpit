@@ -48,6 +48,12 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
+        // AC-1400: with no UI part there is no window to open, so the operator is not asked about one either.
+        if (!channel.HasUi)
+        {
+            return _Serialize(new { ok = true, name = title, opened = false });
+        }
+
         // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
         if (!settings.SkipWhiteboardConsent)
         {

@@ -24,8 +24,9 @@ internal sealed class DiagramChannel : IDisposable
     // [paneId]: a session ended, so a window bound to it can say so (SurfaceSessionBinding).
     public const string SessionClosed = "session.closed";
 
-    // Invoked by the UI part once it listens for OpenSurface; before that, an open_* tool has nobody to ask.
+    // The UI part attaches once it listens for OpenSurface and detaches when it stops; an open_* tool asks no one else.
     public const string AttachUi = "ui.attach";
+    public const string DetachUi = "ui.detach";
 
     // "<prefix>Served" answers only when this backend has that registry, so a window can tell "no registry here".
     public const string Served = "Served";
@@ -41,6 +42,7 @@ internal sealed class DiagramChannel : IDisposable
     {
         _host = host;
         _Do(AttachUi, _ => _uiAttached = true);
+        _Do(DetachUi, _ => _uiAttached = false);
 
         EventHandler<string> closed = (_, paneId) => _Publish(SessionClosed, paneId);
         host.Sessions.SessionClosed += closed;
@@ -61,6 +63,8 @@ internal sealed class DiagramChannel : IDisposable
             _Wireframes(wireframes);
         }
     }
+
+    public bool HasUi => _uiAttached;
 
     // Asks the UI part to open a window on a surface an agent created. False when there is no UI part to ask (a
     // backend on its own), so the tool can say nothing opened rather than wait for a window that never comes.

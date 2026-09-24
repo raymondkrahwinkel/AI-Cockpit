@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using NSubstitute;
@@ -12,6 +11,7 @@ using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -24,6 +24,11 @@ public class DiagramChannelTests
 {
     private const string Flow = "flowchart LR\n  A-->B";
 
+    // Wider than the Avalonia classes the ticket names: every type outside the backend part is window-side and is
+    // scanned with its lambdas and state machines, so a helper a window calls cannot reach around the channel either.
+    private static readonly HashSet<Type> BackendPart =
+        [typeof(DiagramPlugin), typeof(DiagramChannel), typeof(DiagramMcpTools), typeof(WhiteboardMcpTools), typeof(WireframeMcpTools)];
+
     private const BindingFlags DeclaredMembers =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -31,7 +36,7 @@ public class DiagramChannelTests
     public void UiClasses_NeverReachTheContainer_AndTheScanNamesOneThatDoes()
     {
         var offenders = typeof(DiagramPlugin).Assembly.GetTypes()
-            .Where(type => typeof(AvaloniaObject).IsAssignableFrom(type))
+            .Where(type => type.DeclaringType is null && !BackendPart.Contains(type))
             .Where(_ReachesTheContainer)
             .Select(type => type.FullName);
 
@@ -126,12 +131,12 @@ public class DiagramChannelTests
     }
 
     [Fact]
-    public async Task OpenDiagram_OnABackendWithNoUiPart_AnswersOkButNotOpened()
+    public async Task OpenDiagram_OnABackendWithNoUiPart_AnswersOkButNotOpened_WithoutAskingTheOperator()
     {
         var host = Substitute.For<ICockpitHost>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var registry = new DiagramAccessRegistry();
-        var settings = new DiagramSettings(new FakePluginStorage()) { SkipDiagramConsent = true };
+        var settings = new DiagramSettings(new FakePluginStorage());
         var tools = new DiagramMcpTools(host, registry, settings, TestChannel.Wire(host, diagrams: registry).Backend);
 
         var json = JsonNode.Parse(await tools.OpenDiagram("pane-a", "Onboarding flow", Flow));
@@ -139,6 +144,7 @@ public class DiagramChannelTests
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.False(json["opened"]!.GetValue<bool>());
+        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
         await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
 
@@ -241,10 +247,10 @@ public class DiagramChannelTests
         }
     }
 
-    // The positive control for the scan: a window that still takes a registry from the container.
+    // The positive control for the scan: a window that still takes a registry from the container, from a lambda.
     private sealed class _ContainerReachingControl(ICockpitHost host) : UserControl
     {
-        public object? Registry => host.Services.GetService(typeof(IDiagramAccessRegistry));
+        public Func<object?> Registry => () => host.Services.GetService(typeof(IDiagramAccessRegistry));
     }
 
     private sealed class _Sessions : ICockpitSessionObserver

@@ -254,15 +254,28 @@ internal sealed class WireframeChannelClient : SurfaceChannelClient
 // Attaching tells the backend a UI part is listening, so without one the tool answers opened: false instead.
 internal sealed class SurfaceWindowOpener : IDisposable
 {
+    private readonly IPluginUiChannel _channel;
     private readonly IDisposable _subscription;
 
     public SurfaceWindowOpener(ICockpitHost host, IPluginUiChannel channel)
     {
+        _channel = channel;
         _subscription = channel.Subscribe(OpenSurface, channelEvent => _Open(host, channel, channelEvent.Payload));
         channel.InvokeAsync(AttachUi, default).GetAwaiter().GetResult();
     }
 
-    public void Dispose() => _subscription.Dispose();
+    public void Dispose()
+    {
+        _subscription.Dispose();
+        try
+        {
+            _channel.InvokeAsync(DetachUi, default).GetAwaiter().GetResult();
+        }
+        catch (PluginChannelUnknownActionException)
+        {
+            // The backend part is already gone, and with it the attachment this would have withdrawn.
+        }
+    }
 
     // Posted: the event arrives on the tool's thread. The window couples to the calling session as it always did.
     private static void _Open(ICockpitHost host, IPluginUiChannel channel, JsonElement payload)
@@ -276,7 +289,8 @@ internal sealed class SurfaceWindowOpener : IDisposable
         {
             WhiteboardPrefix => WhiteboardWindow.OpenAsync(host, channel, new WhiteboardDocument(surfaceId, title), caller),
             WireframePrefix => WireframeWindow.OpenAsync(host, channel, new WireframeDocument(surfaceId, title, source), caller),
-            _ => DiagramWindow.OpenAsync(host, channel, new DiagramDocument(surfaceId, title, source), caller),
+            DiagramPrefix => DiagramWindow.OpenAsync(host, channel, new DiagramDocument(surfaceId, title, source), caller),
+            _ => Task.CompletedTask,
         });
     }
 }
