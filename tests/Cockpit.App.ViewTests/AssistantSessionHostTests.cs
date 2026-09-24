@@ -166,6 +166,9 @@ public class AssistantSessionHostTests
             ReadAloudLanguage = "en",
             TtsVoiceSid = -1,
             ReadAloudAsOneUtterance = false,
+
+            // AC-1379: the voice the cockpit hands every assistant pane it mints (`CockpitViewModel.CreateAssistantSession`).
+            AssistantVoice = () => (cockpit.SelectedTtsVoice.Sid, cockpit.SelectedReadAloudLanguage.Code),
         });
         Dispatcher.UIThread.Invoke(() => host.Session = session);
 
