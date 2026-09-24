@@ -306,13 +306,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
             || viewModel._carriedDisabledServerNames.Count > 0
             || offered.Any(server => !server.ProjectLinked && !overlay.IsSelectedByDefault(server));
         viewModel._SyncMcpTickEditability();
+        viewModel._openedEnabledMcpServerNames = viewModel._ComputeEnabledMcpServerNames();
 
         // Opening the editor without reconciling the two would let SaveAsync send the stale local values back to Depot
         // with a checksum that legitimately matches its current state, silently overwriting whatever a colleague
         // changed before this editor ever opened — not a race, a guaranteed clobber on every edit to a project
         if (sharedWriteBack is not null)
         {
-            viewModel._ApplyRemoteValues(sharedWriteBack.Baseline);
+            // AC-1404: all but the MCP ticks — those stay the local overlay, the set a session is started with;
+            // _BuildEditAsync keeps an untouched selection from clobbering the shared one instead.
+            var baseline = sharedWriteBack.Baseline;
+            viewModel._ApplyValues(baseline.Name, baseline.Description, baseline.BehaviorPrompt, baseline.IsolateInWorktreeByDefault);
         }
 
         return viewModel;
@@ -331,6 +335,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     // The names this project switched off that the checklist has no row for — kept only so saving still counts the project as one that narrowed its servers.
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
+
+    // AC-1404: the local pre-selection this editor opened with, so a Save that left the ticks alone sends the shared
+    // definition's own list back instead of publishing this machine's choice to it.
+    private IReadOnlyList<string>? _openedEnabledMcpServerNames;
 
     // The links this project holds under keys no installed plugin registered, carried through so saving cannot drop them.
     private IReadOnlyDictionary<string, string> _carriedPluginFields = ReadOnlyDictionary<string, string>.Empty;
@@ -729,7 +737,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         SaveError = null;
 
         // Compare edits with the opening baseline, never a merged retry, so untouched fields remain distinguishable.
-        var operatorEdit = await _BuildEditAsync().ConfigureAwait(true);
+        var operatorEdit = await _BuildEditAsync(writeBack.Baseline).ConfigureAwait(true);
 
         // Skip shared writes entirely when no shared field changed; a harmless round trip still creates needless
         // conflict risk.
@@ -843,14 +851,20 @@ public partial class ProjectDialogViewModel : ViewModelBase
         return null;
     }
 
-    // What the operator typed for the six write-back-eligible fields (AC-247/AC-763).
-    private async Task<SharedProjectDefinitionEdit> _BuildEditAsync() => new(
-        Name.Trim(),
-        _NullIfBlank(Description),
-        _NullIfBlank(BehaviorPrompt),
-        IsolateInWorktreeByDefault,
-        _ComputeEnabledMcpServerNames(),
-        await _BuildLogoEditAsync().ConfigureAwait(true));
+    // What the operator typed for the six write-back-eligible fields (AC-247/AC-763). The MCP ticks show the local
+    // overlay rather than `baseline` (AC-1404), so only a selection the operator changed here counts as an edit.
+    private async Task<SharedProjectDefinitionEdit> _BuildEditAsync(SharedProjectBinding baseline)
+    {
+        var enabledMcpServerNames = _ComputeEnabledMcpServerNames();
+
+        return new(
+            Name.Trim(),
+            _NullIfBlank(Description),
+            _NullIfBlank(BehaviorPrompt),
+            IsolateInWorktreeByDefault,
+            _SameNames(enabledMcpServerNames, _openedEnabledMcpServerNames) ? baseline.EnabledMcpServerNames : enabledMcpServerNames,
+            await _BuildLogoEditAsync().ConfigureAwait(true));
+    }
 
     // Null (untouched) unless LogoSource moved from what this dialog opened with (AC-763) — LogoSource is always a
     // local file path here (PickLogo's own picker, or the already-stored copy's path; never a URL an operator
@@ -893,7 +907,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // fields (Profile, Folder) are untouched; they were never part of the write-back to begin with.
     private void _ApplyRemoteValues(SharedProjectBinding latest)
     {
-        _ApplyValues(latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault, latest.EnabledMcpServerNames);
+        _ApplyValues(latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault);
+        _ApplyMcpServerNames(latest.EnabledMcpServerNames);
 
         // AC-763: `latest` carries no fresh logo bytes (see _MergeOntoLatest's own remarks) to show instead, so
         // the closest this button can do is discard whatever the operator picked here and fall back to what this
@@ -903,23 +918,27 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     // SaveAsync's own success path (both the plain write and a resolved merge retry): what actually reached the
     // source is what belongs on screen and in ToProject's own output — see SaveAsync's remarks on why `pendingEdit`,
-    // not `operatorEdit`, is what this is called with on a merge retry.
+    // not `operatorEdit`, is what this is called with on a merge retry. MCP ticks stay as they are (AC-1404).
     private void _ApplyEditValues(SharedProjectDefinitionEdit edit) => _ApplyValues(
-        edit.Name, edit.Description, edit.BehaviorPrompt, edit.IsolateInWorktreeByDefault, edit.EnabledMcpServerNames);
+        edit.Name, edit.Description, edit.BehaviorPrompt, edit.IsolateInWorktreeByDefault);
 
-    private void _ApplyValues(string name, string? description, string? behaviorPrompt, bool isolate, IReadOnlyList<string>? enabledMcpServerNames)
+    private void _ApplyValues(string name, string? description, string? behaviorPrompt, bool isolate)
     {
         Name = name;
         Description = description ?? string.Empty;
         BehaviorPrompt = behaviorPrompt ?? string.Empty;
         IsolateInWorktreeByDefault = isolate;
+    }
 
+    private void _ApplyMcpServerNames(IReadOnlyList<string>? enabledMcpServerNames)
+    {
         // The gate moves with the names it stands for, or "take theirs" would leave a remote list showing as no
         // pre-selection at all — and the next save would then write that list away.
         RestrictMcpServers = enabledMcpServerNames is not null;
 
+        // AC-1404: a project-linked row is never in a shared list — its "off" is local (AC-766) and stays put.
         var enabled = enabledMcpServerNames?.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var server in McpServers)
+        foreach (var server in McpServers.Where(server => !server.IsProjectLinked))
         {
             server.IsEnabledForSession = enabled is null || enabled.Contains(server.Name);
         }

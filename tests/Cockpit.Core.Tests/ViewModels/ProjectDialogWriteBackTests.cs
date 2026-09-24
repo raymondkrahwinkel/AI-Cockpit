@@ -2,6 +2,7 @@ using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -23,7 +24,28 @@ public class ProjectDialogWriteBackTests
         return store;
     }
 
-    private static IMcpServerCatalog Catalog() => Substitute.For<IMcpServerCatalog>();
+    private static IMcpServerCatalog Catalog(params McpServerConfig[] servers)
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<McpServerConfig>>(servers));
+        return catalog;
+    }
+
+    // AC-1404: two ordinary servers and two a project's Depot memory brings in — one of each the local overlay
+    // switched off, the other left on, so every assertion below has its own counter-proof beside it.
+    private static readonly McpServerConfig[] _Servers =
+    [
+        new() { Name = "github", Command = "npx" },
+        new() { Name = "youtrack", Command = "npx" },
+        new() { Name = "Depot: excluded", Command = "npx", ProjectLinked = true },
+        new() { Name = "Depot: kept", Command = "npx", ProjectLinked = true },
+    ];
+
+    private static Project ProjectWithLocalMcpOverlay() => Project.Create("Cockpit") with
+    {
+        McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["github"], DisabledServerNames = ["Depot: excluded"] },
+    };
 
     private static SharedProjectBinding Baseline(
         string name = "Cockpit", string? description = null, string? behaviorPrompt = null,
@@ -79,9 +101,9 @@ public class ProjectDialogWriteBackTests
     }
 
     private static async Task<ProjectDialogViewModel> ViewModelAsync(
-        Project project, ISharedProjectSource source, SharedProjectBinding baseline) =>
+        Project project, ISharedProjectSource source, SharedProjectBinding baseline, IMcpServerCatalog? catalog = null) =>
         await ProjectDialogViewModel.CreateAsync(
-            project, ProfileStore("personal"), Catalog(),
+            project, ProfileStore("personal"), catalog ?? Catalog(),
             fieldOwnership: EditableName(),
             sharedWriteBack: new ProjectSharedWriteBackContext(source, "depot:cockpit", baseline));
 
@@ -329,5 +351,50 @@ public class ProjectDialogWriteBackTests
         {
             File.Delete(picked);
         }
+    }
+
+    [Fact]
+    public async Task CreateAsync_ASharedDefinitionWithoutMcpChoice_ShowsTheLocalOverlayASessionStartsWith()
+    {
+        var project = ProjectWithLocalMcpOverlay();
+        var source = new _FakeSource(SharedProjectWriteBackResult.Failed("should never be called"));
+
+        var viewModel = await ViewModelAsync(project, source, Baseline(enabledMcp: null), Catalog(_Servers));
+
+        Assert.True(viewModel.RestrictMcpServers);
+        var ticked = viewModel.McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name);
+        Assert.Equivalent(new[] { "github", "Depot: kept" }, ticked);
+
+        // What a new session on this project starts with — the same predicate NewSessionDialogViewModel and
+        // ProjectQuickStart tick their checklist by, read off the stored overlay rather than the dialog.
+        var sessionGets = _Servers.Where(server => project.McpOverlay.IsSelectedByDefault(server)).Select(server => server.Name);
+        Assert.Equivalent(sessionGets, ticked);
+
+        Project? closed = null;
+        viewModel.CloseRequested += result => closed = result;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Empty(source.Calls); // an untouched MCP selection is no edit to the shared definition
+        Assert.Equal(project.McpOverlay.EnabledServerNames, closed!.McpOverlay.EnabledServerNames);
+        Assert.Equal(project.McpOverlay.DisabledServerNames, closed.McpOverlay.DisabledServerNames);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AnotherFieldEdited_SendsTheSharedMcpChoiceBackAndKeepsTheLocalOverlay()
+    {
+        var project = ProjectWithLocalMcpOverlay();
+        var source = new _FakeSource(SharedProjectWriteBackResult.Success("chk-after"));
+        var viewModel = await ViewModelAsync(project, source, Baseline(enabledMcp: null), Catalog(_Servers));
+        viewModel.Name = "Edited name";
+
+        Project? closed = null;
+        viewModel.CloseRequested += result => closed = result;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var call = Assert.Single(source.Calls);
+        Assert.Equal("Edited name", call.Edit.Name);
+        Assert.Null(call.Edit.EnabledMcpServerNames); // the shared definition's own "no choice", not this machine's list
+        Assert.Equal(project.McpOverlay.EnabledServerNames, closed!.McpOverlay.EnabledServerNames);
+        Assert.Equal(project.McpOverlay.DisabledServerNames, closed.McpOverlay.DisabledServerNames);
     }
 }

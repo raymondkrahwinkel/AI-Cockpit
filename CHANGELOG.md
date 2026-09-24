@@ -685,6 +685,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the project editor's MCP servers list for a project shared through Depot now shows the servers this
+  project's sessions actually start with. It used to show every server ticked, with "Pre-select" off, whenever the
+  shared definition made no MCP choice, and a Save then quietly threw the project's own selection away.
 - fixed: a session the assistant starts on a desk that is closed at that same moment is now refused, instead of
   starting anyway and running on a desk no tab shows any more.
 - fixed: the Slack plugin no longer downloads a file sent by someone who is not allowed to talk to the assistant;
