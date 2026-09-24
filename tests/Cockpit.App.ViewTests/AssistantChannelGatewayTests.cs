@@ -2,6 +2,7 @@ using SkiaSharp;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -232,6 +233,27 @@ public class AssistantChannelGatewayTests
         Assert.True(rows[0].IsUpdate);
     });
 
+    // AC-1379: the rows now come from the host's upsert stream rather than the pane's own view models, so the channel
+    // must see the rows the pane shows, in its order, a reply split at a blank line included. Red when one is missing or doubled.
+    [Fact]
+    public void TheChannel_SeesTheRowsThePaneShows_InItsOrder_ASplitReplyIncluded() => HeadlessAvalonia.Run(() =>
+    {
+        var (gateway, _, session, rows) = _Gateway();
+
+        _Apply(
+            session,
+            new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "First paragraph.\n\n" },
+            new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Second paragraph, " },
+            new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "still growing." },
+            new AssistantTextCompleted { SessionId = "S1", Text = "First paragraph.\n\nSecond paragraph, still growing." });
+        ((IAssistantSession)session).AddDivider("Context was full");
+
+        var relayed = rows.GroupBy(row => row.Id).Select(group => (group.First().Kind.ToString(), group.Last().Text));
+        Assert.Equal(session.Transcript.Select(entry => (entry.Kind.ToString(), entry.Text)), relayed);
+        Assert.Equal(2, session.Transcript.Count(entry => entry.Kind == TranscriptEntryKind.AssistantText));
+        Assert.Equal(rows.Select(row => row.Id).Distinct().Count(), rows.Count(row => !row.IsUpdate));
+    });
+
     [Fact]
     public void ADisposedChannel_HearsNothingMore() => HeadlessAvalonia.Run(() =>
     {
@@ -316,6 +338,8 @@ public class AssistantChannelGatewayTests
         Guid.NewGuid(),
         new ConsentRequest("The assistant wants to run a command", "rm -rf /tmp/build", new ConsentSource(paneId, pluginId, "Assistant"), "bash", ConsentRisk.Dangerous),
         CanRemember: false);
+
+    private static void _Apply(SessionViewModel session, params SessionEvent[] events) => Array.ForEach(events, session.Apply);
 
     private static SessionViewModel _Session()
     {
