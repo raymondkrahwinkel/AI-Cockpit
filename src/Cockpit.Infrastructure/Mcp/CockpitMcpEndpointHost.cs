@@ -331,12 +331,12 @@ internal sealed class CockpitMcpEndpointHost
         var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && (byConnectKey || await NodeScopeGrantedAsync().ConfigureAwait(false));
         var allowed = McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
 
-        // AC-1321: an authorized controller call is what "holding the line" means — noted here, at the one door
-        // every such call passes, and only once it is through it: a pairing with no scope controls nothing.
-        if (allowed && nodeScopeGranted && _services.GetService<NodeControllerPresence>() is { } presence)
+        // A caller holds the line only after authorization and a granted node scope. Pairing holds by default;
+        // a connect key holds only when it requests ownership of this node's assistant.
+        if (allowed && nodeScopeGranted && McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true } && _services.GetService<NodeControllerPresence>() is { } presence)
         {
-            // ponytail: every key caller and the pairing are one controller, so two connected at once share one
-            // inbox — who reads first gets the message. A lease per credential once a second controller exists (B3).
+            // ponytail: holding keys and the pairing share one controller and inbox. Use a lease per credential
+            // if multiple controllers need separate ownership.
             presence.Seen(byConnectKey && McpRequestContext.CurrentNodeCaller is { } caller
                 ? caller.Label
                 : _services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");

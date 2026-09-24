@@ -515,11 +515,12 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
-        [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null)
+        [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null,
+        [Description("Turns off this node's assistant while you call. Defaults to false.")] bool holdsAssistant = false)
     {
         try
         {
@@ -543,7 +544,7 @@ internal sealed class NodeSessionMcpTools(
                 return _Serialize(new { ok = false, error = "label is required, so the operator can tell this key from the others." });
             }
 
-            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller).ConfigureAwait(false);
+            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller, holdsAssistant).ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
@@ -590,7 +591,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "list_connect_keys", ReadOnly = true)]
-    [Description("Lists this node's connect keys — prefix, label, capability, when each was created, expires, was revoked and was last used — never the keys themselves. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
+    [Description("Lists this node's connect keys — prefix, label, capability, holdsAssistant, when each was created, expires, was revoked and was last used — never the keys themselves. holdsAssistant turns off this node's assistant while you call. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
     public async Task<string> ListConnectKeysAsync()
     {
         try
@@ -614,6 +615,7 @@ internal sealed class NodeSessionMcpTools(
                     prefix = entry.Key.Prefix,
                     label = entry.Key.Label,
                     capability = entry.Key.Capability.ToString().ToLowerInvariant(),
+                    holdsAssistant = entry.Key.HoldsAssistant,
                     isBootstrap = entry.Key.IsBootstrap,
                     createdAt = entry.Key.CreatedAt,
                     expiresAt = entry.Key.ExpiresAt,

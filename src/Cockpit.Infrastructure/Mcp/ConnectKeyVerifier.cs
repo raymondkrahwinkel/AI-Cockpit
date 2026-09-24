@@ -125,7 +125,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
             if (found is { } key && key.IsUsableAt(now))
             {
-                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix));
+                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant);
                 _lastUsed[key.Prefix] = now;
             }
             else if (state is not null && state.LockedUntil > now)
@@ -175,7 +175,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     }
 
     // The raw key is in the return value and nowhere else — not in the log, the audit or cockpit.json.
-    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, CancellationToken cancellationToken = default)
+    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -200,7 +200,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                 }
                 while (_AllKeys().Any(existing => string.Equals(existing.Prefix, _PrefixOf(secret), StringComparison.Ordinal)));
 
-                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, now.AddDays(days));
+                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, now.AddDays(days), HoldsAssistant: holdsAssistant);
                 next = [.. _persisted, key];
             }
 
@@ -477,12 +477,12 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
 // AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
 // Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
-internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked)
+internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false)
 {
     public bool ByConnectKey => KeyPrefix is not null;
 
     public string Credential => ByConnectKey ? "connect key" : "pairing";
 
     public static NodeCaller ForPairing(string remoteAddress) =>
-        new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None);
+        new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None, HoldsAssistant: true);
 }
