@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
@@ -69,23 +68,6 @@ public class ProjectRootPathTests
 
     private static bool TryCreateDirectoryLink(string link, string target)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            using var process = Process.Start(new ProcessStartInfo("cmd.exe")
-            {
-                Arguments = $"/c mklink /J \"{link}\" \"{target}\"",
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            });
-            process?.WaitForExit();
-            if (process?.ExitCode == 0)
-            {
-                return true;
-            }
-        }
-
         try
         {
             Directory.CreateSymbolicLink(link, target);
@@ -99,9 +81,12 @@ public class ProjectRootPathTests
 
     private static void RemoveLinkAndSandbox(string link, string sandbox)
     {
-        if (Directory.Exists(link))
+        try
         {
             Directory.Delete(link);
+        }
+        catch (DirectoryNotFoundException)
+        {
         }
 
         Directory.Delete(sandbox, recursive: true);

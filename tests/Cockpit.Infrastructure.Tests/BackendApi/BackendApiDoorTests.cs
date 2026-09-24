@@ -11,9 +11,11 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Tests.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
@@ -157,6 +159,27 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), after);
     }
 
+    [Theory]
+    [InlineData("file.txt", "project-a", HttpStatusCode.OK, "text/plain; charset=utf-8", "hello")]
+    [InlineData("file.txt", "project-b", HttpStatusCode.NotFound, null, "")]
+    [InlineData("../../x", "project-a", HttpStatusCode.BadRequest, "application/json", "The path leaves the project root.")]
+    [InlineData("folder", "project-a", HttpStatusCode.BadRequest, "application/json", "The path names a directory.")]
+    [InlineData("large.txt", "project-a", HttpStatusCode.RequestEntityTooLarge, "application/json", "The file exceeds 1 MiB.")]
+    [InlineData("binary.bin", "project-a", HttpStatusCode.OK, "application/octet-stream", "")]
+    public async Task ProjectFile_IsReadOnlyInsideTheKeyScope(string path, string allowedProject, HttpStatusCode status, string? contentType, string bodyPart)
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var scope = new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = [allowedProject] };
+        var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator, scope: scope);
+
+        var answer = await door.GetFileAsync($"/api/v1/projects/project-a/file?path={Uri.EscapeDataString(path)}", key.Secret);
+
+        Assert.Equal(status, answer.Status);
+        Assert.Equal(contentType, answer.ContentType);
+        Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
+    }
+
     private sealed record _Answer(HttpStatusCode Status, string Body);
 
     // One node in a temp directory: cockpit.json, the audit trail and the certificate, and once started the real
@@ -187,6 +210,8 @@ public sealed class BackendApiDoorTests
 
         public string ConfigPath => Path.Combine(Directory, "state", "cockpit.json");
 
+        public string ProjectDirectory => Path.Combine(Directory, "project");
+
         public string AuditPath => Path.Combine(Directory, "node-access-audit.jsonl");
 
         public McpAuthKey AppKey { get; } = new();
@@ -201,6 +226,11 @@ public sealed class BackendApiDoorTests
 
         public async Task<ConnectKeyVerifier> StartAsync()
         {
+            System.IO.Directory.CreateDirectory(ProjectDirectory);
+            System.IO.Directory.CreateDirectory(Path.Combine(ProjectDirectory, "folder"));
+            await File.WriteAllTextAsync(Path.Combine(ProjectDirectory, "file.txt"), "hello");
+            await File.WriteAllBytesAsync(Path.Combine(ProjectDirectory, "large.txt"), new byte[1024 * 1024 + 1]);
+            await File.WriteAllBytesAsync(Path.Combine(ProjectDirectory, "binary.bin"), [0, 255]);
             await new NodeEndpointSettingsStore(ConfigPath).SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = PairingSecret, Port = 0 });
             var environment = new Dictionary<string, string> { [ConnectKeyVerifier.BootstrapVariable] = Bootstrap };
             var verifier = new ConnectKeyVerifier(ConfigPath, name => environment.GetValueOrDefault(name), name => environment.Remove(name), TimeProvider.System, _audit, NullLogger.Instance);
@@ -217,6 +247,12 @@ public sealed class BackendApiDoorTests
             services.AddSingleton<IAssistantReadGateway>(new NodeSessionMcpToolsTests.RecordingReadGateway());
             services.AddSingleton<IAssistantAgentGateway>(new NodeSessionMcpToolsTests.RecordingAgentGateway());
             services.AddSingleton(broker);
+            var editor = Substitute.For<IProjectEditor>();
+            editor.FindProjectAsync("project-a").Returns(new Project("project-a", "Project A")
+            {
+                SourceDirectories = [new ProjectRepository(ProjectDirectory)],
+            });
+            services.AddSingleton(editor);
             services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
@@ -247,6 +283,14 @@ public sealed class BackendApiDoorTests
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(HttpStatusCode Status, string? ContentType, string Body)> GetFileAsync(string path, string bearer)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, NodeBase + path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            using var response = await _http.SendAsync(request);
+            return (response.StatusCode, response.Content.Headers.ContentType?.ToString(), await response.Content.ReadAsStringAsync());
         }
 
         // An MCP initialize over the node listener: an authorized call on the MCP door, as a controller's first one.
