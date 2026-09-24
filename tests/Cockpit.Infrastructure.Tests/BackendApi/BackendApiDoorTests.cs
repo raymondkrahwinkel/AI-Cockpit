@@ -100,7 +100,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal(expected, answer.Status);
     }
 
-    // Scope 5 and 6: the list carries list_connect_keys' fields and never a key, and reading it is audited.
+    // Scope items 5 and 6: the list carries list_connect_keys' fields and never a key, and reading it is audited.
     [Fact]
     public async Task Keys_ListWhatListConnectKeysLists_AndAreAudited()
     {

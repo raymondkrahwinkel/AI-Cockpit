@@ -72,14 +72,14 @@ internal static class BackendApiRoutes
         Results.Text(JsonSerializer.Serialize(new { error = code, error_description = description }), "application/json", statusCode: statusCode);
 
     // Admin implies operate, as `_RefuseIfNotAdmin` has it for the node tools. A route that declares nothing is
-    // admin's: forgetting the metadata closes a route rather than opening it.
+    // admin's: forgetting the metadata closes it. Named per capability, so a new lower one opens nothing.
     private static async ValueTask<object?> _DoorAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var http = context.HttpContext;
         var required = http.GetEndpoint()?.Metadata.GetMetadata<BackendApiCapability>()?.Required ?? ConnectKeyCapability.Admin;
         var allowed = http.Request.IsHttps
             && McpRequestContext.CurrentNodeCaller is { ByConnectKey: true } caller
-            && (caller.Capability == ConnectKeyCapability.Admin || required == ConnectKeyCapability.Operate);
+            && (caller.Capability == ConnectKeyCapability.Admin || (required == ConnectKeyCapability.Operate && caller.Capability == ConnectKeyCapability.Operate));
 
         return allowed
             ? await next(context).ConfigureAwait(false)
