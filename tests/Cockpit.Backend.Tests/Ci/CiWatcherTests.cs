@@ -1,13 +1,14 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Notifications;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Ci;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Ci;
+namespace Cockpit.Backend.Tests.Ci;
 
 // AC-634. Every test here drives `RunOnceAsync` with a stubbed probe: no gh, no network, and — the point of the
 // ticket — no model anywhere in the loop that decides whether to speak up.

@@ -797,14 +797,14 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // AC-894: every local project genuinely bound to a Depot source right now, and the id `DepotSyncWatcher` should
     // ask that source about — the same "genuinely bound" test `_ResolveSharedSource` already applies for the editor,
     // reused here rather than a second copy of it.
-    internal IReadOnlyList<Services.DepotBoundProject> DepotBoundProjects()
+    internal IReadOnlyList<DepotBoundProject> DepotBoundProjects()
     {
         if (_sharedSources is null)
         {
             return [];
         }
 
-        var bound = new List<Services.DepotBoundProject>();
+        var bound = new List<DepotBoundProject>();
         foreach (var project in _settings.Projects)
         {
             var sharedId = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
@@ -815,7 +815,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
             if (_ResolveSharedSource(project) is { } source)
             {
-                bound.Add(new Services.DepotBoundProject(project.Id, source, sharedId));
+                bound.Add(new DepotBoundProject(project.Id, source, sharedId));
             }
         }
 

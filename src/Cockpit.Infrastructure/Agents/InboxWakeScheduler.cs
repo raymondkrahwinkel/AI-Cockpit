@@ -1,39 +1,51 @@
-using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Agents;
 
 // AC-656: gives a pane a turn as soon as mail is waiting in its own inbox, rather than leaving it for that
 // pane's next turn or tool call (AC-394/AC-527), or requiring opt-in like AC-395's urgent notify does.
 // Every live pane is checked every tick, no `watch_session` arming step needed, same shape as CiWatcher/SessionWatcher.
-public sealed class InboxWakeScheduler(
-    IAgentMessageInbox inbox,
-    IWorkspaceAgentGateway gateway,
-    ILogger<InboxWakeScheduler>? logger = null) : ISingletonService, IDisposable
+public sealed class InboxWakeScheduler : ISingletonService, IDisposable
 {
     // Short enough that "you have mail" beats waiting for a passive next-turn or tool-call pickup, cheap enough to
-    // afford at that rate: a tick reads collections the UI already holds and calls the gateway only for a pane that
-    // actually has something waiting.
+    // afford at that rate: a tick reads collections the caller already holds and calls the gateway only for a pane
+    // that actually has something waiting.
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
-    private readonly ILogger<InboxWakeScheduler> _logger = logger ?? NullLogger<InboxWakeScheduler>.Instance;
+    private readonly IAgentMessageInbox _inbox;
+    private readonly IWorkspaceAgentGateway _gateway;
+    private readonly ILogger<InboxWakeScheduler> _logger;
+    private readonly TimeProvider _time;
 
     // The oldest waiting message id last attempted per pane. The wake send is fire-and-forget (see
     // WorkspaceAgentGateway._SendWakeAsync), so without this a slow send could be re-attempted before the
     // first landed. Cleared once PeekOldest no longer returns that message.
     private readonly Dictionary<string, string> _attempted = new(StringComparer.Ordinal);
 
-    private DispatcherTimer? _timer;
+    private ITimer? _timer;
     private bool _disposed;
 
-    // Every pane worth checking on this tick. Replaced by the tests, which have no cockpit and no UI thread.
+    public InboxWakeScheduler(IAgentMessageInbox inbox, IWorkspaceAgentGateway gateway, ILogger<InboxWakeScheduler>? logger = null)
+        : this(inbox, gateway, logger, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so a tick is provable without waiting thirty seconds for it.
+    internal InboxWakeScheduler(IAgentMessageInbox inbox, IWorkspaceAgentGateway gateway, ILogger<InboxWakeScheduler>? logger, TimeProvider time)
+    {
+        _inbox = inbox;
+        _gateway = gateway;
+        _logger = logger ?? NullLogger<InboxWakeScheduler>.Instance;
+        _time = time;
+    }
+
+    // Every pane worth checking on this tick. Replaced by the tests, which have no cockpit.
     public Func<IReadOnlyList<string>>? Panes { get; set; }
 
-    // Starts watching the clock. Idempotent, and built on the UI thread — that is where the session list is read and
-    // where a DispatcherTimer has to be created to ever tick at all (AC-368).
+    // Starts watching the clock. Idempotent.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -41,9 +53,7 @@ public sealed class InboxWakeScheduler(
             return;
         }
 
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += _OnTick;
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
 
         _ = RunOnceAsync();
     }
@@ -84,7 +94,7 @@ public sealed class InboxWakeScheduler(
 
     private async Task _LookAsync(string paneId)
     {
-        if (inbox.PeekOldest(paneId) is not { } message)
+        if (_inbox.PeekOldest(paneId) is not { } message)
         {
             _attempted.Remove(paneId);
             return;
@@ -98,7 +108,7 @@ public sealed class InboxWakeScheduler(
         AgentWakeOutcome outcome;
         try
         {
-            outcome = await gateway.TryWakeForWaitingMailAsync(message.FromPaneId, paneId, message.Kind).ConfigureAwait(true);
+            outcome = await _gateway.TryWakeForWaitingMailAsync(message.FromPaneId, paneId, message.Kind).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -118,7 +128,7 @@ public sealed class InboxWakeScheduler(
         _logger.LogInformation("Gave {Pane} a turn for mail waiting from {From}.", paneId, message.FromPaneId);
     }
 
-    private async void _OnTick(object? sender, EventArgs e)
+    private async void _OnTick()
     {
         try
         {
@@ -137,14 +147,7 @@ public sealed class InboxWakeScheduler(
         _disposed = true;
         Panes = null;
         _attempted.Clear();
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

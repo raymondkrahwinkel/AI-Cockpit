@@ -12,6 +12,7 @@ using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
 
@@ -915,9 +916,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     private ScheduledResumeCoordinator? _resumes;
 
-    // Straight through, on whichever thread raised it. The coordinator raises on its caller's thread and every
-    // caller in the app is the UI thread — see the note on ScheduledResumeCoordinator, which is why that file
-    // carries no ConfigureAwait(false).
+    // AC-1380: a due resume can now reach this off the UI thread (the coordinator's tick moved to a threadpool
+    // timer), but left unmarshalled: `PendingResumeLabel` is a plain string, and marshalling needs a running
+    // dispatcher a panel built directly in a test has none of.
     private void _OnPendingResumesChanged(object? sender, EventArgs e) => _SyncPendingResumeLabel();
 
     // Reads the pending line off the scheduler — the one place that decides what it says, so a resume that fired,

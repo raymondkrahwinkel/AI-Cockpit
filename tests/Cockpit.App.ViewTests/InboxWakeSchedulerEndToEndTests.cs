@@ -1,6 +1,5 @@
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure.Agents;

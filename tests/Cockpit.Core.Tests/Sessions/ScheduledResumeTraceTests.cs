@@ -1,7 +1,8 @@
-using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -19,7 +20,7 @@ public class ScheduledResumeTraceTests
         new(paneId, dueAt, prompt, Reason: "Week is 95% used");
 
     private static (ScheduledResumeCoordinator Coordinator, CapturingLogger<ScheduledResumeCoordinator> Logger)
-        Build(InMemoryScheduledResumeStore store, Func<string, SessionPanelViewModel?>? resolve = null)
+        Build(InMemoryScheduledResumeStore store, Func<string, ISessionHandle?>? resolve = null)
     {
         var logger = new CapturingLogger<ScheduledResumeCoordinator>();
         var coordinator = new ScheduledResumeCoordinator(store, toast: null, logger) { ResolveSession = resolve };
@@ -40,8 +41,10 @@ public class ScheduledResumeTraceTests
     [Fact]
     public async Task SendingOne_SaysSo()
     {
-        var session = new TestSessionPanel();
-        var (coordinator, logger) = Build(new InMemoryScheduledResumeStore(), _ => session);
+        var handle = Substitute.For<ISessionHandle>();
+        handle.CanTakeAPrompt.Returns(true);
+        handle.SendPromptAsync(Arg.Any<string>()).Returns(true);
+        var (coordinator, logger) = Build(new InMemoryScheduledResumeStore(), _ => handle);
 
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1)));
         await coordinator.RunDueAsync(DateTimeOffset.Now);

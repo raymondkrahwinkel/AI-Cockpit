@@ -1,5 +1,3 @@
-using Avalonia.Threading;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
@@ -8,7 +6,7 @@ using Cockpit.Core.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Sessions;
 
 // AC-234: keeps the pending resumes and sends each one when its moment arrives (a prompt a session picks up
 // after an allowance rolls over, or whenever the operator said to). One prompt per schedule, deliberately — no
@@ -25,13 +23,15 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
     private readonly IToastService? _toast;
     private readonly ILogger<ScheduledResumeCoordinator> _logger;
     private readonly TimeSpan _tickInterval;
+    private readonly TimeProvider _time;
     private readonly List<ScheduledResume> _pending = [];
-    private DispatcherTimer? _timer;
+    private ITimer? _timer;
     private bool _started;
     private bool _disposed;
 
-    // Resolves a pane id to the live session panel, or null when that pane is gone. Set by the cockpit, which owns the session list.
-    public Func<string, SessionPanelViewModel?>? ResolveSession { get; set; }
+    // Resolves a pane id to the live session handle, or null when that pane is gone. Set by the cockpit, which owns
+    // the session registry.
+    public Func<string, ISessionHandle?>? ResolveSession { get; set; }
 
     // AC-290: tries to reopen a pane that is gone, or merely restored and not yet started, and send the prompt
     // into it; returns whether that landed. Set by the cockpit, which alone knows how to reopen a session's
@@ -39,8 +39,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
     public Func<string, string, Task<bool>>? ReopenAndSend { get; set; }
 
     // AC-368: raised when the set of pending resumes changes, so a session can show or drop its "resuming at …"
-    // line. Always raised on the UI thread (schedule/cancel from commands, firing from the timer, load from
-    // startup), which is why this file never uses `ConfigureAwait(false)` — a bound-state handler must stay on it.
+    // line.
     public event EventHandler? PendingChanged;
 
     // `tickInterval`:
@@ -51,11 +50,23 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         IToastService? toast = null,
         ILogger<ScheduledResumeCoordinator>? logger = null,
         TimeSpan? tickInterval = null)
+        : this(store, toast, logger, tickInterval, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so a due resume is provable without waiting for a real timer.
+    internal ScheduledResumeCoordinator(
+        IScheduledResumeStore store,
+        IToastService? toast,
+        ILogger<ScheduledResumeCoordinator>? logger,
+        TimeSpan? tickInterval,
+        TimeProvider time)
     {
         _store = store;
         _toast = toast;
         _logger = logger ?? NullLogger<ScheduledResumeCoordinator>.Instance;
         _tickInterval = tickInterval ?? DefaultTickInterval;
+        _time = time;
     }
 
     // Every resume still waiting, soonest first.
@@ -66,8 +77,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         _pending.FirstOrDefault(resume => resume.PaneId == paneId);
 
     // Loads what was scheduled before and reports whatever lapsed while the cockpit was closed, then starts
-    // watching the clock. Idempotent: a second call is ignored rather than starting a second timer. Await it —
-    // never `.GetAwaiter().GetResult()` from the UI thread, since it posts the timer's construction to the dispatcher.
+    // watching the clock. Idempotent: a second call is ignored rather than starting a second timer.
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         // Claimed before the first await, not after: the old guard read a field that is only set once the load is
@@ -93,22 +103,14 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
             throw;
         }
 
-        // AC-368: built on the UI thread deliberately — Avalonia binds a DispatcherTimer to the thread that
-        // creates it, and the load above's continuation can otherwise land on a thread pool thread with no message
-        // loop, where Start() throws nothing and Tick never fires. AC-577: no CheckAccess() fast path either, since that would reintroduce the same bug for whichever thread happens to call in; this coordinator must be constructed on a dispatcher thread.
-        await UiThreadCall.DispatchAsync(() =>
+        // Disposed while the load was still running: the timer is built here regardless, so it has to be checked
+        // here too, or shutdown leaves one ticking that Dispose already looked for and did not find.
+        if (_disposed)
         {
-            // Disposed while the load was still running: the timer is built here regardless, so it has to be
-            // checked here too, or shutdown leaves one ticking that Dispose already looked for and did not find.
-            if (_disposed)
-            {
-                return;
-            }
+            return;
+        }
 
-            _timer = new DispatcherTimer { Interval = _tickInterval };
-            _timer.Tick += _OnTick;
-            _timer.Start();
-        });
+        _timer = _time.CreateTimer(_ => _OnTick(), null, _tickInterval, _tickInterval);
 
         _logger.LogInformation(
             "Scheduled resumes are running, checking every {Interval} — {Count} waiting.",
@@ -262,7 +264,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         return true;
     }
 
-    private async void _OnTick(object? sender, EventArgs e)
+    private async void _OnTick()
     {
         try
         {
@@ -289,14 +291,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         ResolveSession = null;
         ReopenAndSend = null;
         PendingChanged = null;
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

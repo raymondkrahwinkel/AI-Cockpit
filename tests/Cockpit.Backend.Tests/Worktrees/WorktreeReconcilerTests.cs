@@ -1,11 +1,12 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Worktrees;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Worktrees;
+namespace Cockpit.Backend.Tests.Worktrees;
 
 // AC-643. The tick, not the policy: every test here drives `RunOnceAsync` and only checks which live set reached
 // `ReconcileAsync` — what it then removes or retains is `WorktreeManagerTests`' business, not this one's.
