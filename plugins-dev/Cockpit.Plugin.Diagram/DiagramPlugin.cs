@@ -13,10 +13,9 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram;
 
-// Plugin-schil proof (AC-809): a toolbar action plus a window, so both host surfaces are exercised.
-// AC-836/AC-864 folded whiteboard and wireframe in as a second and third surface, same shell each.
-// AC-1400: still one assembly with both entry points (F2.13 splits it). Initialize is the backend part: the
-// registries, their channel and the MCP tools. InitializeUi hands the windows the channel, their only way in.
+// Plugin-schil proof (AC-809); AC-836/AC-864 folded whiteboard and wireframe in as further surfaces, same shell each.
+// AC-1400: one assembly with both entry points until F2.13 — Initialize owns the registries, their channel and the
+// MCP tools; InitializeUi hands the windows that channel, their only way in.
 public sealed class DiagramPlugin : ICockpitPlugin, ICockpitPluginUi
 {
     // Reused as the diagrams dialog's ShowDialogAsync singleInstanceKey — one list at a time (AC-850).

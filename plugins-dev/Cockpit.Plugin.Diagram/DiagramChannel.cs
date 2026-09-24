@@ -9,11 +9,9 @@ using F = Cockpit.Core.Abstractions.Wireframe.IWireframeAccessRegistry;
 
 namespace Cockpit.Plugin.Diagram;
 
-// AC-1400 (F2.12): the backend half of Diagram's own channel. It puts the three access registries behind channel
-// actions and republishes their events, so a window reaches the document state through the channel only. An
-// action or event is named after the registry member it stands for; its arguments are that member's, in order, as
-// one JSON array, and an event's first element is always the surface id. The registry stays the one document
-// model: this class only carries calls and events, it keeps no state of its own.
+// AC-1400 (F2.12): the backend half of Diagram's channel — the registries' members as actions and events, named after
+// the member, with its arguments in order as one JSON array (an event's first element is the surface id). Transport
+// only: the registry stays the one document model and nothing here keeps state of its own.
 internal sealed class DiagramChannel : IDisposable
 {
     public const string DiagramPrefix = "diagram.";
