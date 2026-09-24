@@ -2,16 +2,15 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Infrastructure.Plugins;
+namespace Cockpit.App.Plugins;
 
 // #14: turns a `DiscoveredPlugin` into a live `ICockpitPlugin` by loading it in its own
 // `PluginLoadContext` and instantiating the entry type; `PluginManager.LoadAndConfigure` isolates any throw here.
-
-// AC-1391: public — Program.cs/App.axaml.cs (Cockpit.App) still construct and call it directly.
-public sealed class PluginActivator(ILogger<PluginActivator> logger)
+internal sealed class PluginActivator(ILogger<PluginActivator> logger)
 {
     public ICockpitPlugin? Activate(DiscoveredPlugin discovered)
     {

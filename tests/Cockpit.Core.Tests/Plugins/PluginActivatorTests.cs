@@ -1,8 +1,8 @@
-using Cockpit.Infrastructure.Plugins;
+using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.Backend.Tests.Plugins;
+namespace Cockpit.Core.Tests.Plugins;
 
 public class PluginActivatorTests : IDisposable
 {

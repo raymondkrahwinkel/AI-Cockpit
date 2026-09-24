@@ -1,10 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Infrastructure.Plugins;
+namespace Cockpit.App.Plugins;
 
 // Drives the two-phase plugin lifecycle across the app's DI bootstrap (#14): Phase 1 instantiates
 // and configures each loaded plugin before the container is built, Phase 2 wires contribution points

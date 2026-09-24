@@ -18,6 +18,14 @@ public class SessionResourceProviderRegistryTests
             Task.FromResult(SessionResourceContribution.None);
     }
 
+    // AC-1391: SessionResourceResolver's own ISessionProjectResolver dependency is implemented in Cockpit.App
+    // (SessionProjectResolver, by design — see that interface's doc comment); Backend.Tests stands one in for it.
+    private sealed class StubProjectResolver : ISessionProjectResolver
+    {
+        public Task<string?> ProjectIdOfAsync(string? paneId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+    }
+
     [Fact]
     public void Register_TheSameProviderTwice_KeepsOne()
     {
@@ -78,6 +86,7 @@ public class SessionResourceProviderRegistryTests
         // never happens. This is the only thing standing between that and shipping.
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<ISessionProjectResolver>(new StubProjectResolver());
         services.AddServices(typeof(SessionResourceProviderRegistry).Assembly);
 
         Assert.IsType<SessionResourceResolver>(services.BuildServiceProvider().GetService<ISessionResourceResolver>());

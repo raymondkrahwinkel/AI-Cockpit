@@ -431,7 +431,6 @@ inline	tests/Cockpit.App.ViewTests/WindowAutomationSuppressionTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	1
-inline	tests/Cockpit.Backend.Tests/Plugins/PluginActivatorTests.cs	1
 inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
 inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 inline	tests/Cockpit.Core.Tests/Agents/AgentInboxTurnNoticeTests.cs	1
@@ -474,6 +473,7 @@ inline	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolTests.cs	2
 inline	tests/Cockpit.Core.Tests/Plugins/GeminiProviderPluginLoadTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/GitHubModelsProviderPluginLoadTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/McpServerCatalogProjectScopingTests.cs	1
+inline	tests/Cockpit.Core.Tests/Plugins/PluginActivatorTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginDiagnosticsTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginHostVersionGateTests.cs	2
 inline	tests/Cockpit.Core.Tests/Plugins/PluginVersionSingleSourceTests.cs	1

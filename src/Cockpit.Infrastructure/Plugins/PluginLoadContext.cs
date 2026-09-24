@@ -6,7 +6,9 @@ namespace Cockpit.Infrastructure.Plugins;
 // Resolves one plugin's dependencies separately (MS "app with plugins" pattern): its own from its folder,
 // shared ones (Avalonia, Cockpit.Plugins.Abstractions) from the host context, so shared types keep one
 // identity. Non-collectible. AC-479: dependency isolation, NOT a security boundary — see PLUGIN-SDK.md.
-internal sealed class PluginLoadContext(string pluginMainAssemblyPath) : AssemblyLoadContext
+
+// AC-1391: public — PluginActivator (Cockpit.App) still constructs and calls it directly across the boundary.
+public sealed class PluginLoadContext(string pluginMainAssemblyPath) : AssemblyLoadContext
 {
     private readonly List<AssemblyDependencyResolver> _resolvers = [new(pluginMainAssemblyPath)];
 

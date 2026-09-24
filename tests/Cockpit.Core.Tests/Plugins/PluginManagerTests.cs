@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -5,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
-namespace Cockpit.Backend.Tests.Plugins;
+namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// The two-phase orchestration (#14): phase 1 instantiates and configures only the load-decided plugins,

@@ -1,9 +1,9 @@
+using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Plugins;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;

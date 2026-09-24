@@ -89,9 +89,6 @@
          Infrastructure needs the shared plugin-contract types (IPluginSessionDriver, SessionProviderRegistration)
          to translate a plugin's narrow driver into the app's own ISessionDriver. -->
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
-    <!-- AC-1391: PluginManager/PluginActivator moved here from Cockpit.App and still carry the AC-1389 UI-part
-         activation surface (ICockpitPluginUi/ICockpitUiHost) — a contract reference only, not Avalonia itself. -->
-    <ProjectReference Include="..\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>
