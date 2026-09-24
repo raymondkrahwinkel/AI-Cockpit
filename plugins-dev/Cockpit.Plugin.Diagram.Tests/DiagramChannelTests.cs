@@ -142,8 +142,8 @@ public class DiagramChannelTests
         var json = JsonNode.Parse(await tools.OpenDiagram("pane-a", "Onboarding flow", Flow));
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.False(json["opened"]!.GetValue<bool>());
+        Assert.Equal(true, json?["ok"]?.GetValue<bool>());
+        Assert.Equal(false, json?["opened"]?.GetValue<bool>());
         await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
         await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
