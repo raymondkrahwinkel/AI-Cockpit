@@ -16,7 +16,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
     private readonly Lock _gate = new();
     private readonly SessionHost<QueuedPrompt> _host;
-    private readonly bool _nameIsChosen;
+    private bool _nameIsChosen;
     private readonly List<TranscriptSnapshotEntry> _rows = [];
     private string _title;
     private string _statusline = string.Empty;
@@ -248,7 +248,28 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     // AC-310: a name the operator chose stays standing.
     public Task<bool> SuggestNameAsync(string name)
     {
-        if (_nameIsChosen || string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (_gate)
+        {
+            if (_nameIsChosen)
+            {
+                return Task.FromResult(false);
+            }
+
+            _title = name.Trim();
+        }
+
+        return Task.FromResult(true);
+    }
+
+    // AC-1392: a name somebody chose, which a later suggestion leaves standing.
+    public Task<bool> SetNameAsync(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
         {
             return Task.FromResult(false);
         }
@@ -256,6 +277,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         lock (_gate)
         {
             _title = name.Trim();
+            _nameIsChosen = true;
         }
 
         return Task.FromResult(true);

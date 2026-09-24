@@ -37,6 +37,7 @@ namespace Cockpit.Infrastructure.Hosting;
 public sealed class CockpitBackend
 {
     private Task? _reconcile;
+    private bool _pluginSettingsSeeded;
     private bool _pluginsInitialized;
 
     private CockpitBackend(ServiceProvider services) => Services = services;
@@ -140,23 +141,23 @@ public sealed class CockpitBackend
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
     }
 
-    // AC-1392: plugin phase 2's backend half, where the desktop had it in App — before the planners and the restore.
-    // The declared secret keys first, or ciphertext could reach a plugin; the terminal and shell switches before any
-    // session can start; then every plugin's Initialize with the host `hostFor` builds, a windowless one by default.
-    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null, Action? secretKeysDeclared = null)
+    // AC-1392: plugin phase 2's first backend step, where the desktop had it in App. The declared secret keys before
+    // any settings are read, or ciphertext could reach a plugin; the terminal and shell switches before any session can
+    // start. True when a key was declared, which can turn a stored value into a credential.
+    public bool SeedPluginSettings()
     {
-        if (Services.GetService<PluginManager>() is not { } plugins)
+        if (Services.GetService<PluginManager>() is not { } plugins || _pluginSettingsSeeded)
         {
-            return;
+            return false;
         }
 
+        _pluginSettingsSeeded = true;
         var declared = Services.GetRequiredService<IPluginSecretFieldStore>().LoadAsync().GetAwaiter().GetResult()
             .Concat(plugins.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
             .ToList();
         if (declared.Count > 0)
         {
             SecretKeyHolder.Shared.Declare(declared);
-            secretKeysDeclared?.Invoke();
         }
 
         // AC-34/AC-1066: a session that launches before the operator ever opens Options still gets the saved choice.
@@ -165,6 +166,19 @@ public sealed class CockpitBackend
         Services.GetRequiredService<IShellAccessSwitch>().Enabled =
             Services.GetRequiredService<IShellAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
 
+        return declared.Count > 0;
+    }
+
+    // AC-1392: plugin phase 2's backend half — before the planners and the restore. Seeds the settings above if the
+    // frontend has not, then every plugin's Initialize with the host `hostFor` builds, a windowless one by default.
+    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null)
+    {
+        if (Services.GetService<PluginManager>() is not { } plugins)
+        {
+            return;
+        }
+
+        SeedPluginSettings();
         plugins.Initialize(hostFor ?? _BackendHostFor());
         _pluginsInitialized = true;
     }

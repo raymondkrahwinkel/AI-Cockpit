@@ -7545,7 +7545,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var added in change.NewItems?.OfType<SessionPanelViewModel>() ?? [])
         {
-            registry.Register(new SessionPanelHandle(added, isEmbedded: false, _FirstSessionsWorkspaceId));
+            registry.Register(new SessionPanelHandle(added, isEmbedded: false, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(added.PaneId), added)));
         }
     }
 
@@ -8726,7 +8726,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         owned.Add(session);
-        _sessionRegistry?.Register(new SessionPanelHandle(session, isEmbedded: true, _FirstSessionsWorkspaceId));
+        _sessionRegistry?.Register(new SessionPanelHandle(session, isEmbedded: true, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(session.PaneId), session)));
         _agentCoordinator?.Enroll(session.PaneId);
 
         // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason

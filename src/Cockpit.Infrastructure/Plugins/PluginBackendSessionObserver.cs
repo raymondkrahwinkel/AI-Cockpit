@@ -63,5 +63,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
         }
     }
 
-    private HashSet<string> _LivePaneIds() => new(_registry.All.Select(session => session.PaneId), StringComparer.Ordinal);
+    // The assistant too, which `All` leaves out, so the pane OpenSessions lists is also the one reported closed.
+    private HashSet<string> _LivePaneIds() =>
+        new([.. _registry.All.Select(session => session.PaneId), .. _registry.Assistant is { } assistant ? [assistant.PaneId] : Array.Empty<string>()], StringComparer.Ordinal);
 }

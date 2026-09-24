@@ -59,8 +59,11 @@ public sealed class BackendPluginStartupTests : IDisposable
 
         backend.InitializePlugins();
 
+        // Why a plugin is missing first, by name: a failure or an approval it waits for, before the list itself.
+        var diagnostics = services.GetRequiredService<PluginDiagnostics>();
+        Assert.Empty(diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
+        Assert.Empty(diagnostics.PendingApprovals.Select(pending => pending.ToString()));
         Assert.Equal(Bundled, services.GetRequiredService<PluginManager>().Loaded.Select(plugin => plugin.FolderId).Order());
-        Assert.Empty(services.GetRequiredService<PluginDiagnostics>().Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
         Assert.NotNull(services.GetRequiredService<IPluginProviderRegistry>().Resolve("claude"));
         Assert.Contains("git.branch", services.GetRequiredService<IWorkflowStepRegistry>().Steps.Select(step => step.TypeId));
         Assert.Contains("cockpit-autopilot-merge-gate", mounts.Names);

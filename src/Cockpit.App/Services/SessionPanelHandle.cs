@@ -4,10 +4,11 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
 
-// AC-1373: one pane, SDK or TTY, as `ISessionRegistry` hands it out. Plain fields are read where the caller is, as
-// `SessionWorkspaces` always did; anything that walks a UI-owned collection or acts takes the `UiThreadCall` route
-// the gateways take today, with the same deadlines.
-internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbedded, Func<string?> firstSessionsWorkspaceId)
+// AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
+// a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
+// closed after the caller looked it up is left alone rather than written to.
+internal sealed class SessionPanelHandle(
+    SessionPanelViewModel pane, bool isEmbedded, Func<string?> firstSessionsWorkspaceId, Func<bool>? isLive = null)
     : ISessionHandle
 {
     public string PaneId => pane.PaneId;
@@ -100,23 +101,24 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
             ])
         : Task.FromResult<IReadOnlyList<SessionPendingPermission>>([]);
 
-    public Task<bool> SetStatuslineAsync(string statusline) => UiThreadCall.RunAsync(() =>
-    {
-        pane.Statusline = statusline ?? string.Empty;
-        return true;
-    });
+    public Task<bool> SetStatuslineAsync(string statusline) => _WhileLiveAsync(() => pane.Statusline = statusline ?? string.Empty);
 
-    public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => pane.SuggestName(name));
+    public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => _IsLive() && pane.SuggestName(name));
 
-    public Task<bool> SetNameAsync(string name) => UiThreadCall.RunAsync(() =>
-    {
-        pane.SetNameDirectly(name);
-        return true;
-    });
+    public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(() => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(() =>
+    public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(() => pane.InjectAndSubmit(text));
+
+    private bool _IsLive() => isLive?.Invoke() ?? true;
+
+    private Task<bool> _WhileLiveAsync(Action act) => UiThreadCall.RunAsync(() =>
     {
-        pane.InjectAndSubmit(text);
+        if (!_IsLive())
+        {
+            return false;
+        }
+
+        act();
         return true;
     });
 

@@ -548,6 +548,15 @@ public partial class App : Application
         // `cockpit.json`, where a settings restore would have replaced it with the source machine's copy.
         var pluginCache = PluginCacheStore.ForStateRoot(Program.Services.GetService<ILogger<PluginCacheStore>>());
 
+        // AC-1392: the declared secret keys and the terminal/shell switches, at the moment they always were. A plugin's
+        // declared field names can turn a value the host did not recognise as a credential into one it does, so the
+        // awareness banner (AC-41) re-evaluates (AC-1343: fire-and-forget, no persistence of its own).
+        var backend = Program.Services.GetRequiredService<CockpitBackend>();
+        if (backend.SeedPluginSettings())
+        {
+            _ = cockpit.Security.RefreshAsync();
+        }
+
         var actions = new PluginActions(
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,
@@ -613,12 +622,7 @@ public partial class App : Application
             pluginType,
             pluginCache.CreateFor(discovered.FolderId));
 
-        // A plugin's declared field names can turn a value the host did not recognise as a credential into one it
-        // does, so the awareness banner (AC-41) re-evaluates once the field set is complete (AC-1343: fire-and-forget,
-        // no persistence of its own).
-        Program.Services.GetRequiredService<CockpitBackend>().InitializePlugins(
-            (discovered, plugin) => HostFor(discovered, plugin.GetType()),
-            () => _ = cockpit.Security.RefreshAsync());
+        backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
