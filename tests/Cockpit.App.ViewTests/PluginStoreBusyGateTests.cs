@@ -2,11 +2,11 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;

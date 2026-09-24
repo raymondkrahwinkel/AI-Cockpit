@@ -1,7 +1,7 @@
 using Avalonia.Controls.ApplicationLifetimes;
-using Cockpit.App.Plugins;
 using Cockpit.App.Views;
 using Cockpit.Core.Help;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 

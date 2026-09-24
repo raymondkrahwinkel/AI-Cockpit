@@ -6,8 +6,8 @@ namespace Cockpit.Infrastructure.Plugins;
 // so all three consumers resolve the combined path through here before hashing or loading it. Reuses
 // FilesystemPath (AC-1160), not a second lexical canonicalisation, so a mid-path symlink is caught too.
 
-// Public rather than internal: PluginActivator's assembly (Cockpit.App) gets a production reference to
-// this assembly but no InternalsVisibleTo grant, unlike the test assemblies FilesystemPath allows.
+// Public rather than internal: even after AC-1391 moved its callers into this assembly, Cockpit.Core.Tests
+// exercises it directly via InternalsVisibleTo — narrowing to internal is a separate call, not part of that move.
 public static class PluginEntryPath
 {
     public static bool TryResolve(string folder, string entryAssembly, out string resolvedPath)

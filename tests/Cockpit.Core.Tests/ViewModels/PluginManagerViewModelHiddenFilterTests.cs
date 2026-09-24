@@ -1,9 +1,9 @@
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
