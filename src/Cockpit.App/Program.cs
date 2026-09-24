@@ -1,25 +1,19 @@
 using Avalonia;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
-using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Workspaces;
-using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
-using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Velopack;
 
@@ -56,11 +50,8 @@ sealed class Program
             return;
         }
 
-        // Scrub inherited session identity (AC-42), terminal identity (#58), and credentials before any spawn.
-        // Doing it once gives every route the same clean environment. AC-1351: the bootstrap connect key is one of
-        // those credentials, so it is taken for the node's door first and never reaches a session.
-        Cockpit.Infrastructure.Mcp.ConnectKeyBootstrapEnvironment.Capture();
-        ScrubInheritedHostEnvironment();
+        // AC-1381: the backend's own startup steps, each at the moment it had here; see `CockpitBackend` for what each does.
+        CockpitBackend.ScrubInheritedEnvironment();
 
         // Acquire before housekeeping or plugin installation can delete files used by another cockpit (AC-4).
         // Development uses separate state; a marked restart waits through the intentional old/new overlap bounded
@@ -76,17 +67,11 @@ sealed class Program
             return;
         }
 
-        // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, so a nested
-        // agent (a Claude CLI, a Codex app-server, a TTY) can detect it and adapt, the way tools key off
-        // TERM_PROGRAM or TMUX. Set before anything can spawn a session.
-        MarkCockpitEnvironment();
-
-        // Before any state access, restrict legacy world-readable files and remove crash-left --mcp-config files
-        // containing bearer headers. Run every startup rather than waiting for lazy service construction.
-        CredentialFileHousekeeping.Run();
+        // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, then restrict
+        // leftover credential files before any state access. Set before anything can spawn a session.
+        CockpitBackend.MarkProcess();
 
         var logPath = CockpitBuild.LogPath;
-        var services = new ServiceCollection();
 
         // One logger factory shared between the pre-container plugin pass (below) and DI, so both write
         // to the same file — a second FileLoggerProvider would truncate the log a second time at startup.
@@ -95,8 +80,6 @@ sealed class Program
             builder.AddConsole();
             builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
         });
-        services.AddSingleton<ILoggerFactory>(loggerFactory);
-        services.AddLogging();
 
         // First line of every run, so the kept previous log says which process it was and how it was started —
         // a restart handoff and a hand launch leave the same trail otherwise.
@@ -104,66 +87,11 @@ sealed class Program
         Cockpit.App.Logging.LifecycleLog.Write(
             $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting: pid {Environment.ProcessId}, args [{string.Join(' ', args)}].");
 
-        // A GUI or AppImage launch hands this process a PATH without the user's bin directories, and every child
-        // inherits it (AC-19). Repair it once, up front, before anything resolves a tool or spawns a session.
-        StartupPathRepair.Run(loggerFactory.CreateLogger(typeof(StartupPathRepair)));
+        // Up front, before anything resolves a tool or spawns a session: the PATH repair and the stale-process sweep.
+        CockpitBackend.RepairProcess(loggerFactory);
 
-        // AC-1093: a session that is not resumed after a crash still has its processes, and a build server or an
-        // MSBuild node that systemd has adopted is no longer in any tree to find it by. Its cgroup outlived the run
-        // that made it, and that is what this ends them by — before any session of this run makes a group of its own.
-        StaleSessionProcessSweep.Run(loggerFactory.CreateLogger(typeof(StaleSessionProcessSweep)));
-
-        services.AddCore().AddInfrastructure().AddServices(
-            typeof(Cockpit.Core.DependencyInjection).Assembly,
-            typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
-            typeof(Program).Assembly);
-
-        // AC-1379: the scan registers the assistant's host over the plain presence; the desktop's hears a controller come
-        // and go on the UI thread, which its chip is bound to. Last wins, and the scanned interface forwards to this one.
-        services.AddSingleton(provider => ActivatorUtilities.CreateInstance<AssistantSessionHost>(
-            provider, new UiThreadControllerPresence(provider.GetRequiredService<INodeControllerPresence>())));
-
-        // Discover plugins before building the container so selected plugins can register services (#14), with
-        // failures isolated. Safe mode is a UI-independent command-line escape hatch that still discovers plugins
-        // for pending removals and management, but skips loading them (AC-478).
-        var safeMode = args.Contains(PluginManager.SafeModeArgument);
-        var pluginDiagnostics = new PluginDiagnostics();
-        services.AddSingleton(pluginDiagnostics);
-        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics, safeMode);
-        try
-        {
-            // Install bundled former-core plugins before discovery for first-run availability. This is best-effort
-            // so failure cannot hide operator-installed plugins.
-            _InstallBundledPlugins(loggerFactory);
-#if DEBUG
-            // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes,
-            // so a rebuild lands in the sandbox without a hand copy. A release has no plugins-dev to find.
-            _RefreshDevPlugins(loggerFactory);
-#endif
-
-            // The startup pass, which is the only thing that applies a staged update or a marked removal: this is
-            // the one moment no plugin is loaded yet, which is the whole reason both are deferred to a restart.
-            // Every other discovery in the app (the plugin manager's, the update checker's) reads and no more.
-            var discoveredPlugins = new PluginBootstrap()
-                .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
-            var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
-            pluginManager.LoadAndConfigure(discoveredPlugins, services, pluginActivator.Activate);
-        }
-        catch (Exception exception)
-        {
-            loggerFactory.CreateLogger<Program>().LogError(exception, "Plugin discovery failed; continuing without plugins.");
-        }
-
-        services.AddSingleton(pluginManager);
-
-        // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed,
-        // so it is registered after the manager it asks. Nothing is scanned until the help is first opened or
-        // a `?` asks whether its target exists.
-        services.AddSingleton<HelpService>();
-
-        services.AddSessionPanes();
-
-        Services = services.BuildServiceProvider();
+        var backend = CockpitBackend.Build(loggerFactory, services => _AddDesktop(services, loggerFactory, args));
+        Services = backend.Services;
 
         if (args.Contains("--audio-spike"))
         {
@@ -171,26 +99,8 @@ sealed class Program
             return;
         }
 
-        // The MCP permission server (and any other IHostedService) must be running before the
-        // first session spawns a CLI, and torn down cleanly on exit. The app uses a plain
-        // ServiceProvider rather than a generic Host, so drive the hosted-service lifecycle here.
-        var hostedServices = Services.GetServices<IHostedService>().ToArray();
-        StartHostedServices(hostedServices);
-
-        // Reconcile worktrees and compact state against one saved-pane roster so restorable panes are not treated
-        // as orphans (AC-85/AC-409/AC-410). Register the shared task with the gate before it starts so restore waits.
-        var reconcileGate = Services.GetRequiredService<IWorktreeReconcileGate>();
-        var reconcileWorktreesAndCompactState = ReconcileWorktreesAndCompactStateAsync(
-            Services.GetRequiredService<IWorktreeManager>(),
-            Services.GetRequiredService<ISessionStateStore>(),
-            Services.GetRequiredService<IWorkspaceSettingsStore>());
-        reconcileGate.SignalStarted(reconcileWorktreesAndCompactState);
-        _ = reconcileWorktreesAndCompactState;
-
-        // Reconcile the repository-clone registry too (AC-90): forget any clone whose folder disappeared since last
-        // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
-        // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
-        _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
+        // The hosted services, then the worktree reconcile; the planners follow once the main window is up (App).
+        backend.Start();
 
         // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
         // session and workspace. Fatal conditions still exit through their own paths.
@@ -241,6 +151,58 @@ sealed class Program
             DisposeCockpit();
             Environment.Exit(0);
         }
+    }
+
+    // The desktop's own registrations on top of the backend's: its scanned services, which replace the backend's
+    // no-frontend defaults, then the plugins, which may register services of their own (#14).
+    private static void _AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory, string[] args)
+    {
+        services.AddServices(typeof(Program).Assembly);
+
+        // AC-1379: the scan registers the assistant's host over the plain presence; the desktop's hears a controller come
+        // and go on the UI thread, which its chip is bound to. Last wins, and the scanned interface forwards to this one.
+        services.AddSingleton(provider => ActivatorUtilities.CreateInstance<AssistantSessionHost>(
+            provider, new UiThreadControllerPresence(provider.GetRequiredService<INodeControllerPresence>())));
+
+        // Discover plugins before building the container so selected plugins can register services (#14), with
+        // failures isolated. Safe mode is a UI-independent command-line escape hatch that still discovers plugins
+        // for pending removals and management, but skips loading them (AC-478).
+        var safeMode = args.Contains(PluginManager.SafeModeArgument);
+        var pluginDiagnostics = new PluginDiagnostics();
+        services.AddSingleton(pluginDiagnostics);
+        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics, safeMode);
+        try
+        {
+            // Install bundled former-core plugins before discovery for first-run availability. This is best-effort
+            // so failure cannot hide operator-installed plugins.
+            _InstallBundledPlugins(loggerFactory);
+#if DEBUG
+            // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes,
+            // so a rebuild lands in the sandbox without a hand copy. A release has no plugins-dev to find.
+            _RefreshDevPlugins(loggerFactory);
+#endif
+
+            // The startup pass, which is the only thing that applies a staged update or a marked removal: this is
+            // the one moment no plugin is loaded yet, which is the whole reason both are deferred to a restart.
+            // Every other discovery in the app (the plugin manager's, the update checker's) reads and no more.
+            var discoveredPlugins = new PluginBootstrap()
+                .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
+            var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
+            pluginManager.LoadAndConfigure(discoveredPlugins, services, pluginActivator.Activate);
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<Program>().LogError(exception, "Plugin discovery failed; continuing without plugins.");
+        }
+
+        services.AddSingleton(pluginManager);
+
+        // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed,
+        // so it is registered after the manager it asks. Nothing is scanned until the help is first opened or
+        // a `?` asks whether its target exists.
+        services.AddSingleton<HelpService>();
+
+        services.AddSessionPanes();
     }
 
     private static IReadOnlyList<Avalonia.Controls.Window> _OpenWindows() =>
@@ -377,33 +339,6 @@ sealed class Program
     // and bounded when it has not, because from here the chain wedges.
     private static void DisposeCockpit() => TearDownCockpitAsync().Wait(TeardownBudget);
 
-    private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)
-    {
-        foreach (var service in hostedServices)
-        {
-            service.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
-        }
-    }
-
-    // Read the saved AI-pane roster once so worktree reconciliation and state compaction cannot disagree, and
-    // compaction can safely drop state for panes that will not be restored (AC-410).
-    private static async Task ReconcileWorktreesAndCompactStateAsync(
-        IWorktreeManager worktreeManager,
-        ISessionStateStore sessionStateStore,
-        IWorkspaceSettingsStore workspaceSettingsStore)
-    {
-        var restorablePaneIds = await SessionRestoreRoster.PaneIdsAsync(workspaceSettingsStore).ConfigureAwait(false);
-
-        // At fresh start, retain roster worktrees for possible restore; outside it, remove clean worktrees, retain
-        // dirty ones, and prune stale Git metadata (AC-85).
-        await worktreeManager.ReconcileAsync(restorablePaneIds).ConfigureAwait(false);
-
-        // Fold duplicate session-state records left by earlier runs (AC-409), now against the same roster: a pane
-        // no longer named in cockpit.json has its state dropped instead of kept forever. Run after the reconcile
-        // above so a worktree it just kept for a restorable pane is never the one compaction treats as gone.
-        await sessionStateStore.CompactAsync(restorablePaneIds).ConfigureAwait(false);
-    }
-
     // A background hard-exit deadline ensures main-thread teardown cannot leave the process lingering at
     // "Application is shutting down..." (#32).
     private static void StartExitWatchdog(TimeSpan deadline)
@@ -473,46 +408,6 @@ sealed class Program
         }
     }
 #endif
-
-    // Scrub host session markers (prevent transcript adoption, AC-42), terminal identity (prevent Ghostty styling,
-    // #58), and inherited Anthropic credentials (prevent silent API billing) for every spawn route. Preserve
-    // per-profile CLAUDE_CONFIG_DIR and generic COLORTERM; normalize TERM for terminal-independent rendering.
-    private static void ScrubInheritedHostEnvironment()
-    {
-        var markers = new List<string>();
-        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-        {
-            if (entry.Key is string key && Cockpit.Core.Sessions.Tty.TtyEnvironment.IsHostControlled(key))
-            {
-                markers.Add(key);
-            }
-        }
-
-        foreach (var key in markers)
-        {
-            // Managed + native (libc) both: Skia and a spawned child read the native environ via getenv, so a
-            // managed-only removal would leave the stripped variable leaking through.
-            ProcessEnvironment.Remove(key);
-        }
-
-        // A terminal-specific TERM (e.g. xterm-ghostty) is what the SvcSystems/Skia render stack keys off,
-        // drawing every line underlined; normalise anything that is not already the generic value.
-        var term = Environment.GetEnvironmentVariable("TERM");
-        if (!string.IsNullOrEmpty(term)
-            && !string.Equals(term, Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue, StringComparison.OrdinalIgnoreCase))
-        {
-            ProcessEnvironment.Assign("TERM", Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue);
-        }
-    }
-
-    // A bare native-process AI_COCKPIT presence signal reaches every nested agent regardless of spawn path; callers
-    // depend only on existence, not version or session detail (#45 D4 follow-up).
-    private static void MarkCockpitEnvironment()
-    {
-        ProcessEnvironment.Assign("AI_COCKPIT", "1");
-        // MSBuild workers otherwise outlive their build and retain gigabytes; every session inherits the opt-out.
-        ProcessEnvironment.Assign("MSBUILDDISABLENODEREUSE", "1");
-    }
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()

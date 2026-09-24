@@ -32,12 +32,10 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Infrastructure.Agents;
-using Cockpit.Infrastructure.Ci;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
-using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App;
 
@@ -473,82 +471,20 @@ public partial class App : Application
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
 
-        // AC-1380: the session registry reads are thread-safe from any thread (AC-1373), unlike `cockpitViewModel`'s
-        // own collections — every planner below now ticks on a threadpool thread rather than the UI thread, so the
-        // wiring reads sessions off the registry instead of `AllSessions()`.
-        var sessionRegistry = Program.Services.GetRequiredService<ISessionRegistry>();
-
-        // AC-634: watch the branches the sessions are on for a failing CI check. The watch set is the live sessions
-        // rather than a configured list, so a worktree opened later is followed without anyone saying so.
-        if (Program.Services.GetService<CiWatcher>() is { } ciWatcher)
-        {
-            ciWatcher.Watching = () =>
-            [
-                .. sessionRegistry.All
-                    .Where(session => !string.IsNullOrWhiteSpace(session.WorkingDirectory))
-                    .Select(session => new WatchedCheckout(session.PaneId, session.Title, session.WorkingDirectory ?? string.Empty)),
-            ];
-            ciWatcher.Start();
-        }
-
-        // AC-640: the same shape one layer along, for the sessions the assistant armed a watch on with
-        // `watch_session`. Started with nothing watched, unlike the CI one: it only ever follows what it was asked to.
-        if (Program.Services.GetService<SessionWatcher>() is { } sessionWatcher)
-        {
-            sessionWatcher.Probe = SessionWatcher.ProbeOf(sessionRegistry);
-            sessionWatcher.Start();
-        }
-
-        // AC-656: and give every pane a turn as soon as its own inbox has mail, instead of leaving it for that
-        // pane's next turn or tool call to notice. Unlike SessionWatcher this needs nothing armed — every live pane
-        // is checked, the assistant included (`All` does not carry it; `cockpit-agents` reaches it anyway).
-        if (Program.Services.GetService<InboxWakeScheduler>() is { } inboxWakeScheduler)
-        {
-            inboxWakeScheduler.Panes = () =>
-            [
-                Cockpit.Core.Assistant.AssistantIdentity.PaneId,
-                .. sessionRegistry.All.Select(session => session.PaneId),
-            ];
-            inboxWakeScheduler.Start();
-        }
-
-        // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
-        // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
-        if (Program.Services.GetService<WorktreeReconciler>() is { } worktreeReconciler)
-        {
-            // AC-654: asked of the liveness registry rather than the grid, because a pane-only answer misses the
-            // sessions that run without one (a delegated task, AC-106) and sweeps the worktree out from under them.
-            var liveSessions = Program.Services.GetService<Cockpit.Core.Abstractions.Sessions.ILiveSessionRegistry>();
-            worktreeReconciler.LiveSessionIds = liveSessions is { } registry
-                ? () => registry.LiveSessionIds
-                : () => sessionRegistry.All.Select(session => session.PaneId).ToList();
-            worktreeReconciler.Start();
-        }
-
-        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere, and let "Sync now" force
-        // the same check for one project outside the timer. Marshalled: `Projects` is UI-owned state, and the tick
-        // that reads and reports it now runs on a threadpool thread rather than the UI thread.
+        // AC-894: "Sync now" and the badge are the Projects page's, so the desktop hands the Depot watcher its project
+        // list before the backend starts it. Marshalled: `Projects` is UI-owned state, and the tick that reads and
+        // reports it runs on a threadpool thread rather than the UI thread.
         if (Program.Services.GetService<DepotSyncWatcher>() is { } depotSyncWatcher)
         {
             depotSyncWatcher.BoundProjects = () => UiThreadCall.Run(() => cockpitViewModel.Projects.DepotBoundProjects());
             depotSyncWatcher.OnChecked = (projectId, changed, logoBytes) =>
                 UiThreadCall.RunAsync(() => cockpitViewModel.Projects.SetRemoteChangeState(projectId, changed, logoBytes));
             cockpitViewModel.Projects.SyncNow = project => depotSyncWatcher.SyncNowAsync(project.Id);
-            depotSyncWatcher.Start();
         }
 
-        // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.
-        if (Program.Services.GetService<StaleClaimReaper>() is { } claimReaper)
-        {
-            claimReaper.LivePaneIds = () =>
-            [
-                // The assistant, which `All` does not carry, holds claims like anyone else: `cockpit-agents`
-                // is AlwaysMounted and reaches it too. Left out, its own claims would be reaped on the first tick.
-                Cockpit.Core.Assistant.AssistantIdentity.PaneId,
-                .. sessionRegistry.All.Select(session => session.PaneId),
-            ];
-            claimReaper.Start();
-        }
+        // AC-1381: the planners the backend owns (AC-1380), started at the moment they always were: after the startup
+        // reconcile Program ran, and ahead of the session restore below.
+        Program.Services.GetRequiredService<CockpitBackend>().StartPlanners();
 
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.

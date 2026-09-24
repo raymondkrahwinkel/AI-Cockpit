@@ -178,7 +178,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         Dispatcher.UIThread.Post(() => RenderersShouldPauseChanged?.Invoke(this, shouldPause));
     }
 
-    // AC-718: not an IHostedService — those start via Program.StartHostedServices, before Avalonia's Setup()
+    // AC-718: not an IHostedService — those start via CockpitBackend.Start, before Avalonia's Setup()
     // binds Dispatcher.UIThread, and touching it that early crashed the app on launch (races Setup() for
     // dispatcher ownership). Called from App.axaml.cs instead, once the framework init has bound it.
     public void Start()
