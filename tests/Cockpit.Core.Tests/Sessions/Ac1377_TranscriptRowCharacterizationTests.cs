@@ -29,7 +29,7 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         var log = _Log();
         var vm = new SessionViewModel(Substitute.For<ISessionManager>(), transcriptStore: log);
 
-        Array.ForEach(Stream, vm.Apply);
+        _Play(vm);
         var ids = _Flatten(vm.Transcript).Select(row => row.Id).ToList();
         var live = _Render(vm.Transcript, ids);
         await log.DisposeAsync();
@@ -53,6 +53,8 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
 
         Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, _Flatten(restored).Select(row => row.Id).ToList()));
     }
+
+    private static void _Play(SessionViewModel vm) => Array.ForEach(Stream, vm.Apply);
 
     // Coalesced into one write at dispose, so the file holds one line per row whatever the timing was.
     private SessionTranscriptLog _Log() =>
