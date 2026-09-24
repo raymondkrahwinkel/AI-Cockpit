@@ -47,37 +47,37 @@ public sealed record TranscriptSnapshotEntry(
     // AC-1056: a background task that outlived the crash is otherwise no longer coupled to the row that started it.
     public string? BackgroundTaskId { get; init; }
 
-    // AC-1377: how a streamed reply was split over rows (AC-1238/1265/1272), which a live view needs and a restore
-    // does not read. Written only when set, so an ordinary line does not grow.
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    // AC-1377: what the live view draws and a restore does not read — how a streamed reply was split over rows
+    // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written, so the log stays byte-equal to what it was.
+    [JsonIgnore]
     public bool StartsReply { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool IsReplyContinuation { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool ReplyContinuesBelow { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool StartsInsideCodeBlock { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool EndsInsideCodeBlock { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool StartsInsideTable { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public bool EndsInsideTable { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public int TableSpanRevision { get; init; }
 
-    // Decision point 13 of AC-1090, carried for the live view; a restore still reads no row as waiting.
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    // Decision point 13 of AC-1090 stays open: a restore still reads no row as waiting.
+    [JsonIgnore]
     public bool IsPendingPermission { get; init; }
 
     // AC-1088: what the output measured before the cap, 0 when it fitted.
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonIgnore]
     public int TruncatedFromChars { get; init; }
 }

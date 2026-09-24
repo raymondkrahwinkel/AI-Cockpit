@@ -404,30 +404,21 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // A cleared context (AC-564) starts a new conversation in the same rows; the streaming state goes with it.
     public void ResetTranscriptStreaming() => _transcript.ResetStreaming();
 
-    // AC-1090: the rows this pane recorded, held so later changes version them. Null when the log is there but could
-    // not be read, so the consumer can say so rather than show a pane with no history.
-    public async Task<IReadOnlyList<TranscriptSnapshotEntry>?> LoadRecordedTranscriptAsync(CancellationToken cancellationToken = default)
-    {
-        if (_transcriptStore is null)
-        {
-            return [];
-        }
+    // AC-1090: the rows this pane recorded. Null when the log is there but could not be read, so the consumer can say
+    // so rather than show a pane with no history.
+    public Task<IReadOnlyList<TranscriptSnapshotEntry>?> LoadRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
+        _transcriptStore?.TryLoadAsync(_paneId(), cancellationToken) ?? Task.FromResult<IReadOnlyList<TranscriptSnapshotEntry>?>([]);
 
-        var recorded = await _transcriptStore.TryLoadAsync(_paneId(), cancellationToken);
-        if (recorded is not null)
-        {
-            _transcript.Seed(recorded);
-        }
-
-        return recorded;
-    }
+    // The rows the consumer repainted, held so later changes version them; never published or written back.
+    public void SeedTranscript(IReadOnlyList<TranscriptSnapshotEntry> rows) => _transcript.Seed(rows);
 
     // AC-947: a new conversation is a new log.
     public Task ArchiveRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
         _transcriptStore?.ArchiveAsync(_paneId(), cancellationToken) ?? Task.CompletedTask;
 
-    // Not awaited, nor tracked for disposal: the store owns its debounced flush and never throws (AC-1151), and waiting
-    // on that window would hold every pane's close for up to five seconds.
+    // Not awaited, nor tracked for disposal: waiting on the store's debounce window (AC-1151) would hold a pane's close
+    // for up to five seconds. It cannot fault: `SessionTranscriptLog._DebounceThenWriteAsync` catches the write, and
+    // its one await outside that catch faults only on cancellation, which `CancellationToken.None` rules out.
     private void _OnRowChanged(int version, TranscriptSnapshotEntry row)
     {
         _ = _transcriptStore?.AppendAsync(_paneId(), row, CancellationToken.None);

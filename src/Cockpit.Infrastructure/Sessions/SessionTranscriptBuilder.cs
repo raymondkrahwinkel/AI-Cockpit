@@ -668,7 +668,8 @@ internal sealed class SessionTranscriptBuilder(
     private Row _ToolUseRow(string toolUseId, string toolName, string inputJson)
     {
         var row = _NewRow(ToolUse, $"Tool: {toolName}({inputJson})");
-        row.Entry = row.Entry with { ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson };
+        // Clamped as the row always clamped it (AC-1088): a `Write` carries the whole file it is about to write.
+        row.Entry = row.Entry with { ToolUseId = toolUseId, ToolName = toolName, InputJson = ToolOutputBudget.Clamp(inputJson) };
         return row;
     }
 

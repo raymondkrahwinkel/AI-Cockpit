@@ -954,10 +954,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _replayingRecordedTranscript = true;
         try
         {
-            foreach (var entry in TranscriptSnapshot.Restore(recorded))
+            var restored = TranscriptSnapshot.Restore(recorded);
+            foreach (var entry in restored)
             {
                 Transcript.Add(entry);
             }
+
+            // AC-1377: the host holds what was repainted, not the raw log — a row this build skipped, or one the log
+            // left waiting on a prompt, must not come back the moment the host next touches it.
+            _host.SeedTranscript([.. restored.Select(TranscriptSnapshot.Capture)]);
         }
         finally
         {

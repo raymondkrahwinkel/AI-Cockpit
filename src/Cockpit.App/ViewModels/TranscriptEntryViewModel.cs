@@ -295,6 +295,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
             return;
         }
 
+        // Ahead of the text: the text is what records the row (AC-1377), so the count has to be right by then.
+        TruncatedFromChars = 0;
         if (HasResult)
         {
             ResultText = full;
@@ -303,8 +305,6 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         {
             Text = full;
         }
-
-        TruncatedFromChars = 0;
     }
 
     // True when the result reads as structured/code (JSON, multi-line, or long) and so should render
