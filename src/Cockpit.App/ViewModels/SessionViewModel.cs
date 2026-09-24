@@ -1113,7 +1113,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
-        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null);
+        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null, TimeProvider.System);
         _eventQueue = new SessionEventQueue(Apply);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
@@ -1195,13 +1195,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IMentionFileSource? mentionFileSource = null,
         ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
-        ILogger<SessionViewModel>? logger = null)
+        ILogger<SessionViewModel>? logger = null,
+        TimeProvider? timeProvider = null)
         : base(usageHistory)
     {
         _transcriptReader = transcriptReader;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
-        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
+        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore, timeProvider ?? TimeProvider.System);
         _eventQueue = new SessionEventQueue(Apply);
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
@@ -1223,11 +1224,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IProfileLoginChecker? loginChecker,
         ISharedUsageCache? sharedUsageCache,
         ILogger? logger,
-        ISessionTranscriptStore? transcriptStore)
+        ISessionTranscriptStore? transcriptStore,
+        TimeProvider time)
     {
         var host = new SessionHost<QueuedMessageViewModel>(
-            () => PaneId, sessionManager, TimeProvider.System, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
+            () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
         host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
+        // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
+        host.Started += startedAt => _startedAt = startedAt;
         host.RowUpserted += _OnRowUpserted;
         host.BusyChanged += _OnHostBusyChanged;
         host.TurnStarting += _OnTurnStarting;
@@ -1327,12 +1331,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // it has to be captured now rather than read again once the first turn actually completes.
         _restoredOfferSnapshot = RestoreOffer;
 
-        // AC-713: what an auth-related error or the login-poll timer below check against.
+        // AC-713: what an auth-related error or the host's login poll check against.
         _profile = profile;
-        if (profile is not null)
-        {
-            _host.StartLoginPoll(profile);
-        }
 
         // The reading level (AC-138) opens on the per-session override chosen in the New-session dialog, else the
         // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
@@ -1350,22 +1350,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // applies before resolving the registry), so a caller that passed none — but whose profile has one — is not
         // read back as "nothing" for the header.
         McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
-        // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
-        _host.PreApprove(preApprovedTools, preApproveAllTools);
-
-        // AC-13: hand the provider this session's own pane id, which its plugin turns into COCKPIT_PANE_ID in the
-        // child's environment, so the agent can name its own session to the cockpit-session MCP's set_status tool.
-        var mergedOptions = launchOptions is null
-            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, string>(launchOptions, StringComparer.OrdinalIgnoreCase);
-        mergedOptions[WellKnownPluginSessionOptions.PaneId] = PaneId;
-        _launchOptions = mergedOptions;
+        _launchOptions = SessionStart.WithPaneId(launchOptions, PaneId);
 
         // AC-661: the same cap the runtime hands the OS, so the bar can warn on the approach to it.
-        MemoryCapBytes = SessionMemoryCap.ResolveBytes(profile, mergedOptions);
+        MemoryCapBytes = SessionMemoryCap.ResolveBytes(profile, _launchOptions);
 
-        await StartWithProfileAsync(profile, workingDirectory, resume);
+        // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local provider — it uses
+        // the model set on its profile, so only a Claude session is handed the selected one.
+        var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
+
+        // AC-218: ProjectId is set on this panel by CockpitViewModel before this runs, so the driver's MCP fan-out
+        // resolves this project's registry view. Pre-approved tools (AC-215) are for a self-driving run.
+        await StartWithProfileAsync(new SessionStart(
+            profile, SelectedPermissionMode.Value, launchModel, McpServerSelection, workingDirectory, resume, _launchOptions,
+            ProjectId, preApprovedTools, preApproveAllTools));
 
         // The runtime is left un-started when the CLI never came up. Unlock and reset the mode so a failed bypass
         // launch doesn't strand the panel on a phantom, disabled "Bypass permissions" with no session.
@@ -1502,13 +1500,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(name) ? string.Empty : name;
     }
 
-    private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null, SessionResume? resume = null)
+    private async Task StartWithProfileAsync(SessionStart start)
     {
+        // A host that cannot launch (the design-time graph) still arms its login poll and pre-approvals, as it always did.
         if (!_host.CanLaunch)
         {
+            await _host.StartAsync(start);
             return;
         }
 
+        var profile = start.Profile;
+        var workingDirectory = start.WorkingDirectory;
         ProviderBadge = _ResolveProviderBadge(profile);
         // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
         KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
@@ -1533,25 +1535,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // Inside the try: a profile referencing a missing or unresolvable plugin provider (or an invalid persisted
             // ConfigJson) throws during the runtime's start.
-            var runtime = _host.Attach(profile);
-
-            // The session's working life starts here, not when the panel was constructed — whatever the launch
-            // waited on (resolving a worktree, a profile) is setup, not work (AC-251).
-            _startedAt = DateTimeOffset.Now;
-
-            // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local
-            // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
-            // a local session keeps its own configured model instead of being clobbered with "opus".
-            var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            // AC-218: ProjectId is set on this panel by CockpitViewModel before StartConfiguredAsync runs, so it is
-            // already current here — passed through so the driver's MCP fan-out resolves this project's registry view.
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, McpServerSelection, workingDirectory, resume, _launchOptions, ProjectId);
+            if (await _host.StartAsync(start) is not { } runtime)
+            {
+                return;
+            }
 
             // AC-701: the driver polls usage during StartAsync for every session, resumed or fresh — pull the
             // figures in now rather than leaving the header pill empty until the first turn completes. A driver
             // with nothing yet reads null and _RefreshLimits leaves the bars as they were.
             _RefreshLimits();
-            _host.StartUsageCatchUp();
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
