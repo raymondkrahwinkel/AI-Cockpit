@@ -692,13 +692,21 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 "The assistant's context is {Fill:0}% full; asking the provider to compact it.",
                 session.ContextUsedPercent);
 
-            if (await session.CompactContextAsync().ConfigureAwait(true))
+            try
             {
-                // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
-                // here — the provider reports it as a system line the transcript does not render — so the assistant's
-                // memory of the early part would quietly thin out with nothing to say that it had.
-                session.AddDivider("Context was full — the conversation so far was summarised and continues here");
-                return;
+                if (await session.CompactContextAsync().ConfigureAwait(true))
+                {
+                    // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
+                    // here — the provider reports it as a system line the transcript does not render — so the
+                    // assistant's memory of the early part would quietly thin out with nothing to say that it had.
+                    session.AddDivider("Context was full — the conversation so far was summarised and continues here");
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                // Nobody awaits this: a compaction that threw falls through to the restart below rather than being lost.
+                _logger.LogWarning(exception, "Asking the provider to compact the assistant's context failed.");
             }
         }
 
