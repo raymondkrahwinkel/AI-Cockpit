@@ -32,6 +32,18 @@ internal static class TranscriptSnapshot
         ReplyToId = entry.ReplyTo?.Id,
         LatestReplyId = entry.LatestReply?.Id,
         BackgroundTaskId = entry.BackgroundTaskId,
+
+        // AC-1377: the host holds these for the live view, so a row recorded from here must carry them back unchanged.
+        StartsReply = entry.ReplyRows is [var first, ..] && ReferenceEquals(first, entry),
+        IsReplyContinuation = entry.IsReplyContinuation,
+        ReplyContinuesBelow = !entry.IsReplyTail,
+        StartsInsideCodeBlock = entry.StartsInsideCodeBlock,
+        EndsInsideCodeBlock = entry.EndsInsideCodeBlock,
+        StartsInsideTable = entry.StartsInsideTable,
+        EndsInsideTable = entry.EndsInsideTable,
+        TableSpanRevision = entry.TableSpanRevision,
+        IsPendingPermission = entry.IsPendingPermission,
+        TruncatedFromChars = entry.TruncatedFromChars,
     };
 
     // Rebuilds rows in the order they were recorded. A row this build cannot make sense of is skipped, the same

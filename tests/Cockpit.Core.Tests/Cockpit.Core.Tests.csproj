@@ -39,6 +39,11 @@
     <EmbeddedResource Include="Help\Docs\**\*.png" WithCulture="false" />
   </ItemGroup>
 
+  <!-- AC-1377: a transcript log exactly as main wrote it, so a restore of the old format stays proven. -->
+  <ItemGroup>
+    <None Include="Sessions\Fixtures\*.jsonl" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Cockpit.Core.Sessions;
 
 // One version of one transcript row, durable enough to rebuild that row after a restart (AC-1090; was AC-684's
@@ -10,7 +12,7 @@ namespace Cockpit.Core.Sessions;
 
 // The optional members below are init-only properties on purpose: one JSON object per line, so a member added
 // later reads as its default out of an older build's log and an older build ignores one it does not know.
-// `Images` and `IsPendingPermission` (decision points 12 and 13) land here when those are answered.
+// `Images` (decision point 12) lands here when that is answered.
 public sealed record TranscriptSnapshotEntry(
     string Id,
     string Kind,
@@ -44,4 +46,38 @@ public sealed record TranscriptSnapshotEntry(
 
     // AC-1056: a background task that outlived the crash is otherwise no longer coupled to the row that started it.
     public string? BackgroundTaskId { get; init; }
+
+    // AC-1377: what the live view draws and a restore does not read — how a streamed reply was split over rows
+    // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written, so the log stays byte-equal to what it was.
+    [JsonIgnore]
+    public bool StartsReply { get; init; }
+
+    [JsonIgnore]
+    public bool IsReplyContinuation { get; init; }
+
+    [JsonIgnore]
+    public bool ReplyContinuesBelow { get; init; }
+
+    [JsonIgnore]
+    public bool StartsInsideCodeBlock { get; init; }
+
+    [JsonIgnore]
+    public bool EndsInsideCodeBlock { get; init; }
+
+    [JsonIgnore]
+    public bool StartsInsideTable { get; init; }
+
+    [JsonIgnore]
+    public bool EndsInsideTable { get; init; }
+
+    [JsonIgnore]
+    public int TableSpanRevision { get; init; }
+
+    // Decision point 13 of AC-1090 stays open: a restore still reads no row as waiting.
+    [JsonIgnore]
+    public bool IsPendingPermission { get; init; }
+
+    // AC-1088: what the output measured before the cap, 0 when it fitted.
+    [JsonIgnore]
+    public int TruncatedFromChars { get; init; }
 }
