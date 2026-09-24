@@ -39,6 +39,9 @@ public sealed class BackendWithoutAppTests : IDisposable
 
     private const string Profile = "Echo";
 
+    // Long and varied enough for the verifier's bootstrap rule; a random hex key can miss one of its 16 digits.
+    private const string BootstrapKey = "ck_bootstrapKeyForTheBackendWithoutAppTest0123456789";
+
     private static readonly string[] CoreEndpoints =
     [
         "cockpit-session", "cockpit-verify", "cockpit-agents", "cockpit-assistant", "cockpit-assistant-agents",
@@ -46,6 +49,7 @@ public sealed class BackendWithoutAppTests : IDisposable
     ];
 
     private readonly string? _previousStateRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
+    private readonly string? _previousConnectKeyFile = Environment.GetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable);
     private readonly string _stateRoot = Path.Combine(Path.GetTempPath(), $"backend-without-app-{Guid.NewGuid():N}");
     private readonly List<string> _log = [];
     private readonly ILoggerFactory _loggerFactory;
@@ -60,8 +64,17 @@ public sealed class BackendWithoutAppTests : IDisposable
     public void Dispose()
     {
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, _previousStateRoot);
+        ConnectKeyBootstrapEnvironment.Forget(ConnectKeyVerifier.BootstrapFileVariable);
         _loggerFactory.Dispose();
-        Directory.Delete(_stateRoot, recursive: true);
+
+        try
+        {
+            Directory.Delete(_stateRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // The clone reconcile Start leaves running may still hold a file there; a temp folder the OS clears is fine.
+        }
     }
 
     // Acceptance 1–4: every core endpoint mounts; `start_node_agent` over the HTTPS door, with a connect key, starts an
@@ -70,12 +83,11 @@ public sealed class BackendWithoutAppTests : IDisposable
     [Fact]
     public async Task TheBackendWithoutApp_MountsEveryCoreEndpoint_AndStartsANodeAgentThroughTheConnectKeyDoor()
     {
-        var key = $"ck_{Guid.NewGuid():N}{Guid.NewGuid():N}";
         var keyFile = Path.Combine(_stateRoot, "connect-key");
-        await File.WriteAllTextAsync(keyFile, key);
+        await File.WriteAllTextAsync(keyFile, BootstrapKey);
         Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, keyFile);
         ConnectKeyBootstrapEnvironment.Capture();
-        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, null);
+        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, _previousConnectKeyFile);
         var driver = new EchoDriver();
         var backend = CockpitBackend.Build(_loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver)));
         await using var services = backend.Services;
@@ -84,16 +96,19 @@ public sealed class BackendWithoutAppTests : IDisposable
         backend.Start();
         backend.StartPlanners();
         var host = services.GetRequiredService<CockpitMcpEndpointHost>();
+
+        // First, so an endpoint that did not mount is named rather than showing up as a node door that is missing.
+        Assert.Empty(CoreEndpoints.Except(host.GetServers().Select(server => server.Name)));
+        Assert.DoesNotContain("Could not start cockpit MCP endpoint", _LogText(), StringComparison.Ordinal);
+
         var nodeUrl = Assert.Single(host.GetNodeAddresses()).Url;
         await using var client = await McpClient.CreateAsync(NodeCertificatePin.TransportFor(
             new McpServerConfig { Name = "node", Transport = McpTransport.Http, Url = nodeUrl, PinnedCertificateFingerprint = services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint },
-            new HttpClientTransportOptions { Endpoint = new Uri(nodeUrl), AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {key}" } }));
+            new HttpClientTransportOptions { Endpoint = new Uri(nodeUrl), AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {BootstrapKey}" } }));
         var started = await _CallAsync(client, "start_node_agent", new() { ["profile"] = Profile, ["prompt"] = "hello" });
         await driver.Answered.WaitAsync(TimeSpan.FromSeconds(30));
         var transcript = await _CallAsync(client, "read_node_transcript", new() { ["paneId"] = started["paneId"]?.GetValue<string>() });
 
-        Assert.Superset(CoreEndpoints.ToHashSet(), host.GetServers().Select(server => server.Name).ToHashSet());
-        Assert.DoesNotContain(_LogText(), "Could not start cockpit MCP endpoint", StringComparison.Ordinal);
         Assert.True(started["ok"]?.GetValue<bool>());
         Assert.Contains(
             "AssistantText: echo: hello",
@@ -106,12 +121,13 @@ public sealed class BackendWithoutAppTests : IDisposable
         Assert.Null(driver.ContextAtSend);
     }
 
-    // The counter-proof: one backend registration gone, and the endpoints that need it take the "Could not start"
-    // branch, by name, instead of the whole backend failing or failing quietly.
+    // The counter-proof: the bootstrap's own launcher registration gone, and the endpoint that starts sessions takes the
+    // "Could not start" branch, by name. Not the register: the endpoint host's presence wiring needs it before any
+    // endpoint, so without it the host fails outright.
     [Fact]
-    public async Task WithoutTheSessionRegistry_AnEndpointThatNeedsIt_TakesTheCouldNotStartBranch_ByName()
+    public async Task WithoutTheLauncher_TheEndpointThatStartsSessions_TakesTheCouldNotStartBranch_ByName()
     {
-        var backend = CockpitBackend.Build(_loggerFactory, services => services.RemoveAll<ISessionRegistry>());
+        var backend = CockpitBackend.Build(_loggerFactory, services => services.RemoveAll<ISessionLauncher>());
         await using var services = backend.Services;
 
         backend.Start();
@@ -152,12 +168,12 @@ public sealed class BackendWithoutAppTests : IDisposable
         Assert.Equal(typeof(CockpitBackend).Assembly, services.GetRequiredService(seam).GetType().Assembly);
     }
 
-    // A desk to land on, the profile to run and the node door open on a port of the OS's choosing.
+    // A desk to land on, an SDK profile to run (a TTY one needs a window) and the node door on a port of the OS's choosing.
     private static async Task _SaveAFreshNodeAsync(IServiceProvider services)
     {
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });
-        await services.GetRequiredService<ISessionProfileStore>().SaveAsync([new SessionProfile(Profile, new ClaudeConfig("/fake/.claude"))]);
+        await services.GetRequiredService<ISessionProfileStore>().SaveAsync([new SessionProfile(Profile, new ClaudeConfig("/fake/.claude")) { DefaultKind = ProfileSessionKind.Sdk }]);
         await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = 0 });
     }
 

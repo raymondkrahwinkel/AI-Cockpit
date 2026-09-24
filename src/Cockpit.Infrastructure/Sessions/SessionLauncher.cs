@@ -14,7 +14,7 @@ namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1378: `ISessionLauncher` without a frontend. It starts SDK sessions through `SessionHost.StartAsync`, the start the
 // desktop pane runs too, and refuses a TTY one with the reason; the desktop keeps its own launcher until F4 (AC-1372).
-// Not registered in the container yet: the backend bootstrap (F1.9) builds it over the desks it loaded.
+// Registered by the backend bootstrap (`CockpitBackend`, AC-1381) over the saved desks; the desktop's own wins there.
 public sealed class SessionLauncher(
     WorkspaceSettings workspaces,
     IWorkspaceSettingsStore workspaceStore,
