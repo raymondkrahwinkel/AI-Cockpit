@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 
@@ -32,6 +33,10 @@ public partial class SessionViewModel : IAssistantSession
         add => _host.RowUpserted += value;
         remove => _host.RowUpserted -= value;
     }
+
+    // Read on the UI thread, capped like the gateway's own hop was (AC-1138): a channel can open from an MCP request thread.
+    IReadOnlyList<TranscriptSnapshotEntry> IAssistantSession.Rows =>
+        UiThreadCall.Run<IReadOnlyList<TranscriptSnapshotEntry>>(() => [.. Transcript.Select(TranscriptSnapshot.Capture)]);
 
     // AC-1013: App defaults only as the floor — the profile's own permission mode/model/effort ride the launch
     // options (the driver prefers those), so a profile that says nothing still starts as before.

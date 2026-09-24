@@ -80,10 +80,15 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         get => _session;
         set
         {
-            if (_Set(ref _session, value))
+            if (ReferenceEquals(_session, value))
             {
-                _OnSessionChanged();
+                return;
             }
+
+            // In CommunityToolkit's order: the change's own handling first, its announcement after.
+            _session = value;
+            _OnSessionChanged();
+            _Raise(nameof(Session));
         }
     }
 
@@ -731,8 +736,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // receives decides it, once, since nothing has sent the provider a prompt yet to correlate against.
     private void _WatchForUnresolvableResume(IAssistantSession session)
     {
+        // A change to a row the replay put there is not a row arriving; the first new one decides.
         void OnRow(TranscriptRowUpsert upsert)
         {
+            if (upsert.Version > 1)
+            {
+                return;
+            }
+
             session.RowUpserted -= OnRow;
 
             if (upsert.Row.Kind == TurnCompletedKind && ReferenceEquals(session, Session))

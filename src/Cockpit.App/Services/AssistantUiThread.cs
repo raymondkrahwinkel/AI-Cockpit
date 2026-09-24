@@ -39,6 +39,7 @@ internal sealed class UiThreadControllerPresence : INodeControllerPresence
 // (AC-1023, AC-1138) and a session change posted to it, the hops `AssistantChannelGateway` made while it lived here.
 internal sealed class UiThreadAssistantSessionHost(IAssistantSessionHost host) : IAssistantSessionHost
 {
+    private readonly Lock _gate = new();
     private PropertyChangedEventHandler? _propertyChanged;
 
     // Subscribed to the host only while something listens, so a closed channel leaves nothing behind on the singleton.
@@ -46,25 +47,37 @@ internal sealed class UiThreadAssistantSessionHost(IAssistantSessionHost host) :
     {
         add
         {
-            if (_propertyChanged is null)
+            lock (_gate)
             {
-                host.PropertyChanged += _OnHostPropertyChanged;
-            }
+                if (_propertyChanged is null)
+                {
+                    host.PropertyChanged += _OnHostPropertyChanged;
+                }
 
-            _propertyChanged += value;
+                _propertyChanged += value;
+            }
         }
         remove
         {
-            _propertyChanged -= value;
-            if (_propertyChanged is null)
+            lock (_gate)
             {
-                host.PropertyChanged -= _OnHostPropertyChanged;
+                _propertyChanged -= value;
+                if (_propertyChanged is null)
+                {
+                    host.PropertyChanged -= _OnHostPropertyChanged;
+                }
             }
         }
     }
 
-    private void _OnHostPropertyChanged(object? sender, PropertyChangedEventArgs e) =>
-        Dispatcher.UIThread.Post(() => _propertyChanged?.Invoke(this, e));
+    // Only the session changing, as the gateway itself filtered before it posted; the chip's changes stay off this queue.
+    private void _OnHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IAssistantSessionHost.Session))
+        {
+            Dispatcher.UIThread.Post(() => _propertyChanged?.Invoke(this, e));
+        }
+    }
 
     public IAssistantSession? Session => host.Session;
 

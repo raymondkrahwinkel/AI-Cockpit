@@ -21,9 +21,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     private readonly ILogger<AssistantChannelGateway> _logger;
 
     // Row identity for a plugin, which needs something stable to recognise "the same message, longer" by: one Guid per
-    // row id, with the text and result last relayed so a change to anything else stays quiet. ponytail: a row from
-    // before the channel joined has no baseline, so its first change of any kind is relayed; seed one if that shows.
-    private readonly Dictionary<string, (Guid Id, string Text, string? ResultText)> _relayedRows = new(StringComparer.Ordinal);
+    // row id, with a hash of the text and result last relayed so a change to anything else stays quiet. ponytail: kept
+    // for the session's life, as the rows are; prune on a row removal if the upsert stream ever carries one.
+    private readonly Dictionary<string, (Guid Id, int Content)> _relayedRows = new(StringComparer.Ordinal);
 
     private readonly HashSet<Guid> _relayedPrompts = [];
 
@@ -187,9 +187,27 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             _relayedRows.Clear();
             _observed = next;
 
-            if (next is not null)
+            if (next is null)
             {
-                next.RowUpserted += _OnRowUpserted;
+                return;
+            }
+
+            next.RowUpserted += _OnRowUpserted;
+        }
+
+        // Taken as already said, never replayed. Read outside the lock, since the pane answers on its UI thread; a row
+        // that arrived in between was relayed already and keeps its identity.
+        var baseline = next.Rows;
+        lock (_relayedRows)
+        {
+            if (!ReferenceEquals(_observed, next))
+            {
+                return;
+            }
+
+            foreach (var row in baseline)
+            {
+                _relayedRows.TryAdd(row.Id, (Guid.NewGuid(), _Content(row)));
             }
         }
     }
@@ -209,7 +227,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         {
             if (_relayedRows.TryGetValue(row.Id, out var relayed))
             {
-                if (relayed.Text == row.Text && relayed.ResultText == row.ResultText)
+                if (relayed.Content == _Content(row))
                 {
                     return;
                 }
@@ -221,7 +239,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
                 id = Guid.NewGuid();
             }
 
-            _relayedRows[row.Id] = (id, row.Text, row.ResultText);
+            _relayedRows[row.Id] = (id, _Content(row));
         }
 
         RowChanged?.Invoke(this, new AssistantChannelRow
@@ -235,6 +253,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             IsUpdate = upsert.Version > 1,
         });
     }
+
+    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText);
 
     // The row kinds as a snapshot spells them — `TranscriptEntryKind`'s names.
     private static AssistantChannelRowKind _Kind(string kind) => kind switch

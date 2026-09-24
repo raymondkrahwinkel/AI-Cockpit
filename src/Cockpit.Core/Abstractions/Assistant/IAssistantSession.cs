@@ -75,6 +75,11 @@ public interface IAssistantSession : IAsyncDisposable
     event Action<TranscriptRowUpsert>? RowUpserted;
 
     /// <summary>
+    /// The top-level rows as they stand now — what a chat channel joining mid-conversation takes as already said.
+    /// </summary>
+    IReadOnlyList<TranscriptSnapshotEntry> Rows { get; }
+
+    /// <summary>
     /// Replays the recorded conversation when <paramref name="resume"/> continues it, else rolls the log (AC-1080).
     /// </summary>
     Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default);

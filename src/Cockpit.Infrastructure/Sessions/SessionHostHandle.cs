@@ -24,6 +24,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     private readonly List<ImageAttachment> _pendingImages = [];
     private string _failureReason = "Not started.";
     private bool _wasWaitingOnOperator;
+    private bool _stateChangePending;
 
     public SessionHostHandle(
         string paneId,
@@ -44,7 +45,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         host.RowUpserted += _OnRowUpserted;
         host.EventAppended += _OnEventAppended;
         host.TurnStarting += _OnTurnStarting;
-        host.BusyChanged += () => StateChanged?.Invoke(this, false);
+        host.BusyChanged += _NoteStateChanged;
     }
 
     public string PaneId { get; }
@@ -207,6 +208,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
             answering = runtime.RespondToPermissionAsync(toolUseId, allow);
         }
 
+        _RaisePendingStateChange();
         await answering.ConfigureAwait(false);
         return true;
     }
@@ -355,6 +357,17 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         remove => _host.RowUpserted -= value;
     }
 
+    public IReadOnlyList<TranscriptSnapshotEntry> Rows
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _rows];
+            }
+        }
+    }
+
     // `SessionViewModel.PrepareRecordedTranscriptAsync`'s rule: a resumed conversation repaints its log, a new one rolls it.
     public async Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default)
     {
@@ -364,12 +377,15 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
             return;
         }
 
+        // A permission prompt in the log was answered or abandoned by the run that wrote it; like the desktop's restore
+        // (`TranscriptSnapshot.Restore`), it does not come back as one still waiting.
         if (await _host.LoadRecordedTranscriptAsync(cancellationToken).ConfigureAwait(false) is { } recorded)
         {
+            IReadOnlyList<TranscriptSnapshotEntry> settled = [.. recorded.Select(row => row with { IsPendingPermission = false })];
             lock (_gate)
             {
-                _host.SeedTranscript(recorded);
-                _rows.AddRange(recorded);
+                _host.SeedTranscript(settled);
+                _rows.AddRange(settled);
             }
         }
     }
@@ -419,6 +435,8 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
                 _host.DispatchInBackground(prompt);
             }
         }
+
+        _RaisePendingStateChange();
     }
 
     public async Task<bool> CompactContextAsync()
@@ -447,6 +465,32 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
                 Guid.NewGuid().ToString("n"), Divider, text, ToolName: null, InputJson: null,
                 ToolUseId: null, ResultText: null, IsResultError: false, DateTimeOffset.Now));
         }
+
+        _RaisePendingStateChange();
+    }
+
+    // Never raised inside the lock: the assistant's host reacts by starting over, whose teardown waits on the very
+    // thread still inside it. Noted there, raised once the outermost section has let go.
+    private void _NoteStateChanged()
+    {
+        if (_gate.IsHeldByCurrentThread)
+        {
+            _stateChangePending = true;
+            return;
+        }
+
+        StateChanged?.Invoke(this, false);
+    }
+
+    private void _RaisePendingStateChange()
+    {
+        if (_gate.IsHeldByCurrentThread || !_stateChangePending)
+        {
+            return;
+        }
+
+        _stateChangePending = false;
+        StateChanged?.Invoke(this, false);
     }
 
     // A consent card is a view's; a headless session never has one open.
@@ -493,6 +537,8 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
                 _host.IsBusy = false;
             }
         }
+
+        _RaisePendingStateChange();
     }
 
     // The operator's own row, which the desktop pane forms itself (`SessionViewModel._OnTurnStarting`). A turn starts
@@ -519,7 +565,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         if (waiting != _wasWaitingOnOperator)
         {
             _wasWaitingOnOperator = waiting;
-            StateChanged?.Invoke(this, false);
+            _NoteStateChanged();
         }
     }
 }
