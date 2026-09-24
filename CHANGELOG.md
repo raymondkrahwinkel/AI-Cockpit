@@ -33,7 +33,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - added: a connect key can be limited to certain profiles and projects, and a key only starts a profile that
-  skips its approvals when it is allowed to. You can also stop a key from answering permission prompts. Set the
+  skips its approvals when it is allowed to. A key limited to some projects sees and reaches only the sessions in
+  those projects. You can also stop a key from answering permission prompts. Set the
   limits when you issue the key or later with `set_connect_key_scope`. The change applies from the key's next
   call, even for a controller that is already connected, and `list_connect_keys` shows each key's scope. Existing
   keys keep every profile and project and can still answer permissions, but they can no longer start a bypass

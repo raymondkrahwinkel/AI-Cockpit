@@ -532,6 +532,12 @@ internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCap
     public bool AllowsProject(string projectId, INodePairingBroker pairing) =>
         ByConnectKey ? _KeyScope.AllowsProject(projectId) : pairing.IsProjectAllowed(projectId);
 
+    // Seeing a session is reaching it (stop, prompt, transcript, permission). A key sees it only inside its projects,
+    // and a session without a project only with every project; a pairing's reach stays profile-only (AC-795).
+    public bool AllowsSession(string profileLabel, string? projectId, INodePairingBroker pairing) =>
+        AllowsProfile(profileLabel, pairing)
+        && (!ByConnectKey || (projectId is null ? _KeyScope.AllowAllProjects : _KeyScope.AllowsProject(projectId)));
+
     public bool MayStartBypass => !ByConnectKey || _KeyScope.MayStartBypassProfiles;
 
     public bool MayAnswerPermissions => !ByConnectKey || _KeyScope.MayAnswerPermissions;

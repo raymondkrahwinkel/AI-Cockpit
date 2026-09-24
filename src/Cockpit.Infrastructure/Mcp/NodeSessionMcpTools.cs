@@ -540,7 +540,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
@@ -714,7 +714,7 @@ internal sealed class NodeSessionMcpTools(
     private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
     {
         var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
-        return [.. sessions.Where(session => _IsProfileAllowed(session.Profile))];
+        return [.. sessions.Where(session => _Caller().AllowsSession(session.Profile, session.ProjectId, pairing))];
     }
 
     // The profile this label names, if the grant covers it — or null, which is the only other answer callers need.

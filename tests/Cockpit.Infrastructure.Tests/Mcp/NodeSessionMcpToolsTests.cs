@@ -222,6 +222,24 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Equal(expected, answer["profiles"]!.AsArray().Select(profile => profile!["label"]!.GetValue<string>()));
     }
 
+    // AC-1367: seeing is reaching, so a key scoped to one project neither lists nor stops a session in another, nor
+    // one with no project at all; its own project's session it lists.
+    [Fact]
+    public async Task ListAndStop_ByAKeyScopedToOneProject_CoverOnlyThatProjectsSessions()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, KeyScopedToTheAllowedProject);
+        _read.Sessions.Add(new AssistantSessionRow("pane-a", "in scope", AllowedProfile, "", null, null, ProjectId: AllowedProject));
+        _read.Sessions.Add(new AssistantSessionRow("pane-b", "another project", AllowedProfile, "", null, null, ProjectId: "project-b"));
+        _read.Sessions.Add(new AssistantSessionRow("pane-none", "no project", AllowedProfile, "", null, null));
+
+        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]!.AsArray();
+        var stop = _Json(await _Tools().StopNodeAgentAsync("pane-b"));
+
+        Assert.Equal("pane-a", Assert.Single(listed)!["paneId"]!.GetValue<string>());
+        Assert.False(stop["ok"]!.GetValue<bool>());
+        Assert.Empty(_gateway.Stops);
+    }
+
     [Fact]
     public async Task Stop_ActsOnThePaneIdItWasGiven_NotOnAName()
     {

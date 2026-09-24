@@ -24,6 +24,8 @@ internal sealed class SessionPanelHandle(SessionPanelViewModel pane, bool isEmbe
 
     public string? ActiveProfileLabel => pane.ActiveProfileLabel;
 
+    public string? ProjectId => pane.ProjectId;
+
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only
     // pane that clears it, and it sets `IsTerminal` in the same breath (`TtyViewModel.LaunchTerminal`).
     public bool IsTerminal => !pane.ShowPluginHeaderItems;

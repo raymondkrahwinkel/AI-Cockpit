@@ -107,4 +107,5 @@ public sealed record AssistantSessionRow(
     int ProcessCount = 0,
     double CpuPercent = 0,
     long MemoryBytes = 0,
-    int AbandonedProcessCount = 0);
+    int AbandonedProcessCount = 0,
+    string? ProjectId = null);

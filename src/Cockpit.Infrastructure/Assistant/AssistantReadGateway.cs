@@ -59,7 +59,9 @@ internal sealed class AssistantReadGateway(
             session.ProcessCount,
             session.ProcessCpuPercent,
             session.ProcessMemoryBytes,
-            session.AbandonedProcessCount);
+            session.AbandonedProcessCount,
+            // AC-1367: what a project-scoped connect key's visibility is decided on.
+            session.ProjectId);
     }
 
     public async Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync()
