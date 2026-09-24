@@ -10,6 +10,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,7 +39,7 @@ public class Ac1321TakeoverStateTests
             var cockpit = (CockpitViewModel)window.DataContext!;
             var presence = new NodeControllerPresence(new FakeTimeProvider(Noon));
             cockpit.WatchController(presence);
-            var host = _Host(cockpit);
+            var host = _Host(cockpit, presence);
             var driver = Substitute.For<ISessionDriver>();
             driver.Events.Returns(_OpenEvents());
             await host.ApplySettingsAsync();
@@ -97,7 +98,7 @@ public class Ac1321TakeoverStateTests
             var clock = new FakeTimeProvider(Noon);
             var presence = new NodeControllerPresence(clock);
             cockpit.WatchController(presence);
-            var host = _Host(cockpit);
+            var host = _Host(cockpit, presence);
             await host.ApplySettingsAsync();
 
             presence.Seen("LAPTOP");
@@ -139,7 +140,7 @@ public class Ac1321TakeoverStateTests
                 var clock = new FakeTimeProvider(Noon);
                 var presence = new NodeControllerPresence(clock);
                 cockpit.WatchController(presence);
-                var host = _Host(cockpit, isEnabled: false);
+                var host = _Host(cockpit, presence, isEnabled: false);
                 await host.ApplySettingsAsync();
                 window.UpdateLayout();
                 Assert.Contains("switched off", host.UnavailableReason);
@@ -203,7 +204,7 @@ public class Ac1321TakeoverStateTests
 
     // The real host on the scene's cockpit, enabled and with a profile: what refuses the turn is the takeover and
     // nothing earlier in its start path.
-    private static AssistantSessionHost _Host(CockpitViewModel cockpit, bool isEnabled = true)
+    private static AssistantSessionHost _Host(CockpitViewModel cockpit, NodeControllerPresence presence, bool isEnabled = true)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = isEnabled });
@@ -217,7 +218,7 @@ public class Ac1321TakeoverStateTests
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>([]);
 
         return new AssistantSessionHost(
-            cockpit, settings, profiles, sessionState,
+            new SessionLauncherAdapter(cockpit), new UiThreadControllerPresence(presence), settings, profiles, sessionState,
             new SessionStateRecorder(sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             catalog, Substitute.For<IAssistantMemory>(), NullLogger<AssistantSessionHost>.Instance);
     }

@@ -5,7 +5,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Microsoft.Extensions.Logging;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1013: Composes a session-state change into a `SessionStateRecord` and writes it (AC-409); keeps latest-per-pane in memory only to fill in fields an event doesn't carry.
 // AC-513: seeds from the store's last record before any write, and `_writeGate` makes compose+persist atomic so concurrent writes land in call order.

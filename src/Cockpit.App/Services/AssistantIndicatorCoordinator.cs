@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Cockpit.App.Docking;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;

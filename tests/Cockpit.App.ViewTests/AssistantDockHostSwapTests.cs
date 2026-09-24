@@ -12,6 +12,9 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 using NSubstitute;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -45,7 +48,8 @@ public sealed class AssistantDockHostSwapTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger<SessionStateRecorder>.Instance);
 
         var assistant = new AssistantSessionHost(
-            cockpit,
+            new SessionLauncherAdapter(cockpit),
+            new NodeControllerPresence(),
             settings,
             Substitute.For<IAssistantProfileStore>(),
             sessionState,

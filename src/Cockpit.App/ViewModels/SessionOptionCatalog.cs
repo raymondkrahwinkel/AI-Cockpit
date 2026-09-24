@@ -10,10 +10,10 @@ public static class SessionOptionCatalog
     // CLI silently fall back to default while the dropdown claimed otherwise (bug #15).
     public static IReadOnlyList<PermissionModeOption> AllPermissionModes { get; } =
     [
-        new("Ask permissions", "default"),
+        new("Ask permissions", SessionPermissionModes.Default),
         new("Accept edits", "acceptEdits"),
         new("Plan mode", "plan"),
-        new("Bypass permissions", "bypassPermissions"),
+        new("Bypass permissions", SessionPermissionModes.Bypass),
     ];
 
     // The modes reachable via a live set_permission_mode control request: default/acceptEdits/plan.
@@ -62,7 +62,7 @@ public static class SessionOptionCatalog
         value is { } level ? ReadingLevels.FirstOrDefault(option => option.Value == level) ?? DefaultReadingLevel : DefaultReadingLevel;
 
     // The `--permission-mode` value that is launch-only and locks the panel dropdown.
-    public const string BypassPermissionModeValue = "bypassPermissions";
+    public const string BypassPermissionModeValue = SessionPermissionModes.Bypass;
 
     // App-default mode (Ask permissions) used when a profile carries no defaults.
     public static PermissionModeOption DefaultPermissionMode { get; } = AllPermissionModes[0];

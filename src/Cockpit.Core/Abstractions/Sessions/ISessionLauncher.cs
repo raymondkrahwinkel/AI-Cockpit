@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
@@ -69,6 +70,17 @@ public interface ISessionLauncher
     /// The number of sessions found on it; zero means it was closed.
     /// </returns>
     Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId);
+
+    /// <summary>
+    /// Makes the assistant's own session, on no desk and outside <c>All</c>, as the registry's <c>Assistant</c> (AC-1379).
+    /// Null when this cockpit cannot start sessions; the caller starts it and holds the only reference.
+    /// </summary>
+    IAssistantSession? CreateAssistantSession();
+
+    /// <summary>
+    /// Lets go of an assistant session its host stood down; the registry forgets it only while it is still the one held.
+    /// </summary>
+    void ReleaseAssistantSession(IAssistantSession session);
 }
 
 // AC-1375: one start as AssistantAgentGateway composes it. Kind null means the profile's own route; Kind Tty is only

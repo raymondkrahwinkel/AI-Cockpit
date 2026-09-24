@@ -1,6 +1,9 @@
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Assistant;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -113,6 +116,28 @@ public sealed class SessionLauncher(
             ? null
             : await handle.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
         return new LaunchedSession(paneId, name, promptDelivered);
+    }
+
+    // AC-1379: the assistant on no desk, as the registry's `Assistant`, never in `All`. Its host starts it and holds
+    // the only reference; nothing here stops it, since only that host ever ends it.
+    public IAssistantSession? CreateAssistantSession()
+    {
+        var host = new SessionHost<QueuedPrompt>(() => AssistantIdentity.PaneId, sessionManager, time, transcriptStore: transcriptStore);
+        var handle = new SessionHostHandle(
+            AssistantIdentity.PaneId, AssistantProfileSlot.DisplayName, nameIsChosen: true,
+            Workspaces.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? string.Empty,
+            CockpitBuild.StateRoot, AssistantProfileSlot.DisplayName, host);
+        registry.RegisterAssistant(handle);
+        return handle;
+    }
+
+    // Forgotten only while it is still the one held, as `CockpitViewModel.ReleaseAssistantSession` does on the desktop.
+    public void ReleaseAssistantSession(IAssistantSession session)
+    {
+        if (ReferenceEquals(registry.Assistant, session))
+        {
+            registry.UnregisterAssistant();
+        }
     }
 
     public async Task StopSessionAsync(string paneId)

@@ -116,5 +116,9 @@ public sealed class StartNodeAgentLauncherTests : IDisposable
         public Task RenameWorkspaceAsync(string workspaceId, string name) => throw new NotSupportedException();
 
         public Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId) => throw new NotSupportedException();
+
+        public IAssistantSession? CreateAssistantSession() => throw new NotSupportedException();
+
+        public void ReleaseAssistantSession(IAssistantSession session) => throw new NotSupportedException();
     }
 }
