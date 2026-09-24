@@ -210,6 +210,39 @@ public class PluginInstallerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_tempDir, "escape.txt")));
     }
 
+    // AC-1390: a plugin split in two ships its UI part beside its backend part; both land in the install, and the
+    // UI part's bytes count in the closure the consent pins.
+    [Fact]
+    public async Task InstallFromZipAsync_SplitPlugin_PlacesTheUiAssembly_AndItsBytesCountInTheClosure()
+    {
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _SplitManifest("git-status"),
+            ["Plugin.dll"] = "MZ-backend",
+            ["Plugin.UI.dll"] = "MZ-ui",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
+        var folder = Path.Combine(_pluginsRoot, "git-status");
+        var installedUi = await File.ReadAllTextAsync(Path.Combine(folder, "Plugin.UI.dll"));
+        await File.WriteAllTextAsync(Path.Combine(folder, "Plugin.UI.dll"), "MZ-ui-rebuilt");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("MZ-ui", installedUi);
+        Assert.NotEqual(result.Sha256, await PluginClosureHash.OfInstalledFolderAsync(folder));
+    }
+
+    [Fact]
+    public async Task InstallFromZipAsync_MissingUiAssembly_Rejected()
+    {
+        var zip = _CreateZip(new() { ["plugin.json"] = _SplitManifest("git-status"), ["Plugin.dll"] = "MZ" });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Plugin.UI.dll", result.Error);
+    }
+
     [Fact]
     public async Task MarkForRemovalAsync_ThenSweep_DeletesFolder()
     {
@@ -279,6 +312,9 @@ public class PluginInstallerTests : IDisposable
         minHostVersion is null
             ? $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}"""
             : $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}},"minHostVersion":"{{minHostVersion}}"}""";
+
+    private static string _SplitManifest(string id) =>
+        $$"""{"id":"{{id}}","name":"{{id}}","version":"1.0.0","entryAssembly":"Plugin.dll","uiAssembly":"Plugin.UI.dll","uiEntryType":"Plugin.Ui","abstractionsVersion":{{HostMajor}}}""";
 
     private string _CreateZip(Dictionary<string, string> entries)
     {

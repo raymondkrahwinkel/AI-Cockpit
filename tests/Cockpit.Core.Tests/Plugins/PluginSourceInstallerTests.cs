@@ -64,6 +64,26 @@ public class PluginSourceInstallerTests : IDisposable
         Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
     }
 
+    // AC-1390: the dev refresh of a plugin split in two — a rebuild that changed only the UI part reinstalls it,
+    // carrying the new UI assembly, and re-pins the closure.
+    [Fact]
+    public async Task RefreshOnly_ReinstallsWhenOnlyTheUiAssemblyChanged()
+    {
+        _WriteInstalled("codex", "1.0.0", assemblyContent: "entry-bytes");
+        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Cockpit.Plugin.codex.UI.dll"), "ui-v1");
+        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "old-pin");
+
+        var source = _WriteSource("codex", "1.0.0", assemblyContent: "entry-bytes");
+        await File.WriteAllTextAsync(Path.Combine(source, "Cockpit.Plugin.codex.UI.dll"), "ui-v2");
+
+        var installed = await new PluginSourceInstaller(_registrations, null)
+            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
+
+        Assert.Equal(new[] { "codex" }, installed);
+        Assert.Equal("ui-v2", await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Cockpit.Plugin.codex.UI.dll")));
+        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
+    }
+
     // The other side of the closure comparison: an install whose whole closure is byte-identical must be left
     // alone, or the source sync would reinstall and re-pin on every startup.
     [Fact]
