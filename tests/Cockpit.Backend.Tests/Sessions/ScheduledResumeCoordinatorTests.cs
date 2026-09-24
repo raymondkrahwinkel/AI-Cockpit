@@ -1,10 +1,11 @@
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Toasts;
+using Cockpit.Infrastructure.Sessions;
+using NSubstitute;
 
-namespace Cockpit.Core.Tests.Sessions;
+namespace Cockpit.Backend.Tests.Sessions;
 
 /// <summary>
 /// The machinery under a scheduled resume (AC-234): it remembers what is waiting, sends it when its moment comes,
@@ -38,6 +39,16 @@ public class ScheduledResumeCoordinatorTests
 
     private static ScheduledResume Resume(string paneId, DateTimeOffset dueAt, string prompt = "continue") =>
         new(paneId, dueAt, prompt, Reason: "Week is 95% used");
+
+    // The pane a resume resolves to, as a fake `ISessionHandle` — every send lands in `sent` rather than on a
+    // concrete view model, since the coordinator only ever reads `CanTakeAPrompt` and calls `SendPromptAsync`.
+    private static ISessionHandle _Handle(List<string> sent, bool canTakeAPrompt = true)
+    {
+        var handle = Substitute.For<ISessionHandle>();
+        handle.CanTakeAPrompt.Returns(canTakeAPrompt);
+        handle.SendPromptAsync(Arg.Do<string>(sent.Add)).Returns(true);
+        return handle;
+    }
 
     [Fact]
     public void AResumeIsDue_OnceItsMomentHasArrived()
@@ -102,14 +113,14 @@ public class ScheduledResumeCoordinatorTests
     {
         var store = new InMemoryStore();
         var coordinator = new ScheduledResumeCoordinator(store);
-        var session = new TestSessionPanel();
-        coordinator.ResolveSession = _ => session;
+        var sent = new List<string>();
+        coordinator.ResolveSession = _ => _Handle(sent);
 
         var moment = DateTimeOffset.Now.AddMinutes(-1);
         await coordinator.ScheduleAsync(Resume("pane-1", moment, "carry on"));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        Assert.Equal("carry on", Assert.Single(session.Sent));
+        Assert.Equal("carry on", Assert.Single(sent));
         Assert.Empty(coordinator.Pending);
         Assert.Empty(store.Saved);
     }
@@ -119,13 +130,13 @@ public class ScheduledResumeCoordinatorTests
     {
         var store = new InMemoryStore();
         var coordinator = new ScheduledResumeCoordinator(store);
-        var session = new TestSessionPanel();
-        coordinator.ResolveSession = _ => session;
+        var sent = new List<string>();
+        coordinator.ResolveSession = _ => _Handle(sent);
 
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddHours(3)));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        Assert.Empty(session.Sent);
+        Assert.Empty(sent);
         Assert.Single(coordinator.Pending);
     }
 
@@ -148,13 +159,13 @@ public class ScheduledResumeCoordinatorTests
     public async Task OnLoad_WhatLapsedWhileClosed_IsDroppedRatherThanFiredLate()
     {
         var store = new InMemoryStore { Saved = [Resume("pane-1", DateTimeOffset.Now.AddHours(-4))] };
-        var session = new TestSessionPanel();
-        var coordinator = new ScheduledResumeCoordinator(store) { ResolveSession = _ => session };
+        var sent = new List<string>();
+        var coordinator = new ScheduledResumeCoordinator(store) { ResolveSession = _ => _Handle(sent) };
 
         await coordinator.LoadAsync();
 
         Assert.Empty(coordinator.Pending);
-        Assert.Empty(session.Sent);
+        Assert.Empty(sent);
         Assert.Empty(store.Saved);
     }
 
@@ -172,7 +183,7 @@ public class ScheduledResumeCoordinatorTests
     /// <summary>
     /// AC-410: pane-id continuity means a resume due within the restore <c>Grace</c> window can now resolve to a
     /// pane the operator has not started yet — its runtime never came up, so sending into it "completes without
-    /// going anywhere" (the failure mode <c>SessionPanelViewModel.CanTakeAPrompt</c> exists to describe). This must
+    /// going anywhere" (the failure mode <c>ISessionHandle.CanTakeAPrompt</c> exists to describe). This must
     /// land in the same "could not be delivered" branch as a session that is gone outright, not the "was sent" one.
     /// </summary>
     [Fact]
@@ -180,13 +191,13 @@ public class ScheduledResumeCoordinatorTests
     {
         var store = new InMemoryStore();
         var coordinator = new ScheduledResumeCoordinator(store);
-        var session = new TestSessionPanel { CanTakeAPromptOverride = false };
-        coordinator.ResolveSession = _ => session;
+        var sent = new List<string>();
+        coordinator.ResolveSession = _ => _Handle(sent, canTakeAPrompt: false);
 
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on"));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        Assert.Empty(session.Sent);
+        Assert.Empty(sent);
         Assert.Empty(coordinator.Pending);
         Assert.Empty(store.Saved);
     }
@@ -222,8 +233,8 @@ public class ScheduledResumeCoordinatorTests
     {
         var store = new InMemoryStore();
         var coordinator = new ScheduledResumeCoordinator(store);
-        var session = new TestSessionPanel { CanTakeAPromptOverride = false };
-        coordinator.ResolveSession = _ => session;
+        var sent = new List<string>();
+        coordinator.ResolveSession = _ => _Handle(sent, canTakeAPrompt: false);
         var reopened = new List<string>();
         coordinator.ReopenAndSend = (paneId, _) =>
         {
@@ -237,7 +248,7 @@ public class ScheduledResumeCoordinatorTests
         Assert.Equal("pane-1", Assert.Single(reopened));
         Assert.Empty(coordinator.Pending);
         // The direct-send path must not also fire — the reopen path is what handled this resume, not both.
-        Assert.Empty(session.Sent);
+        Assert.Empty(sent);
     }
 
     /// <summary>

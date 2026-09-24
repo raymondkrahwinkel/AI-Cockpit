@@ -1,7 +1,7 @@
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.Sessions;

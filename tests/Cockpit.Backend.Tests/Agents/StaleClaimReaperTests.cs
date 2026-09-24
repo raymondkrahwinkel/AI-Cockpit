@@ -1,11 +1,12 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Agents;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Agents;
+namespace Cockpit.Backend.Tests.Agents;
 
 // AC-644. The crash net for claims: a liveness check against the live panes, never an age-based expiry.
 public class StaleClaimReaperTests

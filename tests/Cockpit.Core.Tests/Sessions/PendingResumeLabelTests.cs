@@ -1,5 +1,7 @@
-using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -34,7 +36,10 @@ public class PendingResumeLabelTests
     {
         var coordinator = new ScheduledResumeCoordinator(new InMemoryScheduledResumeStore());
         var session = new TestSessionPanel { Resumes = coordinator };
-        coordinator.ResolveSession = _ => session;
+        var handle = Substitute.For<ISessionHandle>();
+        handle.CanTakeAPrompt.Returns(true);
+        handle.SendPromptAsync(Arg.Any<string>()).Returns(true);
+        coordinator.ResolveSession = _ => handle;
 
         await coordinator.ScheduleAsync(Resume(session.PaneId, DateTimeOffset.Now.AddMinutes(-1)));
         Assert.True(session.HasPendingResume);

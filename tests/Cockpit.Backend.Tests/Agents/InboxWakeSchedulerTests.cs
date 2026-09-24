@@ -1,10 +1,11 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Agents;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Agents;
+namespace Cockpit.Backend.Tests.Agents;
 
 // AC-656. Every test here drives `RunOnceAsync` against a hand-picked pane list and a substituted inbox/gateway: no
 // cockpit, no UI thread, no timer — and, the point of the ticket, no model anywhere in the loop that decides whether

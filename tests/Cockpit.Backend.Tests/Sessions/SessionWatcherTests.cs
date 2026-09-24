@@ -1,12 +1,13 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Sessions;
 
-namespace Cockpit.Core.Tests.Assistant;
+namespace Cockpit.Backend.Tests.Sessions;
 
 // AC-640. Every test here drives `RunOnce` against a hand-moved pane: no cockpit, no UI thread, no clock — and, the
 // point of the ticket, no model anywhere in the loop that decides whether to speak up.

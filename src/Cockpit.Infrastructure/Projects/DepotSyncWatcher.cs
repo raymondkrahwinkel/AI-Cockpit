@@ -1,10 +1,10 @@
-using Avalonia.Threading;
+using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Projects;
 
 // One local project bound to a Depot-backed `ISharedProjectSource`, and the id it is known by there — what
 // `DepotSyncWatcher` needs to ask that source whether anything changed since the last look.
@@ -13,8 +13,7 @@ public sealed record DepotBoundProject(string ProjectId, ISharedProjectSource So
 // AC-894: sync was otherwise purely action-driven (Save, Publish) — this ticks every bound project's own
 // `PrepareBindingAsync` and compares its `Checksum` against the last one seen. A changed checksum is only ever a
 // signal; nothing here writes anything back or overwrites an unsaved local edit.
-public sealed class DepotSyncWatcher(
-    ILogger<DepotSyncWatcher>? logger = null) : ISingletonService, IDisposable
+public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 {
     // Same order as WorktreeReconciler's disk sweep: a background check, not a chat the operator is waiting on.
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
@@ -23,15 +22,33 @@ public sealed class DepotSyncWatcher(
     // `_ListWithTimeoutAsync` already gives `LoadSharedProjectsAsync`.
     private static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(10);
 
-    private readonly ILogger<DepotSyncWatcher> _logger = logger ?? NullLogger<DepotSyncWatcher>.Instance;
+    private readonly ILogger<DepotSyncWatcher> _logger;
+    private readonly TimeProvider _time;
 
     // The last checksum seen per project id, so a project checked for the first time never reports a change it has
-    // nothing to compare against, and a project that goes quiet stays quiet.
-    private readonly Dictionary<string, string> _lastChecksum = new(StringComparer.Ordinal);
+    // nothing to compare against, and a project that goes quiet stays quiet. Concurrent: "Sync now" reaches this
+    // from the UI thread while a tick can reach it from the threadpool, on the same or a different project's key.
+    private readonly ConcurrentDictionary<string, string> _lastChecksum = new(StringComparer.Ordinal);
 
-    private DispatcherTimer? _timer;
-    private bool _polling;
+    private ITimer? _timer;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it. "Sync now" deliberately never claims it (see
+    // `SyncNowAsync`), so it still cannot serialise against a tick — only `_lastChecksum` guards that.
+    private int _polling;
     private bool _disposed;
+
+    public DepotSyncWatcher(ILogger<DepotSyncWatcher>? logger = null)
+        : this(logger, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so a poll is provable without waiting fifteen minutes for it.
+    internal DepotSyncWatcher(ILogger<DepotSyncWatcher>? logger, TimeProvider time)
+    {
+        _logger = logger ?? NullLogger<DepotSyncWatcher>.Instance;
+        _time = time;
+    }
 
     // The projects to poll, asked fresh every tick: which local projects are bound to a Depot source right now, and
     // through which one. Set by the cockpit, which owns the project list; nothing is polled until it is.
@@ -42,8 +59,7 @@ public sealed class DepotSyncWatcher(
     // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
     public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
 
-    // Starts polling the clock. Idempotent, and on the UI thread because that is where a DispatcherTimer has to be
-    // created to ever tick at all (AC-368).
+    // Starts polling the clock. Idempotent.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -51,9 +67,7 @@ public sealed class DepotSyncWatcher(
             return;
         }
 
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += _OnTick;
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
     }
 
     // One pass over every bound project. Public because the tests drive it directly rather than waiting 15 minutes
@@ -62,12 +76,11 @@ public sealed class DepotSyncWatcher(
     {
         // A pass that outlasts the interval must not have a second one started on top of it: two checks racing to
         // update `_lastChecksum` is how a change is reported twice, or not at all.
-        if (_polling || BoundProjects is null)
+        if (BoundProjects is null || Interlocked.CompareExchange(ref _polling, 1, 0) != 0)
         {
             return;
         }
 
-        _polling = true;
         try
         {
             foreach (var bound in BoundProjects())
@@ -77,7 +90,7 @@ public sealed class DepotSyncWatcher(
         }
         finally
         {
-            _polling = false;
+            Interlocked.Exchange(ref _polling, 0);
         }
     }
 
@@ -134,7 +147,7 @@ public sealed class DepotSyncWatcher(
         }
     }
 
-    private async void _OnTick(object? sender, EventArgs e)
+    private async void _OnTick()
     {
         try
         {
@@ -153,14 +166,7 @@ public sealed class DepotSyncWatcher(
         _disposed = true;
         BoundProjects = null;
         OnChecked = null;
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

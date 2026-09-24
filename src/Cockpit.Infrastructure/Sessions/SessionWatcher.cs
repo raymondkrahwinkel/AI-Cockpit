@@ -1,15 +1,13 @@
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.Core.Abstractions.Sessions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Sessions;
 
 // One watched pane as a tick finds it. Null from `SessionWatcher.Probe` is the pane being gone, itself one of the
 // events rather than an error. `NewRows` is the bounded set of rows added since the tick's row count — what
@@ -49,11 +47,10 @@ public static class SessionWatchEvents
 // AC-640: watches the panes the assistant armed it for and puts a message in its inbox when one finishes, gets
 // stuck, stops producing output, or matches a pattern. Unlike `CiWatcher` (watches every checkout), nothing is
 // watched until `watch_session` says so. No `IAttentionNotifier`: it is the assistant's own business, not a toast.
-public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatcher>? logger = null)
-    : ISessionWatcher, ISingletonService, IDisposable
+public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDisposable
 {
     // Short enough that "it finished" is news while the operator is still asking, and cheap enough to afford at that
-    // rate: a tick reads collections the UI already holds, and reads nothing at all when nothing is armed.
+    // rate: a tick reads collections the caller already holds, and reads nothing at all when nothing is armed.
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
     // Who the message is from. Not a pane — the cockpit itself noticed this, not a neighbour.
@@ -74,12 +71,17 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
 
     private const int MaxRowLength = 200;
 
-    private readonly ILogger<SessionWatcher> _logger = logger ?? NullLogger<SessionWatcher>.Instance;
+    private readonly IAgentMessageInbox _inbox;
+    private readonly ILogger<SessionWatcher> _logger;
+    private readonly TimeProvider _time;
 
     private readonly Dictionary<string, Armed> _watches = new(StringComparer.Ordinal);
 
-    private DispatcherTimer? _timer;
-    private bool _looking;
+    private ITimer? _timer;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it.
+    private int _looking;
     private bool _disposed;
 
     // One pane's state, as of the last tick that looked at it.
@@ -108,17 +110,29 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         public bool Reported { get; set; }
     }
 
+    public SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatcher>? logger = null)
+        : this(inbox, logger, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so `stuck` is provable without waiting fifteen real minutes for it.
+    internal SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatcher>? logger, TimeProvider time)
+    {
+        _inbox = inbox;
+        _logger = logger ?? NullLogger<SessionWatcher>.Instance;
+        _time = time;
+    }
+
     // The live pane behind a pane id, at the row count the caller has already seen. Replaced by the tests, which
-    // have no cockpit and no UI thread. Asynchronous because a TTY session's transcript is a file (AC-294) — see
-    // `ProbeOf`; an SDK session's is in memory and its arm completes without ever yielding.
+    // have no registry. Asynchronous because a TTY session's transcript is a file (AC-294) — see `ProbeOf`; an SDK
+    // session's is in memory and its arm completes without ever yielding.
     public Func<string, int, Task<WatchedPane?>>? Probe { get; set; }
 
     // The clock the `stuck` threshold is measured on. A seam for the same reason `Probe` is one: a test that had to
     // wait fifteen real minutes to see the one event that does not read status would never be written.
     public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
 
-    // Starts watching the clock. Idempotent, and built on the UI thread — that is where the session list is read and
-    // where a `DispatcherTimer` has to be created to ever tick at all (AC-368).
+    // Starts watching the clock. Idempotent.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -126,9 +140,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             return;
         }
 
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += _OnTick;
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
     }
 
     // Arms a watch on one pane, replacing whatever was armed on it before. Refuses rather than throws: the caller is
@@ -165,7 +177,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
 
         // AC-294: not a question about the session kind any more — a TTY session's own CLI writes a transcript
         // the cockpit reads back (AC-609). Asked of the route and never of the content: a session that has a
-        // record and has written nothing to it yet is the one `stuck` is here for.
+        // record and has written nothing to it yet is exactly the one `stuck` is here for.
         var wantsTranscript = wanted.Contains(SessionWatchEvents.Stuck) || wanted.Contains(SessionWatchEvents.Pattern);
         if (wantsTranscript && !pane.HasTranscript)
         {
@@ -186,7 +198,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             try
             {
                 // A caller-supplied expression run on a timer: the timeout is what stops one that backtracks from
-                // taking the UI thread with it.
+                // taking a threadpool thread with it.
                 compiled = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
             }
             catch (ArgumentException exception)
@@ -219,12 +231,12 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
     // something that was never running.
     public bool Unwatch(string paneId) => _watches.Remove(paneId);
 
-    // AC-1375: the gateway's own door, onto the thread the probe reads the session list on — the hop the gateway
-    // made itself before it moved to Infrastructure.
+    // AC-1375/AC-1380: no hop to make any more — the gateway reached across to the UI thread this watcher used to
+    // live on; now both sides are in Infrastructure, and `_watches` is this class's own state either way.
     Task<AssistantWatchResult> ISessionWatcher.WatchAsync(string paneId, IReadOnlyList<string>? events, int? afterMinutes, string? pattern) =>
-        UiThreadCall.RunAsync(() => WatchAsync(paneId, events, afterMinutes, pattern));
+        WatchAsync(paneId, events, afterMinutes, pattern);
 
-    Task<bool> ISessionWatcher.UnwatchAsync(string paneId) => UiThreadCall.RunAsync(() => Unwatch(paneId));
+    Task<bool> ISessionWatcher.UnwatchAsync(string paneId) => Task.FromResult(Unwatch(paneId));
 
     // One look at every armed pane. Public because the tests drive it directly rather than waiting on the timer —
     // the same seam `CiWatcher.RunOnceAsync` opens.
@@ -233,12 +245,11 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         // A look that outlasts the interval must not have a second one started on top of it: two ticks comparing
         // against the same `watch.Rows` is how a stall is reported twice, or a growth spurt missed entirely. The
         // same guard, and for the same reason, as `CiWatcher.RunOnceAsync`'s.
-        if (_looking || _watches.Count == 0 || Probe is null)
+        if (_watches.Count == 0 || Probe is null || Interlocked.CompareExchange(ref _looking, 1, 0) != 0)
         {
             return;
         }
 
-        _looking = true;
         try
         {
             foreach (var (paneId, watch) in _watches.ToList())
@@ -255,7 +266,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         }
         finally
         {
-            _looking = false;
+            Interlocked.Exchange(ref _looking, 0);
         }
     }
 
@@ -385,7 +396,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             ? string.Empty
             : "\n" + string.Join("\n", rows.Select(row => "> " + _Short(row)));
 
-        inbox.Deliver(
+        _inbox.Deliver(
             SenderPaneId,
             AssistantIdentity.PaneId,
             "session",
@@ -398,9 +409,9 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         return single.Length <= MaxRowLength ? single : single[..MaxRowLength] + "…";
     }
 
-    // `async void` deliberately, the shape a timer handler has to take: the catch below is inside it, so nothing
-    // escapes to a thread with no one to catch it. Same as `CiWatcher._OnTick`.
-    private async void _OnTick(object? sender, EventArgs e)
+    // `async void` deliberately, the shape an `ITimer` callback has to take: the catch below is inside it, so
+    // nothing escapes to a threadpool thread with no one to catch it.
+    private async void _OnTick()
     {
         try
         {
@@ -414,80 +425,60 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         }
     }
 
-    // The probe the cockpit runs on: the live pane behind a pane id, read off the collections the UI already holds.
-    // An SDK session's transcript is in memory and read here; a TTY session's is a file (AC-609) that can run to
-    // tens of megabytes, so it is handed off the thread that draws.
-
-    // AC-294: the same move `AssistantReadGateway.ReadTranscriptAsync` makes, through the same
-    // `TtyViewModel.ReadTranscriptEntries` — one way to read a TTY transcript, not two.
-    public static Func<string, int, Task<WatchedPane?>> ProbeOf(CockpitViewModel cockpit) => (paneId, since) =>
-        cockpit.FindSession(paneId) switch
-        {
-            SessionViewModel session => Task.FromResult<WatchedPane?>(new WatchedPane(
-                session.Title,
-                session.SessionStatus,
-                _NeedsAttention(session) || session.HasPendingPermission,
-                true,
-                session.Transcript.Count,
-                [.. session.Transcript.Skip(Math.Max(since, session.Transcript.Count - MaxNewRows)).Select(row => row.TextWithImageSuffix)],
-                [.. session.Transcript.Skip(Math.Max(0, session.Transcript.Count - TailRows)).Select(row => row.TextWithImageSuffix)],
-                session.HasOutstandingBackgroundShells)),
-
-            // A plain terminal is a TtyViewModel too and has no agent behind it to have written anything, so it
-            // falls through to the arm below — the same split `AssistantReadGateway` makes for `read_transcript`.
-            TtyViewModel { IsTerminal: false } tty => _TtyPaneAsync(tty, since),
-
-            { } pane => Task.FromResult<WatchedPane?>(
-                new WatchedPane(pane.Title, pane.SessionStatus, _NeedsAttention(pane), false, 0, [], [], pane.HasOutstandingBackgroundShells)),
-
-            _ => Task.FromResult<WatchedPane?>(null),
-        };
-
-    // AC-294: a TTY session as a tick finds it. The status facts are taken here, on the thread that writes them;
-    // only the file read is handed off.
-    private static async Task<WatchedPane?> _TtyPaneAsync(TtyViewModel tty, int since)
+    // The live pane behind a pane id, read off the session registry — safe from any thread, and the one route
+    // that reads an SDK and a TTY session's transcript alike (AC-294, AC-1373): both are
+    // `ISessionHandle.ReadTranscriptAsync`, with no need for this probe to tell the two kinds apart.
+    public static Func<string, int, Task<WatchedPane?>> ProbeOf(ISessionRegistry registry) => async (paneId, since) =>
     {
-        var title = tty.Title;
-        var status = tty.SessionStatus;
-        var needsAttention = _NeedsAttention(tty);
-        var readable = tty.HasReadableTranscript;
+        if (registry.Find(paneId) is not { } handle)
+        {
+            return null;
+        }
 
-        var slice = await Task.Run(() => tty.ReadTranscriptEntries(MaxNewRows)).ConfigureAwait(true);
+        // AC-1374's snapshot, not the two properties read apart: this tick now runs on a threadpool thread, and
+        // a consent answered between two separate reads must not be seen as half of one state and half of another.
+        // Run alongside the other two independent reads rather than one after another.
+        var wakeStateTask = handle.ReadWakeStateAsync();
+        var pendingPermissionsTask = handle.ReadPendingPermissionsAsync();
+        var outstandingWorkTask = handle.HasOutstandingBackgroundShellsAsync();
+        await Task.WhenAll(wakeStateTask, pendingPermissionsTask, outstandingWorkTask).ConfigureAwait(false);
+
+        var wakeState = wakeStateTask.Result;
+
+        // AC-1311/AC-1324: a tool call waiting on Allow/Deny is stopped on something nobody answered, the same
+        // as an open consent banner — the SDK arm of `needs-attention` before this move, off the transcript.
+        var needsAttention = wakeState.SessionStatus is SessionStatus.NeedsAttention
+            || wakeState.HasPendingConsent
+            || pendingPermissionsTask.Result.Count > 0;
+
+        if (!handle.HasReadableTranscript)
+        {
+            return new WatchedPane(handle.Title, wakeState.SessionStatus, needsAttention, false, 0, [], [], outstandingWorkTask.Result);
+        }
+
+        var slice = await handle.ReadTranscriptAsync(MaxNewRows).ConfigureAwait(false);
         var rows = slice.Entries.Select(entry => entry.Text).ToList();
 
         return new WatchedPane(
-            title,
-            status,
+            handle.Title,
+            wakeState.SessionStatus,
             needsAttention,
-            readable,
+            true,
             slice.TotalEntries,
             // The read hands back the last `min(total, MaxNewRows)` rows; the ones newer than what the caller has
             // already seen are the tail of those. Bounded by the read itself, so a session that wrote ten thousand
-            // rows since the last tick costs two hundred strings — exactly the ceiling the SDK arm holds to.
+            // rows since the last tick costs two hundred strings.
             [.. rows.Skip(Math.Max(0, rows.Count - Math.Max(0, slice.TotalEntries - since)))],
             [.. rows.TakeLast(TailRows)],
-            tty.HasOutstandingBackgroundShells);
-    }
-
-    // AC-1311: narrower than `RequestsAttention` on purpose — `Failed` gets its own report through
-    // `busy-to-idle`, and this event's wording ("stopped on something nobody has answered") is written for a
-    // pending permission, not a crash.
-    private static bool _NeedsAttention(SessionPanelViewModel pane) =>
-        pane.SessionStatus is SessionStatus.NeedsAttention || pane.PendingConsent is not null;
+            outstandingWorkTask.Result);
+    };
 
     public void Dispose()
     {
         _disposed = true;
         Probe = null;
         _watches.Clear();
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

@@ -83,6 +83,9 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
     public bool IsTerminal => false;
 
+    // AC-294: an SDK session's record is in memory and always there, the same as `SessionPanelHandle`'s.
+    public bool HasReadableTranscript => true;
+
     public bool IsEmbedded => false;
 
     public SessionStatus SessionStatus

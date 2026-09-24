@@ -1,20 +1,15 @@
-using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Assistant;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Agents;
 
 // AC-644: the crash net for claims that worktrees already have (AC-85/AC-643). `Forget` runs on every ordinary
 // session close, so this only catches a crashed/killed session whose claims would otherwise keep warning neighbours
 // off an unused worktree. A liveness check only: it asks whether the owner pane still exists, never claim age.
-public sealed class StaleClaimReaper(
-    IAgentResourceClaimsAudit claimsAudit,
-    IAgentResourceClaims claims,
-    IAgentMessageInbox inbox,
-    ILogger<StaleClaimReaper>? logger = null) : ISingletonService, IDisposable
+public sealed class StaleClaimReaper : ISingletonService, IDisposable
 {
     // Same clock as the worktree net: far enough from a session that is mid-close, close enough that a crashed
     // agent's claim does not stand for the rest of the day.
@@ -23,18 +18,49 @@ public sealed class StaleClaimReaper(
     // Who the message is from. Not a pane and never will be — the cockpit itself noticed this, not a neighbour.
     private const string SenderPaneId = "cockpit-claim-watch";
 
-    private readonly ILogger<StaleClaimReaper> _logger = logger ?? NullLogger<StaleClaimReaper>.Instance;
+    private readonly IAgentResourceClaimsAudit _claimsAudit;
+    private readonly IAgentResourceClaims _claims;
+    private readonly IAgentMessageInbox _inbox;
+    private readonly ILogger<StaleClaimReaper> _logger;
+    private readonly TimeProvider _time;
 
-    private DispatcherTimer? _timer;
+    private ITimer? _timer;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it.
+    private int _sweeping;
     private bool _disposed;
+
+    public StaleClaimReaper(
+        IAgentResourceClaimsAudit claimsAudit,
+        IAgentResourceClaims claims,
+        IAgentMessageInbox inbox,
+        ILogger<StaleClaimReaper>? logger = null)
+        : this(claimsAudit, claims, inbox, logger, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so a sweep is provable without waiting a quarter of an hour for it.
+    internal StaleClaimReaper(
+        IAgentResourceClaimsAudit claimsAudit,
+        IAgentResourceClaims claims,
+        IAgentMessageInbox inbox,
+        ILogger<StaleClaimReaper>? logger,
+        TimeProvider time)
+    {
+        _claimsAudit = claimsAudit;
+        _claims = claims;
+        _inbox = inbox;
+        _logger = logger ?? NullLogger<StaleClaimReaper>.Instance;
+        _time = time;
+    }
 
     // The panes alive right now, asked fresh every tick: a claim owned by anything outside this set is stale. Set by
     // the cockpit, which owns the session list; nothing is reaped until it is.
     public Func<IReadOnlyCollection<string>>? LivePaneIds { get; set; }
 
-    // Starts sweeping the clock. Idempotent, and on the UI thread because that is where the session list is read and
-    // where a DispatcherTimer has to be created to ever tick at all (AC-368). No sweep now: at startup the sessions
-    // being restored are not all back yet, and a pane that has not landed reads exactly like a pane that crashed.
+    // Starts sweeping the clock. Idempotent. No sweep now: at startup the sessions being restored are not all back
+    // yet, and a pane that has not landed reads exactly like a pane that crashed.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -42,9 +68,7 @@ public sealed class StaleClaimReaper(
             return;
         }
 
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += _OnTick;
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
     }
 
     // One sweep. Public because the tests drive it directly rather than waiting a quarter of an hour — the same seam
@@ -52,20 +76,29 @@ public sealed class StaleClaimReaper(
     // in-memory, so a sweep that finds nothing costs a dictionary walk and no process at all.
     public void RunOnce()
     {
-        if (LivePaneIds is null)
+        // A sweep that outlasts the interval must not have a second one started on top of it: two of them
+        // forgetting the same pane's claims is one reporting a set the other has already cleared.
+        if (LivePaneIds is null || Interlocked.CompareExchange(ref _sweeping, 1, 0) != 0)
         {
             return;
         }
 
-        var live = LivePaneIds().ToHashSet(StringComparer.Ordinal);
-        var stale = claimsAudit.ListAll().Where(claim => !live.Contains(claim.OwnerPaneId));
-
-        foreach (var group in stale.GroupBy(claim => claim.OwnerPaneId, StringComparer.Ordinal))
+        try
         {
-            // Forgotten per pane, not per claim: `Forget` drops everything that pane holds in one call, so calling
-            // it once per resource would report each of the later ones as if it had still been standing.
-            claims.Forget(group.Key);
-            _Report(group.Key, [.. group.Select(claim => claim.Resource)]);
+            var live = LivePaneIds().ToHashSet(StringComparer.Ordinal);
+            var stale = _claimsAudit.ListAll().Where(claim => !live.Contains(claim.OwnerPaneId));
+
+            foreach (var group in stale.GroupBy(claim => claim.OwnerPaneId, StringComparer.Ordinal))
+            {
+                // Forgotten per pane, not per claim: `Forget` drops everything that pane holds in one call, so
+                // calling it once per resource would report each of the later ones as if it had still been standing.
+                _claims.Forget(group.Key);
+                _Report(group.Key, [.. group.Select(claim => claim.Resource)]);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sweeping, 0);
         }
     }
 
@@ -76,7 +109,7 @@ public sealed class StaleClaimReaper(
 
         // The assistant, not the operator: it is usually the one that told the agent to claim this in the first
         // place, and the one placed to notice if the same pattern keeps happening.
-        inbox.Deliver(
+        _inbox.Deliver(
             SenderPaneId,
             AssistantIdentity.PaneId,
             "claims",
@@ -84,7 +117,7 @@ public sealed class StaleClaimReaper(
                 + $"{named}. Nothing else has been started about it.");
     }
 
-    private void _OnTick(object? sender, EventArgs e)
+    private void _OnTick()
     {
         try
         {
@@ -102,14 +135,7 @@ public sealed class StaleClaimReaper(
     {
         _disposed = true;
         LivePaneIds = null;
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

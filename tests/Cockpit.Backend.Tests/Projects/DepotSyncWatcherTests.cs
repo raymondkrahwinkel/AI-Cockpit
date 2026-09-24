@@ -1,10 +1,11 @@
-using Cockpit.App.Services;
+using Cockpit.Core;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Projects;
+namespace Cockpit.Backend.Tests.Projects;
 
 // AC-894. Every test here drives `RunOnceAsync`/`SyncNowAsync` against a stubbed `ISharedProjectSource`: no Depot,
 // no network, and no write ever attempted — this watcher only ever reads a checksum and reports whether it moved.

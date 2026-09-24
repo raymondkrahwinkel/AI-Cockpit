@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Notifications;
@@ -9,7 +8,7 @@ using Cockpit.Core.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Ci;
 
 // A checkout to look at: which session is on it, and where. Two sessions on one directory are one thing to check —
 // the checks belong to the branch, not to whoever is looking at it.
@@ -18,11 +17,7 @@ public sealed record WatchedCheckout(string PaneId, string Title, string Directo
 // AC-634: asks gh every few minutes whether the branch a session is on has gone red, and says so when it has. No
 // model in the loop — gh answers and `RedChecks` decides — so a tick that finds nothing costs a process and nothing
 // else. Nothing is started in response: what to do about a red check is the operator's call, or the assistant's.
-public sealed class CiWatcher(
-    IAttentionNotifier notifier,
-    IAgentMessageInbox inbox,
-    INotificationSettingsStore settingsStore,
-    ILogger<CiWatcher>? logger = null) : ISingletonService, IDisposable
+public sealed class CiWatcher : ISingletonService, IDisposable
 {
     // Long enough that a run gets time to finish and short enough that you hear about it while you are still on the
     // branch that broke. A CI run measured in minutes is not worth asking about every thirty seconds.
@@ -33,7 +28,11 @@ public sealed class CiWatcher(
     private const int MaxMessageLength = 2_000;
     private const string TruncationMarker = " … (more CI details omitted)";
 
-    private readonly ILogger<CiWatcher> _logger = logger ?? NullLogger<CiWatcher>.Instance;
+    private readonly IAttentionNotifier _notifier;
+    private readonly IAgentMessageInbox _inbox;
+    private readonly INotificationSettingsStore _settingsStore;
+    private readonly ILogger<CiWatcher> _logger;
+    private readonly TimeProvider _time;
 
     // The red checks already reported, per checkout, so a branch that stays red stays quiet.
     private readonly Dictionary<string, Dictionary<string, IReadOnlySet<string>>> _reported = new(StringComparer.OrdinalIgnoreCase);
@@ -41,9 +40,36 @@ public sealed class CiWatcher(
     // The checkouts already reported ready (AC-645), so a pull request that sits green all afternoon is said once.
     private readonly HashSet<string> _reportedReady = new(StringComparer.OrdinalIgnoreCase);
 
-    private DispatcherTimer? _timer;
-    private bool _looking;
+    private ITimer? _timer;
+
+    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
+    // otherwise both read this false before either sets it, the same claim race `UiThreadCallClaim` guards against.
+    private int _looking;
     private bool _disposed;
+
+    public CiWatcher(
+        IAttentionNotifier notifier,
+        IAgentMessageInbox inbox,
+        INotificationSettingsStore settingsStore,
+        ILogger<CiWatcher>? logger = null)
+        : this(notifier, inbox, settingsStore, logger, TimeProvider.System)
+    {
+    }
+
+    // Test seam: a controllable clock, so the tick is provable without waiting five minutes for it.
+    internal CiWatcher(
+        IAttentionNotifier notifier,
+        IAgentMessageInbox inbox,
+        INotificationSettingsStore settingsStore,
+        ILogger<CiWatcher>? logger,
+        TimeProvider time)
+    {
+        _notifier = notifier;
+        _inbox = inbox;
+        _settingsStore = settingsStore;
+        _logger = logger ?? NullLogger<CiWatcher>.Instance;
+        _time = time;
+    }
 
     // The checkouts to watch, asked fresh every tick: the live sessions and the directories they are working in. Set
     // by the cockpit, which owns the session list; nothing is watched until it is.
@@ -60,8 +86,7 @@ public sealed class CiWatcher(
     // or `mergeable` to fold into — it only knows check fields — and only ever run once the checks are already green.
     public Func<string, CancellationToken, Task<string>> MergeProbe { get; set; } = _AskGhMergeStateAsync;
 
-    // Starts watching the clock. Idempotent, and built on the UI thread because that is where the session list is
-    // read and where a DispatcherTimer has to be created to ever tick at all (AC-368).
+    // Starts watching the clock. Idempotent.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -69,9 +94,7 @@ public sealed class CiWatcher(
             return;
         }
 
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += _OnTick;
-        _timer.Start();
+        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
 
         _ = RunOnceAsync();
     }
@@ -82,22 +105,21 @@ public sealed class CiWatcher(
     {
         // A look that outlasts the interval must not have a second one started on top of it: two answers racing to
         // update what has been reported is how a failure is announced twice, or not at all.
-        if (_looking || Watching is null)
+        if (Watching is null || Interlocked.CompareExchange(ref _looking, 1, 0) != 0)
         {
             return;
         }
 
-        var settings = await settingsStore.LoadAsync(cancellationToken);
-        if (!settings.NotifyOnCiFailure)
-        {
-            // Checked before anything is run, not before anything is delivered: the cost of this feature is the
-            // processes it starts, and an operator who turned it off should not be paying it.
-            return;
-        }
-
-        _looking = true;
         try
         {
+            var settings = await _settingsStore.LoadAsync(cancellationToken);
+            if (!settings.NotifyOnCiFailure)
+            {
+                // Checked before anything is run, not before anything is delivered: the cost of this feature is the
+                // processes it starts, and an operator who turned it off should not be paying it.
+                return;
+            }
+
             var checkoutGroups = Watching()
                 .Where(checkout => !string.IsNullOrWhiteSpace(checkout.Directory))
                 .GroupBy(checkout => checkout.Directory, StringComparer.OrdinalIgnoreCase)
@@ -114,7 +136,7 @@ public sealed class CiWatcher(
         }
         finally
         {
-            _looking = false;
+            Interlocked.Exchange(ref _looking, 0);
         }
     }
 
@@ -209,7 +231,7 @@ public sealed class CiWatcher(
     {
         _logger.LogInformation("CI went green and the pull request is mergeable on {Title} ({Directory}).", checkout.Title, checkout.Directory);
 
-        await notifier.NotifyAttentionAsync(
+        await _notifier.NotifyAttentionAsync(
             new AttentionNotification(checkout.Title, "CI is green and the pull request is ready to merge"),
             cancellationToken);
 
@@ -223,7 +245,7 @@ public sealed class CiWatcher(
         _logger.LogInformation("CI went red on {Title} ({Directory}): {Checks}.", checkout.Title, checkout.Directory, named);
 
         // The operator first, over the line they already tuned: an OS toast at the desk, Discord when away.
-        await notifier.NotifyAttentionAsync(
+        await _notifier.NotifyAttentionAsync(
             new AttentionNotification(checkout.Title, $"CI failed: {named}"),
             cancellationToken);
 
@@ -235,10 +257,10 @@ public sealed class CiWatcher(
     private void _Deliver(IReadOnlyList<WatchedCheckout> recipients, string message)
     {
         var body = _Bound(message);
-        inbox.Deliver(SenderPaneId, AssistantIdentity.PaneId, "ci", body);
+        _inbox.Deliver(SenderPaneId, AssistantIdentity.PaneId, "ci", body);
         foreach (var paneId in recipients.Select(checkout => checkout.PaneId).Distinct(StringComparer.Ordinal))
         {
-            inbox.Deliver(SenderPaneId, paneId, "ci", body);
+            _inbox.Deliver(SenderPaneId, paneId, "ci", body);
         }
     }
 
@@ -258,7 +280,7 @@ public sealed class CiWatcher(
         _reportedReady.RemoveWhere(directory => !live.Contains(directory));
     }
 
-    private async void _OnTick(object? sender, EventArgs e)
+    private async void _OnTick()
     {
         try
         {
@@ -351,14 +373,7 @@ public sealed class CiWatcher(
     {
         _disposed = true;
         Watching = null;
-
-        if (_timer is null)
-        {
-            return;
-        }
-
-        _timer.Stop();
-        _timer.Tick -= _OnTick;
+        _timer?.Dispose();
         _timer = null;
     }
 }

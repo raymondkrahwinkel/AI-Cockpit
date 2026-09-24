@@ -4408,8 +4408,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return Task.CompletedTask;
         }
 
-        coordinator.ResolveSession = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId);
-        coordinator.ReopenAndSend = _ReopenAndSendResumeAsync;
+        // AC-1380: the coordinator's tick now runs on a threadpool thread, so this reaches the session registry
+        // (thread-safe, AC-1373) rather than `Sessions` directly, and the reopen route — which does touch UI state
+        // — is marshalled the way `SessionPanelHandle` marshals every other cross-thread write.
+        coordinator.ResolveSession = paneId => _sessionRegistry?.Find(paneId);
+        coordinator.ReopenAndSend = (paneId, prompt) => UiThreadCall.RunAsync(() => _ReopenAndSendResumeAsync(paneId, prompt));
 
         return coordinator.StartAsync();
     }
