@@ -9,6 +9,9 @@ namespace Cockpit.Infrastructure.Sessions;
 // One lock stands in for the desktop's UI thread, so the fold, the turn gate and the reads never interleave.
 public sealed class SessionHostHandle : ISessionHandle, IAsyncDisposable
 {
+    // `TranscriptEntryKind.UserText` as the transcript store spells it, like the kinds `SessionTranscriptBuilder` forms.
+    private const string UserText = "UserText";
+
     private readonly Lock _gate = new();
     private readonly SessionHost<QueuedPrompt> _host;
     private readonly bool _nameIsChosen;
@@ -35,6 +38,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAsyncDisposable
         _host = host;
         host.RowUpserted += _OnRowUpserted;
         host.EventAppended += _OnEventAppended;
+        host.TurnStarting += _OnTurnStarting;
     }
 
     public string PaneId { get; }
@@ -138,26 +142,38 @@ public sealed class SessionHostHandle : ISessionHandle, IAsyncDisposable
         }
     }
 
+    // True once the prompt went out or waits behind the turn in flight; false when it was refused or its send failed.
     public async Task<bool> SendPromptAsync(string prompt)
     {
-        Task sending;
-        lock (_gate)
+        var queued = new QueuedPrompt(prompt, []);
+        var failed = false;
+        void OnFailed(QueuedPrompt failedPrompt, Exception exception) => failed |= ReferenceEquals(failedPrompt, queued);
+
+        _host.TurnFailedToStart += OnFailed;
+        try
         {
-            if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null)
+            Task sending;
+            lock (_gate)
             {
-                return false;
+                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null)
+                {
+                    return false;
+                }
+
+                sending = _host.SubmitAsync(queued);
             }
 
-            sending = _host.SubmitAsync(new QueuedPrompt(prompt, []));
+            await sending.ConfigureAwait(false);
+            return !failed;
         }
-
-        await sending.ConfigureAwait(false);
-        return true;
+        finally
+        {
+            _host.TurnFailedToStart -= OnFailed;
+        }
     }
 
-    // Nothing is ever held here, so a prompt the session cannot take now is accepted by nobody.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        await SendPromptAsync(prompt).ConfigureAwait(false) ? true : null;
+    // Nothing is ever held here: false says the prompt was not taken, and nothing will deliver it later.
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) => await SendPromptAsync(prompt).ConfigureAwait(false);
 
     public Task SetWorktreeBranchAsync(string? branch)
     {
@@ -262,6 +278,13 @@ public sealed class SessionHostHandle : ISessionHandle, IAsyncDisposable
             }
         }
     }
+
+    // The operator's own row, which the desktop pane forms itself (`SessionViewModel._OnTurnStarting`). A turn starts
+    // from a send or from the end of the previous turn, both under the lock.
+    private void _OnTurnStarting(QueuedPrompt prompt) =>
+        _host.RecordRow(new TranscriptSnapshotEntry(
+            Guid.NewGuid().ToString("n"), UserText, prompt.Text, ToolName: null, InputJson: null,
+            ToolUseId: null, ResultText: null, IsResultError: false, DateTimeOffset.Now));
 
     // Raised inside the fold or a recorded row, so under the same lock; a row keeps the place it first took.
     private void _OnRowUpserted(TranscriptRowUpsert upsert)

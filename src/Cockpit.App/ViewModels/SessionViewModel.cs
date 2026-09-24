@@ -1230,6 +1230,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var host = new SessionHost<QueuedMessageViewModel>(
             () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
         host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
+        // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
+        host.Started += startedAt => _startedAt = startedAt;
         host.RowUpserted += _OnRowUpserted;
         host.BusyChanged += _OnHostBusyChanged;
         host.TurnStarting += _OnTurnStarting;
@@ -1533,16 +1535,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // Inside the try: a profile referencing a missing or unresolvable plugin provider (or an invalid persisted
             // ConfigJson) throws during the runtime's start.
-            var starting = _host.StartAsync(start);
-
-            // The host attached its runtime before its first await, which is when the session's working life starts
-            // (AC-251): whatever the launch waited on (resolving a worktree, a profile) is setup, not work.
-            if (_host.StartedAt is { } startedAt)
-            {
-                _startedAt = startedAt;
-            }
-
-            if (await starting is not { } runtime)
+            if (await _host.StartAsync(start) is not { } runtime)
             {
                 return;
             }

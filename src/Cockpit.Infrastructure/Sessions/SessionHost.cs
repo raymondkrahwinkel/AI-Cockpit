@@ -218,8 +218,8 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // Whether this host writes a transcript at all; the design-time and most test graphs have no store.
     public bool RecordsTranscript => _transcriptStore is not null;
 
-    // AC-251: the session's working life starts when its runtime exists, not when the launch it waits on returns.
-    public DateTimeOffset? StartedAt { get; private set; }
+    // AC-251: raised the moment the runtime exists, before its start is awaited — when the session's working life starts.
+    public event Action<DateTimeOffset>? Started;
 
     // AC-1378: the one start both the desktop pane and the backend launcher run, in the order the pane always ran it.
     // Null when this host cannot launch; a launch that throws leaves the attached runtime in `Runtime`.
@@ -238,7 +238,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
         }
 
         var runtime = Attach(start.Profile);
-        StartedAt = _time.GetLocalNow();
+        Started?.Invoke(_time.GetLocalNow());
         await runtime.StartAsync(
             start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
             launchOptions, start.ProjectId);

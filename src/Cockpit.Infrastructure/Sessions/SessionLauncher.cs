@@ -25,6 +25,7 @@ public sealed class SessionLauncher(
     // The desktop's exclusion is its UI thread; this is the backend's. Sections are synchronous, so it is never held
     // across an await.
     private readonly Lock _gate = new();
+    private readonly SemaphoreSlim _saving = new(1, 1);
     private WorkspaceSettings _workspaces = workspaces;
 
     public Task<T> RunExclusiveAsync<T>(Func<T> decision)
@@ -61,6 +62,14 @@ public sealed class SessionLauncher(
             throw new TtyLaunchRefusedException(profile.Label);
         }
 
+        // The worktree step is the desktop's (`CockpitViewModel._ResolveIsolatedWorkingDirectoryAsync`); running in the
+        // shared checkout instead of the isolation that was asked for would be the one outcome isolation exists to stop.
+        if (request.IsolateInWorktree == true)
+        {
+            throw new InvalidOperationException(
+                "This cockpit cannot isolate a session in a worktree of its own yet, so it did not start one in the shared checkout either.");
+        }
+
         var paneId = Guid.NewGuid().ToString("n");
         var name = string.IsNullOrWhiteSpace(request.SessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : request.SessionName.Trim();
         var host = new SessionHost<QueuedPrompt>(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
@@ -83,6 +92,13 @@ public sealed class SessionLauncher(
             if (runtime is not { IsRunning: true })
             {
                 throw new InvalidOperationException("The provider returned without a running session.");
+            }
+
+            // Stopped while it came up: the stop found no runtime yet, so this one would run with no pane to reach it.
+            if (registry.Find(paneId) != handle)
+            {
+                await handle.DisposeAsync().ConfigureAwait(false);
+                return null;
             }
         }
         catch
@@ -146,19 +162,28 @@ public sealed class SessionLauncher(
         return true;
     }
 
-    // Decided and swapped in one section; saved after it, only when something changed.
+    // Decided and swapped in one section; saved after it, only when something changed. One save at a time, in the
+    // order the changes were made, so an older state never lands on disk after a newer one.
     private async Task _ApplyAsync(Func<WorkspaceSettings> change)
     {
-        var (before, after) = await RunExclusiveAsync(() =>
+        await _saving.WaitAsync().ConfigureAwait(false);
+        try
         {
-            var previous = _workspaces;
-            _workspaces = change();
-            return (previous, _workspaces);
-        }).ConfigureAwait(false);
+            var (before, after) = await RunExclusiveAsync(() =>
+            {
+                var previous = _workspaces;
+                _workspaces = change();
+                return (previous, _workspaces);
+            }).ConfigureAwait(false);
 
-        if (!ReferenceEquals(before, after))
+            if (!ReferenceEquals(before, after))
+            {
+                await workspaceStore.SaveAsync(after).ConfigureAwait(false);
+            }
+        }
+        finally
         {
-            await workspaceStore.SaveAsync(after).ConfigureAwait(false);
+            _saving.Release();
         }
     }
 }

@@ -57,7 +57,7 @@ public class SessionLauncherTests
         _Raise(new AssistantTextCompleted { SessionId = "S1", Text = "hello back" }, new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "hello back", IsError = false });
 
         var transcript = await handle.ReadTranscriptAsync(10);
-        Assert.Equal(["hello back"], transcript.Entries.Select(entry => entry.Text));
+        Assert.Equal([("UserText", "hello"), ("AssistantText", "hello back")], transcript.Entries.Select(entry => (entry.Kind, entry.Text)));
         Assert.Equal(SessionStatus.Idle, handle.SessionStatus);
     }
 
@@ -95,7 +95,7 @@ public class SessionLauncherTests
         _manager.DidNotReceive().Create(Arg.Any<SessionProfile?>());
     }
 
-    // The re-check in the act: a desk that closed after the caller decided on it gets no session, and none runs.
+    // The re-check in the act: a desk that is gone by the time the start registers gets no session, and none runs.
     [Fact]
     public async Task ADeskClosedBeforeTheStartRegisters_GetsNoSession_AndNoneRuns()
     {
@@ -119,6 +119,7 @@ public class SessionLauncherTests
 
         Assert.Equal("The provider returned without a running session.", failure.Message);
         Assert.Empty(_registry.All);
+        await _manager.Received(1).StopAsync(Arg.Any<string>());
     }
 
     private SessionLauncher _Launcher(params Workspace[] others) => new(
