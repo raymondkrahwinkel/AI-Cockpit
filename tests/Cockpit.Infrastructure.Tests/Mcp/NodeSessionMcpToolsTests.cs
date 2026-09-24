@@ -189,8 +189,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         var answer = _Json(await _Tools().StartNodeAgentAsync(profile, projectId));
 
-        Assert.False(answer["ok"]!.GetValue<bool>());
-        Assert.Contains(reason, answer["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.False(answer["ok"]?.GetValue<bool>());
+        Assert.Contains(reason, answer["error"]?.GetValue<string>() ?? "", StringComparison.Ordinal);
         Assert.Empty(_gateway.Spawns);
     }
 
@@ -207,7 +207,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         var answer = _Json(await _Tools().StartNodeAgentAsync(profile, projectId));
 
-        Assert.True(answer["ok"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.True(answer["ok"]?.GetValue<bool>(), answer.ToJsonString());
         Assert.Equal(profile, Assert.Single(_gateway.Spawns).ProfileLabel);
     }
 
@@ -221,7 +221,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         var answer = _Json(await _Tools().ListNodeProfilesAsync());
 
-        Assert.Equal(expected, answer["profiles"]!.AsArray().Select(profile => profile!["label"]!.GetValue<string>()));
+        Assert.Equal(expected, (answer["profiles"]?.AsArray() ?? new JsonArray()).Select(profile => profile?["label"]?.GetValue<string>()));
     }
 
     // AC-1367: seeing is reaching, so a key scoped to one project neither lists nor stops a session in another, nor
@@ -234,11 +234,11 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         _read.Sessions.Add(new AssistantSessionRow("pane-b", "another project", AllowedProfile, "", null, null, ProjectId: "project-b"));
         _read.Sessions.Add(new AssistantSessionRow("pane-none", "no project", AllowedProfile, "", null, null));
 
-        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]!.AsArray();
+        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]?.AsArray() ?? new JsonArray();
         var stop = _Json(await _Tools().StopNodeAgentAsync("pane-b"));
 
-        Assert.Equal("pane-a", Assert.Single(listed)!["paneId"]!.GetValue<string>());
-        Assert.False(stop["ok"]!.GetValue<bool>());
+        Assert.Equal("pane-a", Assert.Single(listed)?["paneId"]?.GetValue<string>());
+        Assert.False(stop["ok"]?.GetValue<bool>());
         Assert.Empty(_gateway.Stops);
     }
 
