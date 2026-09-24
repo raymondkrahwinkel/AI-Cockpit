@@ -16,11 +16,9 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-// AC-545/AC-436: backend half of `IAssistantAgentGateway` — records every spawn/stop outcome (including
-// refusals) and enforces that the named desk exists and can hold a session, but does not scope which desk a
-// spawn may land on (decided upstream via `SpawnTarget`) nor gate operator consent (already raised as an Allow/Deny row before the call reaches here).
-// AC-1375: moved from Cockpit.App. Multi-field decisions run inside `ISessionLauncher.RunExclusiveAsync`; what they
-// decide is carried out after it, by an action that checks its own precondition again as it runs.
+// AC-545/AC-436: records every spawn/stop outcome, refusals included, and enforces that the named desk can hold a
+// session; which desk (`SpawnTarget`) and consent (an Allow/Deny row) are settled upstream. AC-1375: multi-field
+// decisions run in `ISessionLauncher.RunExclusiveAsync`, and the action after it re-checks its own precondition.
 internal sealed class AssistantAgentGateway(
     ISessionRegistry sessions,
     ISessionLauncher launcher,
