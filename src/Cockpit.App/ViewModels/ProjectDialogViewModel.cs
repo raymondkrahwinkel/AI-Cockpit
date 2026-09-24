@@ -794,7 +794,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
                 if (resolution.TakeTheirs)
                 {
-                    _ApplyRemoteValues(result.LatestSnapshot!);
+                    _ApplyRemoteValues(result.LatestSnapshot!, writeBack.Baseline);
                     CloseRequested?.Invoke(ToProject());
                     return;
                 }
@@ -905,10 +905,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // "Hun versie nemen" (AC-247): adopts the fresh remote state onto every claimed, editable field this dialog
     // shows — the operator's own edit to any of them is discarded, exactly what that button promises. Local-only
     // fields (Profile, Folder) are untouched; they were never part of the write-back to begin with.
-    private void _ApplyRemoteValues(SharedProjectBinding latest)
+    private void _ApplyRemoteValues(SharedProjectBinding latest, SharedProjectBinding baseline)
     {
         _ApplyValues(latest.Name, latest.Description, latest.BehaviorPrompt, latest.IsolateInWorktreeByDefault);
-        _ApplyMcpServerNames(latest.EnabledMcpServerNames);
+
+        // AC-1404: the shared MCP choice replaces the local one only when a colleague actually moved it — a conflict
+        // on another field must not wipe the selection this project's sessions start with.
+        if (!_SameNames(latest.EnabledMcpServerNames, baseline.EnabledMcpServerNames))
+        {
+            _ApplyMcpServerNames(latest.EnabledMcpServerNames);
+        }
 
         // AC-763: `latest` carries no fresh logo bytes (see _MergeOntoLatest's own remarks) to show instead, so
         // the closest this button can do is discard whatever the operator picked here and fall back to what this
@@ -945,8 +951,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     }
 
     // Whether SaveAsync's own write-back can be skipped outright — every write-back-eligible field reads the same as
-    // `baseline`, the read this editor opened with (see CreateAsync's own remarks on why these fields start out equal
-    // to it).
+    // `baseline`, the read this editor opened with (see CreateAsync on why these fields start out equal to it; the
+    // MCP ticks don't, and _BuildEditAsync sends baseline's list for an untouched selection, AC-1404).
     private static bool _MatchesBaseline(SharedProjectDefinitionEdit edit, SharedProjectBinding baseline) =>
         edit.LogoEdit is null
         && _FieldEquals(edit.Name, baseline.Name)

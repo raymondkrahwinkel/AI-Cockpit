@@ -375,7 +375,8 @@ public class ProjectDialogWriteBackTests
         await viewModel.SaveCommand.ExecuteAsync(null);
 
         Assert.Empty(source.Calls); // an untouched MCP selection is no edit to the shared definition
-        Assert.Equal(project.McpOverlay.EnabledServerNames, closed!.McpOverlay.EnabledServerNames);
+        Assert.NotNull(closed);
+        Assert.Equal(project.McpOverlay.EnabledServerNames, closed.McpOverlay.EnabledServerNames);
         Assert.Equal(project.McpOverlay.DisabledServerNames, closed.McpOverlay.DisabledServerNames);
     }
 
@@ -394,7 +395,8 @@ public class ProjectDialogWriteBackTests
         var call = Assert.Single(source.Calls);
         Assert.Equal("Edited name", call.Edit.Name);
         Assert.Null(call.Edit.EnabledMcpServerNames); // the shared definition's own "no choice", not this machine's list
-        Assert.Equal(project.McpOverlay.EnabledServerNames, closed!.McpOverlay.EnabledServerNames);
+        Assert.NotNull(closed);
+        Assert.Equal(project.McpOverlay.EnabledServerNames, closed.McpOverlay.EnabledServerNames);
         Assert.Equal(project.McpOverlay.DisabledServerNames, closed.McpOverlay.DisabledServerNames);
     }
 }
