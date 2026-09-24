@@ -361,35 +361,45 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             live.ApplySpeech(settings.SpeakReplies);
         }
 
-        // AC-1327 criterion 1: a controller outranks every other unavailable reason, including the feature being
-        // off — a connected node always has an assistant. Re-run on every transition, so falling back here
-        // restores whichever reason applies without one.
-        if (_presence.Current is { } controller)
+        var current = Session;
+        var reading = current is null ? default : SessionReading.Of(current);
+        var switchedOff = _RunExclusive(() =>
         {
-            _SetUnavailable(TakeoverReason(controller));
-            return;
-        }
+            // AC-1327 criterion 1: a controller outranks every other unavailable reason, including the feature being
+            // off — a connected node always has an assistant. Re-run on every transition, so falling back here
+            // restores whichever reason applies without one.
+            if (_presence.Current is { } controller)
+            {
+                Activity = AssistantActivity.Unavailable;
+                UnavailableReason = TakeoverReason(controller);
+                return false;
+            }
 
-        if (settings.IsEnabled)
-        {
+            if (!settings.IsEnabled)
+            {
+                return true;
+            }
+
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
             // the first hold or click is still what wakes it. A live session that was stood down for a controller
             // (AC-1321) comes back to what it is doing rather than to Ready.
-            _RunExclusive(() =>
+            if (current is null)
             {
-                if (Session is null)
-                {
-                    Activity = AssistantActivity.Ready;
-                    UnavailableReason = null;
-                }
-                else if (Activity == AssistantActivity.Unavailable)
-                {
-                    Activity = AssistantActivity.Ready;
-                    UnavailableReason = null;
-                    _SyncActivityWithSession(Session);
-                }
-            });
+                Activity = AssistantActivity.Ready;
+                UnavailableReason = null;
+            }
+            else if (Activity == AssistantActivity.Unavailable)
+            {
+                Activity = AssistantActivity.Ready;
+                UnavailableReason = null;
+                _SyncActivityWithSession(reading);
+            }
 
+            return false;
+        });
+
+        if (!switchedOff)
+        {
             return;
         }
 
@@ -523,7 +533,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // out: every send after the first leaves it stuck on Thinking.
         session.StateChanged += _OnSessionStateChanged;
 
-        _RunExclusive(() => _SyncActivityWithSession(session));
+        var reading = SessionReading.Of(session);
+        _RunExclusive(() => _SyncActivityWithSession(reading));
         return session;
     }
 
@@ -549,10 +560,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // The session refreshes the provider's limits after it has published IsBusy false, so the busy transition
         // arrives with the previous turn's figure still standing. Why that matters: _ShouldRelieveTheFullContext.
+        var reading = SessionReading.Of(session);
         var relieve = _RunExclusive(() =>
         {
-            _SyncActivityWithSession(session);
-            return _ShouldRelieveTheFullContext(session, fillWasJustRead);
+            _SyncActivityWithSession(reading);
+            return _ShouldRelieveTheFullContext(session, reading, fillWasJustRead);
         });
 
         // Not awaited: this runs off a state change with nowhere to put a failure, and both branches report their
@@ -564,7 +576,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         }
 
         // AC-1261 criterion 7: a queued clear_conversation request runs the moment this same gate opens.
-        if (_RunExclusive(() => _TakePendingConversationClear(session)))
+        if (_RunExclusive(() => _TakePendingConversationClear(session, reading)))
         {
             _ = ClearConversationAsync();
         }
@@ -575,21 +587,26 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // when a request is already queued (idempotent second call within the same turn), true otherwise.
     public bool RequestConversationClear()
     {
-        // AC-1382: queued and taken in one section; the pump taking it too between those two steps ran it twice.
-        var (queued, clearNow) = _RunExclusive(() =>
+        // AC-1382: queued before the session is read, so whichever of this call and the pump reads it last takes the
+        // request, and the taking is one step: before, both could take it between the check and the reset.
+        var (queued, session) = _RunExclusive(() =>
         {
             if (_pendingConversationClear)
             {
-                return (false, false);
+                return (false, (IAssistantSession?)null);
             }
 
             _pendingConversationClear = true;
-            return (true, Session is { } session && _TakePendingConversationClear(session));
+            return (true, Session);
         });
 
-        if (clearNow)
+        if (session is not null)
         {
-            _ = ClearConversationAsync();
+            var reading = SessionReading.Of(session);
+            if (_RunExclusive(() => _TakePendingConversationClear(session, reading)))
+            {
+                _ = ClearConversationAsync();
+            }
         }
 
         return queued;
@@ -601,14 +618,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
     // The same gate `_ShouldRelieveTheFullContext` uses (`ShouldHandOver`), with the fill given as always-over-the-line
     // so busy and waiting-on-operator alone decide. Under `_gate`: true hands the one queued request to this caller.
-    private bool _TakePendingConversationClear(IAssistantSession session)
+    private bool _TakePendingConversationClear(IAssistantSession session, SessionReading reading)
     {
         if (!_pendingConversationClear || !ReferenceEquals(session, Session))
         {
             return false;
         }
 
-        if (!ShouldHandOver(double.PositiveInfinity, session.IsBusy, session.IsWaitingOnOperator))
+        if (!ShouldHandOver(double.PositiveInfinity, reading.IsBusy, reading.IsWaitingOnOperator))
         {
             return false;
         }
@@ -620,7 +637,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
     // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
     // AC-664: a provider that can summarise its own conversation is asked to, and the restart is what is left.
-    private bool _ShouldRelieveTheFullContext(IAssistantSession session, bool fillWasJustRead)
+    private bool _ShouldRelieveTheFullContext(IAssistantSession session, SessionReading reading, bool fillWasJustRead)
     {
         if (!ReferenceEquals(session, Session))
         {
@@ -637,14 +654,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A fill that came back under the line re-arms the ask: this is the only place that can tell a compaction
         // that worked from one that did not, and the next crossing is a new episode rather than a repeat of this one.
-        if (session.ContextUsedPercent < RestartAboveContextPercent)
+        if (reading.ContextUsedPercent < RestartAboveContextPercent)
         {
             _askedTheProviderToCompact = false;
             return false;
         }
 
         // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
-        return session.CanTakeAPrompt && ShouldHandOver(session.ContextUsedPercent, session.IsBusy, session.IsWaitingOnOperator);
+        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator);
     }
 
     // Whether the provider has already been asked to compact this fill. Without it, every property change above the
@@ -655,9 +672,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private async Task _RelieveTheFullContextAsync(IAssistantSession session)
     {
         // AC-1382: checked and set in one section, so two readings over the line cannot both ask.
+        var canCompact = session.SupportsContextCompaction;
         var ask = _RunExclusive(() =>
         {
-            var first = session.SupportsContextCompaction && !_askedTheProviderToCompact;
+            var first = canCompact && !_askedTheProviderToCompact;
             _askedTheProviderToCompact |= first;
             return first;
         });
@@ -703,10 +721,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set
     // rather than the "done" set, so a status added later defaults to Ready, not Thinking.
-    private void _SyncActivityWithSession(IAssistantSession session) =>
+    private void _SyncActivityWithSession(SessionReading reading) =>
         // Either kind of waiting counts: the SDK's own permission row, and the cockpit's consent gate for a
         // host-side tool. Both stop the turn dead until somebody clicks, and the chip's job is to say so.
-        Activity = ActivityFor(Activity, session.IsBusy, session.IsWaitingOnOperator);
+        Activity = ActivityFor(Activity, reading.IsBusy, reading.IsWaitingOnOperator);
 
     // AC-1013: Pure function so it can be asserted directly. Reads both inputs raw rather than
     // `SessionPanelViewModel.SessionStatus`, whose `_needsAttention` stickiness once produced two wrong chips
@@ -929,6 +947,15 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _ApplyTurnHold();
         _Raise(nameof(Session));
         return previous;
+    }
+
+    // AC-1382: what a section decides on, read off the session before it is entered. The headless session's getters
+    // take its own lock, which it holds while it raises rows into this host; read under `_gate`, that deadlocks.
+    private readonly record struct SessionReading(
+        bool IsBusy, bool IsWaitingOnOperator, double? ContextUsedPercent, bool CanTakeAPrompt)
+    {
+        public static SessionReading Of(IAssistantSession session) =>
+            new(session.IsBusy, session.IsWaitingOnOperator, session.ContextUsedPercent, session.CanTakeAPrompt);
     }
 
     // AC-1382: the F1 pattern (`SessionLauncher.RunExclusiveAsync`), private since nothing outside decides here. The

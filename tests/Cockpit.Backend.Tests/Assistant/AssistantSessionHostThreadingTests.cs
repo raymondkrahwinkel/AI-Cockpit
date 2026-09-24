@@ -27,7 +27,7 @@ public class AssistantSessionHostThreadingTests
     }
 
     // Acceptance 1: A queues a clear and is parked reading IsBusy; B, the pump, sees the turn end and clears. Red
-    // (a restart for each) when A's decision was taken before B's and both run it; green when B waits for A's section.
+    // (a restart for each) when A checked the queue before B reset it and both run it; green when only one takes it.
     [Fact]
     public async Task OneClearRequest_RacingTheTurnEnd_RestartsTheAssistantOnce()
     {
