@@ -33,6 +33,7 @@
          to hand GitStatusPlugin.ConfigureServices a real IServiceCollection in GitStatusPluginLoadTests. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -42,7 +43,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1390: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of UI/ fails this project rather than going unseen. -->
+    <Reference Include="Cockpit.Plugin.GitStatus.UI">
+      <HintPath>..\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
     <!-- TestGitDirectory (AC-339), taken from the project that exists to be shared rather than copied here: git
          leaves its objects read-only and Windows will not delete those, which failed every test in the workflow-
          steps fixture from its teardown. Four other plugin test projects take the same reference. -->

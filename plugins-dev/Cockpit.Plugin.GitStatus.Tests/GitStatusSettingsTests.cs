@@ -1,3 +1,4 @@
+using Cockpit.Plugin.GitStatus.UI;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
