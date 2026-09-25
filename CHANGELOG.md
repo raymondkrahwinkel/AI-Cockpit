@@ -580,6 +580,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Workflows steps "Send to session" and "Set session status" now act on the session you name in the
+  step: its name, its pane id, or `{Start session.session}` after a step that started one. They no longer use
+  whichever session happens to be selected, which a flow fired by a schedule does not have. A saved flow whose
+  step names no session now fails with that reason instead of reaching a session you did not mean. Open the step
+  and fill in Session. The "picked for a session" triggers of GitHub Issues and YouTrack hand on that session as
+  `{session}`, and their ready-made flows already use it.
+- changed: for plugin authors, Workflows now follows Git status into the two-part layout: a backend part (the
+  engine, the flows, the runs and the MCP tools) and a UI part (the canvas and the editor) talking over the plugin's
+  own channel. A backend part can now place text in a named session's input without sending it, through
+  `ICockpitHost.InsertIntoSessionAsync`, which reports whether the session took it (cockpit 0.44.0 and later).
+  Workflows, GitHub Issues and YouTrack now need cockpit 0.44.0.
 - changed: for plugin authors, GitHub Issues and GitHub Pull Requests now follow Git status into the two-part
   layout too — a backend part and a UI part talking over the plugin's own channel. They look and work exactly as
   before.

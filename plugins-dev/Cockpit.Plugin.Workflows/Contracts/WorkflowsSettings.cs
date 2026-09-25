@@ -1,6 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 
-namespace Cockpit.Plugin.Workflows;
+namespace Cockpit.Plugin.Workflows.Contracts;
 
 // The Workflows plugin's own settings, in its per-plugin storage: whether its MCP server is offered to sessions
 // (AC-40), and how far a scheduled trigger may catch up after the cockpit was not running to see it fire (#AC-1359).

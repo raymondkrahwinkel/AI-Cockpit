@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugin.Workflows.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.Workflows;
+namespace Cockpit.Plugin.Workflows.UI;
 
 // The Workflows settings view (opened from the plugin manager's gear): a single toggle for whether the plugin's MCP
 // server is offered to sessions (AC-40). Implements `IPluginSettingsView` so the host dialog shows a
@@ -14,7 +16,7 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
     private readonly CheckBox _mcpEnabled;
     private readonly NumericUpDown _catchUpGrace;
 
-    public WorkflowsSettingsControl(ICockpitHost host, WorkflowsSettings settings)
+    public WorkflowsSettingsControl(ICockpitUiHost host, WorkflowsSettings settings)
     {
         _settings = settings;
 

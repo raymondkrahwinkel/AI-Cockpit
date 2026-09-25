@@ -5,11 +5,11 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Cockpit.Plugin.Workflows.Model;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workflows;
 
-namespace Cockpit.Plugin.Workflows;
+namespace Cockpit.Plugin.Workflows.UI;
 
 // Where the flows live (#69): the list you land on, with everything you do *to* a flow rather than
 // *in* one — open, rename, duplicate, delete, and arm it or leave it off. The editor is for building a
@@ -20,17 +20,15 @@ namespace Cockpit.Plugin.Workflows;
 internal sealed class WorkflowManagerControl : UserControl
 {
     private readonly List<Workflow> _workflows;
-    private readonly ICockpitActions _actions;
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IReadOnlyList<WorkflowTemplate> _templates;
     private readonly Action _save;
     private readonly StackPanel _rows;
 
-    public WorkflowManagerControl(List<Workflow> workflows, ICockpitHost host, IReadOnlyList<WorkflowTemplate> templates, Action save)
+    public WorkflowManagerControl(List<Workflow> workflows, ICockpitUiHost host, IReadOnlyList<WorkflowTemplate> templates, Action save)
     {
         _workflows = workflows;
         _host = host;
-        _actions = host.Actions;
         _templates = templates;
         _save = save;
 
@@ -44,7 +42,7 @@ internal sealed class WorkflowManagerControl : UserControl
 
         var fromTemplate = new Button { Content = "From template…", Classes = { "Subtle" }, Margin = new Thickness(0, 0, 6, 0) };
         ToolTip.SetTip(fromTemplate, "Start from a flow the plugins already know how to draw");
-        fromTemplate.Click += (_, _) => _ = _ShowTemplatesAsync();
+        fromTemplate.Click += async (_, _) => await _ShowTemplatesAsync();
 
         var import = new Button { Content = "Import…", Classes = { "Subtle" }, Margin = new Thickness(0, 0, 6, 0) };
         ToolTip.SetTip(import, "Open a flow somebody exported — it arrives switched off, for you to read before you arm it");
@@ -320,7 +318,7 @@ internal sealed class WorkflowManagerControl : UserControl
     private async Task _DeleteAsync(Workflow workflow)
     {
         // Deleting a flow is not undoable — the cockpit's own confirmation, not a bespoke one.
-        if (!await _actions.ConfirmAsync("Delete flow", $"Delete '{workflow.Name}'? Its steps and wiring go with it.", "Delete"))
+        if (!await _host.ConfirmAsync("Delete flow", $"Delete '{workflow.Name}'? Its steps and wiring go with it.", "Delete"))
         {
             return;
         }

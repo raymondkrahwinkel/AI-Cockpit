@@ -777,25 +777,30 @@ public class PluginBackendHost(
             ? Task.CompletedTask
             : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
 
+    public Task<bool> InsertIntoSessionAsync(string paneId, string text) =>
+        string.IsNullOrEmpty(text)
+            ? Task.FromResult(false)
+            : _ActOnSessionAsync(paneId, session => session.InsertTextAsync(text));
+
     // A plugin or workflow may call from any thread, and the target may already be gone — a no-op then, never an
     // error. Decided under the launcher's exclusion (F1), acted on outside it, and looked up again right before
     // acting, so a pane that closed in between is left alone rather than written to (AC-1392).
-    private async Task _ActOnSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> act)
+    private async Task<bool> _ActOnSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> act)
     {
         if (string.IsNullOrEmpty(paneId)
             || services.GetService<ISessionRegistry>() is not { } registry
             || services.GetService<ISessionLauncher>() is not { } launcher)
         {
-            return;
+            return false;
         }
 
         if (await launcher.RunExclusiveAsync(() => registry.Find(paneId)).ConfigureAwait(false) is not { } decided
             || !ReferenceEquals(registry.Find(paneId), decided))
         {
-            return;
+            return false;
         }
 
-        await act(decided).ConfigureAwait(false);
+        return await act(decided).ConfigureAwait(false);
     }
 
     // AC-1338: the same inbox a session's `notify cockpit-assistant` lands in, with this plugin as the stated sender —

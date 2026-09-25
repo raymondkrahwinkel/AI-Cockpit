@@ -516,6 +516,18 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
+    /// Places <paramref name="text"/> in the input of the session named by <paramref name="paneId"/> without sending
+    /// it, so the operator can still edit it (AC-1399) — what <see cref="ICockpitActions.InjectIntoActiveSessionAsync"/>
+    /// did for the selected session, for a named one.
+    /// </summary>
+    /// <remarks>
+    /// Answers false when no live session has that paneId, or when it has no input to place text in (a headless
+    /// session): the caller decides whether that is an error. Marshals to the UI thread itself. Default answers
+    /// false, the honest answer of a host that predates this member.
+    /// </remarks>
+    Task<bool> InsertIntoSessionAsync(string paneId, string text) => Task.FromResult(false);
+
+    /// <summary>
     /// Puts a message in the cockpit-assistant's inbox (AC-1338) — the same channel a session's <c>notify</c> to
     /// <c>cockpit-assistant</c> uses — so a plugin can hand the assistant evidence to judge without a toast or a desk.
     /// </summary>

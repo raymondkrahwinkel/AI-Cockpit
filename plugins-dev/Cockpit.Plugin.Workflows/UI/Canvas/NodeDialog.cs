@@ -8,7 +8,7 @@ using Cockpit.Plugin.Workflows.Model;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // One step, opened (#69): what flows *in* on the left, what the step is set to do in the middle, what it
 // produced on the right. The three panes exist because a workflow tool's real question is never "what is this

@@ -1,9 +1,11 @@
+extern alias UiAsm;
+
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
-using Cockpit.Plugin.Workflows.Canvas;
+using UiAsm::Cockpit.Plugin.Workflows.UI.Canvas;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 

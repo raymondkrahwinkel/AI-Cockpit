@@ -3,11 +3,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugin.Workflows.Engine;
+using Cockpit.Plugin.Workflows.Model;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // What a run did (#69), under the canvas: every step, in the order it ran, with what it produced and how long it
 // took. This is the difference between a workflow tool and a drawing program — when a flow misbehaves, the answer

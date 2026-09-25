@@ -348,7 +348,7 @@ public static class CapabilityCatalog
             "Sends text into a session's input — the operator's own keyboard, aimed at an agent that is already running.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.BindToSession", "ICockpitActions.InjectIntoActiveSessionAsync", "ICockpitActions.HasActiveSession"],
+            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.InsertIntoSessionAsync", "ICockpitHost.BindToSession", "ICockpitActions.InjectIntoActiveSessionAsync", "ICockpitActions.HasActiveSession"],
             [new("paneId", "The session pane the plugin may type into.")]),
 
         new(

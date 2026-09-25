@@ -87,6 +87,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
                 ["url"] = picked.Issue.Url,
                 ["branch"] = GitHubBranchName.From(picked.Issue.Number, picked.Issue.Title, settings.BranchPattern),
                 ["directory"] = picked.WorkingDirectory ?? string.Empty,
+                ["session"] = picked.PaneId,
             });
     }
 

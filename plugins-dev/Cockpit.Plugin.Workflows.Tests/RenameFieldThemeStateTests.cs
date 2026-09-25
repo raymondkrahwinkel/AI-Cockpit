@@ -1,11 +1,13 @@
+extern alias UiAsm;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
 using Avalonia.VisualTree;
-using Cockpit.Plugin.Workflows.Engine;
-using Cockpit.Plugin.Workflows.Model;
-using Cockpit.Plugins.Abstractions;
+using UiAsm::Cockpit.Plugin.Workflows.Model;
+using UiAsm::Cockpit.Plugin.Workflows.UI;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 using Cockpit.TestSupport;
 
@@ -89,10 +91,7 @@ public class RenameFieldThemeStateTests
     private static WorkflowEditorControl _EditorControl()
     {
         var workflow = new Workflow { Id = "w1", Name = "My Flow" };
-        var host = Substitute.For<ICockpitHost>();
-        host.WorkflowSteps.Returns([]);
-
-        return new WorkflowEditorControl(workflow, save: () => { }, host, new RunStore(new InMemoryPluginStorage()), []);
+        return new WorkflowEditorControl(workflow, save: () => { }, Substitute.For<ICockpitUiHost>(), lastRun: null);
     }
 
     private static Color _Token(string key) => ThemeTokens.Colour(key);

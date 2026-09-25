@@ -13,7 +13,7 @@
     <!-- Moves in step with Cockpit.Plugins.Abstractions: the same version, whose major is the contract. The
          AssemblyVersion stays fixed like the SDK's, so a plugin built against a later minor still binds to the
          host's copy. -->
-    <Version>1.71.0</Version>
+    <Version>1.72.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

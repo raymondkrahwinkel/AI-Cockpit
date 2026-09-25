@@ -7,7 +7,7 @@ using Cockpit.Plugin.Workflows.Model;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // The steps you can add (#69), standing open beside the canvas: every category with its steps under it, each with
 // a line saying what it does. Nothing is hidden behind a click — "what can this thing even do" is a question you

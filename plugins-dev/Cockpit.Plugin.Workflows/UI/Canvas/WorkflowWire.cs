@@ -8,7 +8,7 @@ using Material.Icons;
 using Material.Icons.Avalonia;
 using Path = Avalonia.Controls.Shapes.Path;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // A wire between two steps (#69): a bezier that leaves sideways, an arrowhead where it arrives, and — on a
 // decision — the name of the branch on the line itself. The arrowhead is not decoration: with fan-out and loops
