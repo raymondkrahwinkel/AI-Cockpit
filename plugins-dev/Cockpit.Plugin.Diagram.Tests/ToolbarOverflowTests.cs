@@ -3,10 +3,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugin.Diagram.Wireframe;
-using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -35,12 +33,12 @@ public class ToolbarOverflowTests
     [Fact]
     public void Diagram_ErDialectAtAWiderWindow_AttributesButtonIsVisibleAndReachable()
     {
-        // AC-973 criterion 4's diagram case: an ER diagram shows Attributes… instead of Shape…. That needs a real
-        // IDiagramAccessRegistry to detect the dialect — ActivityStripTests.FakeHost's fake registry always
-        // reports Flowchart, so this test wires up the real one instead, same as DiagramMcpToolsTests does.
+        // AC-973 criterion 4's diagram case: an ER diagram shows Attributes… instead of Shape…, which needs a real
+        // IDiagramAccessRegistry (ActivityStripTests.FakeHost's own fake always reports Flowchart). The registry
+        // reaches DiagramWorkspaceBody over the channel (F2.13/AC-1401), so a plain FakeHost is enough here too.
         var registry = new DiagramAccessRegistry();
         var document = DiagramDocument.New("Test ER diagram", ErSource);
-        var body = new DiagramWorkspaceBody(new DiagramRegistryHost(registry), TestChannel.For(registry), document, null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), TestChannel.For(registry), document, null);
         var window = _Show(body, width: 1200, height: 640);
 
         var attributes = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Attributes…"));
@@ -189,35 +187,4 @@ public class ToolbarOverflowTests
         _ => content?.ToString() ?? "",
     };
 
-    // ActivityStripTests.FakeHost's diagram registry parameter is the concrete fake type, which always reports
-    // Flowchart — this one carries a real IDiagramAccessRegistry instead, so dialect detection is real too.
-    // Internal, not private: AskRelationshipTests (AC-975) reuses this for the same ER-dialect setup.
-    internal sealed class DiagramRegistryHost(IDiagramAccessRegistry registry) : ICockpitHost
-    {
-        public IServiceProvider Services { get; } = new _Services(registry);
-
-        public ICockpitActions Actions => throw new NotSupportedException();
-
-        public IPluginStorage Storage => throw new NotSupportedException();
-
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            Task.CompletedTask;
-
-        private sealed class _Services(IDiagramAccessRegistry registry) : IServiceProvider
-        {
-            public object? GetService(Type serviceType) => serviceType == typeof(IDiagramAccessRegistry) ? registry : null;
-        }
-    }
 }

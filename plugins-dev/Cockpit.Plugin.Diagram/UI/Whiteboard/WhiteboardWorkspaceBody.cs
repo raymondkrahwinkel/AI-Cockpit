@@ -9,7 +9,6 @@ using Cockpit.Core.Consent;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
@@ -26,7 +25,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     // fixed upper bound, not the board's full 2400x1800 — see the AC-1007 PR/ticket for the sizing rationale.
     private static readonly PixelSize SnapshotSize = new(1600, 1200);
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginUiChannel? _channel;
     private readonly WhiteboardChannelClient? _registry;
     private readonly DiagramChannelClient? _diagrams;
@@ -61,7 +60,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private string? _fileAsLastSeen;
 
     // AC-1400: both registries through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
-    public WhiteboardWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId)
+    public WhiteboardWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId)
     {
         _host = host;
         _channel = channel;

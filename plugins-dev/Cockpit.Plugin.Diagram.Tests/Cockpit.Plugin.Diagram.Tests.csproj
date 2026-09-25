@@ -31,7 +31,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Cockpit.Plugin.Diagram\Cockpit.Plugin.Diagram.csproj" />
+    <!-- F2.13/AC-1401: aliased because DiagramSettings and Contracts/DiagramChannelContract.cs are linked as source
+         into the UI project too (below) — with both assemblies referenced plainly, an unqualified DiagramSettings
+         is ambiguous (CS0433). "backend" makes this project's own types (DiagramChannel, DiagramMcpTools/
+         WhiteboardMcpTools/WireframeMcpTools, DiagramSettings) reachable only via `extern alias backend;`.
+         Deliberately the opposite side from GitHubIssues.Tests' "UiAsm" (AC-1396): that plugin's UI lives in its
+         own Cockpit.Plugin.GitHubIssues.UI namespace, so aliasing the UI reference costs it nothing extra. Diagram's
+         UI/ kept the backend's own namespace tree (Cockpit.Plugin.Diagram(.Whiteboard/.Wireframe/.Collab)) to avoid
+         a repo-wide rename, so aliasing the *smaller* touch surface here (the six backend-only types) is aliasing
+         the backend instead — the two conventions solve the same ambiguity from opposite sides on purpose. -->
+    <ProjectReference Include="..\Cockpit.Plugin.Diagram\Cockpit.Plugin.Diagram.csproj" Aliases="backend" />
     <!-- The plugin references this compile-only (AC-809); the test host has no host app to fall through to,
          so IDiagramAccessRegistry's real assembly is needed here at run time too. -->
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
@@ -41,6 +50,18 @@
          carries the real ModelContextProtocol package the plugin references compile-only, so no separate
          PackageReference for it is needed here. -->
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
+    <!-- F2.13/AC-1401: the UI part's own host contract — the plugin references it compile-only, the test host has
+         no app to fall through to. -->
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AC-1390's pattern (see GitStatus.Tests): the UI part as the backend project's build leaves it in its bin/,
+         not as a project reference of its own, so the backend project dropping the build of UI/ fails this
+         project rather than going unseen. -->
+    <Reference Include="Cockpit.Plugin.Diagram.UI">
+      <HintPath>..\Cockpit.Plugin.Diagram\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Diagram.UI.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

@@ -1,9 +1,12 @@
+extern alias backend;
+
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
+using DiagramMcpTools = backend::Cockpit.Plugin.Diagram.DiagramMcpTools;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -35,7 +38,7 @@ public class DiagramErMcpToolsTests
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(new ConsentDecision(ConsentOutcome.Approved));
         registry.SurfaceOpened("diagram-1", Diagram, source);
-        return (new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, diagrams: registry)), registry, asked);
+        return (new DiagramMcpTools(host, registry, new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()), TestChannel.Desktop(host, diagrams: registry)), registry, asked);
     }
 
     private static JsonNode Reply(string json) => JsonNode.Parse(json)!;

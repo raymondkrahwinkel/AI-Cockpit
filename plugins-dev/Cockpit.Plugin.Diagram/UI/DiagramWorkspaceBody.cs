@@ -12,7 +12,6 @@ using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Diagrams;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -39,7 +38,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly DiagramChannelClient? _registry;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
@@ -105,7 +104,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     // AC-1400: the registry is reached through the plugin's channel; no channel, or a backend without the registry,
     // is the "older host" state a missing registry was, and every `_registry is null` branch below still means that.
-    public DiagramWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId)
+    public DiagramWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId)
     {
         _host = host;
         _registry = DiagramChannelClient.Connect(channel);
@@ -446,10 +445,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // math, not scroll offset, so a huge diagram never grows the layout past the window around it.
     private Border _BuildViewport()
     {
-        // AC-924: Focusable since the object menu's keyboard route (Menu key / Shift+F10) needs a focused control
-        // to fire ContextRequested against — the diagram had none of the three surfaces' keyboard routes before this.
-        // AC-978: `_emptyState` is a sibling of `_surface`, not a child of it, so it tracks the viewport's own
-        // bounds and stays put — never scaled or panned away — same reasoning as WhiteboardCanvasControl's.
+        // AC-924: Focusable for the object menu's keyboard route (Menu/Shift+F10) to fire ContextRequested.
+        // AC-978: `_emptyState` is a sibling of `_surface`, not a child, so it tracks the viewport's own bounds
+        // and stays put — never scaled or panned away, same reasoning as WhiteboardCanvasControl's.
         var viewport = new Border
         {
             Background = Brushes.Transparent,

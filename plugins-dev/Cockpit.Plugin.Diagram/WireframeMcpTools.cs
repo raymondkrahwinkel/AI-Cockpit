@@ -6,7 +6,6 @@ using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -83,7 +82,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         }
 
         // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
-        var opened = channel.RequestOpen(DiagramChannel.WireframePrefix, surfaceId, title, source, caller);
+        var opened = channel.RequestOpen(DiagramChannelContract.WireframePrefix, surfaceId, title, source, caller);
 
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened });
     }
@@ -417,11 +416,19 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         }
     }
 
+    // AC-915: the same three sheet sizes UI/Wireframe/Rendering/WireframeRenderer.SizeOf renders at, read from the
+    // shared contract rather than duplicated, since the backend must not carry Avalonia's Size (F2.13/AC-1401).
     private static object _ViewportInfo(WireframeViewport? parsed)
     {
         var viewport = parsed ?? WireframeViewport.Desktop;
-        var size = WireframeRenderer.SizeOf(viewport);
-        return new { name = viewport.ToString().ToLowerInvariant(), width = size.Width, height = size.Height };
+        var (width, height) = viewport switch
+        {
+            WireframeViewport.Tablet => (DiagramChannelContract.TabletViewportWidth, DiagramChannelContract.TabletViewportHeight),
+            WireframeViewport.Mobile => (DiagramChannelContract.MobileViewportWidth, DiagramChannelContract.MobileViewportHeight),
+            _ => (DiagramChannelContract.DesktopViewportWidth, DiagramChannelContract.DesktopViewportHeight),
+        };
+
+        return new { name = viewport.ToString().ToLowerInvariant(), width, height };
     }
 
     private static IReadOnlyList<object> _Problems(WireframeParseResult parsed) =>

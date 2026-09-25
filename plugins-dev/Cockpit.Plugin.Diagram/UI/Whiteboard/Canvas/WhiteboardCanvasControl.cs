@@ -1047,10 +1047,8 @@ public sealed class WhiteboardCanvasControl : Border
         _emptyState.IsVisible = Document.Objects.Count == 0;
     }
 
-    // Paints straight into the live canvas, never the exported snapshot — the ticket points at this control's own
-    // blank white background, not at what PNG the registry sees.
-    // AC-978: message is settable, not a const, so DiagramWorkspaceBody can reuse this same overlay for its own
-    // empty-diagram hint (which changes wording once a session couples) instead of a second dot-grid class.
+    // Paints into the live canvas, never the exported snapshot. AC-978: message is settable, not a const, so
+    // DiagramWorkspaceBody can reuse this overlay for its own empty-diagram hint instead of a second dot-grid class.
     internal sealed class EmptyStateOverlay(string message) : Control
     {
         private const double DotSpacing = 24;

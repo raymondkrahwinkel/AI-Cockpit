@@ -9,10 +9,8 @@ using Cockpit.Plugin.Diagram.Collab;
 namespace Cockpit.Plugin.Diagram;
 
 // AC-847: what a coupled surface is doing right now — an agent pip, an operator pip, a "what's happening" line, a
-// running change count. Same shared-registry shape as ActivityStrip (read that one first), and the same "absent,
-// not empty-but-present" discipline: with nothing coupled this whole control collapses instead of showing idle pips.
-// AC-879: sourced from an ISurfaceActivityJournal/ISurfaceCouplingSource the caller picks, not a `bool whiteboard`
-// this class branched on — the same split ActivityStrip got in AC-870, so a third surface can supply its own.
+// running change count. Same shared-registry shape as ActivityStrip (read that one first): with nothing coupled
+// this whole control collapses. AC-879: sourced from an ISurfaceActivityJournal/ISurfaceCouplingSource the caller picks.
 internal sealed class PresenceIndicators : Border
 {
     // How long a fresh non-operator edit counts as "writing" before the pip and the live line settle back to

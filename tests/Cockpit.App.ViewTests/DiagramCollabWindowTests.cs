@@ -47,7 +47,6 @@ public class DiagramCollabWindowTests
         var surfaces = host.Registry.ListSurfaces("pane-a");
         Assert.Equal(2, surfaces.Count);
         Assert.All(surfaces, surface => Assert.False(surface.Coupling!.HasAnyCapability));
-        Assert.All(host.Bindings, binding => Assert.Equal("pane-a", binding.PaneId));
         Assert.All(surfaces, surface => Assert.Contains(host.Windows, window => window.Key == $"diagram.document.{surface.SurfaceId}"));
 
         // …and the bar says so, with the session's operator-visible name rather than its raw pane id.
@@ -68,9 +67,10 @@ public class DiagramCollabWindowTests
         window.Close();
         Dispatcher.UIThread.RunJobs();
 
-        // The binding is a peephole — it is let go of, and the session behind it is untouched.
-        Assert.True(host.Bindings[0].IsDisposed);
-        Assert.True(host.Bindings[0].IsLive);
+        // The window's binding is a peephole — closing it lets go of the surface (F2.13/AC-1401: read fresh over
+        // DiagramChannel.SessionBind each time, so there is no separate disposable object to assert on any more),
+        // and the session behind it is untouched: it is still there to bind to, on the host's own session list.
+        Assert.Contains(host.Sessions.OpenSessions, session => session.PaneId == "pane-a");
         Assert.Empty(host.Registry.ListSurfaces("pane-a"));
 
         plugin.Dispose();
@@ -448,14 +448,15 @@ public class DiagramCollabWindowTests
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
         var plugin = new PluginActivator(NullLogger<PluginActivator>.Instance).Activate(discovered);
         Assert.NotNull(plugin);
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
-        DiagramPluginUi.Initialize(plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
         return (plugin, host);
     }
 
@@ -499,8 +500,6 @@ public class DiagramCollabWindowTests
 
         public List<OpenedWindow> Windows { get; } = [];
 
-        public List<FakeBinding> Bindings { get; } = [];
-
         // AC-1400: the plugin channel's hub; DiagramPluginUi hands the UI part the same one.
         public PluginChannelHub Hub { get; } = new(NullLogger<PluginChannelHub>.Instance);
 
@@ -535,16 +534,13 @@ public class DiagramCollabWindowTests
             listWindow.Close();
         }
 
-        // Both halves of what the cockpit does when a session closes: it releases that session's couplings
-        // (CockpitViewModel's driver-side teardown) and every binding on it reports Ended.
+        // What the cockpit does when a session closes: it releases that session's couplings (CockpitViewModel's
+        // driver-side teardown) — every window bound to it hears about it over DiagramChannel.SessionClosed
+        // (F2.13/AC-1401: SurfaceSessionBinding subscribes to the channel, not to a per-binding Ended event).
         public void EndSession(string paneId)
         {
             Registry.SessionEnded(paneId);
             Sessions.Close(paneId);
-            foreach (var binding in Bindings.Where(binding => binding.PaneId == paneId))
-            {
-                binding.End();
-            }
         }
 
         public void AddSettings(Func<Control> createView)
@@ -594,34 +590,6 @@ public class DiagramCollabWindowTests
             Windows.Add(new OpenedWindow(title, singleInstanceKey, content));
             return Task.CompletedTask;
         }
-
-        public IPluginSessionBinding BindToSession(string paneId)
-        {
-            var binding = new FakeBinding(paneId);
-            Bindings.Add(binding);
-            return binding;
-        }
-    }
-
-    // Live for the one pane the fake cockpit is running, detached for anything else — the same split
-    // DesktopPluginHost.BindToSession makes.
-    internal sealed class FakeBinding(string paneId) : IPluginSessionBinding
-    {
-        public string PaneId => paneId;
-
-        public string? SessionName => IsLive ? "Werksessie" : null;
-
-        public bool IsLive => paneId == "pane-a";
-
-        public bool IsDisposed { get; private set; }
-
-        public event EventHandler? Ended;
-
-        public Task SendAsync(string text) => Task.CompletedTask;
-
-        public void End() => Ended?.Invoke(this, EventArgs.Empty);
-
-        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class FakeSessions : ICockpitSessionObserver

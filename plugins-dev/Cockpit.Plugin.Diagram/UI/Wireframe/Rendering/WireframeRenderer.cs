@@ -15,10 +15,10 @@ internal static class WireframeRenderer
     // The design canvas one screen is drawn on — wide enough that a desktop layout needs zoom/pan to see at once
     // (AC-837). A wireframe's Grid star-sizing has no natural size of its own, so it is handed one. This is also
     // what a document with no `viewport` line renders at (AC-915) — the size nothing here has ever changed.
-    public static readonly Size ScreenSize = new(960, 640);
+    public static readonly Size ScreenSize = new(DiagramChannelContract.DesktopViewportWidth, DiagramChannelContract.DesktopViewportHeight);
 
-    private static readonly Size TabletSize = new(768, 1024);
-    private static readonly Size MobileSize = new(390, 844);
+    private static readonly Size TabletSize = new(DiagramChannelContract.TabletViewportWidth, DiagramChannelContract.TabletViewportHeight);
+    private static readonly Size MobileSize = new(DiagramChannelContract.MobileViewportWidth, DiagramChannelContract.MobileViewportHeight);
 
     private const double BoardGap = 48;
     private const double BoardCaption = 28;

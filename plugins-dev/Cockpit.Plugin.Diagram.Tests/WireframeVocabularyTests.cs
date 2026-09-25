@@ -1,7 +1,10 @@
+extern alias backend;
+
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Wireframe.Model;
+using WireframeMcpTools = backend::Cockpit.Plugin.Diagram.WireframeMcpTools;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 

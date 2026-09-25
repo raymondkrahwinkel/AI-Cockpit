@@ -32,7 +32,8 @@ public class DiagramPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -43,7 +44,7 @@ public class DiagramPluginLoadTests
 
         var host = new RecordingHost();
         plugin.Initialize(host);
-        DiagramPluginUi.Initialize(plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
 
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
         // type any more, only toolbar actions: one list opener per surface (AC-896 moved "Nieuw ..." into that
