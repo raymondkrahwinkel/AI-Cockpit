@@ -7,16 +7,9 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugins.Abstractions.ManagedCli;
 
-/// <summary>
-/// The reusable "Install / Update / Remove" panel a provider config view embeds so the operator can let the
-/// cockpit manage the provider's CLI (AC-20). Nothing here is required — it is a convenience beside the manual
-/// executable-path field.
-/// </summary>
-/// <remarks>
-/// AC-1393: moved here from <c>Cockpit.Plugins.Abstractions</c> once its constructor took
-/// <see cref="ICockpitUiHost"/> instead of <c>ICockpitHost</c> — a provider's config view is a UI-only concern,
-/// and this panel is the one piece of it that used to reach the backend host directly.
-/// </remarks>
+// The reusable "Install / Update / Remove" panel a provider config view embeds so the operator can let the
+// cockpit manage the provider's CLI (AC-20). Nothing here is required — a convenience beside the manual
+// executable-path field. AC-1393: moved here from Cockpit.Plugins.Abstractions, retyped to ICockpitUiHost.
 public sealed class ManagedCliConfigSection
 {
     private readonly ICockpitUiHost _host;
@@ -32,15 +25,11 @@ public sealed class ManagedCliConfigSection
     // does not itself read back as the operator toggling the box and write the value it just loaded.
     private bool _loadingAutoUpdateState;
 
-    /// <summary>
-    /// The control to place in the provider config view's field stack.
-    /// </summary>
+    // The control to place in the provider config view's field stack.
     public Control View { get; }
 
-    /// <param name="onStateChanged">
-    /// Invoked (on the UI thread) after an install or remove changes what is on disk, so the host config view can
-    /// refresh its own "what will run" line — keeping the executable-status and this panel from disagreeing.
-    /// </param>
+    // onStateChanged fires (on the UI thread) after an install or remove changes what is on disk, so the host
+    // config view can refresh its own "what will run" line — keeping the executable-status and this panel in sync.
     public ManagedCliConfigSection(ICockpitUiHost host, string cliName, string displayName, Action? onStateChanged = null)
     {
         _host = host;
