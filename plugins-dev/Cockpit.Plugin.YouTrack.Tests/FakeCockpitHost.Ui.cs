@@ -25,8 +25,11 @@ internal sealed partial class FakeCockpitHost : ICockpitUiHost
 {
     public InProcessChannel Channel { get; } = new();
 
-    // What the UI part sent to a session, pane by pane — what "Add to prompt" now does instead of injecting.
+    // What the UI part sent to a session, pane by pane.
     public List<(string PaneId, string Text)> Sent { get; } = [];
+
+    // What the UI part placed in a session's input without sending — what "Add to prompt" does.
+    public List<(string PaneId, string Text)> Inserted { get; } = [];
 
     IPluginBackendChannel ICockpitHost.Channel => Channel;
 
@@ -56,6 +59,12 @@ internal sealed partial class FakeCockpitHost : ICockpitUiHost
     public Task SendToSessionAsync(string paneId, string text)
     {
         Sent.Add((paneId, text));
+        return Task.CompletedTask;
+    }
+
+    public Task InsertIntoSessionAsync(string paneId, string text)
+    {
+        Inserted.Add((paneId, text));
         return Task.CompletedTask;
     }
 

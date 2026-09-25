@@ -229,6 +229,13 @@ public interface ICockpitUiHost
     Task SendToSessionAsync(string paneId, string text);
 
     /// <summary>
+    /// Places <paramref name="text"/> in the input of the session <paramref name="paneId"/> without sending it, so the
+    /// operator can still edit it (AC-1397) — the per-pane successor of <c>ICockpitActions.InjectIntoActiveSessionAsync</c>.
+    /// Does nothing for an unknown pane.
+    /// </summary>
+    Task InsertIntoSessionAsync(string paneId, string text);
+
+    /// <summary>
     /// The project-memory rows of the session <paramref name="paneId"/>'s project.
     /// </summary>
     Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default);

@@ -149,6 +149,8 @@ internal sealed class FakeCockpitUiHost : ICockpitUiHost
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
+    public Task InsertIntoSessionAsync(string paneId, string text) => Task.CompletedTask;
+
     public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<ProjectMemoryRow>>([]);
 

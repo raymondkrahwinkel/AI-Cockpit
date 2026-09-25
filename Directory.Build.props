@@ -10,7 +10,8 @@
   <PropertyGroup>
     <!-- 0.42.0: ICockpitSessionObserver gains GetWorkingDirectory(paneId) (AC-1397), answered by both the desktop's
          observer and the backend's, so a backend part reads the directory of the pane it acts for instead of the
-         window's active one. A plugin that relies on it sets minHostVersion 0.42.0.
+         window's active one; and ICockpitUiHost gains InsertIntoSessionAsync(paneId, text), which places text in a
+         pane's input without sending it. A plugin that relies on either sets minHostVersion 0.42.0.
          0.41.0: ICockpitUiHost gains RemoveManagedCli, and ManagedCliConfigSection moves to Abstractions.UI, retyped
          to take ICockpitUiHost (AC-1393) — a provider's config view is a UI-only concern, so it no longer reaches
          the backend host to build its "Install / Update / Remove" panel. A plugin whose config view uses

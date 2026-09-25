@@ -1263,7 +1263,7 @@ internal sealed class YouTrackDialogControl : UserControl
         }
     }
 
-    // D6 (AC-1397): the window's active pane, named explicitly — the send goes to that session and no other.
+    // D6 (AC-1397): the window's active pane, named explicitly — placed in that session's input, unsent, as before.
     private async Task _AddToPromptAsync(YouTrackIssue? issue)
     {
         if (issue is null)
@@ -1280,7 +1280,7 @@ internal sealed class YouTrackDialogControl : UserControl
 
         try
         {
-            await _host.SendToSessionAsync(paneId, PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
+            await _host.InsertIntoSessionAsync(paneId, PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
             _SetDetailStatus(issue, $"Added issue {issue.IdReadable} to the active session's prompt.");
         }
         catch (Exception exception)

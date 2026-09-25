@@ -156,7 +156,7 @@ public class YouTrackDialogControlTests
     public void AddToPromptAndLink_FollowTheSessionTheWindowHasActive_NotTheFirstOne() => HeadlessAvalonia.Run(() =>
     {
         // D6 (AC-1397), acceptance 3: two sessions, the second one active. The dialog names that pane itself — the
-        // prompt goes to it alone, and the link lands in its header while the first session's header stays empty.
+        // prompt is placed in its input alone, unsent, and the link lands in its header while the first stays empty.
         var harness = DialogHarness.Open(First, Second);
         var firstHeader = harness.ShowHeader("pane-1");
         var secondHeader = harness.ShowHeader("pane-2");
@@ -166,12 +166,14 @@ public class YouTrackDialogControlTests
         harness.Click("Add to prompt");
         harness.LinkToActiveSession(First);
 
-        var sentTo = harness.Host.Sent.Select(sent => sent.PaneId).ToList();
+        var insertedInto = harness.Host.Inserted.Select(inserted => inserted.PaneId).ToList();
+        var sent = harness.Host.Sent.Count;
         var headersShown = (firstHeader.IsVisible, secondHeader.IsVisible);
-        _out.WriteLine($"sent to={string.Join(",", sentTo)} headers shown={headersShown}");
+        _out.WriteLine($"inserted into={string.Join(",", insertedInto)} sent={sent} headers shown={headersShown}");
         harness.Close();
 
-        Assert.Equal(["pane-2"], sentTo);
+        Assert.Equal(["pane-2"], insertedInto);
+        Assert.Equal(0, sent);
         Assert.Equal((false, true), headersShown);
     });
 

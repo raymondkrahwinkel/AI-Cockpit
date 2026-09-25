@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.ViewModels;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -132,6 +133,16 @@ internal sealed class CockpitUiHost(string pluginId, ICockpitHost host, IService
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => host.GetProfilesAsync();
 
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);
+
+    // AC-1397: what PluginActions.InjectIntoActiveSessionAsync does for the selected pane, for a named one — placed, not sent.
+    public Task InsertIntoSessionAsync(string paneId, string text)
+    {
+        var cockpit = services.GetService<CockpitViewModel>();
+        cockpit?.Sessions.Append<SessionPanelViewModel?>(cockpit.AssistantPane)
+            .FirstOrDefault(session => session is not null && string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+            ?.InjectText(text);
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
         host.GetProjectMemoryRowsAsync(paneId, cancellationToken);
