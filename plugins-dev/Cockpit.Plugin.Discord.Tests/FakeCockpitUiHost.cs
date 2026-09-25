@@ -165,6 +165,8 @@ internal sealed class FakeCockpitUiHost : ICockpitUiHost
     public Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("No test reaches managed CLI installs.");
 
+    public bool RemoveManagedCli(string cliName) => throw new NotSupportedException("No test reaches managed CLI removal.");
+
     public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
     public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
