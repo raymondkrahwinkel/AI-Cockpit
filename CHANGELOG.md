@@ -589,7 +589,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: for plugin authors, Workflows now follows Git status into the two-part layout: a backend part (the
   engine, the flows, the runs and the MCP tools) and a UI part (the canvas and the editor) talking over the plugin's
   own channel. A backend part can now place text in a named session's input without sending it, through
-  `ICockpitHost.InsertIntoSessionAsync`, which reports whether the session took it.
+  `ICockpitHost.InsertIntoSessionAsync`, which reports whether the session took it (cockpit 0.44.0 and later).
+  Workflows, GitHub Issues and YouTrack now need cockpit 0.44.0.
 - changed: for plugin authors, GitHub Issues and GitHub Pull Requests now follow Git status into the two-part
   layout too — a backend part and a UI part talking over the plugin's own channel. They look and work exactly as
   before.

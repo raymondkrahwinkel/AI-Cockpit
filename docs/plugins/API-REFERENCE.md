@@ -186,7 +186,7 @@ public interface ICockpitPluginUi
   part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
   for an unknown pane. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
-  A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.43.0),
+  A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.44.0),
   which answers false for an unknown pane or one without an input, so the caller can say so.
 - **No `Services`.** The UI part cannot resolve the container, so it cannot reach its backend part around the
   channel — which is what keeps it working when the backend runs in another process.
