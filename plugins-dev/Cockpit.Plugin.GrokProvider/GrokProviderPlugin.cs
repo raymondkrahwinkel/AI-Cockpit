@@ -9,9 +9,6 @@ namespace Cockpit.Plugin.GrokProvider;
 // out of scope for this ticket (route A only); see the ticket for both measurements.
 public sealed class GrokProviderPlugin : ICockpitPlugin
 {
-    // xAI's OpenAI-compatible endpoint (docs.x.ai/docs/api-reference).
-    internal const string GrokDefaultBaseUrl = "https://api.x.ai/v1";
-
     public PluginMetadata Metadata { get; } = new(
         Id: "grok-provider",
         DisplayName: "Grok",
@@ -37,8 +34,10 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GrokDefaultBaseUrl, host),
-            DefaultBaseUrl: GrokDefaultBaseUrl));
+            // AC-1393: the UI part's InitializeUi (GrokProviderUi) replaces this with the real config view via
+            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Grok));
     }
 
     public void Dispose()

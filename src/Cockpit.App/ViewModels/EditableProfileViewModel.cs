@@ -435,7 +435,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         if (CanChooseProvider)
         {
             PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
-                ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
+                ? _TryCreateConfigView(_pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView, null)
                 : null;
 
             // A freshly added profile has no stored defaults yet — every option starts unset.
@@ -489,6 +489,26 @@ public partial class EditableProfileViewModel : ViewModelBase
     private static bool _IsAKnownDefaultUrl(string url) =>
         url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama)
         || url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.LmStudio);
+
+    // AC-1393: a split provider's backend carries a throwing placeholder until its UI part's InitializeUi
+    // replaces it. Treated as "no config view" (the existing missing-provider UX), not a crash of the whole
+    // profile list, which ManageProfilesDialogViewModel builds by constructing one of these per profile up front.
+    private static IPluginProviderConfigView? _TryCreateConfigView(Func<string?, IPluginProviderConfigView>? createConfigView, string? configJson)
+    {
+        if (createConfigView is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return createConfigView(configJson);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
     // `canChooseProvider`: Only a freshly added profile may pick its provider (#26) (#45, AC-130, AC-139, AC-713).
     public EditableProfileViewModel(
@@ -575,7 +595,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             _selectedProvider = Providers.FirstOrDefault(option => option.Value == SessionProvider.Plugin && option.PluginProviderId == pluginConfig.ProviderId)
                 ?? new SessionProviderOption($"Plugin ({pluginConfig.ProviderId})", SessionProvider.Plugin, pluginConfig.ProviderId);
-            _pluginConfigView = pluginProviderRegistry?.Resolve(pluginConfig.ProviderId)?.CreateConfigView(pluginConfig.ConfigJson);
+            _pluginConfigView = _TryCreateConfigView(pluginProviderRegistry?.Resolve(pluginConfig.ProviderId)?.CreateConfigView, pluginConfig.ConfigJson);
 
             // The provider plugin is not resolvable (removed/disabled/failed to load) — keep the raw config
             // so ToProfile can hand it back unchanged instead of collapsing to null (#45 review finding 1).

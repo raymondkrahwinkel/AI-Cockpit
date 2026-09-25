@@ -928,7 +928,7 @@ Registers a CLI the host downloads and unpacks on demand; a machine with no mana
 
 ### `Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default)` {#taskbool-getmanagedcliautoupdateasyncstring-cliname-cancellationtoken-cancellationtoken--default}
 
-Whether the host's background update check installs a newer version of `cliName` itself rather than only toasting that one exists (AC-767) — what the shared `ManagedCliConfigSection`'s "Update automatically" checkbox reads. Default `true`.
+Whether the host's background update check installs a newer version of `cliName` itself rather than only toasting that one exists (AC-767) — what the shared `ManagedCliConfigSection`'s "Update automatically" checkbox reads. Default `true`. (AC-1393: `ManagedCliConfigSection` itself now lives in `Cockpit.Plugins.Abstractions.UI` and is built with `ICockpitUiHost`, alongside its own `AddManagedCli`/`ResolveManagedCliPath`/`Get`-`InstallManagedCliAsync`/`RemoveManagedCli` mirrors — a provider's config view is a UI-only concern.)
 
 ### `Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default)` {#task-setmanagedcliautoupdateasyncstring-cliname-bool-enabled-cancellationtoken-cancellationtoken--default}
 

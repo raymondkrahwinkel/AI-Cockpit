@@ -4,10 +4,10 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.KimiProvider;
+namespace Cockpit.Plugin.KimiProvider.UI;
 
 // The "add/edit profile" config panel for the Kimi ACP provider (AC-268): the CLI command/path, an optional
 // API key, and an optional default model — mirroring `Cockpit.Plugin.CliAgentProvider.CliAgentProviderConfigView`'s
@@ -26,11 +26,11 @@ internal sealed class KimiProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _loginStatus = ProviderConfigStatus.CreateLine();
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
 
     public Control View { get; }
 
-    public KimiProviderConfigView(string? existingConfigJson, ICockpitHost host)
+    public KimiProviderConfigView(string? existingConfigJson, ICockpitUiHost host)
     {
         _host = host;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)

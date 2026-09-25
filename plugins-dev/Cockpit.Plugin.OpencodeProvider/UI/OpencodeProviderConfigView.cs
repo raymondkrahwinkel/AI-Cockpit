@@ -4,10 +4,10 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.OpencodeProvider;
+namespace Cockpit.Plugin.OpencodeProvider.UI;
 
 // AC-783: the "add/edit profile" config panel, mirroring KimiProviderConfigView's shape and login-button
 // pattern. Caveat carried over from Kimi's own file: `_StartLogin` was never exercised against a rendered
@@ -20,11 +20,11 @@ internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _loginStatus = ProviderConfigStatus.CreateLine();
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
 
     public Control View { get; }
 
-    public OpencodeProviderConfigView(string? existingConfigJson, ICockpitHost host)
+    public OpencodeProviderConfigView(string? existingConfigJson, ICockpitUiHost host)
     {
         _host = host;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)

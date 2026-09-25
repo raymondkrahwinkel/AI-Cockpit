@@ -10,13 +10,18 @@
        assemblies (Cockpit.Plugins.Abstractions, Avalonia, Microsoft.Extensions.AI/.OpenAI) are compile-only
        (Private=false / ExcludeAssets=runtime) so the host's own copies (Cockpit.Infrastructure already
        carries Microsoft.Extensions.AI/.OpenAI for the built-in local-model driver) load and shared types
-       keep one identity — the plugin folder ships only its own DLL + plugin.json. -->
+       keep one identity — the plugin folder ships only its own DLL + plugin.json.
+       AC-1393: the config view lives in UI/, its own project, which builds into this project's bin/ (the
+       reference below orders the build and references no assembly); this project names no Avalonia. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,12 +29,14 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration. Without it MSBuild strips Configuration off a reference
+         made outside a solution, the UI part lands in bin/Debug, and a Release copy of the plugin has no UI assembly;
+         discovery then skips the whole plugin, as its manifest names a file that is not there. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.GeminiProvider.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

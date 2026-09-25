@@ -1,11 +1,11 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.ClaudeProvider;
+namespace Cockpit.Plugin.ClaudeProvider.UI;
 
 // The "add/edit profile" config panel for the Claude provider (Fase 4, SDK route): the two fields the host's in-tree
 // `ClaudeConfig` carried — an optional config directory (which login/config this profile reads) and an optional
@@ -18,12 +18,12 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _configDirStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _executableStatus = ProviderConfigStatus.CreateLine();
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly ManagedCliConfigSection _managedCli;
 
     public Control View { get; }
 
-    public ClaudeProviderConfigView(string? existingConfigJson, ICockpitHost host)
+    public ClaudeProviderConfigView(string? existingConfigJson, ICockpitUiHost host)
     {
         _host = host;
         var existing = ClaudeProviderConfig.Parse(existingConfigJson);

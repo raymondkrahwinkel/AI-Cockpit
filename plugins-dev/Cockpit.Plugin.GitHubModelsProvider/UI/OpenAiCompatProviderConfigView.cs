@@ -1,27 +1,30 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Cockpit.Plugins.Abstractions;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GeminiProvider;
+namespace Cockpit.Plugin.GitHubModelsProvider.UI;
 
-// The "add/edit profile" config panel for this plugin's Gemini/OpenAI providers (#45): an API key, a model
-// id and the base URL (pre-filled with the provider's default, editable for a custom OpenAI-compatible
-// gateway). Built in code, mirroring the other example plugins' settings views.
+// The "add/edit profile" config panel for this plugin's GitHub Models provider (#63): an API-key field (a
+// GitHub personal access token, with a "?" tooltip pointing at where to create one and which scope it
+// needs), a model id (namespaced, e.g. `openai/gpt-4.1`) with fetched suggestions (AC-931), and the base
+// URL (pre-filled with GitHub Models' own endpoint, editable for e.g. an org-scoped inference URL). Built
+// in code, mirroring the Gemini/OpenAI provider plugin's `OpenAiCompatProviderConfigView` (#45).
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
+    private const string DefaultModel = "openai/gpt-4.1";
+
     private readonly TextBox _apiKey;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
-    private readonly TextBox _timeoutSeconds;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
-    private readonly TextBlock _timeoutStatus = ProviderConfigStatus.CreateLine();
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
@@ -29,27 +32,21 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
-        // Free text with fetched suggestions, not a hard dropdown: a gateway may serve a model it does not
-        // list, and MinimumPrefixLength=0 opens the list on a click instead of only on typing.
+        // Free text with fetched suggestions, not a hard dropdown: the catalog may not list every model a
+        // user has access to, and MinimumPrefixLength=0 opens the list on a click instead of only on typing.
         _model = new AutoCompleteBox
         {
-            Text = existing?.Model ?? string.Empty,
-            PlaceholderText = "Fetch the list, or type a model id",
+            Text = existing?.Model ?? DefaultModel,
+            PlaceholderText = "e.g. openai/gpt-4.1",
             FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
             MinimumPrefixLength = 0,
             IsTextCompletionEnabled = false,
         };
         _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl };
-        _timeoutSeconds = new TextBox
-        {
-            Text = existing?.TimeoutSeconds?.ToString() ?? string.Empty,
-            PlaceholderText = OpenAiCompatConfig.DefaultTimeoutSeconds.ToString(),
-        };
 
         _fetchModels = new Button { Content = "Fetch", Margin = new Thickness(6, 0, 0, 0) };
         _fetchModels.Click += (_, _) => _ = _FetchModelsAsync();
         _modelStatus.IsVisible = false;
-        _timeoutStatus.IsVisible = false;
 
         View = new StackPanel
         {
@@ -58,39 +55,25 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             {
                 _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
-                _Label("Model"),
+                _LabelRow("Model", host.CreateHelpHint("setup", "model")),
                 _ModelRow(),
                 _modelStatus,
+                _Hint("Models are namespaced by publisher, e.g. openai/gpt-4.1, meta/llama-3.3-70b-instruct — see the catalog at github.com/marketplace/models."),
                 _Label("Base URL"),
                 _baseUrl,
-                _Label("Timeout (seconds)"),
-                _timeoutSeconds,
-                _timeoutStatus,
             },
         };
     }
 
     public bool TryGetConfigJson(out string configJson)
     {
-        // Cleared up front, not only on the success path — otherwise a timeout error from a previous attempt
-        // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
-        _timeoutStatus.IsVisible = false;
-
         if (string.IsNullOrWhiteSpace(_apiKey.Text) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
             return false;
         }
 
-        if (!TimeoutSecondsField.TryParse(_timeoutSeconds.Text ?? string.Empty, out var timeoutSeconds))
-        {
-            _timeoutStatus.IsVisible = true;
-            ProviderConfigStatus.Set(_timeoutStatus, "Timeout (seconds) must be a positive number.", isOk: false);
-            configJson = string.Empty;
-            return false;
-        }
-
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim()));
         return true;
     }
 
@@ -103,8 +86,8 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         return row;
     }
 
-    // AC-926: fills the suggestions from the base URL's own `/models`, best-effort — a gateway without that
-    // endpoint, or a key it rejects, leaves the field as free text with a status line saying so.
+    // AC-931: fills the suggestions from the base URL's own `/models`, best-effort — a rejected token or an
+    // unreachable endpoint leaves the field as free text with a status line saying so.
     private async Task _FetchModelsAsync()
     {
         var apiKey = _apiKey.Text?.Trim() ?? string.Empty;
@@ -133,7 +116,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException or UriFormatException or InvalidOperationException)
         {
-            ProviderConfigStatus.Set(_modelStatus, "Could not list models here — this endpoint may not serve /models, or the key was rejected. Type the id by hand.", isOk: false);
+            ProviderConfigStatus.Set(_modelStatus, "Could not list models here — this endpoint may not serve /models, or the token was rejected. Type the id by hand.", isOk: false);
         }
         finally
         {
@@ -142,6 +125,8 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+
+    private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
     // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
     // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.

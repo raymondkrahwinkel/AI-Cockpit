@@ -460,7 +460,16 @@
          ShowDialogAsync got no-op default bodies, so a backend host with no window need not name Avalonia. No
          member added or removed and no plugin has to change; F2.14 (AC-1369) removes the three with the rest of
          the window members. A minor; major and abstractionsVersion stay 2. -->
-    <Version>1.68.0</Version>
+    <!-- 1.69.0 (AC-1393): REMOVED ManagedCliConfigSection — moved to Cockpit.Plugins.Abstractions.UI, whose
+         constructor now takes ICockpitUiHost instead of ICockpitHost, since it is drawn by a provider's config
+         view and that view is a UI-only concern. Its two in-repo callers (the Claude and Codex provider plugins'
+         config views) moved to UI/ in the same change; no other in-repo or known third-party plugin constructed
+         it directly. Also added ICockpitUiHost.RemoveManagedCli (Cockpit.Plugins.Abstractions.UI, no default —
+         an omission from 0.39.0's UI-host split: its managed-CLI neighbours (ResolveManagedCliPath,
+         Get/InstallManagedCliAsync, Get/SetManagedCliAutoUpdateAsync) already lived there). A plugin that builds
+         a config view with ManagedCliConfigSection sets minHostVersion 0.41.0. On balance additive in effect (the
+         removal has exactly the callers that moved with it) — a minor; major and abstractionsVersion stay 2. -->
+    <Version>1.69.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

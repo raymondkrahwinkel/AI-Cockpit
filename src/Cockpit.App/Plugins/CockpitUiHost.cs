@@ -149,6 +149,8 @@ internal sealed class CockpitUiHost(string pluginId, ICockpitHost host, IService
     public Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
         host.InstallManagedCliAsync(cliName, cancellationToken);
 
+    public bool RemoveManagedCli(string cliName) => host.RemoveManagedCli(cliName);
+
     public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) =>
         host.GetManagedCliAutoUpdateAsync(cliName, cancellationToken);
 

@@ -30,7 +30,9 @@ public sealed class OpencodeProviderPlugin : ICockpitPlugin
             // The host builds the adapter from registration.Capabilities, not the driver's own property —
             // SupportsLiveModelSwitch must be declared here too. Same trap KimiProviderPlugin warns about.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true },
-            CreateConfigView: existingConfigJson => new OpencodeProviderConfigView(existingConfigJson, host)));
+            // AC-1393: the UI part's InitializeUi (OpencodeProviderUi) replaces this with the real config view
+            // via ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view.")));
     }
 
     public void Dispose()

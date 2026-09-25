@@ -490,6 +490,14 @@ directory that exists — the SDK offers `ProviderConfigStatus` (`CreateLine()` 
 message, isOk)` fills it), so every provider's config view shows the same status affordance instead of
 hand-rolling its own brushes and prefixes. The Codex and Claude provider config views are the worked examples.
 
+A config view is drawn, so it belongs in the plugin's UI part (see [A backend part and a UI
+part](#a-backend-part-and-a-ui-part)): the backend's `SessionProviderRegistration.CreateConfigView` is a
+placeholder the UI part replaces with `ICockpitUiHost.AddProviderConfigView(providerId, factory)` from its own
+`InitializeUi`, the same way GitStatus's pilot moved its header badge. A view that also wants the shared
+"Install / Update / Remove" panel for a managed CLI builds a `ManagedCliConfigSection` — since AC-1393, that type
+lives in `Cockpit.Plugins.Abstractions.UI` and takes `ICockpitUiHost`, not `ICockpitHost`, so it never has to
+reach the backend part directly.
+
 ## Widget plugins — a pane on a Dashboard workspace {#widget-plugins--a-pane-on-a-dashboard-workspace}
 
 A **Dashboard** workspace hosts widget panes the way a Sessions workspace hosts sessions and terminals. Every

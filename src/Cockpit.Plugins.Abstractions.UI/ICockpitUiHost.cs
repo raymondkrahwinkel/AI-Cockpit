@@ -259,6 +259,11 @@ public interface ICockpitUiHost
     Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes a managed CLI this plugin registered. Returns false when there was nothing installed to remove.
+    /// </summary>
+    bool RemoveManagedCli(string cliName);
+
+    /// <summary>
     /// Whether a managed CLI updates itself.
     /// </summary>
     Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default);

@@ -1,11 +1,11 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.CliAgentProvider;
+namespace Cockpit.Plugin.CliAgentProvider.UI;
 
 // The "add/edit profile" config panel for the Codex CLI provider (#45 fase B1): the CLI command/path, the
 // working directory (also the sandbox root), and an optional API key. AC-1102: sandbox and model are asked
@@ -18,13 +18,13 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly ManagedCliConfigSection _managedCli;
     private readonly CliAgentConfig? _existing;
 
     public Control View { get; }
 
-    public CliAgentProviderConfigView(string? existingConfigJson, ICockpitHost host)
+    public CliAgentProviderConfigView(string? existingConfigJson, ICockpitUiHost host)
     {
         _host = host;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)

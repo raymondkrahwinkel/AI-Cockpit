@@ -49,6 +49,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   put its screens in a separate UI part (`Cockpit.Plugins.Abstractions.UI`, named by `uiAssembly` in
   `plugin.json`) that talks to its backend part only over the plugin's own channel, and a plugin can be only a UI
   part. Nothing changes for the plugins you have; they load exactly as before.
+- added: for plugin authors, the eight built-in provider plugins (Claude, Codex, Gemini/OpenAI, GitHub Models,
+  Grok, Kimi, opencode, OpenRouter) now ship their "add/edit profile" panel as a separate UI part, following
+  GitStatus's own split; `ICockpitUiHost` gains `RemoveManagedCli` and the shared managed-CLI install panel moves
+  there too, so a provider's config view never needs the backend host directly. Nothing changes for the profiles
+  you already configured; they work exactly as before.
 - added: the Discord plugin now talks to you in direct messages by default: leave the channel id blank and a DM
   from the one allowed account reaches the assistant and is answered in that DM. A channel stays available as an
   explicit choice (existing setups keep theirs), and a list of accounts or everyone still needs one. A message
