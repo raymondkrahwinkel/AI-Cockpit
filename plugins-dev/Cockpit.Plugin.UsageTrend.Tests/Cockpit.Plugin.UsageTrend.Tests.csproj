@@ -32,6 +32,8 @@
          PluginRateLimitWindow, so the shared Cockpit.Plugins.Abstractions needs a runtime copy present, which the
          host would otherwise supply. -->
     <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <!-- InProcessChannel implements IPluginUiChannel too, mirroring GitStatus.Tests' own copy of this double. -->
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
 </Project>

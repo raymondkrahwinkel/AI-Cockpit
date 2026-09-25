@@ -25,33 +25,36 @@ public sealed class UsageTrendPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         _handlers.Add(host.Channel.Handle(UsageTrendChannel.Get, (payload, cancellationToken) =>
-        {
-            var request = payload.Deserialize<UsageTrendHistoryRequest>(UsageTrendChannel.Json)
-                ?? throw new ArgumentException("The request names no widget instance.", nameof(payload));
-            return Task.FromResult(JsonSerializer.SerializeToElement(_Load(host, request.InstanceId), UsageTrendChannel.Json));
-        }));
+            _AnswerAsync<UsageTrendHistoryRequest, IReadOnlyList<UsageTrendSample>>(payload, request => _Load(host, request.InstanceId))));
 
         _handlers.Add(host.Channel.Handle(UsageTrendChannel.Append, (payload, cancellationToken) =>
-        {
-            var request = payload.Deserialize<UsageTrendAppendRequest>(UsageTrendChannel.Json)
-                ?? throw new ArgumentException("The request names no widget instance.", nameof(payload));
-            var existing = _Load(host, request.InstanceId);
-            var updated = UsageTrendHistory.Append(existing, request.Candidate) ?? existing;
-            host.Cache.Set(_CacheKey(request.InstanceId), updated);
-            return Task.FromResult(JsonSerializer.SerializeToElement(updated, UsageTrendChannel.Json));
-        }));
+            _AnswerAsync<UsageTrendAppendRequest, IReadOnlyList<UsageTrendSample>>(payload, request =>
+            {
+                var existing = _Load(host, request.InstanceId);
+                var updated = UsageTrendHistory.Append(existing, request.Candidate) ?? existing;
+                host.Cache.Set(_CacheKey(request.InstanceId), updated);
+                return updated;
+            })));
 
         _handlers.Add(host.Channel.Handle(UsageTrendChannel.Seed, (payload, cancellationToken) =>
-        {
-            var request = payload.Deserialize<UsageTrendSeedRequest>(UsageTrendChannel.Json)
-                ?? throw new ArgumentException("The request names no widget instance.", nameof(payload));
-            if (host.Cache.Get<List<UsageTrendSample>>(_CacheKey(request.InstanceId)) is null)
+            _AnswerAsync<UsageTrendSeedRequest, bool>(payload, request =>
             {
-                host.Cache.Set(_CacheKey(request.InstanceId), request.History);
-            }
+                if (host.Cache.Get<List<UsageTrendSample>>(_CacheKey(request.InstanceId)) is null)
+                {
+                    host.Cache.Set(_CacheKey(request.InstanceId), request.History);
+                }
 
-            return Task.FromResult(JsonSerializer.SerializeToElement(true, UsageTrendChannel.Json));
-        }));
+                return true;
+            })));
+    }
+
+    // The Deserialize/throw + SerializeToElement pair every handler above needs, mirroring GitStatusPlugin's
+    // own _AnswerAsync (AC-1390) but generic in both directions since these three requests/responses differ.
+    private static Task<JsonElement> _AnswerAsync<TRequest, TResponse>(JsonElement payload, Func<TRequest, TResponse> answer)
+    {
+        var request = payload.Deserialize<TRequest>(UsageTrendChannel.Json)
+            ?? throw new ArgumentException("The request names no widget instance.", nameof(payload));
+        return Task.FromResult(JsonSerializer.SerializeToElement(answer(request), UsageTrendChannel.Json));
     }
 
     public void Dispose()

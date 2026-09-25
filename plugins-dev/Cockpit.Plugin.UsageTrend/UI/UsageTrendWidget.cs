@@ -77,10 +77,13 @@ internal sealed class UsageTrendWidget : UserControl
     {
         if (_context.Storage.Get<List<UsageTrendSample>>(HistoryKey) is { } legacy)
         {
-            await _SeedAsync(legacy);
+            // Cleared only once it actually reached the backend's cache — a failed round trip leaves it in
+            // Storage for the next load to retry, rather than losing it.
+            if (await _SeedAsync(legacy))
+            {
+                _context.Storage.Remove(HistoryKey);
+            }
         }
-
-        _context.Storage.Remove(HistoryKey);
 
         _history = await _LoadAsync();
         _Render();
@@ -113,15 +116,17 @@ internal sealed class UsageTrendWidget : UserControl
         }
     }
 
-    private async Task _SeedAsync(IReadOnlyList<UsageTrendSample> history)
+    private async Task<bool> _SeedAsync(IReadOnlyList<UsageTrendSample> history)
     {
         try
         {
             var payload = JsonSerializer.SerializeToElement(new UsageTrendSeedRequest(_context.InstanceId, history), UsageTrendChannel.Json);
             await _channel.InvokeAsync(UsageTrendChannel.Seed, payload);
+            return true;
         }
         catch (Exception)
         {
+            return false;
         }
     }
 

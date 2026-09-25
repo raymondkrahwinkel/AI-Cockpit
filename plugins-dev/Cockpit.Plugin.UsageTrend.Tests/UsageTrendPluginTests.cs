@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugin.UsageTrend.Contracts;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Channels;
 using NSubstitute;
 
 namespace Cockpit.Plugin.UsageTrend.Tests;
@@ -13,29 +12,21 @@ public class UsageTrendPluginTests
     [Fact]
     public async Task Initialize_AppendThenGet_RoundTripsTheSampleThroughTheBackendsCache()
     {
-        var channel = Substitute.For<IPluginBackendChannel>();
+        var channel = new InProcessChannel();
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
         host.Channel.Returns(channel);
-
-        var handlers = new Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonElement>>>(StringComparer.Ordinal);
-        channel.Handle(Arg.Any<string>(), Arg.Any<Func<JsonElement, CancellationToken, Task<JsonElement>>>())
-            .Returns(call =>
-            {
-                handlers[call.ArgAt<string>(0)] = call.ArgAt<Func<JsonElement, CancellationToken, Task<JsonElement>>>(1);
-                return Substitute.For<IDisposable>();
-            });
 
         using var plugin = new UsageTrendPlugin();
         plugin.Initialize(host);
 
         var sample = new UsageTrendSample(DateTimeOffset.UtcNow, "Default", 20, 30, 40);
         var appendPayload = JsonSerializer.SerializeToElement(new UsageTrendAppendRequest("instance-1", sample), UsageTrendChannel.Json);
-        var appendAnswer = await handlers[UsageTrendChannel.Append](appendPayload, CancellationToken.None);
+        var appendAnswer = await channel.InvokeAsync(UsageTrendChannel.Append, appendPayload);
         Assert.Single(appendAnswer.Deserialize<List<UsageTrendSample>>(UsageTrendChannel.Json) ?? []);
 
         var getPayload = JsonSerializer.SerializeToElement(new UsageTrendHistoryRequest("instance-1"), UsageTrendChannel.Json);
-        var getAnswer = await handlers[UsageTrendChannel.Get](getPayload, CancellationToken.None);
+        var getAnswer = await channel.InvokeAsync(UsageTrendChannel.Get, getPayload);
         var loaded = getAnswer.Deserialize<List<UsageTrendSample>>(UsageTrendChannel.Json);
 
         var only = Assert.Single(loaded ?? []);
