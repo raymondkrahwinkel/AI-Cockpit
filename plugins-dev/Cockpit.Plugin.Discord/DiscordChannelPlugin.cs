@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.Plugin.Discord.Contracts;
 using Cockpit.Plugin.Discord.Settings;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -21,6 +23,8 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             "prompts relay as Approve/Deny buttons with a \"type JA/NEE\" text fallback. Adds a flow step that " +
             "DMs you.");
 
+    private readonly List<IDisposable> _handlers = [];
+
     private ICockpitHost? _host;
     private DiscordChannelSettings? _settings;
     private DiscordGatewayConnection? _connection;
@@ -35,8 +39,14 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
         _host = host;
         _settings = new DiscordChannelSettings(host.Storage);
 
-        host.AddSettings(() => new DiscordChannelSettingsControl(host, _settings), "Assistant Plugins");
-        host.OnSettingsSaved(_Reconnect);
+        // AC-1394: the settings view itself, and the AddSettings/OnSettingsSaved registrations that put it in
+        // front of the operator, moved to DiscordUi.InitializeUi — this reconnect is what the UI part's own
+        // OnSettingsSaved callback now asks for over the plugin's channel instead of calling directly.
+        _handlers.Add(host.Channel.Handle(DiscordChannel.SettingsSaved, (_, _) =>
+        {
+            _Reconnect();
+            return Task.FromResult(JsonSerializer.SerializeToElement<object?>(null, DiscordChannel.Json));
+        }));
 
         // Resolved from the host's container, like the Depot plugin's (AC-499): a refused sender belongs in the log.
         _logger = host.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Discord");
@@ -113,6 +123,13 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
+
         _connection?.Dispose();
         _connection = null;
     }

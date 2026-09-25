@@ -1,11 +1,13 @@
 {
   "id": "slack",
   "name": "Slack",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "entryAssembly": "Cockpit.Plugin.Slack.dll",
   "entryType": "Cockpit.Plugin.Slack.SlackChannelPlugin",
+  "uiAssembly": "Cockpit.Plugin.Slack.UI.dll",
+  "uiEntryType": "Cockpit.Plugin.Slack.UI.SlackChannelUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.29.0",
+  "minHostVersion": "0.41.0",
   "description": "Talk to your assistant from Slack — a second door onto the same conversation the chat window shows.",
   "author": "Cockpit",
   "secretKeys": ["assistantChannel.botToken", "slack.appLevelToken"]

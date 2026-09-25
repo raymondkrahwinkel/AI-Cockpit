@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Cockpit.Plugin.GitHubActions.Contracts;
 
 namespace Cockpit.Plugin.GitHubActions;
 
@@ -9,33 +10,11 @@ namespace Cockpit.Plugin.GitHubActions;
 // user's existing `gh` login, no token to paste. The branch comes from `git rev-parse` in the same
 // directory. Fails soft: no gh, no login, no repo, a detached HEAD, or no runs yet all yield nothing
 // rather than an error, so a session that has no CI simply shows nothing.
+//
+// AC-1394: the backend part, answering the UI part's GitHubActionsChannel.RecentRuns requests. Opening a run's
+// URL needs none of this (see Contracts/CiRunLinks.cs) and moved there so the UI never references this assembly.
 internal sealed class CiWorkflowRunClient
 {
-    // Whether a run URL is a safe https github.com link to hand to the OS browser opener. Internal for testing.
-    internal static bool IsGitHubRunUrl(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        && uri.Scheme == Uri.UriSchemeHttps
-        && (uri.Host == "github.com" || uri.Host.EndsWith(".github.com", StringComparison.Ordinal));
-
-    // Opens a run's URL in the OS's default browser handler (never a shell string), shared by the header dot and
-    // the dock panel's rows. Best effort: a non-GitHub url or a machine with no handler does nothing.
-    public static void OpenRunInBrowser(string? url)
-    {
-        if (url is not { Length: > 0 } || !IsGitHubRunUrl(url))
-        {
-            return;
-        }
-
-        try
-        {
-            using var _ = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // Opening a browser is a convenience — a machine without a handler just does nothing.
-        }
-    }
-
     // The gh arguments for the branch's most recent runs. Internal so a test can assert them without shelling out.
     // AC-1065: `updatedAt` joined createdAt so the dock panel can show a run's duration — the same call, one more
     // field, not a second API round trip.
@@ -45,10 +24,6 @@ internal sealed class CiWorkflowRunClient
         "--json", "workflowName,headBranch,event,status,conclusion,createdAt,updatedAt,url",
     ];
 
-    public async Task<CiRun?> GetLatestRunAsync(string workingDirectory, CancellationToken cancellationToken) =>
-        (await GetRecentRunsAsync(workingDirectory, 1, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
-
-    // AC-1065: the same fetch as GetLatestRunAsync, for the dock panel's list rather than the header's single dot.
     public async Task<IReadOnlyList<CiRun>> GetRecentRunsAsync(string workingDirectory, int limit, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))

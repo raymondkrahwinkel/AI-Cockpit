@@ -1,22 +1,29 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Material.Icons.Avalonia;
+using Cockpit.Plugin.GitHubActions.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.UI;
 
 // The Dashboard/dock-rail view of the branch's recent workflow runs (AC-1065), read-only — restart/cancel is its own
 // gated ticket. Polls per instance like CiStatusHeaderControl (a run list has nothing to share across instances,
 // unlike the pull-requests plugin's shared source), following the *active* session since a widget is not per session.
+//
+// AC-1394: follows the window's active session through ICockpitUiHost.ActiveSession* rather than
+// IWidgetContext.Sessions — "the active session" is window work (D6, AC-1365), and asks the backend part for
+// recent runs over the plugin's channel rather than shelling out to `gh`/`git` itself.
 internal sealed class CiWorkflowRunsWidget : UserControl
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
     private readonly IWidgetContext _context;
-    private readonly CiWorkflowRunClient _client = new();
+    private readonly ICockpitUiHost _host;
     private readonly DispatcherTimer _refresh;
     private readonly TextBlock _status;
     private readonly StackPanel _rows;
@@ -24,9 +31,10 @@ internal sealed class CiWorkflowRunsWidget : UserControl
     private int _loadToken;
     private CancellationTokenSource? _loadCts;
 
-    public CiWorkflowRunsWidget(IWidgetContext context)
+    public CiWorkflowRunsWidget(IWidgetContext context, ICockpitUiHost host)
     {
         _context = context;
+        _host = host;
 
         _status = new TextBlock
         {
@@ -61,7 +69,7 @@ internal sealed class CiWorkflowRunsWidget : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _loadCts = new CancellationTokenSource();
-        _context.Sessions.ActiveSessionChanged += _OnActiveSessionChanged;
+        _host.ActiveSessionChanged += _OnActiveSessionChanged;
         _refresh.Start();
         _ = _LoadAsync();
     }
@@ -69,9 +77,9 @@ internal sealed class CiWorkflowRunsWidget : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _context.Sessions.ActiveSessionChanged -= _OnActiveSessionChanged;
+        _host.ActiveSessionChanged -= _OnActiveSessionChanged;
         _refresh.Stop();
-        // Cancel any in-flight gh call so a hung network request does not outlive the closed panel.
+        // Cancel any in-flight channel call so a hung request cannot outlive the closed panel.
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
@@ -81,7 +89,7 @@ internal sealed class CiWorkflowRunsWidget : UserControl
 
     private async Task _LoadAsync()
     {
-        var directory = _context.Sessions.ActiveSessionWorkingDirectory;
+        var directory = _host.ActiveSessionWorkingDirectory;
         if (string.IsNullOrEmpty(directory) || _loadCts is not { } cts)
         {
             _Render([]);
@@ -93,7 +101,7 @@ internal sealed class CiWorkflowRunsWidget : UserControl
         IReadOnlyList<CiRun> runs;
         try
         {
-            runs = await _client.GetRecentRunsAsync(directory, _MaxItems(), cts.Token);
+            runs = await _RecentRunsAsync(directory, _MaxItems(), cts.Token);
         }
         catch (Exception)
         {
@@ -107,6 +115,13 @@ internal sealed class CiWorkflowRunsWidget : UserControl
 
         _Render(runs);
         _Say(runs.Count == 0 ? "No workflow runs found for this branch." : null);
+    }
+
+    private async Task<IReadOnlyList<CiRun>> _RecentRunsAsync(string workingDirectory, int limit, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.SerializeToElement(new GitHubActionsRunsRequest(workingDirectory, limit), GitHubActionsChannel.Json);
+        var answer = await _host.Channel.InvokeAsync(GitHubActionsChannel.RecentRuns, payload, cancellationToken);
+        return answer.Deserialize<IReadOnlyList<CiRun>>(GitHubActionsChannel.Json) ?? [];
     }
 
     private void _Render(IReadOnlyList<CiRun> runs)
@@ -163,7 +178,7 @@ internal sealed class CiWorkflowRunsWidget : UserControl
             Content = line,
         };
         ToolTip.SetTip(row, $"{workflow.Text} on '{run.Branch}' ({run.Event})\n\nClick to open the run on GitHub.");
-        row.Click += (_, _) => CiWorkflowRunClient.OpenRunInBrowser(run.Url);
+        row.Click += (_, _) => CiRunLinks.OpenRunInBrowser(run.Url);
 
         return row;
     }

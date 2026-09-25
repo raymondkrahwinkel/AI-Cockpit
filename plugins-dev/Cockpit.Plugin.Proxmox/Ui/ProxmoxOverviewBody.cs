@@ -1,19 +1,20 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Cockpit.Plugin.Proxmox.Engine;
-using Cockpit.Plugin.Proxmox.Security;
+using Cockpit.Plugin.Proxmox.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
-namespace Cockpit.Plugin.Proxmox.Ui;
+namespace Cockpit.Plugin.Proxmox.UI;
 
 // The Proxmox overview workspace (AC-1038): a read-only view of nodes, VMs, LXC containers and storage, plus the
 // start/shutdown/stop buttons a snapshot of running infrastructure invites. It is not a second way to reach the
-// API — every read and every button click goes through the same `gate`/`engine` the MCP tools use.
+// API — every read and every button click goes through the backend part's channel handlers, which run the same
+// `gate`/`engine` the MCP tools use (AC-1394: this assembly runs no Proxmox call itself).
 internal sealed class ProxmoxOverviewBody : UserControl
 {
-    private readonly ProxmoxAccessGate _gate;
-    private readonly IProxmoxEngine _engine;
+    private readonly ICockpitUiHost _host;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _statusText = new() { FontSize = 11, Opacity = 0.7 };
     private readonly Button _refreshButton = new() { Content = "Refresh" };
@@ -24,10 +25,9 @@ internal sealed class ProxmoxOverviewBody : UserControl
     private readonly StackPanel _storagePanel = new() { Spacing = 4 };
     private bool _isLoading;
 
-    public ProxmoxOverviewBody(IWorkspaceContext context, ProxmoxAccessGate gate, IProxmoxEngine engine)
+    public ProxmoxOverviewBody(IWorkspaceContext context, ICockpitUiHost host)
     {
-        _gate = gate;
-        _engine = engine;
+        _host = host;
 
         _refreshButton.Click += async (_, _) => await _RefreshAsync();
         context.RefreshRequested += async (_, _) => await _RefreshAsync();
@@ -75,30 +75,26 @@ internal sealed class ProxmoxOverviewBody : UserControl
         _refreshButton.IsEnabled = false;
         _statusText.Text = "Loading…";
 
-        var decision = await _gate.AuthorizeConnectionAsync("show the Proxmox overview", paneId: null);
-        if (decision is { IsAllowed: false, DeniedReason: { } reason })
-        {
-            _statusText.Text = reason;
-            _isLoading = false;
-            _refreshButton.IsEnabled = true;
-            return;
-        }
-
         try
         {
-            var token = _lifetime.Token;
-            var clusterTask = _engine.GetClusterInfoAsync(token);
-            var nodesTask = _engine.ListNodesAsync(token);
-            var vmsTask = _engine.ListVmsAsync(token);
-            var lxcTask = _engine.ListLxcAsync(token);
-            var storageTask = _engine.ListStorageAsync(token);
-            await Task.WhenAll(clusterTask, nodesTask, vmsTask, lxcTask, storageTask);
+            var answer = await _AskAsync<ProxmoxEmptyRequest, ProxmoxOverviewAnswer>(ProxmoxChannel.Overview, new ProxmoxEmptyRequest());
+            if (answer.DeniedReason is { } denied)
+            {
+                _statusText.Text = denied;
+                return;
+            }
 
-            _RenderCluster(clusterTask.Result);
-            _RenderNodes(nodesTask.Result);
-            _RenderGuests(_vmsPanel, vmsTask.Result, isLxc: false);
-            _RenderGuests(_lxcPanel, lxcTask.Result, isLxc: true);
-            _RenderStorage(storageTask.Result);
+            if (answer.ErrorMessage is { } error)
+            {
+                _statusText.Text = error;
+                return;
+            }
+
+            _RenderCluster(answer.Cluster ?? throw new InvalidOperationException("The backend part answered no cluster data."));
+            _RenderNodes(answer.Nodes ?? []);
+            _RenderGuests(_vmsPanel, answer.Vms ?? [], isLxc: false);
+            _RenderGuests(_lxcPanel, answer.Lxc ?? [], isLxc: true);
+            _RenderStorage(answer.Storage ?? []);
             _statusText.Text = $"Updated {DateTimeOffset.Now:T}";
         }
         catch (OperationCanceledException)
@@ -107,7 +103,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         }
         catch (Exception ex)
         {
-            _statusText.Text = ex is ProxmoxApiException apiEx ? apiEx.Message : $"The Proxmox request failed ({ex.GetType().Name}).";
+            _statusText.Text = $"The Proxmox request failed ({ex.GetType().Name}).";
         }
         finally
         {
@@ -116,7 +112,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         }
     }
 
-    private void _RenderCluster(ProxmoxClusterInfo info)
+    private void _RenderCluster(ProxmoxClusterData info)
     {
         _clusterPanel.Children.Clear();
         _clusterPanel.Children.Add(new TextBlock
@@ -127,7 +123,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         });
     }
 
-    private void _RenderNodes(IReadOnlyList<ProxmoxNode> nodes)
+    private void _RenderNodes(IReadOnlyList<ProxmoxNodeData> nodes)
     {
         _nodesPanel.Children.Clear();
         foreach (var node in nodes)
@@ -144,7 +140,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         }
     }
 
-    private void _RenderGuests(StackPanel panel, IReadOnlyList<ProxmoxGuest> guests, bool isLxc)
+    private void _RenderGuests(StackPanel panel, IReadOnlyList<ProxmoxGuestData> guests, bool isLxc)
     {
         panel.Children.Clear();
         foreach (var guest in guests)
@@ -158,7 +154,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         }
     }
 
-    private Control _GuestRow(ProxmoxGuest guest, bool isLxc)
+    private Control _GuestRow(ProxmoxGuestData guest, bool isLxc)
     {
         var label = new TextBlock
         {
@@ -171,15 +167,9 @@ internal sealed class ProxmoxOverviewBody : UserControl
         var shutdown = new Button { Content = "Shutdown", IsVisible = running, Margin = new Thickness(4, 0, 0, 0) };
         var stop = new Button { Content = "Stop", IsVisible = running, Margin = new Thickness(4, 0, 0, 0) };
 
-        start.Click += async (_, _) => await _ActAsync(
-            isLxc ? ProxmoxActionText.StartLxc(guest.Node, guest.VmId) : ProxmoxActionText.StartVm(guest.Node, guest.VmId),
-            ct => isLxc ? _engine.StartLxcAsync(guest.Node, guest.VmId, ct) : _engine.StartVmAsync(guest.Node, guest.VmId, ct));
-        shutdown.Click += async (_, _) => await _ActAsync(
-            isLxc ? ProxmoxActionText.ShutdownLxc(guest.Node, guest.VmId) : ProxmoxActionText.ShutdownVm(guest.Node, guest.VmId),
-            ct => isLxc ? _engine.ShutdownLxcAsync(guest.Node, guest.VmId, ct) : _engine.ShutdownVmAsync(guest.Node, guest.VmId, ct));
-        stop.Click += async (_, _) => await _ActAsync(
-            isLxc ? ProxmoxActionText.StopLxc(guest.Node, guest.VmId) : ProxmoxActionText.StopVm(guest.Node, guest.VmId),
-            ct => isLxc ? _engine.StopLxcAsync(guest.Node, guest.VmId, ct) : _engine.StopVmAsync(guest.Node, guest.VmId, ct));
+        start.Click += async (_, _) => await _ActAsync(ProxmoxChannel.StartGuest, guest.Node, guest.VmId, isLxc, "start");
+        shutdown.Click += async (_, _) => await _ActAsync(ProxmoxChannel.ShutdownGuest, guest.Node, guest.VmId, isLxc, "gracefully shut down");
+        stop.Click += async (_, _) => await _ActAsync(ProxmoxChannel.StopGuest, guest.Node, guest.VmId, isLxc, "hard power off");
 
         var row = new DockPanel();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Children = { start, shutdown, stop } };
@@ -189,24 +179,18 @@ internal sealed class ProxmoxOverviewBody : UserControl
         return row;
     }
 
-    // Every button routes through the same gate as the matching MCP tool, with the exact same consent text
-    // (`ProxmoxActionText`) — asked afresh on every click, never remembered, exactly like the tool.
-    private async Task _ActAsync(string operation, Func<CancellationToken, Task<ProxmoxTaskOutcome>> action)
+    // Every button routes through the same gate as the matching MCP tool: the backend handler composes the exact
+    // consent text (`ProxmoxActionText`) and asks afresh on every click, never remembered, exactly like the tool.
+    // `verb` here is only for the optimistic "Running: …" status line, shown before the answer (and its possible
+    // denial) comes back.
+    private async Task _ActAsync(string action, string node, string vmId, bool isLxc, string verb)
     {
-        var decision = await _gate.AuthorizeMutationAsync(operation, paneId: null);
-        if (decision is { IsAllowed: false, DeniedReason: { } reason })
-        {
-            _statusText.Text = reason;
-            return;
-        }
+        _statusText.Text = $"Running: {verb} {(isLxc ? "LXC container" : "VM")} {vmId} on node \"{node}\"…";
 
-        _statusText.Text = $"Running: {operation}…";
+        ProxmoxActionAnswer answer;
         try
         {
-            var outcome = await action(_lifetime.Token);
-            _statusText.Text = outcome.TimedOut
-                ? $"Still running (upid={outcome.Upid})."
-                : outcome.IsSuccess ? "Done." : $"Failed: {outcome.ExitStatus}";
+            answer = await _AskAsync<ProxmoxGuestActionRequest, ProxmoxActionAnswer>(action, new ProxmoxGuestActionRequest(node, vmId, isLxc));
         }
         catch (OperationCanceledException)
         {
@@ -214,13 +198,32 @@ internal sealed class ProxmoxOverviewBody : UserControl
         }
         catch (Exception ex)
         {
-            _statusText.Text = ex is ProxmoxApiException apiEx ? apiEx.Message : $"The Proxmox request failed ({ex.GetType().Name}).";
+            _statusText.Text = $"The Proxmox request failed ({ex.GetType().Name}).";
+            await _RefreshAsync();
+            return;
         }
 
+        if (answer.DeniedReason is { } denied)
+        {
+            _statusText.Text = denied;
+            return;
+        }
+
+        if (answer.ErrorMessage is { } error)
+        {
+            _statusText.Text = error;
+            await _RefreshAsync();
+            return;
+        }
+
+        var outcome = answer.Outcome ?? throw new InvalidOperationException("The backend part answered no task outcome.");
+        _statusText.Text = outcome.TimedOut
+            ? $"Still running (upid={outcome.Upid})."
+            : outcome.IsSuccess ? "Done." : $"Failed: {outcome.ExitStatus}";
         await _RefreshAsync();
     }
 
-    private void _RenderStorage(IReadOnlyList<ProxmoxStoragePool> pools)
+    private void _RenderStorage(IReadOnlyList<ProxmoxStorageData> pools)
     {
         _storagePanel.Children.Clear();
         foreach (var pool in pools)
@@ -236,6 +239,14 @@ internal sealed class ProxmoxOverviewBody : UserControl
         {
             _storagePanel.Children.Add(new TextBlock { Text = "No storage pools.", Opacity = 0.7 });
         }
+    }
+
+    private async Task<TAnswer> _AskAsync<TRequest, TAnswer>(string action, TRequest request)
+    {
+        var payload = JsonSerializer.SerializeToElement(request, ProxmoxChannel.Json);
+        var answer = await _host.Channel.InvokeAsync(action, payload, _lifetime.Token);
+        return answer.Deserialize<TAnswer>(ProxmoxChannel.Json)
+            ?? throw new InvalidOperationException($"The backend part answered no data for '{action}'.");
     }
 
     private static Control _Section(string title, Control content) => new StackPanel

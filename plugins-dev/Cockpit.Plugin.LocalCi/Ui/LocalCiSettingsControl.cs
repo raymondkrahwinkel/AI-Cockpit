@@ -1,23 +1,25 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugin.LocalCi.Execution;
-using Cockpit.Plugin.LocalCi.Runtime;
+using Cockpit.Plugin.LocalCi.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.LocalCi.Ui;
+namespace Cockpit.Plugin.LocalCi.UI;
 
 // The plugin's settings view (all code-behind Avalonia, like the other plugins): what this machine can run, and
-// what to do about the part it cannot. One line per runtime rather than one line for both — the two failures are
-// unrelated and their remedies are different, so a combined line would tell the operator to do two things at once
-// or, worse, only the first.
+// what to do about the part it cannot (AC-1394: the UI part — LocalCiPlugin, the backend part, owns the runtime
+// probe and answers this page's questions over the plugin's channel). One line per runtime rather than one line
+// for both — the two failures are unrelated and their remedies are different, so a combined line would tell the
+// operator to do two things at once or, worse, only the first.
 // The probe never runs on the UI thread's back: the control renders immediately with "Checking…", the detection
 // runs against a runner with its own deadline, and the lines are filled when the answer arrives. Opening this page
 // with a dead Docker pipe costs the operator nothing but a five-second wait for one line to settle.
 internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
 {
-    private readonly ILocalCiRuntime _runtime;
-    private readonly LocalCiSettings _settings;
+    private readonly ICockpitUiHost _host;
+    private readonly LocalCiUiSettings _settings;
     private readonly TextBlock _dockerLine = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _actLine = ProviderConfigStatus.CreateLine();
     private readonly TextBox _runnerImage;
@@ -25,18 +27,18 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _skipConsent;
     private readonly Button _checkAgain;
 
-    public LocalCiSettingsControl(ICockpitHost host, ILocalCiRuntime runtime, LocalCiSettings settings)
+    public LocalCiSettingsControl(ICockpitUiHost host)
     {
-        _runtime = runtime;
-        _settings = settings;
+        _host = host;
+        _settings = new LocalCiUiSettings(host.Storage);
 
         _checkAgain = new Button { Content = "Check again", Margin = new(0, 12, 0, 0) };
         _checkAgain.Click += (_, _) => _ = _CheckAsync(invalidateFirst: true);
 
         _runnerImage = new TextBox
         {
-            PlaceholderText = ActRunOptions.DefaultRunnerImage,
-            Text = settings.RunnerImage,
+            PlaceholderText = LocalCiChannel.DefaultRunnerImage,
+            Text = _settings.RunnerImage,
         };
 
         // AC-1033/AC-1041: the `?` beside the runner-image heading, pointing at this plugin's own page on what
@@ -51,14 +53,14 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
         _mcpEnabled = new CheckBox
         {
             Content = "Offer the cockpit-local-ci tools to sessions",
-            IsChecked = settings.McpEnabled,
+            IsChecked = _settings.McpEnabled,
             Margin = new(0, 16, 0, 0),
         };
 
         _skipConsent = new CheckBox
         {
             Content = "Run local checks without asking every time (dangerous)",
-            IsChecked = settings.SkipConsent,
+            IsChecked = _settings.SkipConsent,
             Margin = new(0, 16, 0, 0),
         };
         var skipConsentRow = new StackPanel
@@ -91,7 +93,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
                 {
                     Text = "The image a Linux job runs in. act's images are not GitHub's runner images, so a job that "
                         + "needs a tool the default image lacks can be pointed at a bigger one here. Blank uses "
-                        + ActRunOptions.DefaultRunnerImage + ".",
+                        + LocalCiChannel.DefaultRunnerImage + ".",
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap,
                 },
@@ -119,8 +121,8 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     }
 
     // AC-1004, criterion 3: the old `Save()` was these three property writes and nothing else. The runtime probe's
-    // cache being dropped (`LocalCiPlugin` wires `runtime.Invalidate`) hangs on `ICockpitHost.OnSettingsSaved`,
-    // raised by the host after this write. The Check-again button re-probes on its own and is not a save.
+    // cache being dropped (the backend part wires `runtime.Invalidate` to `ICockpitHost.OnSettingsSaved`) hangs off
+    // the host's own save. The Check-again button re-probes on its own and is not a save.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;
@@ -137,20 +139,22 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
 
     private async Task _CheckAsync(bool invalidateFirst)
     {
-        if (invalidateFirst)
-        {
-            _runtime.Invalidate();
-        }
-
         _checkAgain.IsEnabled = false;
         _dockerLine.Text = "Checking…";
         _actLine.Text = "Checking…";
 
         try
         {
-            var status = await _runtime.GetStatusAsync();
-            ProviderConfigStatus.Set(_dockerLine, status.Docker.Message, status.Docker.IsReady);
-            ProviderConfigStatus.Set(_actLine, status.Act.Message, status.Act.IsInstalled);
+            if (invalidateFirst)
+            {
+                await _host.Channel.InvokeAsync(LocalCiChannel.InvalidateRuntime, _EmptyPayload());
+            }
+
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.RuntimeStatus, _EmptyPayload());
+            var status = answer.Deserialize<LocalCiRuntimeStatusInfo>(LocalCiChannel.Json)
+                ?? throw new InvalidOperationException("The backend part answered no runtime status.");
+            ProviderConfigStatus.Set(_dockerLine, status.DockerMessage, status.DockerIsReady);
+            ProviderConfigStatus.Set(_actLine, status.ActMessage, status.ActIsInstalled);
         }
         catch (Exception exception)
         {
@@ -164,4 +168,6 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
             _checkAgain.IsEnabled = true;
         }
     }
+
+    private static JsonElement _EmptyPayload() => JsonSerializer.SerializeToElement<object?>(null, LocalCiChannel.Json);
 }

@@ -1,25 +1,29 @@
+extern alias UiAsm;
+
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
-using Cockpit.Plugin.Depot.Model;
-using Cockpit.Plugin.Depot.Settings;
-using Cockpit.Plugin.Depot.Ui;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
+using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
+using DepotConnectionRowControl = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRowControl;
+using DepotSettings = UiAsm::Cockpit.Plugin.Depot.UI.DepotSettings;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
 // `DepotConnectionRowControl`'s Sign-in action (AC-243/AC-355, reworked AC-499): a token is filed
 // under a server's registered name, so the row must never sign in under a name it merely typed — it saves
 // first and re-reads what actually landed in storage before calling the host.
+// AC-1394: the row now takes ICockpitUiHost (its constructor moved off ICockpitHost when the plugin split), and
+// the connection/settings types it takes are the UI part's own copies (see Contracts/DepotChannel.cs's remarks).
 [Collection("avalonia")]
 public class DepotConnectionRowControlTests
 {
     [Fact]
     public async Task RefreshAuthStateAsync_NewUnsavedRow_NeverAsksTheHost()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var row = _NewRow(host, existing: null);
 
         await row.RefreshAuthStateAsync();
@@ -30,7 +34,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task RefreshAuthStateAsync_SavedRowWithUnchangedName_AsksTheHostForThatExactStoredName()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpAuthState.Authorized);
         var existing = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
         var row = _NewRow(host, existing);
@@ -46,7 +50,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task RefreshAuthStateAsync_RowRenamedButNotYetSaved_NeverAsksTheHost()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var existing = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
         var row = _NewRow(host, existing);
         _Show(row);
@@ -62,7 +66,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task RefreshAuthStateAsync_RowsUrlEditedButNotYetSaved_NeverAsksTheHost()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var existing = new DepotConnectionRegistration("conn-1", "Work", "https://old.example.com");
         var row = _NewRow(host, existing);
         _Show(row);
@@ -76,7 +80,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public void IsBlank_NewRowWithNothingEntered_IsTrue()
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
 
         Assert.True(row.IsBlank);
     }
@@ -85,7 +89,7 @@ public class DepotConnectionRowControlTests
     public void IsBlank_ExistingRow_IsNeverTrue_EvenBeforeAnyEdit()
     {
         var existing = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing);
 
         Assert.False(row.IsBlank);
     }
@@ -98,7 +102,7 @@ public class DepotConnectionRowControlTests
     [InlineData("https://depot.example.com/mcp")]
     public void ToRegistration_StoresTheBaseUrl_WhateverTheOperatorPasted(string typed)
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
         _Show(row);
         var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
         boxes[0].Text = "Work";
@@ -113,7 +117,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_NeverSavedRow_SavesAndSignsInInOneCall()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
         var settings = new DepotSettings(new FakePluginStorage());
         DepotConnectionRowControl row = null!;
@@ -142,7 +146,7 @@ public class DepotConnectionRowControlTests
     public async Task SignInAsync_ARowItCannotUse_BlocksWithTheReason_AndNeverSavesOrSignsIn(
         string name, string url, string reason)
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var settings = new DepotSettings(new FakePluginStorage());
         var saveCount = 0;
         var row = _NewRow(host, existing: null, settings, saveAll: () => { saveCount++; return (true, null); });
@@ -164,7 +168,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_HostReportsUnreachable_NamesTheUrlItTried()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Unreachable);
         var settings = new DepotSettings(new FakePluginStorage());
         DepotConnectionRowControl row = null!;
@@ -193,7 +197,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public void AuthStatus_NewBlankRow_ShowsWhySignInIsUnavailable()
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
         _Show(row);
 
         Assert.Contains("Enter a name first", _AuthStatusText(row), StringComparison.Ordinal);
@@ -205,7 +209,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public void AuthStatus_FieldsBecomeValid_ShowsTheBrowserMessage()
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
         _Show(row);
         var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
         boxes[0].Text = "Work";
@@ -220,7 +224,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task RefreshAuthStateAsync_AuthorizationRequired_ShowsTheBrowserMessage()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpAuthState.AuthorizationRequired);
         var existing = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
         var row = _NewRow(host, existing);
@@ -234,7 +238,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_WhileAwaitingTheHost_ShowsSigningIn()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var gate = new TaskCompletionSource<PluginMcpSignInOutcome>();
         host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => gate.Task);
         var settings = new DepotSettings(new FakePluginStorage());
@@ -260,7 +264,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_HostReportsAuthorized_ShowsSignedIn()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
         var settings = new DepotSettings(new FakePluginStorage());
         DepotConnectionRowControl row = null!;
@@ -284,7 +288,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_FailedOutcome_TextIsNotImmediatelyReplacedByTheBrowserMessage()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Unreachable);
         var settings = new DepotSettings(new FakePluginStorage());
         DepotConnectionRowControl row = null!;
@@ -310,7 +314,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public void SignInButton_HasATooltipExplainingItOpensABrowser()
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
         _Show(row);
 
         var tip = ToolTip.GetTip(_SignInButton(row)) as string;
@@ -324,7 +328,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_LongUnreachableMessage_WrapsInsteadOfOverflowing()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Unreachable);
         var settings = new DepotSettings(new FakePluginStorage());
         DepotConnectionRowControl row = null!;
@@ -351,7 +355,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public void FieldsBothFilled_SignInButtonIsEnabled_EvenThoughNothingIsSavedYet()
     {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        var row = _NewRow(Substitute.For<ICockpitUiHost>(), existing: null);
         _Show(row);
         var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
         boxes[0].Text = "Work";
@@ -369,7 +373,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_SaveFailsOnANameCollision_NamesTheCollidingConnection_AndNeverAttemptsSignIn()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var settings = new DepotSettings(new FakePluginStorage());
         var row = _NewRow(host, existing: null, settings, saveAll: () => (false, "Work"));
         _Show(row);
@@ -389,7 +393,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_SaveFailsWithoutADuplicateName_ShowsAGenericMessage_AndNeverAttemptsSignIn()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var settings = new DepotSettings(new FakePluginStorage());
         var row = _NewRow(host, existing: null, settings, saveAll: () => (false, null));
         _Show(row);
@@ -409,7 +413,7 @@ public class DepotConnectionRowControlTests
     [Fact]
     public async Task SignInAsync_CalledTwiceBeforeTheFirstCompletes_OnlySavesAndSignsInOnce()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         var signInGate = new TaskCompletionSource<PluginMcpSignInOutcome>();
         host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => signInGate.Task);
         var settings = new DepotSettings(new FakePluginStorage());
@@ -443,7 +447,7 @@ public class DepotConnectionRowControlTests
         row.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Sign in"));
 
     private static DepotConnectionRowControl _NewRow(
-        ICockpitHost host, DepotConnectionRegistration? existing, DepotSettings? settings = null,
+        ICockpitUiHost host, DepotConnectionRegistration? existing, DepotSettings? settings = null,
         Func<(bool Success, string? DuplicateName)>? saveAll = null) =>
         new(host, existing, settings ?? new DepotSettings(new FakePluginStorage()), saveAll ?? (() => (true, null)));
 

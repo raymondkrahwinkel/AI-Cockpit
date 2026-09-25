@@ -30,7 +30,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of Ui/ fails this project rather than going unseen. -->
+    <Reference Include="Cockpit.Plugin.Kubernetes.UI">
+      <HintPath>..\Cockpit.Plugin.Kubernetes\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Kubernetes.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Kubernetes\Cockpit.Plugin.Kubernetes.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
 </Project>

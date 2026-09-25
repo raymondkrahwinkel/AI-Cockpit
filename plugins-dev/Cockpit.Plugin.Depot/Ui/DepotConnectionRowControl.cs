@@ -2,15 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
-using Cockpit.Plugin.Depot.Model;
-using Cockpit.Plugin.Depot.Settings;
+using Cockpit.Plugins.Abstractions.UI;
 
 // See DepotSettingsControl.cs for why this is a tuple alias, not a new record type.
 using DepotSaveResult = (bool Success, string? DuplicateName);
 
-namespace Cockpit.Plugin.Depot.Ui;
+namespace Cockpit.Plugin.Depot.UI;
 
 // One Depot connection's row in the settings view (AC-243): a name, the instance's base URL, and a Sign-in action
 // that drives the host's own OAuth flow for the MCP server this row contributes. No auth fields — Depot has one
@@ -37,7 +35,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     // state that slot said nothing useful in. This message fills it there instead of adding a new line.
     private const string ReadyToSignInMessage = "Opens Depot's sign-in page in your browser.";
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly string _id;
     private readonly DepotSettings _settings;
     private readonly Func<DepotSaveResult> _saveAll;
@@ -51,7 +49,7 @@ internal sealed class DepotConnectionRowControl : UserControl
 
     public event Action? RemoveRequested;
 
-    public DepotConnectionRowControl(ICockpitHost host, DepotConnectionRegistration? existing, DepotSettings settings, Func<DepotSaveResult> saveAll)
+    public DepotConnectionRowControl(ICockpitUiHost host, DepotConnectionRegistration? existing, DepotSettings settings, Func<DepotSaveResult> saveAll)
     {
         _host = host;
         _id = existing?.Id ?? Guid.NewGuid().ToString("n");
@@ -124,8 +122,8 @@ internal sealed class DepotConnectionRowControl : UserControl
         Id: _id,
         Name: (_name.Text ?? string.Empty).Trim(),
         // AC-499: DepotUrlNormalizer, not a local Trim/TrimEnd — Depot's own docs tell the operator to paste the
-        // full endpoint (…/mcp), which this plugin then appends /mcp to again when it builds the MCP contribution.
-        // Stripping it here means storage always holds the bare base URL DepotConnectionRegistration.Url promises.
+        // full endpoint (…/mcp), which the backend part then appends /mcp to again when it builds the MCP
+        // contribution. Stripping it here means storage always holds the bare base URL DepotConnectionRegistration.Url promises.
         Url: DepotUrlNormalizer.Normalize(_url.Text));
 
     // Reads the stored auth state for this row (AC-243/AC-355) — no network, no browser, cheap enough to run for

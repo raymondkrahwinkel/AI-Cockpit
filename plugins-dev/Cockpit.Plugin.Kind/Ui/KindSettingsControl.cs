@@ -3,9 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugin.Kind.Settings;
 
-namespace Cockpit.Plugin.Kind.Ui;
+namespace Cockpit.Plugin.Kind.UI;
 
 // The plugin's settings view. The registry is agent-managed (kind_create/kind_delete), so this panel is read-only
 // except for the two operator-only controls: Pinned, which no agent has a tool to set (AC-179 D2), and the maximum
@@ -18,7 +19,7 @@ internal sealed class KindSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _mcpEnabled;
     private readonly ComboBox _consentMode;
 
-    public KindSettingsControl(ICockpitHost host, KindSettings settings)
+    public KindSettingsControl(ICockpitUiHost host, KindSettings settings)
     {
         _settings = settings;
 

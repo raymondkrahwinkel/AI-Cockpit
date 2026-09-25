@@ -1,50 +1,54 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugin.Kubernetes.Cluster;
-using Cockpit.Plugin.Kubernetes.Model;
-using Cockpit.Plugin.Kubernetes.Settings;
+using Cockpit.Plugin.Kubernetes.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.Kubernetes.Ui;
+namespace Cockpit.Plugin.Kubernetes.UI;
 
 // The plugin's settings view (opened from the gear in the plugin manager): a manageable list of cluster rows
 // (add/remove, each with its own kubeconfig, allowed namespaces and capability toggles) plus the MCP on/off
 // toggle. Implements `IPluginSettingsView`, so the host renders the Save/Close footer and performs the write this
 // view hands it (AC-1003) — the metadata to storage, each kubeconfig through the secret layer, and clearing the
 // credential of any cluster that was removed.
+//
+// AC-1394: the cluster list itself, and every write, live in the backend part (Settings.ClusterSettingsChannel) —
+// this view only loads and saves a snapshot over the plugin's channel, never referencing ClusterRegistration or
+// KubernetesSettings directly.
 internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsView
 {
-    private readonly KubernetesSettings _settings;
+    private readonly ICockpitUiHost _host;
     private readonly StackPanel _clustersPanel;
     private readonly List<ClusterRowControl> _rows = [];
     private readonly CheckBox _mcpEnabled;
-    private readonly IReadOnlyList<string> _originalClusterIds;
 
-    public KubernetesSettingsControl(ICockpitHost host, KubernetesSettings settings)
+    public KubernetesSettingsControl(ICockpitUiHost host)
     {
-        _settings = settings;
+        _host = host;
         _clustersPanel = new StackPanel { Spacing = 4 };
 
-        var clusters = settings.Clusters;
-        _originalClusterIds = clusters.Select(cluster => cluster.Id).ToList();
-        if (clusters.Count == 0)
+        // Blocking is safe here (the constructor is synchronous, not awaitable): the handler answers in-process,
+        // with no thread hop to wait on — see the same reasoning on `_Commit`.
+        var snapshot = _LoadSnapshot();
+        if (snapshot.Clusters.Count == 0)
         {
-            _AddRow(existing: null, hasStoredKubeconfig: false, hasStoredArgoToken: false);
+            _AddRow(existing: null);
         }
         else
         {
-            foreach (var cluster in clusters)
+            foreach (var cluster in snapshot.Clusters)
             {
-                _AddRow(cluster, settings.GetKubeconfig(cluster.Id) is not null, settings.GetArgoToken(cluster.Id) is not null);
+                _AddRow(cluster);
             }
         }
 
         var addCluster = new Button { Content = "+ Add cluster" };
-        addCluster.Click += (_, _) => _AddRow(existing: null, hasStoredKubeconfig: false, hasStoredArgoToken: false);
+        addCluster.Click += (_, _) => _AddRow(existing: null);
 
-        _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = settings.McpEnabled };
+        _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = snapshot.McpEnabled };
 
         // AC-1033: the `?` beside the heading, pointing at this plugin's own settings page — adding a cluster,
         // the file-vs-pasted kubeconfig, and the pitfall of a context left on "(current-context)".
@@ -72,9 +76,9 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         };
     }
 
-    private void _AddRow(ClusterRegistration? existing, bool hasStoredKubeconfig, bool hasStoredArgoToken)
+    private void _AddRow(ClusterSnapshot? existing)
     {
-        var row = new ClusterRowControl(existing, hasStoredKubeconfig, hasStoredArgoToken);
+        var row = new ClusterRowControl(_host, existing);
         row.RemoveRequested += () =>
         {
             _rows.Remove(row);
@@ -90,7 +94,7 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
     public bool TryStage(out Action? commit, out string? error)
     {
         // Numbered by position in the panel, since a row with no label has nothing else to be called by.
-        var labelless = _rows.FindIndex(row => !row.IsBlank && string.IsNullOrWhiteSpace(row.ToRegistration().Label));
+        var labelless = _rows.FindIndex(row => !row.IsBlank && string.IsNullOrWhiteSpace(row.ToEdit().Label));
         if (labelless >= 0)
         {
             commit = null;
@@ -104,58 +108,26 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         return true;
     }
 
-    // Whole body, writes included: this one stores each row's kubeconfig as it walks the list (and clears the
-    // orphans afterwards), so splitting the writes out of it would mean reading the effective kubeconfig twice —
-    // once to validate, once to store — for nothing. Nothing here runs before the operator confirms.
+    // One channel round trip, writes included: the backend part stores each kubeconfig, detects exec-auth and
+    // clears the orphans (Settings.ClusterSettingsChannel.SaveAsync). Blocking is safe today (a synchronous Action,
+    // not awaitable — the handler answers in-process with no thread hop to wait on); nothing runs before Save.
+    // ponytail: blocks the UI thread on a channel call, fine while the channel is in-process; a remote backend
+    // (F5/F6) would need TryStage's commit to become awaitable so this can become a real await.
     private void _Commit()
     {
-        var kept = _rows.Where(row => !row.IsBlank).ToList();
+        var edits = _rows.Where(row => !row.IsBlank).Select(row => row.ToEdit()).ToList();
+        var request = new ClusterSettingsSaveRequest(edits, _mcpEnabled.IsChecked ?? true);
+        var payload = JsonSerializer.SerializeToElement(request, KubernetesChannel.Json);
+        _host.Channel.InvokeAsync(KubernetesChannel.SaveClusterSettings, payload).GetAwaiter().GetResult();
+    }
 
-        var registrations = new List<ClusterRegistration>();
-        foreach (var row in kept)
-        {
-            var registration = row.ToRegistration();
-            var pasted = row.KubeconfigInput.Trim();
-            if (!string.IsNullOrEmpty(registration.KubeconfigPath))
-            {
-                // The path model owns the source — drop any stored secret so a later cleared path cannot silently
-                // revive a stale kubeconfig.
-                _settings.ClearKubeconfig(row.Id);
-            }
-            else if (pasted.Length > 0)
-            {
-                _settings.SetKubeconfig(row.Id, pasted);
-            }
-
-            var pastedToken = row.ArgoTokenInput.Trim();
-            if (pastedToken.Length > 0)
-            {
-                _settings.SetArgoToken(row.Id, pastedToken);
-            }
-
-            // Detect exec-auth on the effective kubeconfig (the file at the path, or the pasted/stored content) so
-            // the row can warn that connecting will run an external process.
-            var content = pasted.Length > 0 ? pasted : _settings.GetKubeconfig(row.Id);
-            var effectiveKubeconfig = KubeconfigInspector.ReadYaml(registration.KubeconfigPath, content);
-            if (effectiveKubeconfig is { Length: > 0 })
-            {
-                registration = registration with { UsesExecAuth = KubeconfigInspector.Inspect(effectiveKubeconfig, registration.ContextName).UsesExecAuth };
-            }
-
-            registrations.Add(registration);
-        }
-
-        // Clear the stored kubeconfig of any cluster that is no longer saved — removed, or emptied out until the
-        // row counted as blank — so an orphaned secret does not linger.
-        var savedIds = registrations.Select(registration => registration.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var goneId in _originalClusterIds.Where(id => !savedIds.Contains(id)))
-        {
-            _settings.ClearKubeconfig(goneId);
-            _settings.ClearArgoToken(goneId);
-        }
-
-        _settings.Clusters = registrations;
-        _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
+    // ponytail: same blocking trade-off as _Commit above — safe only while the channel is in-process.
+    private ClusterSettingsSnapshot _LoadSnapshot()
+    {
+        var payload = JsonSerializer.SerializeToElement<object?>(null, KubernetesChannel.Json);
+        var answer = _host.Channel.InvokeAsync(KubernetesChannel.LoadClusterSettings, payload).GetAwaiter().GetResult();
+        return answer.Deserialize<ClusterSettingsSnapshot>(KubernetesChannel.Json)
+            ?? new ClusterSettingsSnapshot([], McpEnabled: true);
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

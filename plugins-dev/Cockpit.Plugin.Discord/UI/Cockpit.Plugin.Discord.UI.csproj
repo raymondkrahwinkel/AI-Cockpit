@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Discord (AC-1394): the settings view, the only piece of this plugin that needs a window. It
+       lives inside the plugin folder so the version guard, the publish discovery and the change classification all
+       see it as part of the plugin, and it builds into the backend project's bin/, so `dotnet build` of the backend
+       project yields both assemblies in the one folder the zip, the bundle and the dev installer take. It never
+       references the backend project: what the two share is the linked Contracts source and the channel. Its own
+       settings read/write (DiscordChannelSettings/DiscordUserId, below) is its own copy, not linked from the
+       backend's Settings/ — a linked copy of the same type name would be ambiguous to Cockpit.Plugin.Discord.Tests,
+       which sees both assemblies' internals. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Discord.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Depot (AC-1394): the settings view and its connection rows, the only pieces of this plugin
+       that need a window. It lives inside the plugin folder so the version guard, the publish discovery and the
+       change classification all see it as part of the plugin, and it builds into the backend project's bin/, so
+       `dotnet build` of the backend project yields both assemblies in the one folder the zip, the bundle and the
+       dev installer take. It never references the backend project: what the two share is the linked Contracts
+       source and the channel. Its own connection/settings/URL types (DepotConnectionRegistration, DepotSettings,
+       DepotUrlNormalizer, all here) are its own copies, not linked from the backend's Model/Settings/ — a linked
+       copy of the same type name would be ambiguous to Cockpit.Plugin.Depot.Tests, which sees both assemblies'
+       internals and constructs the backend's copy directly across most of its own test suite. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Depot.Tests" />
+  </ItemGroup>
+
+</Project>

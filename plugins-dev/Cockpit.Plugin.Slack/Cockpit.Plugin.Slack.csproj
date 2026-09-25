@@ -9,13 +9,19 @@
        runtime dependency (like Discord.Net is Cockpit.Plugin.Discord's), so it and its transitive deps are
        packaged into the plugin folder. Pinned to an exact version (AC-1025 criterion 6): Slack has no official
        .NET SDK, so a breaking change in this community library must not reach the build unnoticed via a
-       floating range. -->
+       floating range.
+       AC-1394: split into a backend part and a UI part; the settings view lives in UI/, its own project, which
+       builds into this project's bin/ (the reference below orders the build and references no assembly); this
+       project names no Avalonia. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,12 +29,12 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration — see the comment above. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.Slack.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-using Cockpit.Plugin.Discord.Settings;
+using Cockpit.Plugin.Discord.UI;
 using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Discord.Tests;
@@ -15,7 +15,7 @@ public class DiscordSettingsControlStagingTests
     {
         var storage = new FakePluginStorage();
         var settings = new DiscordChannelSettings(storage);
-        var view = new DiscordChannelSettingsControl(new FakeCockpitHost(), settings);
+        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
 
         var staged = view.TryStage(out var commit, out var error);
 
@@ -34,7 +34,7 @@ public class DiscordSettingsControlStagingTests
     public void AHalfFilledInstall_IsStillRefused_WithTheFieldItIsMissing()
     {
         var settings = new DiscordChannelSettings(new FakePluginStorage());
-        var view = new DiscordChannelSettingsControl(new FakeCockpitHost(), settings);
+        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
 
         // A user id typed and nothing else — exactly the state a fresh install is one keystroke away from.
         _SingleUserId(view).Text = "123456789012345678";
@@ -52,7 +52,7 @@ public class DiscordSettingsControlStagingTests
     public void AFilledInInstall_StagesARealCommit_AndOnlyTheCommitWrites()
     {
         var settings = new DiscordChannelSettings(new FakePluginStorage());
-        var view = new DiscordChannelSettingsControl(new FakeCockpitHost(), settings);
+        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
 
         _SingleUserId(view).Text = "123456789012345678";
         _BotToken(view).Text = "a-bot-token";
@@ -83,7 +83,7 @@ public class DiscordSettingsControlStagingTests
         settings.BotToken = "a-bot-token";
         settings.ChannelId = 987654321098765432;
 
-        var view = new DiscordChannelSettingsControl(new FakeCockpitHost(), settings);
+        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
         _SingleUserId(view).Text = string.Empty;
         _BotToken(view).Text = string.Empty;
         _ChannelId(view).Text = string.Empty;

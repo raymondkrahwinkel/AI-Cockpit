@@ -1,17 +1,19 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cockpit.Plugin.LocalCi.Execution;
-using Cockpit.Plugin.LocalCi.Gate;
-using Cockpit.Plugin.LocalCi.Workflows;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.LocalCi.Contracts;
+using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.LocalCi.Ui;
+namespace Cockpit.Plugin.LocalCi.UI;
 
-// One checkout's workflow jobs: which of them can run on this machine, and the log of the one that is running.
-// Opened for a session, so the checkout it shows is the one that session is working in.
+// One checkout's workflow jobs: which of them can run on this machine, and the log of the one that is running
+// (AC-1394: the UI part — LocalCiPlugin, the backend part, reads the workflows, runs the job and tracks it, and
+// answers this view's questions over the plugin's channel). Opened for a session, so the checkout it shows is the
+// one that session is working in.
 // The log is redrawn on a timer rather than per line. A workflow job produces thousands of lines in bursts, and
 // touching a text control on each one turns the run into a slideshow — the very cockpit-is-unusable problem the
 // core limit exists to avoid, moved from the CPU to the UI thread.
@@ -19,9 +21,7 @@ internal sealed class LocalCiRunView : UserControl
 {
     private static readonly TimeSpan RedrawInterval = TimeSpan.FromMilliseconds(200);
 
-    private readonly ILocalJobRunner _runner;
-    private readonly LocalRunTracker _tracker;
-    private readonly Func<string, CancellationToken, Task<string?>> _readHeadCommit;
+    private readonly ICockpitUiHost _host;
     private readonly string _projectRoot;
 
     private readonly StackPanel _jobs = new() { Spacing = 6 };
@@ -36,27 +36,16 @@ internal sealed class LocalCiRunView : UserControl
     private readonly LogTail _shown = new(maxLines: 400, maxCharacters: 120_000);
     private CancellationTokenSource? _inFlight;
 
-    public LocalCiRunView(
-        ICockpitHost host,
-        string projectRoot,
-        ILocalJobRunner runner,
-        LocalRunTracker tracker,
-        Func<string, CancellationToken, Task<string?>> readHeadCommit,
-        PullRequestGateSettings gate)
+    public LocalCiRunView(ICockpitUiHost host, string projectRoot)
     {
+        _host = host;
         _projectRoot = projectRoot;
-        _runner = runner;
-        _tracker = tracker;
-        _readHeadCommit = readHeadCommit;
 
         _holdBackPullRequests = new CheckBox
         {
             Content = "Hold back pull requests from this checkout until a local run has passed",
-            IsChecked = gate.IsOnFor(projectRoot),
             Margin = new(0, 8, 0, 0),
         };
-        _holdBackPullRequests.IsCheckedChanged += (_, _) =>
-            gate.Set(projectRoot, _holdBackPullRequests.IsChecked ?? false);
 
         // AC-1033/AC-1041: the `?` beside the gate checkbox, pointing at what "a local run has passed" actually
         // checks (this exact commit, not just "recently") and where the bypass goes when it hasn't.
@@ -67,13 +56,7 @@ internal sealed class LocalCiRunView : UserControl
         };
 
         _stop = new Button { Content = "Stop", IsEnabled = false };
-        _stop.Click += (_, _) =>
-        {
-            if (_inFlight is { } running)
-            {
-                _ = _StopAsync(running);
-            }
-        };
+        _stop.Click += (_, _) => _Stop();
 
         _logScroll = new ScrollViewer { Content = _log, Height = 260, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
 
@@ -104,30 +87,49 @@ internal sealed class LocalCiRunView : UserControl
             },
         };
 
-        _ShowJobs();
-        _ShowLastResult();
+        _ = _ShowJobsAsync();
+        _ = _ShowLastResultAsync();
+        _ = _InitializeGateAsync();
     }
 
-    private void _ShowJobs()
+    private async Task _ShowJobsAsync()
     {
         _jobs.Children.Clear();
 
-        foreach (var read in WorkflowCatalog.ReadProject(_projectRoot))
+        IReadOnlyList<LocalCiWorkflowJobs> workflows;
+        try
         {
-            if (read.Document is not { } document)
+            var payload = JsonSerializer.SerializeToElement(new LocalCiProjectRequest(_projectRoot), LocalCiChannel.Json);
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.Jobs, payload);
+            workflows = answer.Deserialize<IReadOnlyList<LocalCiWorkflowJobs>>(LocalCiChannel.Json) ?? [];
+        }
+        catch (Exception exception)
+        {
+            _jobs.Children.Add(new TextBlock
+            {
+                Text = $"This project's workflows could not be read: {exception.Message}",
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            return;
+        }
+
+        foreach (var workflow in workflows)
+        {
+            if (workflow.Error is { } error)
             {
                 _jobs.Children.Add(new TextBlock
                 {
-                    Text = $"{Path.GetFileName(read.Path)} — {read.Error}",
+                    Text = $"{Path.GetFileName(workflow.WorkflowPath)} — {error}",
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap,
                 });
                 continue;
             }
 
-            foreach (var verdict in LocalRunClassifier.Classify(document))
+            foreach (var verdict in workflow.Jobs)
             {
-                _jobs.Children.Add(_RowFor(read.Path, verdict));
+                _jobs.Children.Add(_RowFor(workflow.WorkflowPath, verdict));
             }
         }
 
@@ -137,7 +139,7 @@ internal sealed class LocalCiRunView : UserControl
         }
     }
 
-    private Control _RowFor(string workflowPath, JobVerdict verdict)
+    private Control _RowFor(string workflowPath, LocalCiJobVerdict verdict)
     {
         var name = new TextBlock
         {
@@ -167,7 +169,7 @@ internal sealed class LocalCiRunView : UserControl
         }
 
         var run = new Button { Content = "Run here" };
-        run.Click += (_, _) => _ = _RunAsync(new LocalRunRequest(_projectRoot, workflowPath, verdict.JobId));
+        run.Click += (_, _) => _ = _RunAsync(workflowPath, verdict.JobId);
 
         return new StackPanel
         {
@@ -177,7 +179,7 @@ internal sealed class LocalCiRunView : UserControl
         };
     }
 
-    private async Task _RunAsync(LocalRunRequest request)
+    private async Task _RunAsync(string workflowPath, string jobId)
     {
         if (_inFlight is not null)
         {
@@ -186,25 +188,22 @@ internal sealed class LocalCiRunView : UserControl
 
         using var cancellation = new CancellationTokenSource();
         _inFlight = cancellation;
-        _headline.Text = $"Running {request.JobId}…";
-        _shown.Add($"$ {request.JobId} in {request.WorkflowPath}");
+        _headline.Text = $"Running {jobId}…";
+        _shown.Add($"$ {jobId} in {workflowPath}");
 
-        var startedAt = DateTimeOffset.UtcNow;
-        var commit = await _readHeadCommit(_projectRoot, cancellation.Token);
-        _tracker.Begin(_projectRoot, request.JobId, startedAt, () => _StopAsync(cancellation));
-
-        // Only now: until the tracker knows about this run there is nothing for a stop to be recorded against, and
-        // the awaits above hand control back to the window in between.
         _stop.IsEnabled = true;
         _redraw.Start();
 
-        var result = LocalRunResult.DidNotRun(
-            request.WorkflowPath, request.JobId, LocalRunOutcome.Cancelled, "the run ended without a verdict.");
+        using var lines = _host.Channel.Subscribe(LocalCiChannel.RunLine, e => _OnRunLine(jobId, e));
+
+        LocalCiRunResult? result = null;
         try
         {
             // No consent question here: the operator is the one asking, and a prompt in front of the button they
             // just pressed asks them to approve their own click.
-            result = await _runner.RunAsync(request, _Queue, approve: null, cancellation.Token);
+            var payload = JsonSerializer.SerializeToElement(new LocalCiRunRequest(_projectRoot, workflowPath, jobId), LocalCiChannel.Json);
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.Run, payload, cancellation.Token);
+            result = answer.Deserialize<LocalCiRunResult>(LocalCiChannel.Json);
         }
         finally
         {
@@ -212,43 +211,85 @@ internal sealed class LocalCiRunView : UserControl
             _Flush();
             _inFlight = null;
             _stop.IsEnabled = false;
-
-            // Inside the finally, and before the token source is disposed: a run the tracker is never told the end
-            // of stays in the status bar for the life of the app, offering a Kill for something that stopped long
-            // ago. Completing here also drops the stop callback that holds this token source.
-            _tracker.Complete(_projectRoot, result, commit, DateTimeOffset.UtcNow);
         }
 
-        _headline.Text = result.Headline;
+        _headline.Text = result?.Headline ?? "The run ended without a verdict.";
     }
 
-    // The status bar's Kill, and the window's own Stop. Tolerant of a token source already disposed: completing a
-    // run drops this callback, but the operator can be pressing Kill at that exact moment.
-    private static Task _StopAsync(CancellationTokenSource cancellation)
+    // The window's own Stop. Tolerant of a token source already disposed: completing a run drops `_inFlight`, but
+    // the operator can be pressing Stop at that exact moment.
+    private void _Stop()
     {
         try
         {
-            cancellation.Cancel();
+            _inFlight?.Cancel();
         }
         catch (ObjectDisposedException)
         {
             // The run finished on its own between the click and here. Nothing left to stop.
         }
-
-        return Task.CompletedTask;
     }
 
-    private void _ShowLastResult() =>
-        _headline.Text = _tracker.LastFor(_projectRoot) is { } record
-            ? record.Result.Headline
-            : "Nothing has been run here yet.";
-
-    // Called from the runner's thread — the queue is what makes that safe.
-    private void _Queue(string line)
+    private async Task _ShowLastResultAsync()
     {
+        try
+        {
+            var payload = JsonSerializer.SerializeToElement(new LocalCiProjectRequest(_projectRoot), LocalCiChannel.Json);
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.LastRun, payload);
+            var summary = answer.Deserialize<LocalCiRunSummary>(LocalCiChannel.Json);
+            _headline.Text = summary?.Headline ?? "Nothing has been run here yet.";
+        }
+        catch (Exception exception)
+        {
+            _headline.Text = $"The last run could not be read: {exception.Message}";
+        }
+    }
+
+    private async Task _InitializeGateAsync()
+    {
+        try
+        {
+            var payload = JsonSerializer.SerializeToElement(new LocalCiProjectRequest(_projectRoot), LocalCiChannel.Json);
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.GateGet, payload);
+            _holdBackPullRequests.IsChecked = answer.Deserialize<bool>(LocalCiChannel.Json);
+        }
+        catch (Exception)
+        {
+            // Best-effort: the checkbox stays unchecked, same as an off gate.
+        }
+
+        // Attached only after the fetch above, so setting the fetched value does not itself send a Set back.
+        _holdBackPullRequests.IsCheckedChanged += (_, _) => _ = _SetGateAsync(_holdBackPullRequests.IsChecked ?? false);
+    }
+
+    private async Task _SetGateAsync(bool on)
+    {
+        try
+        {
+            var payload = JsonSerializer.SerializeToElement(new LocalCiGateSetRequest(_projectRoot, on), LocalCiChannel.Json);
+            await _host.Channel.InvokeAsync(LocalCiChannel.GateSet, payload);
+        }
+        catch (Exception)
+        {
+            // Best-effort; a failed toggle leaves the backend's own setting as it was.
+        }
+    }
+
+    // Called on the channel's publishing thread for every job's output, from every open dialog — filtered to this
+    // run alone. The queue is what makes the cross-thread hand-off to the UI-thread redraw timer safe.
+    private void _OnRunLine(string jobId, PluginChannelEvent channelEvent)
+    {
+        var line = channelEvent.Payload.Deserialize<LocalCiRunLine>(LocalCiChannel.Json);
+        if (line is null
+            || !string.Equals(line.ProjectRoot, _projectRoot, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(line.JobId, jobId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         lock (_pending)
         {
-            _pending.Enqueue(line);
+            _pending.Enqueue(line.Text);
         }
     }
 

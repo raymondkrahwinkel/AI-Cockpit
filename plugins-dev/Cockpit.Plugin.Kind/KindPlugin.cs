@@ -1,11 +1,9 @@
-using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Kind.Cli;
 using Cockpit.Plugin.Kind.Mcp;
 using Cockpit.Plugin.Kind.Security;
 using Cockpit.Plugin.Kind.Settings;
-using Cockpit.Plugin.Kind.Ui;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Kind;
 
@@ -38,8 +36,6 @@ public sealed class KindPlugin : ICockpitPlugin
         var clusters = new KindClusterManager(settings, runner, new KindRuntime(runner), "kind", kubeconfigDirectory, host);
         _clusters = clusters;
 
-        host.AddSettings(() => new KindSettingsControl(host, settings));
-        host.AddToolbarAction(new ToolbarAction("Kind settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-kind", new KindMcpTools(new KindConsentGate(host), clusters, host), isEnabled: () => settings.McpEnabled);
 
         // The running clusters appear in the status bar with an operator-only Kill (AC-179).

@@ -4,7 +4,7 @@ using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.UI;
 
 // One dock-panel instance's settings: how many recent workflow runs the pane shows (AC-1065), mirroring
 // GitHubPullRequestsWidgetSettingsView. Reads and writes through the instance's own `IWidgetContext.Storage`, so

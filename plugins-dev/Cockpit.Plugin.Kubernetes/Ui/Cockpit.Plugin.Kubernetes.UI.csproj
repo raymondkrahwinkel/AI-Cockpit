@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Kubernetes (AC-1394): the cluster-registration settings view and the toolbar button that
+       opens it. It lives inside the plugin folder so the version guard, the publish discovery and the change
+       classification all see it as part of the plugin, and it builds into the backend project's bin/, so
+       `dotnet build` of the backend project yields both assemblies in the one folder the zip, the bundle and the
+       dev installer take. It never references the backend project: what the two share is the linked Contracts
+       source and the channel. In particular it never references Model.ClusterRegistration or
+       Settings.KubernetesSettings — the backend's own business logic (the MCP tools, the access gate, the
+       connection factory) uses those pervasively, so duplicating them into this assembly too would give any
+       project that references both (the test project does) two colliding copies of the same type name; the
+       cluster list crosses the channel as the Contracts records instead. Kubeconfig parsing (context listing,
+       exec-auth detection) needs the KubernetesClient package and stays backend-only for the same reason this
+       project names no such runtime dependency. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Kubernetes.Tests" />
+  </ItemGroup>
+
+</Project>

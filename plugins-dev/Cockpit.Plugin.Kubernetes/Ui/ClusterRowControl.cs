@@ -1,21 +1,28 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
-using Cockpit.Plugin.Kubernetes.Cluster;
-using Cockpit.Plugin.Kubernetes.Model;
+using Cockpit.Plugin.Kubernetes.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.Kubernetes.Ui;
+namespace Cockpit.Plugin.Kubernetes.UI;
 
 // One cluster's row in the settings view: label, a kubeconfig source (either a file path read live — e.g.
 // `~/.kube/config` — or a pasted kubeconfig kept under the secret layer), a context picked from that file,
 // allowed namespaces, and the off-by-default capability toggles. The pasted-kubeconfig box is never prefilled with
 // a stored value — a blank box keeps what is already stored, a paste replaces it.
+//
+// AC-1394: works on ClusterSnapshot/ClusterEdit (the channel's wire shapes) rather than the backend's
+// ClusterRegistration — the context dropdown is loaded, and exec-auth detected on save, by asking the backend
+// part over the plugin's channel, since parsing a kubeconfig needs the KubernetesClient package this assembly
+// does not reference.
 internal sealed class ClusterRowControl : UserControl
 {
     private const string CurrentContextLabel = "(current-context)";
 
+    private readonly ICockpitUiHost _host;
     private readonly string _id;
     private readonly bool _hasStoredKubeconfig;
     private readonly bool _hasStoredArgoToken;
@@ -35,11 +42,12 @@ internal sealed class ClusterRowControl : UserControl
 
     public event Action? RemoveRequested;
 
-    public ClusterRowControl(ClusterRegistration? existing, bool hasStoredKubeconfig, bool hasStoredArgoToken = false)
+    public ClusterRowControl(ICockpitUiHost host, ClusterSnapshot? existing)
     {
+        _host = host;
         _id = existing?.Id ?? Guid.NewGuid().ToString("n");
-        _hasStoredKubeconfig = hasStoredKubeconfig;
-        _hasStoredArgoToken = hasStoredArgoToken;
+        _hasStoredKubeconfig = existing?.HasStoredKubeconfig ?? false;
+        _hasStoredArgoToken = existing?.HasStoredArgoToken ?? false;
         _usesExecAuth = existing?.UsesExecAuth ?? false;
 
         _label = new TextBox { Text = existing?.Label ?? string.Empty, PlaceholderText = "Label (e.g. prod, staging)" };
@@ -56,14 +64,14 @@ internal sealed class ClusterRowControl : UserControl
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 96,
-            PlaceholderText = hasStoredKubeconfig
+            PlaceholderText = _hasStoredKubeconfig
                 ? "Leave blank to keep the stored kubeconfig, or paste a new one to replace it"
                 : "Or paste the kubeconfig for this cluster",
         };
         _argoToken = new TextBox
         {
             PasswordChar = '•',
-            PlaceholderText = hasStoredArgoToken
+            PlaceholderText = _hasStoredArgoToken
                 ? "Leave blank to keep the stored token, or paste a new one to replace it"
                 : "Optional: an Argo CD read-only project-role token, to let the argo_* tools reach Argo's own API",
         };
@@ -73,14 +81,15 @@ internal sealed class ClusterRowControl : UserControl
 
         _RebuildContextItems([], existing?.ContextName);
 
-        // AC-1349: index matches ClusterConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree).
+        // AC-1349: index matches Model.ClusterConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree) — the
+        // snapshot already carries the cluster's *effective* mode as that same int (see ClusterSnapshot).
         _originalKubeconfigPath = KubeconfigPath;
         _originalContext = _SelectedContext();
         _consentMode = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             ItemsSource = new[] { "Always ask", "Read-free (reads skip the card; secrets, Helm values/manifests and changes still ask)", "All-free (changes skip the card too, but only in an allowed namespace)" },
-            SelectedIndex = (int)(existing?.EffectiveConsentMode() ?? ClusterConsentMode.AlwaysAsk),
+            SelectedIndex = existing?.ConsentMode ?? 0,
         };
         _kubeconfigPath.TextChanged += (_, _) => _ResetConsentModeIfRepointed();
         _contextBox.SelectionChanged += (_, _) => _ResetConsentModeIfRepointed();
@@ -90,7 +99,7 @@ internal sealed class ClusterRowControl : UserControl
         browse.Click += async (_, _) => await _BrowseAsync();
 
         var load = new Button { Content = "Load contexts", Margin = new Thickness(0, 2, 0, 0) };
-        load.Click += (_, _) => _LoadContexts();
+        load.Click += async (_, _) => await _LoadContextsAsync();
 
         var remove = new Button { Content = "Remove cluster", Margin = new Thickness(0, 4, 0, 0) };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
@@ -160,7 +169,7 @@ internal sealed class ClusterRowControl : UserControl
     // What was pasted into the Argo token box this session, if anything — the parent stores it through the secret layer.
     public string ArgoTokenInput => _argoToken.Text ?? string.Empty;
 
-    public ClusterRegistration ToRegistration() => new ClusterRegistration(
+    public ClusterEdit ToEdit() => new(
         Id: _id,
         Label: (_label.Text ?? string.Empty).Trim(),
         ContextName: _SelectedContext(),
@@ -168,13 +177,14 @@ internal sealed class ClusterRowControl : UserControl
         AllowClusterScoped: _allowClusterScoped.IsChecked ?? false,
         AllowExec: _allowExec.IsChecked ?? false,
         AllowPortForward: _allowPortForward.IsChecked ?? false,
-        // attach is model+gate-ready but has no meaningful non-interactive MCP tool yet, so it stays off.
-        AllowAttach: false,
-        UsesExecAuth: _usesExecAuth,
-        KubeconfigPath: KubeconfigPath).WithConsentMode((ClusterConsentMode)_consentMode.SelectedIndex);
+        KubeconfigPath: KubeconfigPath,
+        ConsentMode: _consentMode.SelectedIndex,
+        PastedKubeconfig: KubeconfigInput,
+        PastedArgoToken: ArgoTokenInput);
 
-    // Mirrors ClusterRegistration.EffectiveConsentMode live: a row re-pointed at another kubeconfig or context in
-    // this same dialog, before Save, must not carry a mode chosen for the old target along. A paste always counts.
+    // Mirrors Model.ClusterRegistration.EffectiveConsentMode live: a row re-pointed at another kubeconfig or
+    // context in this same dialog, before Save, must not carry a mode chosen for the old target along. A paste
+    // always counts. Index 0 is AlwaysAsk (see the ComboBox's ItemsSource above).
     private void _ResetConsentModeIfRepointed()
     {
         // Rebuilding the context list clears the selection for a moment; that is not a re-point.
@@ -185,7 +195,7 @@ internal sealed class ClusterRowControl : UserControl
 
         if (KubeconfigPath != _originalKubeconfigPath || _SelectedContext() != _originalContext || !string.IsNullOrWhiteSpace(_kubeconfig.Text))
         {
-            _consentMode.SelectedIndex = (int)ClusterConsentMode.AlwaysAsk;
+            _consentMode.SelectedIndex = 0;
         }
     }
 
@@ -205,19 +215,22 @@ internal sealed class ClusterRowControl : UserControl
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } localPath)
         {
             _kubeconfigPath.Text = localPath;
-            _LoadContexts();
+            await _LoadContextsAsync();
         }
     }
 
-    private void _LoadContexts()
+    private async Task _LoadContextsAsync()
     {
-        var yaml = KubeconfigInspector.ReadYaml(_kubeconfigPath.Text, _kubeconfig.Text);
-        if (yaml is null)
+        var request = new KubeconfigContextsRequest(_kubeconfigPath.Text ?? string.Empty, _kubeconfig.Text ?? string.Empty);
+        var payload = JsonSerializer.SerializeToElement(request, KubernetesChannel.Json);
+        var answerElement = await _host.Channel.InvokeAsync(KubernetesChannel.KubeconfigContexts, payload);
+        var answer = answerElement.Deserialize<KubeconfigContextsAnswer>(KubernetesChannel.Json);
+        if (answer is null)
         {
             return;
         }
 
-        _RebuildContextItems(KubeconfigInspector.ListContexts(yaml).Names, _SelectedContext());
+        _RebuildContextItems(answer.Names, _SelectedContext());
     }
 
     private void _RebuildContextItems(IEnumerable<string> names, string? keep)

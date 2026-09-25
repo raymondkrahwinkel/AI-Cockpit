@@ -1,9 +1,13 @@
+extern alias UiAsm;
+
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
+using DepotUi = UiAsm::Cockpit.Plugin.Depot.UI.DepotUi;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -25,16 +29,17 @@ public class DepotPluginTests
     }
 
     [Fact]
-    public async Task Initialize_RegistersAGlobalToolbarActionThatOpensSettings()
+    public async Task InitializeUi_RegistersAGlobalToolbarActionThatOpensSettings()
     {
         // AC-784: the global-toolbar route (AC-772), same pattern as KubernetesPlugin (AC-91).
-        var host = _HostWithConnections();
+        // AC-1394: this registration moved from DepotPlugin.Initialize to DepotUi.InitializeUi.
+        var host = Substitute.For<ICockpitUiHost>();
+        host.Storage.Returns(new FakePluginStorage());
         var registered = new List<ToolbarAction>();
         host.When(cockpit => cockpit.AddToolbarAction(Arg.Any<ToolbarAction>()))
             .Do(call => registered.Add(call.Arg<ToolbarAction>()));
 
-        using var plugin = new DepotPlugin();
-        plugin.Initialize(host);
+        new DepotUi().InitializeUi(host);
 
         var action = Assert.Single(registered);
         Assert.Equal("Depot settings", action.Title);

@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Docker (AC-1394): everything that needs a window — the settings view and the toolbar action.
+       It lives inside the plugin folder so the version guard, the publish discovery and the change classification
+       all see it as part of the plugin, and it builds into the backend project's bin/, so `dotnet build` of the
+       backend project yields both assemblies in the one folder the zip, the bundle and the dev installer take. It
+       never references the backend project: what the two share is the linked Settings and Contracts source and
+       the channel. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+    <!-- The settings model and consent-mode enum: also read/written by the backend part (DockerAccessGate,
+         DockerEngine), so they stay linked source rather than moving here outright, unlike GitStatusSettings. -->
+    <Compile Include="..\Settings\DockerSettings.cs" Link="Settings\DockerSettings.cs" />
+    <Compile Include="..\Settings\DockerConsentMode.cs" Link="Settings\DockerConsentMode.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The toolbar action's icon (MaterialIconKind.Docker) is the only Material.Icons use left after the split. -->
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- No InternalsVisibleTo to Cockpit.Plugin.Docker.Tests here (unlike GitStatus's UI part): DockerSettings and
+       DockerConsentMode above are linked into both this assembly and the backend one, which already grants that
+       test project internals access — granting it here too would make the linked types ambiguous (CS0433) the
+       moment both assemblies are referenced together. Add it back if a test ever needs a UI-only internal type. -->
+
+</Project>

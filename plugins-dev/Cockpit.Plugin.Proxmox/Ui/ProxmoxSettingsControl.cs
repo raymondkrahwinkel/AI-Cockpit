@@ -1,11 +1,11 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Proxmox.Engine;
-using Cockpit.Plugin.Proxmox.Settings;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.Proxmox.Ui;
+namespace Cockpit.Plugin.Proxmox.UI;
 
 // The plugin's settings view: one Proxmox target (host, port, API token), its certificate trust, and the two
 // off-by-default capabilities. All code-behind Avalonia, like the other plugins. The API token box is never
@@ -26,7 +26,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
     private string? _fetchedFingerprint;
     private string? _pendingTrustedFingerprint;
 
-    public ProxmoxSettingsControl(ICockpitHost host, ProxmoxSettings settings)
+    public ProxmoxSettingsControl(ICockpitUiHost host, ProxmoxSettings settings)
     {
         _settings = settings;
         _pendingTrustedFingerprint = settings.TrustedCertFingerprint is { Length: > 0 } stored ? stored : null;
