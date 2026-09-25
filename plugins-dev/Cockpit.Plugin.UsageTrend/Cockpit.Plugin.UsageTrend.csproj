@@ -1,9 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The usage-trend widget for a Dashboard workspace (AC-54): charts the ctx / 5h / wk usage the session header
-       shows as now-values, but over time and per profile, from history it samples and keeps itself. Bundled like
-       the clock so the trend is there out of the box, and it proves the AC-54 read surface end to end from outside
-       the host — a widget reads a session's live usage through ICockpitSessionObserver.ActiveSessionUsage.
+  <!-- The usage-trend widget's backend part (AC-54). AC-1395 (F2.7, following GitStatus's pilot AC-1390): the
+       widget itself lives in UI/, its own project, which builds into this project's bin/ (the reference below
+       orders the build and references no assembly); this project names no Avalonia. It keeps the debounce/jump/
+       retention rules (UsageTrendHistory) and the cache-backed history behind ICockpitHost.Cache, answering the
+       UI part's widget over the plugin's own channel (Contracts/UsageTrendChannel.cs).
        Built OUTSIDE Cockpit.slnx (plugins-dev/) like the other example plugins. Shared assemblies are
        compile-only (Private=false / ExcludeAssets=runtime) so the host's copies load and shared types keep one
        identity — the plugin folder ships only its own DLL + plugin.json. -->
@@ -13,6 +14,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,15 +24,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <ProjectReference Include="UI\Cockpit.Plugin.UsageTrend.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
