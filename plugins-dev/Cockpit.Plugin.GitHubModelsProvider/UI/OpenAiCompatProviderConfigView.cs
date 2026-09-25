@@ -2,10 +2,10 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubModelsProvider;
+namespace Cockpit.Plugin.GitHubModelsProvider.UI;
 
 // The "add/edit profile" config panel for this plugin's GitHub Models provider (#63): an API-key field (a
 // GitHub personal access token, with a "?" tooltip pointing at where to create one and which scope it
@@ -24,7 +24,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null

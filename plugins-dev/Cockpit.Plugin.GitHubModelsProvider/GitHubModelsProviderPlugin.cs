@@ -14,9 +14,6 @@ namespace Cockpit.Plugin.GitHubModelsProvider;
 // help text in this plugin deliberately avoid the "Copilot" label to prevent that confusion.
 public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
 {
-    // GitHub Models' OpenAI-compatible inference endpoint (docs.github.com/rest/models/inference).
-    internal const string GitHubModelsDefaultBaseUrl = "https://models.github.ai/inference";
-
     public PluginMetadata Metadata { get; } = new(
         Id: "github-models-provider",
         DisplayName: "GitHub Models",
@@ -42,8 +39,10 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GitHubModelsDefaultBaseUrl, host),
-            DefaultBaseUrl: GitHubModelsDefaultBaseUrl));
+            // AC-1393: the UI part's InitializeUi (GitHubModelsProviderUi) replaces this with the real config
+            // view via ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor opens.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.GitHubModels));
     }
 
     public void Dispose()
