@@ -1,5 +1,7 @@
 using Cockpit.TestSupport;
 
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // Turning a poll into a change (#69). GitHub cannot tell a desktop app that something was merged, so it is asked —

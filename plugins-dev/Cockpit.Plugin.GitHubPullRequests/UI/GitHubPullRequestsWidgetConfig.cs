@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.UI;
 
 // One dashboard widget instance's own settings (#AC-18). The widget mirrors the side-menu section, but a
 // dashboard pane is sized by hand — a tall one has room for twenty, a short one for three — so how many pull

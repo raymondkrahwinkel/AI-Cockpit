@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.Contracts;
 
 // AC-802: one `gh pr view` call's worth of PR data; `Repository` is parsed out of `Url` rather than a seventh field.
 internal sealed record SessionPullRequestStatus(

@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.Contracts;
 
 // The at-a-glance state of one status check on a pull request (AC-802), derived from `gh pr view`'s
 // `statusCheckRollup` — same four buckets as Cockpit.Plugin.GitHubActions.CiRunState, so the session banner and

@@ -1,36 +1,23 @@
+extern alias UiAsm;
+
+using NSubstitute;
+using Cockpit.Plugins.Abstractions.Docking;
+using UiAsm::Cockpit.Plugin.GitHubPullRequests.Contracts;
+using UiAsm::Cockpit.Plugin.GitHubPullRequests.UI;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-// AC-960: the dock-rail registration, mirroring PullRequestBadgeUpdaterTests' own coverage of the same
-// older-host guard shape for AC-516's AddSideMenuButtonWithBadge.
-[Collection("avalonia")]
+// AC-960: the dock-rail registration. AC-1396: through the UI host, which always has AddDockPanel, so the
+// older-host guard and its two tests went with the split.
 public class PullRequestDockPanelRegistrarTests
 {
-    private static PullRequestRefreshSource _Source() =>
-        new(new InMemoryPluginStorage(), (_, _) => Task.FromResult(PullRequestFeedResult.Missing), TimeSpan.FromMinutes(10));
-
     [Fact]
-    public void Register_AddsThePanel_WithTheStableIdAndTitle() => HeadlessAvalonia.Run(() =>
+    public void Register_AddsThePanel_WithTheStableIdAndTitle()
     {
-        var host = new TestDockPanelHost();
-        var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
+        var host = TestUiHost.Create();
 
-        PullRequestDockPanelRegistrar.Register(host, settings, _Source());
+        PullRequestDockPanelRegistrar.Register(host, new GitHubPullRequestsSettings(new InMemoryPluginStorage()));
 
-        var panel = Assert.Single(host.RegisteredPanels);
-        Assert.Equal("github.pull-requests", panel.Id);
-        Assert.Equal("Pull Requests", panel.Title);
-    });
-
-    [Theory]
-    [InlineData(typeof(MissingMethodException))]
-    [InlineData(typeof(TypeLoadException))]
-    public void AnOlderHostWithNoDockPanelSupport_DoesNotTakeThePluginDown(Type exceptionType) => HeadlessAvalonia.Run(() =>
-    {
-        var host = new TestDockPanelHost { DockPanelUnsupportedException = () => (Exception)Activator.CreateInstance(exceptionType)! };
-        var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
-
-        PullRequestDockPanelRegistrar.Register(host, settings, _Source());
-
-        Assert.Empty(host.RegisteredPanels);
-    });
+        host.Received(1).AddDockPanel(Arg.Is<DockPanelRegistration>(panel => panel.Id == "github.pull-requests" && panel.Title == "Pull Requests"));
+    }
 }

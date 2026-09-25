@@ -1,5 +1,7 @@
 using Cockpit.Plugins.Abstractions;
 
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // The shared fetch behind the side-menu badge (AC-517) and the dashboard widget (#AC-18). The one branch that reaches

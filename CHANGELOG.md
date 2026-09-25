@@ -580,6 +580,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: for plugin authors, GitHub Issues and GitHub Pull Requests now follow Git status into the two-part
+  layout too — a backend part and a UI part talking over the plugin's own channel. They look and work exactly as
+  before.
 - changed: for plugin authors, the YouTrack plugin now follows Git status into the two-part layout — a backend part
   and a UI part talking over the plugin's own channel. The issues dialog, the session header and the picker look
   and work exactly as before; "Add to prompt" goes to the session selected in the window, as it always did.

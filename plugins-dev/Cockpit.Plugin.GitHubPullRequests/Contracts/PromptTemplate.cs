@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.Contracts;
 
 // The prompt dropped into the active session (or the clipboard, with no active session) when a pull
 // request is clicked. English by default (the cockpit's UI language) and editable in the plugin's

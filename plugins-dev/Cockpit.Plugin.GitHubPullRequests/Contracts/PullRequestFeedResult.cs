@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.Contracts;
 
 // One load of the pull-request feed (`PullRequestFeed`): the open pull requests, ordered and
 // repository-filtered, plus the subset that is waiting on *your* review — kept separate because a

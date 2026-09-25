@@ -1,4 +1,6 @@
 
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // `ReviewRequestInbox` (#74): which review requests count as new, and what the next look should

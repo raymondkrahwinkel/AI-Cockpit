@@ -4,7 +4,7 @@ using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.UI;
 
 // One pull-requests widget instance's settings: how many pull requests the pane shows (#AC-18). Implements
 // `IPluginSettingsView`, so the host wraps it in its standard Save/Close footer — the widget

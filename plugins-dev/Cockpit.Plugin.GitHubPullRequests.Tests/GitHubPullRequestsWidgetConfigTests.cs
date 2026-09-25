@@ -1,4 +1,7 @@
+extern alias UiAsm;
+
 using Cockpit.Plugins.Abstractions;
+using UiAsm::Cockpit.Plugin.GitHubPullRequests.UI;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 

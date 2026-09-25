@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // The counting rule behind the AC-517 badge: `PullRequestBadgeCounts.Compute` mirrors exactly what

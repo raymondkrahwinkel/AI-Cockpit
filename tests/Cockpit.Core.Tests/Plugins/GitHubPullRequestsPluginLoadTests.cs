@@ -1,15 +1,18 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// End-to-end loader proof (#41), mirroring <see cref="GitHubIssuesPluginLoadTests"/>: loads the real
-/// compiled GitHub Pull Requests plugin through the actual <see cref="PluginActivator"/> /
+/// compiled GitHub Pull Requests plugin — both its parts since AC-1396 — through the actual <see cref="PluginActivator"/> /
 /// <see cref="PluginLoadContext"/> and asserts type-identity holds (the plugin's ICockpitPlugin resolves to
 /// the host's copy — the cast would be null otherwise), its metadata is right, and its Options-tab + badged
 /// side-menu-button contributions register (AC-517 — no plain side-menu section any more, the badged button
@@ -28,7 +31,8 @@ public class GitHubPullRequestsPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // AC-1396: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "github-pull-requests", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -44,10 +48,22 @@ public class GitHubPullRequestsPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        Assert.Equal(1, host.SettingsRegistered);
+        // AC-1396: the backend part contributes nothing with a window; the settings view and the badged button
+        // come from the UI part.
+        Assert.Equal(0, host.SettingsRegistered);
         Assert.Empty(host.SideButtons);
         Assert.Empty(host.SideSections);
-        Assert.Equal("Open PRs", Assert.Single(host.BadgedSideButtons));
+        Assert.Empty(host.BadgedSideButtons);
+
+        Assert.Equal("Cockpit.Plugin.GitHubPullRequests.UI.dll", manifest.UiAssembly);
+        Assert.Equal("Cockpit.Plugin.GitHubPullRequests.UI.GitHubPullRequestsUi", manifest.UiEntryType);
+        var uiPart = Assert.IsAssignableFrom<ICockpitPluginUi>(PluginUiManager.ActivateUi(discovered, plugin));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.AddSideMenuButtonWithBadge(Arg.Any<string>(), Arg.Any<Action>()).Returns(new SideMenuButtonBadge());
+        uiPart.InitializeUi(uiHost);
+        uiHost.Received(1).AddSettings(Arg.Any<Func<Control>>());
+        uiHost.Received(1).AddSideMenuButtonWithBadge("Open PRs", Arg.Any<Action>());
+        uiHost.DidNotReceive().AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>());
 
         plugin.Dispose();
     }

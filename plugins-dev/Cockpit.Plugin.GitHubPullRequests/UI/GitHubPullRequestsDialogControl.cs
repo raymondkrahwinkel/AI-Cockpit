@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -8,9 +9,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.UI;
 
 // The "GitHub Pull Requests" dialog opened from the side-menu badge (AC-517) or the widget's "View all open
 // PRs" button: a search
@@ -19,13 +21,13 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 // title, repository, author, body, a link, and a preview of the prompt it would produce (with a copy
 // button). "Add to prompt" injects the prompt into the active session and only shows when one is active;
 // the copy button always works. Built in code; the DataGrid theme is provided app-wide by the host.
+//
+// AC-1396: the list comes from the backend part over the channel, and "Add to prompt" goes to the session this
+// window has selected, by id — the backend part has no active session to ask about.
 internal sealed class GitHubPullRequestsDialogControl : UserControl
 {
     private readonly GitHubPullRequestsSettings _settings;
-    private readonly ICockpitHost _host;
-    private readonly ICockpitActions _actions;
-    private readonly GitHubPullRequestsClient _http = new();
-    private readonly GitHubPrGhClient _gh = new();
+    private readonly ICockpitUiHost _host;
 
     private readonly CheckBox _assignedToMe;
     private readonly ToggleButton _showIgnored;
@@ -47,11 +49,10 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     private IReadOnlyList<GitHubPullRequest> _all = [];
     private string _renderedPrompt = string.Empty;
 
-    public GitHubPullRequestsDialogControl(GitHubPullRequestsSettings settings, ICockpitHost host)
+    public GitHubPullRequestsDialogControl(GitHubPullRequestsSettings settings, ICockpitUiHost host)
     {
         _settings = settings;
         _host = host;
-        _actions = host.Actions;
 
         // Assigned-to-me narrows the fetch server-side (gh --assignee @me) or client-side against the token
         // user (HTTP), so a toggle re-loads rather than filtering the already-fetched list.
@@ -103,7 +104,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Author", Binding = new Binding(nameof(GitHubPullRequest.Author)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubPullRequest);
-        _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubPullRequest);
+        _grid.DoubleTapped += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as GitHubPullRequest);
 
         // Right-click a row to set it aside — this one, or everything from its repository. The menu is built when it
         // opens, because whether a row is ignored is a thing that changes while the dialog is open.
@@ -142,7 +143,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _detailMeta = new TextBlock { FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
 
         _inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
-        _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubPullRequest);
+        _inject.Click += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as GitHubPullRequest);
         var openBrowser = new Button { Content = "Open in browser" };
         openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubPullRequest);
         var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
@@ -277,41 +278,18 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _loading.IsVisible = true;
         try
         {
-            var assignedToMe = _assignedToMe.IsChecked == true;
-            if (_settings.UseGitHubCli)
+            var request = new OpenPullRequestsRequest(_assignedToMe.IsChecked == true, forceRefresh);
+            var answer = await _host.Channel.InvokeAsync(
+                GitHubPullRequestsChannel.OpenPullRequests,
+                JsonSerializer.SerializeToElement(request, GitHubPullRequestsChannel.Json));
+            var result = answer.Deserialize<PullRequestFeedResult>(GitHubPullRequestsChannel.Json) ?? PullRequestFeedResult.Missing;
+            if (result.RepositoryMissing)
             {
-                var mine = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None);
-
-                // The watched repositories, unless the operator narrowed the view to what is assigned to them —
-                // then "everything open here, whoever opened it" is precisely what they said they did not want.
-                var watched = new List<GitHubPullRequest>();
-                if (!assignedToMe)
-                {
-                    if (_settings.WatchEverythingIAmInvolvedWith)
-                    {
-                        watched.AddRange(await _gh.SearchInvolvedAsync(forceRefresh, CancellationToken.None));
-                    }
-
-                    foreach (var scope in _settings.WatchedReposList)
-                    {
-                        watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, CancellationToken.None));
-                    }
-                }
-
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                _all = mine.Concat(watched).Where(pullRequest => seen.Add(pullRequest.Url)).ToList();
-            }
-            else
-            {
-                if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
-                {
-                    _SetStatus("No repository set, and the GitHub CLI is off.", needsConfiguration: true);
-                    return;
-                }
-
-                _all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None);
+                _SetStatus("No repository set, and the GitHub CLI is off.", needsConfiguration: true);
+                return;
             }
 
+            _all = result.PullRequests;
             _ApplyFilter();
             _SetStatus($"{_all.Count} open pull request(s). Click one for details, or double-click to add it to the prompt.");
         }
@@ -376,7 +354,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     private ContextMenu _RowMenu(GitHubPullRequest pullRequest)
     {
         var addToPrompt = new MenuItem { Header = "Add to prompt" };
-        addToPrompt.Click += (_, _) => _AddToPrompt(pullRequest);
+        addToPrompt.Click += async (_, _) => await _AddToPromptAsync(pullRequest);
 
         var openInBrowser = new MenuItem { Header = "Open in browser" };
         openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest);
@@ -441,7 +419,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _promptPreview.Text = _renderedPrompt;
 
         // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
-        _inject.IsVisible = _actions.HasActiveSession;
+        _inject.IsVisible = _host.ActivePaneId is { Length: > 0 };
     }
 
     private string _RenderPrompt(GitHubPullRequest pullRequest)
@@ -452,7 +430,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         return PromptTemplate.Render(_settings.Template, pullRequest, owner, repo);
     }
 
-    private void _AddToPrompt(GitHubPullRequest? pullRequest)
+    private async Task _AddToPromptAsync(GitHubPullRequest? pullRequest)
     {
         if (pullRequest is null)
         {
@@ -460,14 +438,14 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             return;
         }
 
-        if (!_actions.HasActiveSession)
+        if (_host.ActivePaneId is not { Length: > 0 } paneId)
         {
             _detailStatus.Text = "No active session — use Copy to put the prompt on the clipboard.";
             return;
         }
 
-        _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(pullRequest));
-        _detailStatus.Text = $"Added pull request #{pullRequest.Number} to the active session's prompt.";
+        await _host.SendToSessionAsync(paneId, _RenderPrompt(pullRequest));
+        _detailStatus.Text = $"Sent pull request #{pullRequest.Number} to the active session.";
     }
 
     private async Task _CopyPromptAsync()
@@ -477,7 +455,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             return;
         }
 
-        await _actions.SetClipboardTextAsync(_renderedPrompt);
+        await _host.SetClipboardTextAsync(_renderedPrompt);
         _detailStatus.Text = "Prompt copied to the clipboard.";
     }
 

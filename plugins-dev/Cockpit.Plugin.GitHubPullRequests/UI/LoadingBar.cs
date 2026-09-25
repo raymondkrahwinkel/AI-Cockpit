@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.UI;
 
 // A hairline that moves while something is being fetched, sitting directly above the list it is filling.
 //

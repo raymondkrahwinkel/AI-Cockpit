@@ -72,4 +72,41 @@ internal sealed class PullRequestFeed
 
         return new PullRequestFeedResult(ordered, reviewRequested, RepositoryMissing: false);
     }
+
+    // The dialog's own query (AC-1396: moved here from GitHubPullRequestsDialogControl, which reaches it over the
+    // channel now). Not the shared feed: "Assigned to me" narrows it server-side, and it has no review-requested part.
+    public async Task<PullRequestFeedResult> LoadOpenAsync(GitHubPullRequestsSettings settings, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken)
+    {
+        if (!settings.UseGitHubCli)
+        {
+            if (string.IsNullOrWhiteSpace(settings.Owner) || string.IsNullOrWhiteSpace(settings.Repo))
+            {
+                return PullRequestFeedResult.Missing;
+            }
+
+            var single = await _http.GetOpenPullRequestsAsync(settings.Owner, settings.Repo, settings.Token, assignedToMe, cancellationToken);
+            return new PullRequestFeedResult(single, [], RepositoryMissing: false);
+        }
+
+        var mine = await _gh.SearchOpenPullRequestsAsync(settings.GhOwner, assignedToMe, forceRefresh, cancellationToken);
+
+        // The watched repositories, unless the operator narrowed the view to what is assigned to them — then
+        // "everything open here, whoever opened it" is precisely what they said they did not want.
+        var watched = new List<GitHubPullRequest>();
+        if (!assignedToMe)
+        {
+            if (settings.WatchEverythingIAmInvolvedWith)
+            {
+                watched.AddRange(await _gh.SearchInvolvedAsync(forceRefresh, cancellationToken));
+            }
+
+            foreach (var scope in settings.WatchedReposList)
+            {
+                watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, cancellationToken));
+            }
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return new PullRequestFeedResult([.. mine.Concat(watched).Where(pullRequest => seen.Add(pullRequest.Url))], [], RepositoryMissing: false);
+    }
 }

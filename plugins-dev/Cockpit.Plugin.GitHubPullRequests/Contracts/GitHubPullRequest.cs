@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubPullRequests;
+namespace Cockpit.Plugin.GitHubPullRequests.Contracts;
 
 // One open GitHub pull request shown in the dashboard widget, the dialog grid, and rendered into the prompt
 // template. `Repository` is the owner/name it belongs to (for the cross-repo view), and

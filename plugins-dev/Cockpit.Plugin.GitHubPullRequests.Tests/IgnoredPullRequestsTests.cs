@@ -1,5 +1,7 @@
 using Cockpit.Plugins.Abstractions;
 
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // The pull requests set aside: the long-lived ones that live in a todo somewhere and do not need to be in front of you

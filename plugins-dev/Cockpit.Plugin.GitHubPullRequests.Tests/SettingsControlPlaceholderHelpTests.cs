@@ -1,7 +1,11 @@
+extern alias UiAsm;
+
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
+using UiAsm::Cockpit.Plugin.GitHubPullRequests.Contracts;
+using UiAsm::Cockpit.Plugin.GitHubPullRequests.UI;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -14,7 +18,7 @@ public class SettingsControlPlaceholderHelpTests
     {
         const string marker = "AC-521-MARKER";
         var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { Template = marker };
-        var view = new GitHubPullRequestsSettingsControl(new TestBadgeHost(), settings);
+        var view = new GitHubPullRequestsSettingsControl(TestUiHost.Create(), settings);
         var window = new Window { Content = view };
         window.Show();
         window.UpdateLayout();
@@ -29,7 +33,7 @@ public class SettingsControlPlaceholderHelpTests
 
         var documented = Regex.Matches($"{label} {hint}", @"\{[A-Za-z]+\}").Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
 
-        var path = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubPullRequests", "PromptTemplate.cs");
+        var path = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubPullRequests", "Contracts", "PromptTemplate.cs");
         var source = File.ReadAllText(path);
         var replaced = Regex.Matches(source, @"\.Replace\(""(\{[A-Za-z]+\})""")
             .Select(m => m.Groups[1].Value)

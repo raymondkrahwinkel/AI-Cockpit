@@ -42,7 +42,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     // does not also stretch out how long a stalled feed takes to read as old. A single transient `gh` hiccup must
     // not flip the marker on, but data nobody has managed to refresh across three tries — or a snapshot left over
     // from a much earlier session — should read as old immediately.
-    public static readonly TimeSpan StaleAfter = GitHubPrGhClient.PullRequestTtl * 3;
+    public static readonly TimeSpan StaleAfter = PullRequestFeedSnapshot.StaleAfter;
 
     private const string StorageKey = "refreshSourceSnapshot";
 
@@ -98,9 +98,8 @@ internal sealed class PullRequestRefreshSource : IDisposable
     public PullRequestRefreshSource(ICockpitHost host, GitHubPullRequestsSettings settings)
         : this(host.Cache, (forceRefresh, cancellationToken) => new PullRequestFeed().LoadAsync(settings, forceRefresh, cancellationToken), PollInterval)
     {
-        // A settings change (owner, watched repos, the CLI toggle) can change what the next fetch should even ask
-        // for — reload once, here, rather than every subscribed view repeating the same reload for itself.
-        host.OnSettingsSaved(() => _ = RefreshAsync(forceRefresh: true));
+        // AC-1396: a settings save no longer reaches this directly — saving is a window's act, so the UI part asks
+        // for a forced refresh over the channel once the operator saves, still once rather than once per view.
     }
 
     // The seam a test drives directly: a fake load function (no `gh`, no network) and a storage double, so the polling/persistence/staleness behaviour is provable without shelling out.
