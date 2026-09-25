@@ -188,7 +188,7 @@ internal sealed class PromptQuickPickControl : UserControl
 
         if (_host.ActivePaneId is { } paneId)
         {
-            await _host.SendToSessionAsync(paneId, template.Body);
+            await _host.InsertIntoSessionAsync(paneId, template.Body);
         }
         else
         {

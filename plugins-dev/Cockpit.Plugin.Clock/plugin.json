@@ -5,7 +5,7 @@
   "uiAssembly": "Cockpit.Plugin.Clock.dll",
   "uiEntryType": "Cockpit.Plugin.Clock.ClockUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.41.0",
+  "minHostVersion": "0.42.0",
   "description": "The time and date, for a Dashboard workspace.",
   "author": "Cockpit"
 }

@@ -491,11 +491,11 @@ internal sealed class SessionDiffDialogControl : UserControl
                 return;
             }
 
-            await _host.SendToSessionAsync(_session.PaneId, ReviewPrompt.Build(_branch));
+            await _host.InsertIntoSessionAsync(_session.PaneId, ReviewPrompt.Build(_branch));
         }
         catch (Exception)
         {
-            // Sending is a convenience — a failure must not crash the dialog.
+            // Inserting is a convenience — a failure must not crash the dialog.
         }
     }
 

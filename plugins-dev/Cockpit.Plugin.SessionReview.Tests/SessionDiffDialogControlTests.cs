@@ -123,10 +123,10 @@ public class SessionDiffDialogControlTests : IDisposable
         Assert.Contains(panel.Texts(), t => t.Contains("No uncommitted changes", StringComparison.Ordinal));
     }
 
-    // Acceptance 3 (AC-1395/D6): clicking Review sends to the pane the window has active, not to whichever pane
-    // this panel happens to be showing — proven with two sessions and the second one active.
+    // Acceptance 3 (AC-1395/D6): clicking Review inserts into the pane the window has active, not into whichever
+    // pane this panel happens to be showing — proven with two sessions and the second one active.
     [Fact]
-    public void ClickingReview_WithTwoSessions_SendsToTheSecondSessionTheWindowHasActive()
+    public void ClickingReview_WithTwoSessions_InsertsIntoTheSecondSessionTheWindowHasActive()
     {
         var host = Substitute.For<ICockpitUiHost>();
         host.ActivePaneId.Returns("pane-2");
@@ -134,8 +134,8 @@ public class SessionDiffDialogControlTests : IDisposable
         using var panel = _Open(host, "pane-2");
         panel.ClickReview();
 
-        host.Received(1).SendToSessionAsync("pane-2", Arg.Any<string>());
-        host.DidNotReceive().SendToSessionAsync("pane-1", Arg.Any<string>());
+        host.Received(1).InsertIntoSessionAsync("pane-2", Arg.Any<string>());
+        host.DidNotReceive().InsertIntoSessionAsync("pane-1", Arg.Any<string>());
     }
 
     private _Panel _Open() => _Open(Substitute.For<ICockpitUiHost>(), "pane-1");

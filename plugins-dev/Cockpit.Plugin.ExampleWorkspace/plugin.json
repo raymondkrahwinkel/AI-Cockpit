@@ -5,7 +5,7 @@
   "uiAssembly": "Cockpit.Plugin.ExampleWorkspace.dll",
   "uiEntryType": "Cockpit.Plugin.ExampleWorkspace.ExampleWorkspaceUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.41.0",
+  "minHostVersion": "0.42.0",
   "description": "A full-surface workspace a plugin draws end to end, with a real host session embedded in it (AC-122).",
   "author": "Cockpit"
 }
