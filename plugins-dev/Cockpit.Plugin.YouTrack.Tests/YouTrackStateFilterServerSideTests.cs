@@ -1,3 +1,5 @@
+extern alias UiAsm;
+
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Reflection;
@@ -5,6 +7,10 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Cockpit.TestSupport;
 using Microsoft.AspNetCore.Http;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
+using UiInstance = UiAsm::Cockpit.Plugin.YouTrack.YouTrackInstance;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -25,16 +31,16 @@ public class YouTrackStateFilterServerSideTests
     {
         var issueQueries = new ConcurrentQueue<string>();
         await using var server = await LoopbackHttpServer.StartAsync(context => _AnswerAsync(context, issueQueries));
-        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
+        var instance = new UiInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
 
         ComboBox? stateFilter = null;
         Window? window = null;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var settings = new UiSettings(new InMemoryPluginStorage()) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            var dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
             window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
 
@@ -73,15 +79,15 @@ public class YouTrackStateFilterServerSideTests
     {
         var issueQueries = new ConcurrentQueue<string>();
         await using var server = await LoopbackHttpServer.StartAsync(context => _AnswerAsync(context, issueQueries));
-        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
+        var instance = new UiInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
 
         ComboBox? stateFilter = null;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var settings = new UiSettings(new InMemoryPluginStorage()) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            var dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
             var window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
 
@@ -118,15 +124,15 @@ public class YouTrackStateFilterServerSideTests
         // which YouTrack reads as two tokens rather than one field:value pair once the field name itself has a space.
         var issueQueries = new ConcurrentQueue<string>();
         await using var server = await LoopbackHttpServer.StartAsync(context => _AnswerWithKanbanStateAsync(context, issueQueries));
-        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
+        var instance = new UiInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
 
         ComboBox? stateFilter = null;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var settings = new UiSettings(new InMemoryPluginStorage()) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            var dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
             var window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
 
@@ -189,17 +195,17 @@ public class YouTrackStateFilterServerSideTests
     {
         var issueQueries = new ConcurrentQueue<string>();
         await using var server = await LoopbackHttpServer.StartAsync(context => _AnswerWithRaceAsync(context, issueQueries));
-        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
+        var instance = new UiInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
 
         YouTrackDialogControl? dialog = null;
         ComboBox? stateFilter = null;
         Window? window = null;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var settings = new UiSettings(new InMemoryPluginStorage()) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
             window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
 
@@ -240,7 +246,7 @@ public class YouTrackStateFilterServerSideTests
         var gridItems = Dispatcher.UIThread.Invoke(() =>
         {
             var grid = (DataGrid)typeof(YouTrackDialogControl).GetField("_grid", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
-            return (grid.ItemsSource as ObservableCollection<YouTrackIssue>)?.ToList() ?? [];
+            return (grid.ItemsSource as ObservableCollection<UiIssue>)?.ToList() ?? [];
         });
 
         Assert.True(gridItems.Count > 0 && gridItems.All(issue => issue.State == "In Progress"),

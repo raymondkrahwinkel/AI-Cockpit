@@ -508,10 +508,9 @@ internal sealed class YouTrackDialogControl : UserControl
                 project.ShortName,
                 string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
-        // AC-317/AC-548/AC-884: routed through YouTrackProjectField.ResolvePreferredTagsAsync, the one resolution
-        // this dialog and the session picker both call. This filter is a single ComboBox selection, so a project
-        // linked to more than one prefix preselects "All" rather than silently picking the first. AC-1397: the
-        // window's active pane is named here, since the backend has none of its own.
+        // AC-317/AC-548/AC-884: the one resolution this dialog and the session picker share, for the window's active
+        // pane (AC-1397 — the backend has none). A single ComboBox selection, so a project linked to more than one
+        // prefix preselects "All" rather than silently picking the first.
         var preferredTags = await _backend.PreferredTagsAsync(_host.ActivePaneId, instance.DefaultProjectTag);
 
         _isSyncingProjectFilter = true;
@@ -1154,11 +1153,12 @@ internal sealed class YouTrackDialogControl : UserControl
                 : new ProjectLink(YouTrackProjectField.Key, issue.Project),
         };
 
+        // The link is kept and awaited once the dialog is gone, so a failure to link still reaches the status line.
+        var linking = Task.CompletedTask;
+
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
         // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert
         // until the dialog the operator already has in front of them is gone (AC-292).
-        // The link is kept and awaited once the dialog is gone, so a failure to link still reaches the status line.
-        var linking = Task.CompletedTask;
         _newSession.IsEnabled = false;
         try
         {

@@ -1,10 +1,18 @@
+extern alias UiAsm;
+
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Xunit.Abstractions;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
+using UiInstance = UiAsm::Cockpit.Plugin.YouTrack.YouTrackInstance;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -22,8 +30,8 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 [Collection("avalonia")]
 public class YouTrackDialogControlTests
 {
-    private static readonly YouTrackIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
-    private static readonly YouTrackIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
+    private static readonly UiIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
+    private static readonly UiIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
 
     private readonly ITestOutputHelper _out;
 
@@ -37,7 +45,7 @@ public class YouTrackDialogControlTests
         harness.Select(First);
         harness.Type("-");
 
-        var selectedId = (harness.Grid.SelectedItem as YouTrackIssue)?.IdReadable;
+        var selectedId = (harness.Grid.SelectedItem as UiIssue)?.IdReadable;
         _out.WriteLine($"selected after filter: {selectedId ?? "<null>"}");
         harness.Close();
 
@@ -51,7 +59,7 @@ public class YouTrackDialogControlTests
         // re-selects the same issue. Add to prompt reports the same way and needs no YouTrack behind it, so it stands
         // in for them here: what is under test is that a rebuild-plus-restore does not wipe the line (AC-299).
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = true;
+        harness.Observer.ActivePaneId = "pane-1";
         harness.Select(First);
         harness.Click("Add to prompt");
 
@@ -71,7 +79,7 @@ public class YouTrackDialogControlTests
     {
         // The other half of the same rule: keeping the line across a rebuild must not turn into keeping it forever.
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = true;
+        harness.Observer.ActivePaneId = "pane-1";
         harness.Select(First);
         harness.Click("Add to prompt");
 
@@ -88,7 +96,7 @@ public class YouTrackDialogControlTests
     public void AddToPrompt_WithoutASession_ExplainsItselfWhileDisabled() => HeadlessAvalonia.Run(() =>
     {
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = false;
+        harness.Observer.ActivePaneId = null;
 
         harness.Select(First);
         var inject = harness.Button("Add to prompt");
@@ -106,12 +114,12 @@ public class YouTrackDialogControlTests
     public void AStartedSession_MakesAddToPromptUsableAgain() => HeadlessAvalonia.Run(() =>
     {
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = false;
+        harness.Observer.ActivePaneId = null;
         harness.Select(First);
         harness.Click("New session");
 
         // New session created the very thing Add to prompt was missing.
-        harness.Host.FakeActions.HasActiveSession = true;
+        harness.Observer.ActivePaneId = "pane-1";
         harness.Host.OnSessionStarted?.Invoke("pane-1");
 
         var isEnabled = harness.Button("Add to prompt").IsEnabled;
@@ -124,8 +132,10 @@ public class YouTrackDialogControlTests
     [Fact]
     public void AStartedSession_LinksTheIssueToWhereThatSessionWorks() => HeadlessAvalonia.Run(() =>
     {
+        // AC-1397: the started pane's own directory, which the backend reads by pane id — not the active session's.
         var harness = DialogHarness.Open(First, Second);
-        harness.Observer.ActiveSessionWorkingDirectory = "/home/operator/repo";
+        harness.Observer.ActiveSessionWorkingDirectory = "/home/operator/elsewhere";
+        harness.Observer.WorkingDirectories["pane-1"] = "/home/operator/repo";
         IssueLinked? linked = null;
         harness.Links.Linked += (_, args) => linked = args;
 
@@ -140,6 +150,29 @@ public class YouTrackDialogControlTests
 
         Assert.Equal(First.IdReadable, linkedIssue);
         Assert.Equal("/home/operator/repo", directory);
+    });
+
+    [Fact]
+    public void AddToPromptAndLink_FollowTheSessionTheWindowHasActive_NotTheFirstOne() => HeadlessAvalonia.Run(() =>
+    {
+        // D6 (AC-1397), acceptance 3: two sessions, the second one active. The dialog names that pane itself — the
+        // prompt goes to it alone, and the link lands in its header while the first session's header stays empty.
+        var harness = DialogHarness.Open(First, Second);
+        var firstHeader = harness.ShowHeader("pane-1");
+        var secondHeader = harness.ShowHeader("pane-2");
+        harness.Observer.ActivePaneId = "pane-2";
+        harness.Select(First);
+
+        harness.Click("Add to prompt");
+        harness.LinkToActiveSession(First);
+
+        var sentTo = harness.Host.Sent.Select(sent => sent.PaneId).ToList();
+        var headersShown = (firstHeader.IsVisible, secondHeader.IsVisible);
+        _out.WriteLine($"sent to={string.Join(",", sentTo)} headers shown={headersShown}");
+        harness.Close();
+
+        Assert.Equal(["pane-2"], sentTo);
+        Assert.Equal((false, true), headersShown);
     });
 
     [Fact]
@@ -227,7 +260,7 @@ public class YouTrackDialogControlTests
         // The url is built from the instance address the operator typed into the settings, so it is not necessarily
         // a web address at all. Anything but http(s) is reported instead of being handed to the shell — this one
         // would otherwise be started with UseShellExecute, which is whatever the desktop has registered for it.
-        var harness = DialogHarness.Open(new YouTrackInstance("Odd", "ftp://tracker.example/", string.Empty, string.Empty), First, Second);
+        var harness = DialogHarness.Open(new UiInstance("Odd", "ftp://tracker.example/", string.Empty, string.Empty), First, Second);
         harness.Select(First);
 
         harness.Press(harness.OpenLink());
@@ -318,7 +351,7 @@ public class YouTrackDialogControlTests
         // AC-518 follow-up: the one boundary worth proving to the exact number — the constant itself, not a round
         // number above it — since the notice's whole premise is "the result came back at exactly the fetch cap".
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
             .ToArray();
         var harness = DialogHarness.Open(issues);
 
@@ -336,7 +369,7 @@ public class YouTrackDialogControlTests
     public void StatusLine_OneShortOfMaxResults_DoesNotWarn() => HeadlessAvalonia.Run(() =>
     {
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults - 1)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
             .ToArray();
         var harness = DialogHarness.Open(issues);
 
@@ -353,18 +386,23 @@ public class YouTrackDialogControlTests
     // kept to hand.
     private sealed class DialogHarness
     {
-        private static readonly YouTrackInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
+        private static readonly UiInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
 
-        private DialogHarness(Window window, YouTrackDialogControl dialog, FakeCockpitHost host, SessionIssueLinks links)
+        private DialogHarness(Window window, YouTrackDialogControl dialog, FakeCockpitHost host, SessionIssueLinks links, YouTrackBackend backend, UiSettings settings)
         {
             _window = window;
             _dialog = dialog;
             Host = host;
             Links = links;
+            _backend = backend;
+            _settings = settings;
         }
 
         private readonly Window _window;
         private readonly YouTrackDialogControl _dialog;
+        private readonly YouTrackBackend _backend;
+        private readonly UiSettings _settings;
+        private readonly List<Window> _headers = [];
 
         public FakeCockpitHost Host { get; }
 
@@ -374,31 +412,32 @@ public class YouTrackDialogControlTests
 
         public DataGrid Grid => _window.GetVisualDescendants().OfType<DataGrid>().First();
 
-        public static DialogHarness Open(params YouTrackIssue[] issues) => Open(LocalInstance, issues);
+        public static DialogHarness Open(params UiIssue[] issues) => Open(LocalInstance, issues);
 
-        public static DialogHarness Open(YouTrackInstance instance, params YouTrackIssue[] issues)
+        public static DialogHarness Open(UiInstance instance, params UiIssue[] issues)
         {
             // A configured instance with a token left blank: the dialog has an instance selected (which "New session"
             // and the issue url both need) but its own load short-circuits before any call goes out.
             var storage = new InMemoryPluginStorage();
-            var settings = new YouTrackSettings(storage) { Instances = [instance] };
+            var settings = new UiSettings(storage) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            var backend = host.ConnectBackend(links);
+            var dialog = new YouTrackDialogControl(settings, host, backend);
 
             var window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
             window.UpdateLayout();
 
-            var harness = new DialogHarness(window, dialog, host, links);
+            var harness = new DialogHarness(window, dialog, host, links, backend, settings);
             harness._PlantLoadedIssues(issues);
             harness.Type("AT");
             return harness;
         }
 
-        public void Select(YouTrackIssue issue)
+        public void Select(UiIssue issue)
         {
-            Grid.SelectedItem = Grid.ItemsSource?.OfType<YouTrackIssue>().First(candidate => candidate.IdReadable == issue.IdReadable);
+            Grid.SelectedItem = Grid.ItemsSource?.OfType<UiIssue>().First(candidate => candidate.IdReadable == issue.IdReadable);
             Layout();
         }
 
@@ -473,7 +512,33 @@ public class YouTrackDialogControlTests
             Layout();
         }
 
-        public void Close() => _window.Close();
+        // One session's header, on screen so it listens for its link the way it does in the cockpit (AC-1397).
+        public YouTrackSessionHeaderControl ShowHeader(string paneId)
+        {
+            var header = new YouTrackSessionHeaderControl(Host, new FakeSessionContext(paneId), _backend, _settings);
+            var window = new Window { Content = header };
+            window.Show();
+            _headers.Add(window);
+            return header;
+        }
+
+        // "Link to session" from the overflow menu, whose ContextMenu a headless test cannot open — so the method it
+        // runs is called directly, and the header reload it posts is run before returning.
+        public void LinkToActiveSession(UiIssue issue)
+        {
+            var method = typeof(YouTrackDialogControl).GetMethod("_LinkToActiveSessionAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("YouTrackDialogControl no longer has _LinkToActiveSessionAsync.");
+            var selected = Grid.ItemsSource?.OfType<UiIssue>().First(candidate => candidate.IdReadable == issue.IdReadable);
+            (method.Invoke(_dialog, [selected]) as Task)?.GetAwaiter().GetResult();
+            Dispatcher.UIThread.RunJobs();
+            Layout();
+        }
+
+        public void Close()
+        {
+            _headers.ForEach(header => header.Close());
+            _window.Close();
+        }
 
         private ScrollViewer? _Scroller(string name) => _window.GetVisualDescendants().OfType<ScrollViewer>()
             .FirstOrDefault(scroller => scroller.Name == name);
@@ -485,11 +550,31 @@ public class YouTrackDialogControlTests
             : string.Concat(scroller.GetVisualDescendants().OfType<SelectableTextBlock>()
                 .Select(text => text.Text ?? string.Concat((text.Inlines ?? []).OfType<Run>().Select(run => run.Text))));
 
-        private void _PlantLoadedIssues(YouTrackIssue[] issues)
+        private void _PlantLoadedIssues(UiIssue[] issues)
         {
             var loaded = typeof(YouTrackDialogControl).GetField("_all", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new InvalidOperationException("YouTrackDialogControl no longer keeps its loaded issues in _all.");
             loaded.SetValue(_dialog, issues);
+        }
+    }
+
+    // One session as its header sees it: only the pane id matters here.
+    private sealed class FakeSessionContext(string paneId) : IPluginSessionContext
+    {
+        public string PaneId => paneId;
+
+        public string? WorkingDirectory => null;
+
+        public event EventHandler? WorkingDirectoryChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<SessionOutputText>? OutputProduced
+        {
+            add { }
+            remove { }
         }
     }
 }

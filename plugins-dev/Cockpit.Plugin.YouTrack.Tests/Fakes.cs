@@ -15,7 +15,7 @@ internal sealed class InMemoryPluginStorage : IPluginStorage
     public void Set<T>(string key, T value) => _store[key] = value;
 }
 
-// A `ICockpitSessionObserver` whose active pane, working directory and per-pane current-turn images the test sets directly (AC-116).
+// A `ICockpitSessionObserver` whose active pane, working directory, per-pane current-turn images and per-pane working directories the test sets directly (AC-116, AC-1397).
 internal sealed class FakeSessionObserver : ICockpitSessionObserver
 {
     public string? ActiveSessionWorkingDirectory { get; set; }
@@ -30,12 +30,16 @@ internal sealed class FakeSessionObserver : ICockpitSessionObserver
 
     public event EventHandler<SessionToolActivity>? ToolActivityObserved { add { } remove { } }
 
+    public Dictionary<string, string?> WorkingDirectories { get; } = new(StringComparer.Ordinal);
+
     public IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId) =>
         ImagesByPane.TryGetValue(paneId, out var images) ? images : [];
+
+    public string? GetWorkingDirectory(string paneId) => WorkingDirectories.GetValueOrDefault(paneId);
 }
 
 // A minimal `ICockpitHost` that supplies a `FakeSessionObserver` and records toasts; unused members throw so a test that reaches one is caught.
-internal sealed class FakeCockpitHost : ICockpitHost
+internal sealed partial class FakeCockpitHost : ICockpitHost
 {
     private TaskCompletionSource? _openDialog;
 

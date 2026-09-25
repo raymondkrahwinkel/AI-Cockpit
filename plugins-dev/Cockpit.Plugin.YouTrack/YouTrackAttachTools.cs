@@ -50,12 +50,13 @@ internal sealed class YouTrackAttachTools
 
         if (!string.IsNullOrWhiteSpace(path))
         {
+            // AC-1397: the caller's own directory, never the window's active session's; unknown allows only the paste folder.
+            var callerDirectory = _host.Sessions.GetWorkingDirectory(caller);
+
             // AC-170: `path` is a genuine outbound channel (an agent names a file and its bytes leave the
             // machine), so it gets the same allow-list + canonical-containment + content-sniff scrutiny any other
             // filesystem-facing tool input would — see AttachImagePathGuard / ImageContentSniffer for the "why".
-            // AC-1397: the caller's own directory, never the window's active session — an unknown pane allows only
-            // the paste folder (fail closed).
-            if (!AttachImagePathGuard.TryResolve(path, _host.Sessions.GetWorkingDirectory(caller), out var resolvedPath, out var pathError))
+            if (!AttachImagePathGuard.TryResolve(path, callerDirectory, out var resolvedPath, out var pathError))
             {
                 return pathError;
             }
