@@ -26,7 +26,7 @@ inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeMcpConfig.cs	3
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeOptionChoices.cs	2
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudePrivateTempFile.cs	4
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeProfileDiscovery.cs	2
-inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeProviderConfigView.cs	1
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/UI/ClaudeProviderConfigView.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeProviderPlugin.cs	3
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeSdkArguments.cs	5
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider/ClaudeSdkSessionDriver.cs	11
@@ -122,7 +122,7 @@ inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests/OpenAiCompatPluginS
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/GitHubModelsProviderPlugin.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatConfig.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatPluginSessionDriverFactory.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatProviderConfigView.cs	1
+inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/UI/OpenAiCompatProviderConfigView.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/DialogTestApp.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/HeadlessAvalonia.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/MergedPullRequestsTests.cs	1
@@ -193,7 +193,7 @@ inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiExecutableLocator.cs	3
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiMcpConfig.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiNotification.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiPendingApproval.cs	1
-inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiProviderConfigView.cs	3
+inline	plugins-dev/Cockpit.Plugin.KimiProvider/UI/KimiProviderConfigView.cs	3
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiProviderPlugin.cs	2
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiServerRequest.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiSessionUpdateMapResult.cs	1
