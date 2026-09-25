@@ -48,8 +48,8 @@ internal static class GitHubWorkflowTemplates
           "X": 640,
           "Y": 160,
           "Parameters": {
-            "Issue": "{issue}",
-            "Repository": "{repository}"
+            "Issue": "{Issue picked for a session.issue}",
+            "Repository": "{Issue picked for a session.repository}"
           }
         },
         {

@@ -11,11 +11,13 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // by its schedule, as a timer would, while the host says another session is the active one.
 public class SessionStepTests
 {
-    // Acceptance 2: the named session gets the text, placed and not sent, and no other session does.
+    // Acceptance 2: the named session gets the text, placed and not sent, and no other session does. The last row names
+    // it the way the GitHub Issues and YouTrack templates do: a field of the trigger, reached by the trigger's name.
     [Theory]
     [InlineData("api")]
     [InlineData("API")]
     [InlineData("pane-2")]
+    [InlineData("{Schedule.session}")]
     public async Task AScheduledInject_ReachesTheSessionItNames_NotTheActiveOne(string session)
     {
         var host = _Host();
@@ -123,6 +125,8 @@ public class SessionStepTests
             previous = step;
         }
 
-        return EngineFactory.Create(host, []).RunAsync(flow, trigger.Id, RunOrigin.Trigger);
+        // The trigger hands on a session the way a "picked for a session" trigger does, by pane id.
+        var fired = WorkflowItem.Of(new Dictionary<string, string> { ["session"] = "pane-2" });
+        return EngineFactory.Create(host, []).RunAsync(flow, trigger.Id, RunOrigin.Trigger, [fired]);
     }
 }
