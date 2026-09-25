@@ -1,3 +1,4 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;

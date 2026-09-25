@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
+
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 // The branch name an issue hands to the rest of the flow (#77). It ends up in a git command, so anything that a ref

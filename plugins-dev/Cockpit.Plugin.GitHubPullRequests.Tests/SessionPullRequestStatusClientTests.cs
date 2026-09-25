@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // AC-802: the session banner's non-UI logic, proven without shelling out — same approach as CiWorkflowRunClientTests.

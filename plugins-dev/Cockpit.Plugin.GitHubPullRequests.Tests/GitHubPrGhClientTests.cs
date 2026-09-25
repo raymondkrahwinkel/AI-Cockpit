@@ -1,5 +1,7 @@
 using Cockpit.TestSupport;
 
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // The gh query behind the review-requested list (#74). Asserted here rather than by shelling out: a wrong

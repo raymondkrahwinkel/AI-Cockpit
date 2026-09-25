@@ -1,3 +1,7 @@
+extern alias UiAsm;
+
+using GitHubIssue = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssue;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 

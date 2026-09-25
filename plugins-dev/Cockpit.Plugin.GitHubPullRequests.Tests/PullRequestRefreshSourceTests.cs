@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart

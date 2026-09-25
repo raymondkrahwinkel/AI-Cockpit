@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -15,81 +16,29 @@ internal sealed class InMemoryPluginStorage : IPluginStorage
     public void Set<T>(string key, T value) => _store[key] = value;
 }
 
-// A `ICockpitSessionObserver` whose active pane, working directory and per-pane current-turn images the test sets directly (AC-116).
-internal sealed class FakeSessionObserver : ICockpitSessionObserver
-{
-    public string? ActiveSessionWorkingDirectory { get; set; }
-
-    public string? ActivePaneId { get; set; }
-
-    public Dictionary<string, IReadOnlyList<SessionImageAttachment>> ImagesByPane { get; } = new(StringComparer.Ordinal);
-
-    public event EventHandler? ActiveSessionChanged { add { } remove { } }
-
-    public event EventHandler<SessionOutputText>? OutputProduced { add { } remove { } }
-
-    public event EventHandler<SessionToolActivity>? ToolActivityObserved { add { } remove { } }
-
-    public IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId) =>
-        ImagesByPane.TryGetValue(paneId, out var images) ? images : [];
-}
-
-// A minimal `ICockpitHost` that supplies a `FakeSessionObserver` and records toasts; unused members throw so a test that reaches one is caught.
+// A minimal `ICockpitHost` for the backend part: it records what the plugin labels, asks and triggers; unused members
+// throw so a test that reaches one is caught. AC-1396: the window-only members the dialog used moved to the UI host
+// fake (UiHostFake), as the dialog no longer sees an ICockpitHost.
 internal sealed class FakeCockpitHost : ICockpitHost
 {
-    private TaskCompletionSource? _openDialog;
-
-    public FakeSessionObserver Observer { get; } = new();
-
-    public FakeCockpitActions FakeActions { get; } = new();
-
-    public List<string> Toasts { get; } = [];
-
-    // How many times the New-session dialog was asked for — what proves a second click cannot open a second one.
-    public int NewSessionDialogsOpened { get; private set; }
-
-    // What the last New-session request asked the dialog to open with — the fields the operator is shown.
-    public NewSessionPrefill? LastPrefill { get; private set; }
-
-    // The callbacks the last New-session request handed over, so a test can play the operator pressing Start or Cancel.
-    public Action<string>? OnSessionStarted { get; private set; }
-
-    public Action? OnSessionCancelled { get; private set; }
-
-    // What the markdown seam should throw instead of rendering, if anything. A `MissingMethodException`
-    // stands in for a cockpit older than this plugin's `minHostVersion` — one whose contract has no
-    // `CreateMarkdownView`, so the call the plugin compiled against finds no method to bind to. Any other
-    // exception stands in for the rest of the ways rendering a body can fail (AC-304).
-    public Exception? MarkdownFailure { get; set; }
-
     // What the operator linked the project to, keyed by project-field key — what the host would have stored from the project editor.
     public Dictionary<string, string> ProjectFieldValues { get; } = new(StringComparer.Ordinal);
 
     // The pane each `GetProjectFieldValueAsync` call asked about, so a test can prove a contribution asks about its own session rather than whichever pane is selected.
     public List<string?> ProjectFieldPanesAsked { get; } = [];
 
+    // The workflow triggers the plugin raised, in order — what picking an issue for a session starts.
+    public List<(string TypeId, IReadOnlyDictionary<string, string> Data)> Triggers { get; } = [];
+
+    public IPluginBackendChannel Channel { get; init; } = new InProcessChannel();
+
     public IServiceProvider Services => throw new NotSupportedException();
 
-    public ICockpitActions Actions => FakeActions;
+    public ICockpitActions Actions => throw new NotSupportedException();
 
-    public IPluginStorage Storage => throw new NotSupportedException();
+    public IPluginStorage Storage { get; init; } = new InMemoryPluginStorage();
 
-    public ICockpitSessionObserver Sessions => Observer;
-
-    // The returned task completes when the dialog closes, exactly as the host's own does — a fake that completed it
-    // straight away would let a caller look like it never held the dialog open at all.
-    public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null)
-    {
-        NewSessionDialogsOpened++;
-        LastPrefill = prefill;
-        OnSessionStarted = onStarted;
-        OnSessionCancelled = onCancelled;
-        _openDialog = new TaskCompletionSource();
-        return _openDialog.Task;
-    }
-
-    // Plays the operator closing the New-session dialog, which is what completes the task the caller awaited.
-    public void CloseNewSessionDialog() => _openDialog?.TrySetResult();
+    public ICockpitSessionObserver Sessions => throw new NotSupportedException();
 
     public Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)
     {
@@ -109,6 +58,8 @@ internal sealed class FakeCockpitHost : ICockpitHost
                 : []);
     }
 
+    public void RaiseWorkflowTrigger(string typeId, IReadOnlyDictionary<string, string> data) => Triggers.Add((typeId, data));
+
     public void AddSettings(Func<Control> createView) => throw new NotSupportedException();
 
     public void AddSideMenuButton(string title, Action onInvoke) => throw new NotSupportedException();
@@ -119,11 +70,7 @@ internal sealed class FakeCockpitHost : ICockpitHost
         throw new NotSupportedException();
 
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
-        Toasts.Add(message);
-
-    public Control CreateMarkdownView(string markdown) => MarkdownFailure is { } failure
-        ? throw failure
-        : new SelectableTextBlock { Text = markdown, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        throw new NotSupportedException();
 
     // The statusline each pane was last given (#AC-310) — an empty string is a pane whose line was cleared.
     public Dictionary<string, string> Statuslines { get; } = new(StringComparer.Ordinal);

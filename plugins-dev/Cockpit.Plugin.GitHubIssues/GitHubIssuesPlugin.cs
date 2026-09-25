@@ -1,17 +1,25 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Material.Icons;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
-// Example plugin (#14) proving the contract end-to-end: it registers a settings view (opened from the
-// plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template) and a left-menu
-// button that opens a dialog listing open issues (across all your repos via `gh`, or one repo over
-// HTTP), where selecting one injects the rendered template into the active session so the agent opens and
-// reviews it. Its settings live in the host's per-plugin storage, so `ConfigureServices` is empty.
+// Example plugin (#14) proving the contract end-to-end: the backend part. It registers the tracker provider, the
+// project field, the session resources, the workflow steps/templates and the Autopilot templates, keeps which issue
+// each session is linked to, and answers what the UI part (GitHubIssuesUi — the settings view, the left-menu dialog
+// listing open issues and the session header) asks over the plugin's channel. Its settings live in the host's
+// per-plugin storage, so `ConfigureServices` is empty.
+//
+// AC-1396: before this split, the dialog, picker and header created the gh/HTTP clients and resolved the project's
+// repository themselves; they now ask this part, which is the only one that talks to GitHub or to ICockpitHost.
 public sealed class GitHubIssuesPlugin : ICockpitPlugin
 {
+    private readonly GitHubGhClient _gh = new();
+    private readonly GitHubIssuesClient _http = new();
+    private readonly GitHubWorkflowClient _workflow = new();
+    private readonly List<IDisposable> _handlers = [];
+
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
@@ -26,42 +34,27 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     {
         var settings = new GitHubIssuesSettings(host.Storage);
 
-        host.AddSettings(() => new GitHubIssuesSettingsControl(host, settings));
-
         // The writing half (AC-154): a consumer (Autopilot) posts evidence and labels an issue back through this,
         // tracker-neutrally. A GitHub issue has no status field, so its stage-equivalent is a label.
         host.AddTrackerProvider(new GitHubTrackerProvider());
 
         // Which repository a cockpit project lives in (AC-317), picked from the owner's own list in the project
         // editor. Read back below, where the issues dialog opens on it.
-        host.AddProjectField(GitHubRepositoryField.Registration(settings, new GitHubGhClient()));
+        host.AddProjectField(GitHubRepositoryField.Registration(settings, _gh));
 
         // AC-165: and carried into the sessions that project starts, so a `gh` command the agent runs is about the
         // repository the project is linked to rather than whatever its working directory happens to be.
         host.AddSessionResourceProvider(new GitHubRepositorySessionResources(host));
 
         // Shared by the dialog (which links an issue to the active session) and the header items (each of which
-        // shows the issue linked to its own session) — see SessionIssueLinks.
+        // shows the issue linked to its own session) — see SessionIssueLinks. AC-1396: both reach it over the
+        // channel, and hear about a change through the LinkChanged event.
         var links = new SessionIssueLinks(host);
+        links.Changed += (_, paneId) => host.Channel.Publish(
+            GitHubIssuesChannel.LinkChanged,
+            JsonSerializer.SerializeToElement(new GitHubIssuesLinkChanged(paneId, links.For(paneId)), GitHubIssuesChannel.Json));
 
-        // 1280×860, up from 1040×700 — the chip, fixed action toolbar and rendered description all want more
-        // room than the old size gave them, the same reasoning as the YouTrack dialog's resize. PluginDialogHost
-        // clamps this against the cockpit's own window size, so a smaller screen still gets a dialog that fits.
-        host.AddSideMenuButton(
-            "GitHub Issues",
-            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host, links), "issues", width: 1280, height: 860));
-
-        // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
-        host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, links, settings));
-
-        host.AddSessionHeaderAction(new PluginSessionAction(
-            "Track a GitHub issue…",
-            "",
-            session => GitHubSessionHeaderControl.Pick(host, session, links, settings))
-        {
-            IconKind = MaterialIconKind.Github,
-        });
+        _HandleChannel(host, settings, links);
 
         // What a flow can do with an issue (#77). A GitHub issue has no status, so there is no "move to In Progress"
         // here — starting one means assigning it to yourself and, if your repo uses one, labelling it.
@@ -99,5 +92,113 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
     }
+
+    private void _HandleChannel(ICockpitHost host, GitHubIssuesSettings settings, SessionIssueLinks links)
+    {
+        _Handle<GitHubIssuesSearchRequest, GitHubIssuesSearchResult>(host, GitHubIssuesChannel.SearchIssues, (request, cancellationToken) =>
+            _SearchAsync(settings, request, cancellationToken));
+
+        // AC-548/AC-940: every repository the session's project is linked to, not only the owner's whole set.
+        // Sent as `--repo` flags (see GitHubGhClient.SearchArguments) — never a `repo:` term, which ANDs. The
+        // truncation signal (AC-519) is a dialog-only concern: the picker has never warned about a capped page.
+        _Handle<GitHubIssuesPickerRequest, IReadOnlyList<GitHubIssue>>(host, GitHubIssuesChannel.PickerIssues, async (request, cancellationToken) =>
+        {
+            var linkedRepositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(host, request.PaneId, cancellationToken);
+            var (issues, _) = await _gh.SearchOpenIssuesAsync(
+                settings.GhOwner,
+                request.AssignedToMe,
+                forceRefresh: false,
+                cancellationToken,
+                string.IsNullOrWhiteSpace(settings.PickerTerms) ? null : settings.PickerTerms,
+                linkedRepositories.Count > 0 ? linkedRepositories : null);
+            return issues;
+        });
+
+        _Handle<GitHubIssuesPaneRequest, IReadOnlyList<string>>(host, GitHubIssuesChannel.ListLabels, (_, cancellationToken) =>
+            settings.UseGitHubCli
+                ? _gh.ListRepositoryLabelsAsync(settings.GhOwner, cancellationToken)
+                : _http.GetRepositoryLabelsAsync(settings.Owner, settings.Repo, settings.Token, cancellationToken));
+
+        // gh mode has its own repository source (GitHubRepositoryField uses the same one for the project editor's
+        // repository field); HTTP mode has only ever had the one repository the settings name.
+        _Handle<GitHubIssuesPaneRequest, IReadOnlyList<string>>(host, GitHubIssuesChannel.ListRepositories, (_, cancellationToken) =>
+            settings.UseGitHubCli
+                ? _gh.ListRepositoriesAsync(settings.GhOwner, cancellationToken)
+                : Task.FromResult<IReadOnlyList<string>>(string.IsNullOrWhiteSpace(settings.Owner) || string.IsNullOrWhiteSpace(settings.Repo)
+                    ? []
+                    : [$"{settings.Owner}/{settings.Repo}"]));
+
+        _Handle<GitHubIssuesPaneRequest, string?>(host, GitHubIssuesChannel.LinkedRepository, (request, cancellationToken) =>
+            GitHubRepositoryField.ResolvePreferredRepositoryAsync(host, request.PaneId, cancellationToken));
+
+        _Handle<GitHubIssuesLinkRequest, object?>(host, GitHubIssuesChannel.Link, async (request, _) =>
+        {
+            await links.LinkAsync(request.PaneId, request.Issue, request.WorkingDirectory);
+            return null;
+        });
+
+        _Handle<GitHubIssuesPaneRequest, object?>(host, GitHubIssuesChannel.Unlink, (request, _) =>
+        {
+            links.Unlink(request.PaneId ?? string.Empty);
+            return Task.FromResult<object?>(null);
+        });
+
+        _Handle<GitHubIssuesPaneRequest, GitHubIssue?>(host, GitHubIssuesChannel.LinkedIssue, (request, _) =>
+            Task.FromResult(links.For(request.PaneId ?? string.Empty)));
+
+        _Handle<GitHubIssueRequest, object?>(host, GitHubIssuesChannel.AssignToMe, async (request, cancellationToken) =>
+        {
+            await _workflow.AssignToMeAsync(new GitHubIssueReference(request.Repository, request.Number), cancellationToken);
+            return null;
+        });
+
+        _Handle<GitHubIssueLabelRequest, object?>(host, GitHubIssuesChannel.AddLabel, async (request, cancellationToken) =>
+        {
+            await _workflow.AddLabelAsync(new GitHubIssueReference(request.Repository, request.Number), request.Label, cancellationToken);
+            return null;
+        });
+
+        _Handle<GitHubIssueCloseRequest, object?>(host, GitHubIssuesChannel.Close, async (request, cancellationToken) =>
+        {
+            await _workflow.CloseAsync(new GitHubIssueReference(request.Repository, request.Number), request.Reason, string.Empty, cancellationToken);
+            return null;
+        });
+    }
+
+    // Which route the dialog's list takes is the settings' call: gh across the owner's repositories, or the one
+    // repository over HTTP. A label narrows the fetch itself (AC-519) — gh's "label:x" term or the REST labels= param.
+    private async Task<GitHubIssuesSearchResult> _SearchAsync(GitHubIssuesSettings settings, GitHubIssuesSearchRequest request, CancellationToken cancellationToken)
+    {
+        if (settings.UseGitHubCli)
+        {
+            var (issues, truncated) = await _gh.SearchOpenIssuesAsync(
+                settings.GhOwner,
+                request.AssignedToMe,
+                request.ForceRefresh,
+                cancellationToken,
+                request.Label is null ? null : GitHubGhClient.LabelSearchTerm(request.Label));
+            return new GitHubIssuesSearchResult(issues, truncated, GitHubGhClient.IssueSearchLimit);
+        }
+
+        var (pageIssues, pageTruncated) = await _http.GetOpenIssuesAsync(
+            settings.Owner, settings.Repo, settings.Token, request.AssignedToMe, cancellationToken, request.Label);
+        return new GitHubIssuesSearchResult(pageIssues, pageTruncated, GitHubIssuesClient.IssuePageLimit);
+    }
+
+    // Every action takes a request record, even one that needs nothing from it, so one handler shape covers them all.
+    private void _Handle<TRequest, TResult>(ICockpitHost host, string action, Func<TRequest, CancellationToken, Task<TResult>> answer)
+        where TRequest : class =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<TRequest>(GitHubIssuesChannel.Json)
+                ?? throw new ArgumentException($"The '{action}' request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await answer(request, cancellationToken), GitHubIssuesChannel.Json);
+        }));
 }

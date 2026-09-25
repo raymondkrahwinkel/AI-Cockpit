@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubPullRequests.Contracts;
+
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // AC-675: the "Updated" column bound `UpdatedAt` directly, which the GitHub API always returns in UTC — the

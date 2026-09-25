@@ -1,3 +1,4 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;
@@ -26,7 +27,7 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
     public GitHubIssue? For(string paneId) =>
         _byPaneId.TryGetValue(paneId, out var issue) ? issue : null;
 
-    public void Link(string paneId, GitHubIssue issue, string? workingDirectory = null)
+    public async Task LinkAsync(string paneId, GitHubIssue issue, string? workingDirectory = null)
     {
         if (string.IsNullOrEmpty(paneId))
         {
@@ -40,8 +41,9 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
         // The statusline follows the link unconditionally — saying what a session is working on is what it is for.
         // The name is only suggested, because a session the operator named themselves has a name that means
         // something to them, and an issue number is not worth losing it over (#AC-310).
-        _ = host.SetSessionStatusline(paneId, SessionLabel.Statusline(issue));
-        _ = host.SuggestSessionName(paneId, SessionLabel.Name(issue));
+        await Task.WhenAll(
+            host.SetSessionStatusline(paneId, SessionLabel.Statusline(issue)),
+            host.SuggestSessionName(paneId, SessionLabel.Name(issue)));
 
         Changed?.Invoke(this, paneId);
         Picked?.Invoke(this, new IssuePicked(issue, workingDirectory));

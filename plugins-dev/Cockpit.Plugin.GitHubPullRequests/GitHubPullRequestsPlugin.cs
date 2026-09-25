@@ -1,23 +1,23 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Material.Icons;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// Plugin #41, mirroring the GitHub Issues plugin (#14) for pull requests: it registers a settings view
-// (opened from the plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template)
-// and a left-menu launcher button carrying a live "N / M" badge (AC-517 — your own open PR count next to
-// how many are waiting on your review), opening a dialog with every open PR. Clicking a pull request in
-// the dialog injects the rendered template into the active session so the agent opens and reviews it,
-// falling back to the clipboard when there is no active session. Its settings live in the host's
-// per-plugin storage, so `ConfigureServices` is empty.
+// Plugin #41, mirroring the GitHub Issues plugin (#14) for pull requests: a left-menu launcher button carrying a
+// live "N / M" badge (AC-517 — your own open PR count next to how many are waiting on your review), opening a
+// dialog with every open PR, plus a Dashboard widget, a dock-rail panel and a session banner. Its settings live in
+// the host's per-plugin storage, so `ConfigureServices` is empty.
 //
-// AC-517 replaced this plugin's other half — an inline side-menu section always visible under the session
-// list, showing up to a configurable number of pull requests inline. The dialog and its actions are
-// unchanged; the always-visible list is now the Dashboard widget below, for a workspace given over to it.
+// AC-1396: the backend part. It keeps everything that talks to GitHub — the shared refresh source, the dialog's
+// query, the session banner's `gh pr view`, the merge watcher, the MCP tool — and the badge's counting, and answers
+// the UI part (GitHubPullRequestsUi) over the plugin's channel. Everything with a window moved there.
 public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 {
+    private readonly List<IDisposable> _handlers = [];
+    private readonly PullRequestFeed _feed = new();
+    private readonly SessionPullRequestStatusClient _sessionClient = new();
+
     private MergedPullRequestWatcher? _merged;
     private PullRequestRefreshSource? _refreshSource;
     private PullRequestBadgeUpdater? _badgeUpdater;
@@ -43,11 +43,6 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 
         _merged = new MergedPullRequestWatcher(host);
 
-        // AC-802: the PR/CI status banner under a session's transcript — a per-checkout `gh pr view` (unrelated to
-        // the refresh source below, which is the cross-repo "your open PRs" list this plugin's badge/dialog/widget
-        // already share).
-        host.AddSessionBanner(session => new SessionPullRequestBannerControl(session));
-
         var settings = new GitHubPullRequestsSettings(host.Storage);
         host.Storage.Remove("refreshSourceSnapshot");
         host.Storage.Remove("cachedPullRequests");
@@ -59,39 +54,55 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         // AC-869: internal — the host auto-mounts it per git-repo session or the assistant, hidden otherwise.
         _ = host.AddMcpEndpoint("cockpit-github-pull-requests", new GitHubPullRequestsMcpTools(new GitHubPrGhClient()), isEnabled: () => settings.McpEnabled, isInternal: true);
 
-        // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the
-        // views below is on screen, and every one of them subscribes to it rather than fetching for itself — every
-        // dashboard widget instance, and the side-menu badge (AC-517).
-        _refreshSource = new PullRequestRefreshSource(host, settings);
+        // One refresh source per plugin instance (AC-515): it polls in the background regardless of which view is on
+        // screen, and every one of them reads it rather than fetching for itself — now over the channel (AC-1396).
+        var refreshSource = new PullRequestRefreshSource(host, settings);
+        _refreshSource = refreshSource;
+        refreshSource.Updated += (_, snapshot) => host.Channel.Publish(
+            GitHubPullRequestsChannel.FeedUpdated,
+            _Serialize(new PullRequestFeedState(snapshot, refreshSource.LastError?.Message)));
 
-        host.AddSettings(() => new GitHubPullRequestsSettingsControl(host, settings));
+        var badgeUpdater = new PullRequestBadgeUpdater(host.Channel, host.Sessions, settings, refreshSource);
+        _badgeUpdater = badgeUpdater;
 
-        // Replaces the old always-visible AddSideMenuSection (AC-517): a launcher button with a live badge,
-        // opening the same dialog the section's "View all" and the widget's "View all" already shared.
-        _badgeUpdater = new PullRequestBadgeUpdater(host, settings, _refreshSource);
-
-        // The same list as a Dashboard pane (#AC-18): the badge above shows only a count, this is for a workspace
-        // given over to seeing the list itself. The lambda closes over `host` so the widget can inject prompts and
-        // open the dialog, and is handed each instance's own IWidgetContext for its per-pane count. The id keeps a
-        // "widgets." prefix and is persisted with every placed instance, so it is an API surface — changing it would
-        // orphan widgets on dashboards people have already arranged.
-        host.AddWidget(new WidgetRegistration("widgets.github-pull-requests", "GitHub Pull Requests", context => new GitHubPullRequestsWidget(settings, host, context, _refreshSource))
+        _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.Feed, (_, _) =>
+            Task.FromResult(_Serialize(new PullRequestFeedState(refreshSource.Current, refreshSource.LastError?.Message)))));
+        _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.Refresh, async (payload, _) =>
         {
-            IconKind = MaterialIconKind.SourcePull,
-            Description = "Your open pull requests, with a configurable count.",
-            DefaultColumnSpan = 6,
-            DefaultRowSpan = 8,
-            CreateConfigView = context => new GitHubPullRequestsWidgetSettingsView(context),
-        });
-
-        // AC-960: the same list, reachable as a dock-rail panel too, next to the badge and its dialog.
-        PullRequestDockPanelRegistrar.Register(host, settings, _refreshSource);
+            var request = _Deserialize<PullRequestRefreshRequest>(payload);
+            var ran = await refreshSource.RefreshAsync(request.ForceRefresh);
+            return _Serialize(new PullRequestRefreshAnswer(ran, ran ? refreshSource.LastError?.Message : null));
+        }));
+        _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.OpenPullRequests, async (payload, cancellationToken) =>
+        {
+            var request = _Deserialize<OpenPullRequestsRequest>(payload);
+            return _Serialize(await _feed.LoadOpenAsync(settings, request.AssignedToMe, request.ForceRefresh, cancellationToken));
+        }));
+        _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.SessionPullRequest, async (payload, cancellationToken) =>
+        {
+            var request = _Deserialize<SessionPullRequestRequest>(payload);
+            return _Serialize(await _sessionClient.GetOpenPullRequestAsync(request.WorkingDirectory, cancellationToken));
+        }));
+        _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.BadgeCounts, (_, _) =>
+            Task.FromResult(_Serialize(badgeUpdater.Claim()))));
     }
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
         _merged?.Dispose();
         _badgeUpdater?.Dispose();
         _refreshSource?.Dispose();
     }
+
+    private static JsonElement _Serialize<T>(T value) => JsonSerializer.SerializeToElement(value, GitHubPullRequestsChannel.Json);
+
+    private static T _Deserialize<T>(JsonElement payload) =>
+        payload.Deserialize<T>(GitHubPullRequestsChannel.Json)
+            ?? throw new ArgumentException($"The request carries no {typeof(T).Name}.", nameof(payload));
 }

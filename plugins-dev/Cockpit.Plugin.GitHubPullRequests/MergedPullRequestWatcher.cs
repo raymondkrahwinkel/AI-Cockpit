@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -10,6 +9,9 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 // The comparison is the whole thing (`MergedPullRequests`): a poll sees the world, not the change. And
 // the first look fires nothing, because every pull request you have ever merged is new to a process that just
 // started, and a flow that ran forty times the moment the cockpit opened would be the last time you armed it.
+//
+// AC-1396: the clock is `TimeProvider`, not Avalonia's dispatcher — the backend part has no window to tick on — so
+// a look now starts on a threadpool thread.
 internal sealed class MergedPullRequestWatcher : IDisposable
 {
     // Merges are not urgent and gh's search is not free. Five minutes is soon enough to be useful and rare enough that
@@ -17,40 +19,60 @@ internal sealed class MergedPullRequestWatcher : IDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 
     private readonly ICockpitHost _host;
-    private readonly GitHubPrGhClient _client = new();
-    private readonly DispatcherTimer _timer;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<GitHubPullRequest>>> _searchMerged;
+    private readonly ITimer _timer;
 
     private HashSet<string> _seen = new(StringComparer.Ordinal);
     private bool _primed;
-    private bool _looking;
+
+    // An int, not a bool: two ticks can now overlap on the threadpool, where both could read a bool false before
+    // either set it.
+    private int _looking;
 
     public MergedPullRequestWatcher(ICockpitHost host)
+        : this(host, new GitHubPrGhClient().SearchMergedAsync, TimeProvider.System)
     {
-        _host = host;
-
-        _timer = new DispatcherTimer { Interval = Interval };
-        _timer.Tick += (_, _) => _ = _LookAsync();
-        _timer.Start();
-
-        _ = _LookAsync();
     }
 
-    public void Dispose() => _timer.Stop();
+    // Test seam: a controllable clock and a search that needs no gh, so a tick is provable without either.
+    internal MergedPullRequestWatcher(
+        ICockpitHost host,
+        Func<CancellationToken, Task<IReadOnlyList<GitHubPullRequest>>> searchMerged,
+        TimeProvider time)
+    {
+        _host = host;
+        _searchMerged = searchMerged;
+
+        // Due time zero: the first look (which only primes) happens at startup, as it did before, not an interval later.
+        _timer = time.CreateTimer(_ => _OnTick(), null, TimeSpan.Zero, Interval);
+    }
+
+    public void Dispose() => _timer.Dispose();
+
+    private async void _OnTick()
+    {
+        try
+        {
+            await _LookAsync();
+        }
+        catch (Exception)
+        {
+            // A watcher must never be the reason the cockpit falls over; the next tick tries again.
+        }
+    }
 
     private async Task _LookAsync()
     {
         // A look that takes longer than the interval must not have a second one started on top of it: two answers
         // racing to update what has been seen is how a merge fires twice, or not at all.
-        if (_looking)
+        if (Interlocked.CompareExchange(ref _looking, 1, 0) != 0)
         {
             return;
         }
 
-        _looking = true;
-
         try
         {
-            var merged = await _client.SearchMergedAsync(CancellationToken.None);
+            var merged = await _searchMerged(CancellationToken.None);
             var result = MergedPullRequests.Reconcile(merged, _seen, _primed);
 
             _seen = new HashSet<string>(result.Seen, StringComparer.Ordinal);
@@ -77,7 +99,7 @@ internal sealed class MergedPullRequestWatcher : IDisposable
         }
         finally
         {
-            _looking = false;
+            Interlocked.Exchange(ref _looking, 0);
         }
     }
 }

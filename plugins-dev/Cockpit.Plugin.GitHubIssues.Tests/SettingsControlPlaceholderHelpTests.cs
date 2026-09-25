@@ -1,7 +1,11 @@
+extern alias UiAsm;
+
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
+using GitHubIssuesSettings = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssuesSettings;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -14,7 +18,7 @@ public partial class SettingsControlPlaceholderHelpTests
     {
         const string marker = "AC-521-MARKER";
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { Template = marker };
-        var view = new GitHubIssuesSettingsControl(new FakeCockpitHost(), settings);
+        var view = new GitHubIssuesSettingsControl(UiHostFake.Create(), settings);
         var window = new Window { Content = view };
         window.Show();
         window.UpdateLayout();
@@ -27,7 +31,7 @@ public partial class SettingsControlPlaceholderHelpTests
 
         window.Close();
 
-        Assert.Equal(_ReplacedPlaceholders("PromptTemplate.cs"), _DocumentedPlaceholders($"{label} {hint}"));
+        Assert.Equal(_ReplacedPlaceholders(Path.Combine("Contracts", "PromptTemplate.cs")), _DocumentedPlaceholders($"{label} {hint}"));
     });
 
     [Fact]
@@ -35,7 +39,7 @@ public partial class SettingsControlPlaceholderHelpTests
     {
         const string marker = "AC-521-MARKER";
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { BranchPattern = marker };
-        var view = new GitHubIssuesSettingsControl(new FakeCockpitHost(), settings);
+        var view = new GitHubIssuesSettingsControl(UiHostFake.Create(), settings);
         var window = new Window { Content = view };
         window.Show();
         window.UpdateLayout();
@@ -50,7 +54,7 @@ public partial class SettingsControlPlaceholderHelpTests
         var docsPath = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubIssues", "Docs", "setup.md");
         var body = _SectionBody(File.ReadAllText(docsPath), "branch-pattern");
 
-        Assert.Equal(_ReplacedPlaceholders("GitHubBranchName.cs"), _DocumentedPlaceholders($"{label} {body}"));
+        Assert.Equal(_ReplacedPlaceholders(Path.Combine("Contracts", "GitHubBranchName.cs")), _DocumentedPlaceholders($"{label} {body}"));
     });
 
     private static HashSet<string> _DocumentedPlaceholders(string text) =>

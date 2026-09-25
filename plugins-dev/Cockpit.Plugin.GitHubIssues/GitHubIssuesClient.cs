@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
