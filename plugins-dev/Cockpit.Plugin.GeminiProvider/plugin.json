@@ -1,11 +1,13 @@
 {
   "id": "gemini-provider",
   "name": "Gemini / OpenAI Provider",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "entryAssembly": "Cockpit.Plugin.GeminiProvider.dll",
   "entryType": "Cockpit.Plugin.GeminiProvider.GeminiProviderPlugin",
+  "uiAssembly": "Cockpit.Plugin.GeminiProvider.UI.dll",
+  "uiEntryType": "Cockpit.Plugin.GeminiProvider.UI.GeminiProviderUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.28.0",
+  "minHostVersion": "0.41.0",
   "description": "Adds Gemini and OpenAI as selectable session providers, both over an OpenAI-compatible chat-completions endpoint (Gemini's own OpenAI-compat endpoint, or api.openai.com directly) via Microsoft.Extensions.AI. Runs the session's MCP tools through the cockpit, which gates every call. Configure an API key and model per profile in Manage profiles.",
   "author": "Cockpit"
 }

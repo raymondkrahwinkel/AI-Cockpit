@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GeminiProvider;
+namespace Cockpit.Plugin.GeminiProvider.UI;
 
 // The "add/edit profile" config panel for this plugin's Gemini/OpenAI providers (#45): an API key, a model
 // id and the base URL (pre-filled with the provider's default, editable for a custom OpenAI-compatible
@@ -21,7 +21,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null

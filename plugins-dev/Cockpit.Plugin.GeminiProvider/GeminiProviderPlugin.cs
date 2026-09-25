@@ -10,12 +10,6 @@ namespace Cockpit.Plugin.GeminiProvider;
 // switch/plan mode/thinking) — see `OpenAiCompatPluginSessionDriver.Capabilities`.
 public sealed class GeminiProviderPlugin : ICockpitPlugin
 {
-    // Gemini's OpenAI-compatible endpoint (ai.google.dev/gemini-api/docs/openai).
-    internal const string GeminiDefaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
-
-    // OpenAI's own Chat Completions endpoint.
-    internal const string OpenAiDefaultBaseUrl = "https://api.openai.com/v1";
-
     public PluginMetadata Metadata { get; } = new(
         Id: "gemini-provider",
         DisplayName: "Gemini / OpenAI Provider",
@@ -41,8 +35,10 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GeminiDefaultBaseUrl, host),
-            DefaultBaseUrl: GeminiDefaultBaseUrl));
+            // AC-1393: the UI part's InitializeUi (GeminiProviderUi) replaces this with the real config view via
+            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini));
 
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "gemini-provider.openai",
@@ -55,8 +51,10 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiDefaultBaseUrl, host),
-            DefaultBaseUrl: OpenAiDefaultBaseUrl));
+            // AC-1393: the UI part's InitializeUi (GeminiProviderUi) replaces this with the real config view via
+            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenAi));
     }
 
     public void Dispose()

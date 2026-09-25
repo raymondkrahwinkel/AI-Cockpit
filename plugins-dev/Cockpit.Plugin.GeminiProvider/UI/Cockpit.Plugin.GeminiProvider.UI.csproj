@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of the Gemini/OpenAI provider (AC-1393, following GitStatus's pilot, AC-1390): the "add/edit
+       profile" config view, shared by both providers this plugin registers. Builds into the backend project's
+       bin/, so `dotnet build` of the backend project yields both assemblies in the one folder the zip, the
+       bundle and the dev installer take. It never references the backend project: OpenAiCompatConfig/
+       TimeoutSecondsField/OpenAiCompatModelCatalog/OpenAiCompatDefaultBaseUrls are shared with the backend
+       (which needs them for the actual session driver and its registration) as linked source, not as an
+       assembly reference. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\OpenAiCompatConfig.cs" Link="Contracts\OpenAiCompatConfig.cs" />
+    <Compile Include="..\TimeoutSecondsField.cs" Link="Contracts\TimeoutSecondsField.cs" />
+    <Compile Include="..\OpenAiCompatModelCatalog.cs" Link="Contracts\OpenAiCompatModelCatalog.cs" />
+    <Compile Include="..\OpenAiCompatDefaultBaseUrls.cs" Link="Contracts\OpenAiCompatDefaultBaseUrls.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.GeminiProvider.Tests" />
+  </ItemGroup>
+
+</Project>
