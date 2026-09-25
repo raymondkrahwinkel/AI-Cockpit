@@ -6,7 +6,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
@@ -23,7 +23,7 @@ internal sealed class TranscriptSearchDialogControl : UserControl
     private const int RecentSessionCount = 10;
 
     private readonly TranscriptSearchService _search;
-    private readonly ICockpitActions _actions;
+    private readonly ICockpitUiHost _host;
 
     // Set when the dialog was opened to *choose* a conversation (the New-session dialog's search button) rather
     // than to browse: each hit then offers "Use this session", which hands the hit back — id and the directory it
@@ -35,10 +35,10 @@ internal sealed class TranscriptSearchDialogControl : UserControl
     private readonly TextBlock _status;
     private readonly ObservableCollection<TranscriptSearchHit> _results = [];
 
-    public TranscriptSearchDialogControl(TranscriptSearchService search, ICockpitActions actions, Action<TranscriptSearchHit>? onPicked = null)
+    public TranscriptSearchDialogControl(TranscriptSearchService search, ICockpitUiHost host, Action<TranscriptSearchHit>? onPicked = null)
     {
         _search = search;
-        _actions = actions;
+        _host = host;
         _onPicked = onPicked;
 
         _query = new TextBox
@@ -134,7 +134,7 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         var copyId = new Button { Content = "Copy id", FontSize = 11, Padding = new Thickness(8, 2) };
         copyId.Click += async (_, _) =>
         {
-            await _actions.SetClipboardTextAsync(hit.SessionId);
+            await _host.SetClipboardTextAsync(hit.SessionId);
             _status.Text = hit.WorkingDirectory is { Length: > 0 } directory
                 ? $"Session id copied — resume it with 'claude --resume {hit.SessionId}' from {directory}."
                 : $"Session id copied — resume it with 'claude --resume {hit.SessionId}'.";

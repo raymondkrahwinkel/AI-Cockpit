@@ -1,31 +1,20 @@
-using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-// Search over the `claude` CLI's on-disk transcripts, as a plugin: the JSONL history and its schema belong
-// to that one provider, so in a cockpit that drives several they have no business in the core. Contributes a
-// left-menu button and the `Ctrl+F` shortcut it used to own as a built-in action, both opening the search
-// dialog. It needs no services of its own — the search reads the profiles from the host on every query.
-public sealed class TranscriptSearchPlugin : ICockpitPlugin
+// Search over the `claude` CLI's on-disk transcripts, as a plugin (AC-1395, pure UI per F2.1): its only
+// contributions — a left-menu button, the `Ctrl+F` shortcut it used to own as a built-in action, and the
+// New-session dialog's conversation picker — all need a window, so this project has no backend part at all.
+public sealed class TranscriptSearchUi : ICockpitPluginUi
 {
-    public PluginMetadata Metadata { get; } = new(
-        Id: "transcript-search",
-        DisplayName: "Claude Transcript Search",
-        Author: "Cockpit",
-        Description: "Search everything you and the agent ever wrote in a Claude CLI session, across every Claude profile you have configured.");
-
-    public void ConfigureServices(IServiceCollection services)
-    {
-    }
-
-    public void Initialize(ICockpitHost host)
+    public void InitializeUi(ICockpitUiHost host)
     {
         // One dialog for standalone search: reopening while it's up should refocus it, not stack a second one.
         void OpenSearch() => _ = host.ShowDialogAsync(
             "Search transcripts",
-            () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host.Actions),
+            () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host),
             "search",
             width: 820,
             height: 600);
@@ -45,7 +34,7 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
                 "Search transcripts",
                 () => new TranscriptSearchDialogControl(
                     new TranscriptSearchService(host),
-                    host.Actions,
+                    host,
                     hit => picked = new PickedConversation(hit.SessionId, hit.WorkingDirectory)),
                 820,
                 600);
@@ -60,9 +49,5 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
             // starts the resumed session there, where claude keeps that session's transcript.
             PickWithLocationAsync = SearchForConversationAsync,
         });
-    }
-
-    public void Dispose()
-    {
     }
 }

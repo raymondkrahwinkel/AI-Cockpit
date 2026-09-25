@@ -1,4 +1,4 @@
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
@@ -23,10 +23,10 @@ internal sealed class TranscriptSearchService
         IgnoreInaccessible = true,
     };
 
-    private readonly ICockpitHost? _host;
+    private readonly ICockpitUiHost? _host;
     private readonly IReadOnlyList<string>? _projectRootsOverride;
 
-    public TranscriptSearchService(ICockpitHost host)
+    public TranscriptSearchService(ICockpitUiHost host)
     {
         _host = host;
     }
