@@ -10,7 +10,7 @@ internal sealed class InjectRunner(ICockpitHost host) : IStepRunner
     public ConsentRisk? RequiredConsent => ConsentRisk.Dangerous;
 
     public string ConsentAction(StepContext context) =>
-        $"Inject into the session '{SessionTarget.Named(context)}':\n{context.Resolve(context.Node.Parameters.GetValueOrDefault("Text")).Text}";
+        $"Inject into the session '{SessionTarget.Describe(host, context)}':\n{context.Resolve(context.Node.Parameters.GetValueOrDefault("Text")).Text}";
 
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {

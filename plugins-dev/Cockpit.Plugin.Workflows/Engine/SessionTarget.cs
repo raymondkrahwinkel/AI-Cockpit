@@ -10,9 +10,19 @@ internal static class SessionTarget
 {
     public const string Parameter = "Session";
 
+    // The assistant is listed among the open sessions, but a plugin cannot type into or label it (AC-1392).
+    private const string AssistantPaneId = "cockpit-assistant";
+
     // What the step says, placeholders filled; empty when it says nothing.
     public static string Named(StepContext context) =>
         context.Resolve(context.Node.Parameters.GetValueOrDefault(Parameter)).Text.Trim();
+
+    // What the consent prompt shows: the session's name when the step names an open one by pane id.
+    public static string Describe(ICockpitHost host, StepContext context)
+    {
+        var named = Named(context);
+        return host.Sessions.OpenSessions.FirstOrDefault(session => string.Equals(session.PaneId, named, StringComparison.Ordinal))?.Name ?? named;
+    }
 
     public static OpenCockpitSession Resolve(ICockpitHost host, StepContext context)
     {
@@ -23,7 +33,7 @@ internal static class SessionTarget
                 "This step names no session — open it and name one: a session's name, its pane id, or {Start session.session} after a step that started one.");
         }
 
-        var open = host.Sessions.OpenSessions;
+        var open = host.Sessions.OpenSessions.Where(session => session.PaneId != AssistantPaneId).ToList();
         if (open.FirstOrDefault(session => string.Equals(session.PaneId, named, StringComparison.Ordinal)) is { } byPaneId)
         {
             return byPaneId;

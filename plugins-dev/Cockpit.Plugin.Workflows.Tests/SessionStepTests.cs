@@ -37,6 +37,7 @@ public class SessionStepTests
     [InlineData("cockpit.inject", "nowhere", "No open session is called 'nowhere'")]
     [InlineData("cockpit.set-status", "twin", "2 open sessions are called 'twin'")]
     [InlineData("cockpit.inject", "headless", "'headless' took no text")]
+    [InlineData("cockpit.set-status", "cockpit-assistant", "No open session is called 'cockpit-assistant'")]
     public async Task AStepThatNamesNoLiveSession_FailsWithItsReason_AndTouchesNoSession(string typeId, string session, string reason)
     {
         var host = _Host();
@@ -79,8 +80,8 @@ public class SessionStepTests
         await host.Actions.DidNotReceive().SetActiveSessionStatusAsync(Arg.Any<string?>(), Arg.Any<string?>());
     }
 
-    // Five open sessions while the host reports an active one: the one the flows name (pane-2), a headless one with no
-    // input to place text in, two that share a name, and one more. Consent is not asked: the flows run unattended.
+    // The open sessions while the host reports an active one: the one the flows name (pane-2), a headless one, two that
+    // share a name, and the assistant, which no step may act on. Consent is not asked: the flows run unattended.
     private static ICockpitHost _Host()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -92,6 +93,7 @@ public class SessionStepTests
             new OpenCockpitSession("pane-3", "headless"),
             new OpenCockpitSession("pane-4", "twin"),
             new OpenCockpitSession("pane-5", "twin"),
+            new OpenCockpitSession("cockpit-assistant", "Assistant"),
         ]);
         host.InsertIntoSessionAsync(Arg.Is<string>(pane => pane != "pane-3"), Arg.Any<string>()).Returns(true);
         return host;

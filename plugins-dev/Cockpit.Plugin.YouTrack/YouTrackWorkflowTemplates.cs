@@ -71,7 +71,7 @@ internal static class YouTrackWorkflowTemplates
           "X": 920,
           "Y": 160,
           "Parameters": {
-            "Session": "{session}",
+            "Session": "{Ticket picked for a session.session}",
             "Text": "Work on {ticket}: {summary}. The branch {branch} is cut and checked out."
           }
         }

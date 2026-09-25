@@ -59,7 +59,7 @@ internal static class GitHubWorkflowTemplates
           "X": 920,
           "Y": 160,
           "Parameters": {
-            "Session": "{session}",
+            "Session": "{Issue picked for a session.session}",
             "Text": "Work on issue #{issue}: {title}. The branch {branch} is cut and checked out. {url}"
           }
         }
