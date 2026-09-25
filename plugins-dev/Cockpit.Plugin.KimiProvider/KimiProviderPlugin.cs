@@ -33,7 +33,9 @@ public sealed class KimiProviderPlugin : ICockpitPlugin
             // declared here too, or the host's live-model-switch wiring never reaches SetLiveOptionAsync
             // despite the driver already supporting it (ClaudeProviderPlugin.cs warns of exactly this trap).
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true },
-            CreateConfigView: existingConfigJson => new KimiProviderConfigView(existingConfigJson, host)));
+            // AC-1393: the UI part's InitializeUi (KimiProviderUi) replaces this with the real config view via
+            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view.")));
     }
 
     public void Dispose()
