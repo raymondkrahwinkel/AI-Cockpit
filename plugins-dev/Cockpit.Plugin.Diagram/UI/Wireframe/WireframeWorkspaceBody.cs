@@ -11,7 +11,6 @@ using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Wireframe.Rendering;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Kind = Cockpit.Core.Wireframe.Model.WireframeNodeKind;
@@ -48,7 +47,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private static readonly Cursor _DropCursor = new(StandardCursorType.DragMove);
     private static readonly Cursor _NoDropCursor = new(StandardCursorType.No);
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly WireframeChannelClient? _registry;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
@@ -124,7 +123,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private string? _fileAsLastSeen;
 
     // AC-1400: the registry through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
-    public WireframeWorkspaceBody(ICockpitHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId)
+    public WireframeWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId)
     {
         _host = host;
         _registry = WireframeChannelClient.Connect(channel);

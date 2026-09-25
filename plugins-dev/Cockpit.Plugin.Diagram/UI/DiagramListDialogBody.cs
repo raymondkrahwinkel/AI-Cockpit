@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Diagram.Collab;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Notifications;
 
@@ -14,11 +13,11 @@ namespace Cockpit.Plugin.Diagram;
 // picked diagram directly in its own window, coupled to the session already active when the dialog was opened.
 internal sealed class DiagramListDialogBody : UserControl
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginUiChannel? _channel;
     private readonly StackPanel _list;
 
-    public DiagramListDialogBody(ICockpitHost host, IPluginUiChannel? channel)
+    public DiagramListDialogBody(ICockpitUiHost host, IPluginUiChannel? channel)
     {
         _host = host;
         _channel = channel;
@@ -39,8 +38,8 @@ internal sealed class DiagramListDialogBody : UserControl
         DockPanel.SetDock(refresh, Dock.Right);
         DockPanel.SetDock(newDiagram, Dock.Right);
 
-        var activePaneId = host.Sessions.ActivePaneId;
-        var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
+        var activePaneId = host.ActivePaneId;
+        var sessionLabel = host.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
         var couplingNote = new TextBlock
         {
             Text = activePaneId is null
@@ -118,7 +117,7 @@ internal sealed class DiagramListDialogBody : UserControl
         var open = new Button { Content = "Open", Classes = { "Compact" } };
         open.Click += (_, _) =>
         {
-            if (_host.Sessions.ActivePaneId is not { } paneId)
+            if (_host.ActivePaneId is not { } paneId)
             {
                 _host.ShowToast("No active session to link this diagram to.", PluginToastSeverity.Information);
                 return;

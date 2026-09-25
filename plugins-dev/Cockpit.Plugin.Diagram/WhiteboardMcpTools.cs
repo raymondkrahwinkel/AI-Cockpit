@@ -71,7 +71,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         }
 
         // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
-        var opened = channel.RequestOpen(DiagramChannel.WhiteboardPrefix, surfaceId, title, null, caller);
+        var opened = channel.RequestOpen(DiagramChannelContract.WhiteboardPrefix, surfaceId, title, null, caller);
 
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened });
     }

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram;
 
@@ -13,7 +14,7 @@ internal sealed class DiagramSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _skipWhiteboard;
     private readonly CheckBox _skipWireframe;
 
-    public DiagramSettingsControl(ICockpitHost host, DiagramSettings settings)
+    public DiagramSettingsControl(ICockpitUiHost host, DiagramSettings settings)
     {
         _settings = settings;
 

@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Diagram, Whiteboard & Wireframe (F2.13/AC-1401): every window, workspace body, list dialog and
+       renderer — everything that needs Avalonia. It lives inside the plugin folder so the version guard, the
+       publish discovery and the change classification all see it as part of the plugin, and it builds into the
+       backend project's bin/, so `dotnet build` of the backend project yields both assemblies in the one folder the
+       zip, the bundle and the dev installer take. It never references the backend project: what the two share —
+       DiagramSettings and DiagramChannel's wire protocol — is linked in as source (below) rather than referenced. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AC-948's consent-skip flags: the settings view here edits them, the backend's MCP tools read them. Neither
+         project references the other, so the source is linked into both rather than shared through a reference. -->
+    <Compile Include="..\DiagramSettings.cs" Link="DiagramSettings.cs" />
+    <!-- The channel's action names, Json options and argument helpers (DiagramChannel reads the same file from the
+         backend project) — same "Contracts" pattern as GitStatus's Contracts/GitStatusChannel.cs (AC-1390). -->
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+    <!-- Compile-only, same pattern as Avalonia below (AC-809): only the registry interfaces' and the wireframe/
+         diagram model types' shape is needed at compile time; PluginLoadContext falls the actual type through to
+         the host's own already-loaded copy at runtime. -->
+    <ProjectReference Include="..\..\..\src\Cockpit.Core\Cockpit.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): ExcludeAssets on Avalonia above only suppresses assets Avalonia itself
+         contributes, not those of its own dependency Avalonia.Remote.Protocol — that one still landed in the
+         build output as a stray, unloaded DLL until excluded explicitly here too. -->
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured (AC-809): must fall through, not ship — see the project-level comment above. -->
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Svg.Controls.Skia.Avalonia's own transitive deps — need the same runtime;native exclusion (see AC-809). -->
+    <PackageReference Include="Svg.Skia" Version="5.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="SkiaSharp" Version="3.119.4">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp" Version="8.3.1.3">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Mermaid-text -> SVG. Pure managed, no Avalonia or Skia dependency (AC-807) — ships in the zip. -->
+    <PackageReference Include="Mermaider" Version="0.12.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Diagram.Tests" />
+  </ItemGroup>
+
+</Project>

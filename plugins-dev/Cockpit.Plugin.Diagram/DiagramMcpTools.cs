@@ -76,7 +76,7 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
         }
 
         // AC-1400: the window is the UI part's to open; without one (a backend on its own) nothing opens.
-        var opened = channel.RequestOpen(DiagramChannel.DiagramPrefix, surfaceId, title, source, caller);
+        var opened = channel.RequestOpen(DiagramChannelContract.DiagramPrefix, surfaceId, title, source, caller);
 
         return _Serialize(new
         {

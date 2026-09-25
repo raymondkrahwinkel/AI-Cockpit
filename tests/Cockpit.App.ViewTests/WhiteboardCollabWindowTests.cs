@@ -39,7 +39,6 @@ public class WhiteboardCollabWindowTests
         var surfaces = host.Registry.ListSurfaces("pane-a");
         Assert.Equal(2, surfaces.Count);
         Assert.All(surfaces, surface => Assert.False(surface.Coupling!.CanRead));
-        Assert.All(host.Bindings, binding => Assert.Equal("pane-a", binding.PaneId));
 
         _Show(host.Windows[0].Content);
         Assert.Contains("Werksessie", _CouplingText(host.Windows[0].Content));
@@ -141,14 +140,15 @@ public class WhiteboardCollabWindowTests
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
         var plugin = new PluginActivator(NullLogger<PluginActivator>.Instance).Activate(discovered);
         Assert.NotNull(plugin);
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
-        DiagramPluginUi.Initialize(plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
         return (plugin, host);
     }
 
@@ -189,8 +189,6 @@ public class WhiteboardCollabWindowTests
         public WhiteboardAccessRegistry Registry { get; } = new();
 
         public List<OpenedWindow> Windows { get; } = [];
-
-        public List<FakeBinding> Bindings { get; } = [];
 
         public List<ConsentRequest> ConsentRequests { get; } = [];
 
@@ -236,10 +234,6 @@ public class WhiteboardCollabWindowTests
         {
             Registry.SessionEnded(paneId);
             (Sessions as FakeSessions)?.Close(paneId);
-            foreach (var binding in Bindings.Where(binding => binding.PaneId == paneId))
-            {
-                binding.End();
-            }
         }
 
         public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)
@@ -295,32 +289,6 @@ public class WhiteboardCollabWindowTests
             Windows.Add(new OpenedWindow(title, singleInstanceKey, content));
             return Task.CompletedTask;
         }
-
-        public IPluginSessionBinding BindToSession(string paneId)
-        {
-            var binding = new FakeBinding(paneId);
-            Bindings.Add(binding);
-            return binding;
-        }
-    }
-
-    internal sealed class FakeBinding(string paneId) : IPluginSessionBinding
-    {
-        public string PaneId => paneId;
-
-        public string? SessionName => IsLive ? "Werksessie" : null;
-
-        public bool IsLive => paneId == "pane-a";
-
-        public bool IsDisposed { get; private set; }
-
-        public event EventHandler? Ended;
-
-        public Task SendAsync(string text) => Task.CompletedTask;
-
-        public void End() => Ended?.Invoke(this, EventArgs.Empty);
-
-        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class FakeSessions(string? activePaneId) : ICockpitSessionObserver

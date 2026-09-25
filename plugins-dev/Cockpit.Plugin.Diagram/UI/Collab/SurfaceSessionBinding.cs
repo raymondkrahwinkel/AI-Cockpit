@@ -1,6 +1,6 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -9,31 +9,37 @@ namespace Cockpit.Plugin.Diagram.Collab;
 // The session a surface is coupled to, and the "are they still there" state around it (AC-870). The registry's own
 // Couple stays the caller's: IDiagramAccessRegistry.Couple and IWhiteboardAccessRegistry.Couple are unrelated types
 // with the same shape, not a common interface.
+//
+// F2.13/AC-1401: ICockpitUiHost carries no BindToSession/Sessions (those stay backend-only), so this reads a bound
+// pane's liveness and name over DiagramChannelContract.SessionBind/SessionList instead of ICockpitHost.BindToSession — the
+// same "reach the backend through the channel, not host.Services" move AC-1400 already made for the registries.
 internal sealed class SurfaceSessionBinding
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
+    private readonly IPluginUiChannel? _channel;
     private readonly Action _onChanged;
     private readonly IDisposable? _closed;
-    private IPluginSessionBinding _binding;
+    private _BindResult _bound;
 
     // AC-1400: that the session ended arrives as the backend's session.closed event on the plugin's channel. No
     // channel (an older host) means the end is never announced, the same as a surface with no registry.
-    public SurfaceSessionBinding(ICockpitHost host, IPluginUiChannel? channel, string? initialPaneId, Action onChanged)
+    public SurfaceSessionBinding(ICockpitUiHost host, IPluginUiChannel? channel, string? initialPaneId, Action onChanged)
     {
         _host = host;
+        _channel = channel;
         _onChanged = onChanged;
-        _binding = _Bind(initialPaneId);
-        _closed = channel?.Subscribe(DiagramChannel.SessionClosed, channelEvent => _OnClosed(DiagramChannel.ReadString(channelEvent.Payload, 0)));
+        _bound = _Bind(initialPaneId);
+        _closed = channel?.Subscribe(DiagramChannelContract.SessionClosed, channelEvent => _OnClosed(DiagramChannelContract.ReadString(channelEvent.Payload, 0)));
     }
 
-    public bool IsLive => _binding.IsLive;
+    public bool IsLive => _bound.IsLive;
 
-    // Stays readable after the session ends, same as IPluginSessionBinding.PaneId itself.
-    public string PaneId => _binding.PaneId;
+    // Stays readable after the session ends, same as the bound pane id itself.
+    public string PaneId => _bound.PaneId;
 
-    public string? LivePaneId => _binding.IsLive ? _binding.PaneId : null;
+    public string? LivePaneId => _bound.IsLive ? _bound.PaneId : null;
 
-    public string? DisplayName => _binding.SessionName ?? BoundSessionName;
+    public string? DisplayName => _bound.SessionName ?? BoundSessionName;
 
     // The name is read here and kept, not read on demand: by the time the session ends it is gone from the
     // cockpit, and "session … has ended" with no name in it is the one moment the operator needs one.
@@ -41,13 +47,20 @@ internal sealed class SurfaceSessionBinding
 
     public string? EndedSessionName { get; private set; }
 
-    public Task SendAsync(string text) => _binding.SendAsync(text);
+    public Task SendAsync(string text) => _host.SendToSessionAsync(_bound.PaneId, text);
 
-    private IPluginSessionBinding _Bind(string? paneId)
+    // No channel (an older host) means no registry either, the same "nothing to ask" state SurfaceWindowOpener's
+    // callers already draw — a fresh bind then reads as "no session", never an exception.
+    private _BindResult _Bind(string? paneId)
     {
-        var binding = _host.BindToSession(paneId ?? "");
-        BoundSessionName = binding.SessionName ?? (binding.IsLive ? binding.PaneId : null);
-        return binding;
+        var pane = paneId ?? "";
+        var bound = _channel is null
+            ? new _BindResult(pane, null, false)
+            : _channel.InvokeAsync(DiagramChannelContract.SessionBind, JsonSerializer.SerializeToElement(new object?[] { pane }, DiagramChannelContract.Json))
+                .GetAwaiter().GetResult()
+                .Deserialize<_BindResult>(DiagramChannelContract.Json) ?? new _BindResult(pane, null, false);
+        BoundSessionName = bound.SessionName ?? (bound.IsLive ? bound.PaneId : null);
+        return bound;
     }
 
     // The session behind this surface ended. Nothing here closes the surface's window, and nothing here drops the
@@ -55,7 +68,7 @@ internal sealed class SurfaceSessionBinding
     // supplies the name that is gone by then. Compared on the UI thread, where Recouple swaps the binding.
     private void _OnClosed(string paneId) => Dispatcher.UIThread.Post(() =>
     {
-        if (paneId != _binding.PaneId)
+        if (paneId != _bound.PaneId)
         {
             return;
         }
@@ -78,24 +91,21 @@ internal sealed class SurfaceSessionBinding
             return exception.Message;
         }
 
-        _binding.Dispose();
-        _binding = _Bind(paneId);
+        _bound = _Bind(paneId);
         EndedSessionName = null;
         _onChanged();
         return null;
     }
 
-    public void Dispose()
-    {
-        _closed?.Dispose();
-        _binding.Dispose();
-    }
+    public void Dispose() => _closed?.Dispose();
 
     // The open sessions by name (AC-833), so recoupling names a session instead of guessing one. No running
     // session is a state worth reading, not an empty menu.
     public void ShowSessionPicker(Control anchor, Action<string> recouple)
     {
-        var open = _host.Sessions.OpenSessions;
+        var open = _channel is null
+            ? []
+            : _channel.InvokeAsync(DiagramChannelContract.SessionList, default).GetAwaiter().GetResult().Deserialize<List<OpenCockpitSession>>(DiagramChannelContract.Json) ?? [];
         var flyout = new MenuFlyout();
         if (open.Count == 0)
         {
@@ -111,4 +121,8 @@ internal sealed class SurfaceSessionBinding
 
         flyout.ShowAt(anchor);
     }
+
+    // Mirrors DiagramChannelContract.SessionBind's answer shape by property name — the UI part carries no reference to the
+    // backend assembly to share the record itself (F2.13/AC-1401's whole point).
+    private sealed record _BindResult(string PaneId, string? SessionName, bool IsLive);
 }

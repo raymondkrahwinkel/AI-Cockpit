@@ -17,7 +17,7 @@ public class AskRelationshipTests
     {
         var registry = new DiagramAccessRegistry();
         var document = DiagramDocument.New("Test ER diagram", ErSource);
-        var body = new DiagramWorkspaceBody(new ToolbarOverflowTests.DiagramRegistryHost(registry), TestChannel.For(registry), document, null);
+        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), TestChannel.For(registry), document, null);
         var window = new Window { Content = body, Width = 900, Height = 640 };
         window.Show();
         Dispatcher.UIThread.RunJobs();

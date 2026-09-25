@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugins.Abstractions;
+using static Cockpit.Plugin.Diagram.DiagramChannelContract;
 using D = Cockpit.Core.Abstractions.Diagrams.IDiagramAccessRegistry;
 using W = Cockpit.Core.Abstractions.Whiteboard.IWhiteboardAccessRegistry;
 using F = Cockpit.Core.Abstractions.Wireframe.IWireframeAccessRegistry;
@@ -11,28 +12,10 @@ namespace Cockpit.Plugin.Diagram;
 
 // AC-1400 (F2.12): the backend half of Diagram's channel — the registries' members as actions and events, named after
 // the member, with its arguments in order as one JSON array (an event's first element is the surface id). Transport
-// only: the registry stays the one document model and nothing here keeps state of its own.
+// only: the registry stays the one document model and nothing here keeps state of its own. Action names, Json and
+// the argument helpers live in Contracts/DiagramChannelContract.cs (F2.13/AC-1401), linked into the UI project too.
 internal sealed class DiagramChannel : IDisposable
 {
-    public const string DiagramPrefix = "diagram.";
-    public const string WhiteboardPrefix = "whiteboard.";
-    public const string WireframePrefix = "wireframe.";
-
-    // [surfaceId, kind, title, source, callerPaneId]: an agent's open_* tool asks the UI part for a window.
-    public const string OpenSurface = "surface.open";
-
-    // [paneId]: a session ended, so a window bound to it can say so (SurfaceSessionBinding).
-    public const string SessionClosed = "session.closed";
-
-    // The UI part attaches once it listens for OpenSurface and detaches when it stops; an open_* tool asks no one else.
-    public const string AttachUi = "ui.attach";
-    public const string DetachUi = "ui.detach";
-
-    // "<prefix>Served" answers only when this backend has that registry, so a window can tell "no registry here".
-    public const string Served = "Served";
-
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     private readonly ICockpitHost _host;
     private readonly List<IDisposable> _handles = [];
     private readonly List<Action> _detach = [];
@@ -47,6 +30,9 @@ internal sealed class DiagramChannel : IDisposable
         EventHandler<string> closed = (_, paneId) => _Publish(SessionClosed, paneId);
         host.Sessions.SessionClosed += closed;
         _detach.Add(() => host.Sessions.SessionClosed -= closed);
+
+        _On(SessionBind, a => _BindSession(ReadString(a, 0)));
+        _On(SessionList, _ => host.Sessions.OpenSessions);
 
         if (diagrams is not null)
         {
@@ -205,6 +191,14 @@ internal sealed class DiagramChannel : IDisposable
         }
     }
 
+    // [paneId] -> whether a session is open behind it right now and its operator-visible name — OpenSessions is
+    // "every open session" (AC-833), so a pane not in it is exactly the "no longer live" state SendAsync guards on.
+    private SessionBindResult _BindSession(string paneId)
+    {
+        var open = _host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == paneId);
+        return new SessionBindResult(paneId, open?.Name, open is not null);
+    }
+
     // The registries answer synchronously, so each handler does too: in-process the UI half gets a completed task.
     private void _On(string action, Func<JsonElement, object?> handle) =>
         _handles.Add(_host.Channel.Handle(action, (args, _) => Task.FromResult(JsonSerializer.SerializeToElement(handle(args), Json))));
@@ -218,10 +212,8 @@ internal sealed class DiagramChannel : IDisposable
 
     private void _Publish(string name, params object?[] args) =>
         _host.Channel.Publish(name, JsonSerializer.SerializeToElement(args, Json));
-
-    internal static string ReadString(JsonElement args, int index) =>
-        args[index].GetString() ?? throw new JsonException($"Channel argument {index} is null where a string is required.");
-
-    internal static T ReadArg<T>(JsonElement args, int index) =>
-        args[index].Deserialize<T>(Json) ?? throw new JsonException($"Channel argument {index} is null where a {typeof(T).Name} is required.");
 }
+
+// The DiagramChannel.SessionBind answer — SurfaceSessionBinding's UI-side replacement for the
+// ICockpitHost.BindToSession/IPluginSessionBinding pair it read directly before the physical split (F2.13/AC-1401).
+internal sealed record SessionBindResult(string PaneId, string? SessionName, bool IsLive);

@@ -4,8 +4,8 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugin.Diagram.Collab;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram;
 
@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.Diagram;
 // ISurfaceActivityJournal) rather than a `bool whiteboard` this class branched on, so a third surface can supply its own.
 internal sealed class ActivityStrip : Border
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly string _surfaceId;
     private readonly ISurfaceActivityJournal _journal;
     private readonly Action<string>? _onJumpToObject;
@@ -23,7 +23,7 @@ internal sealed class ActivityStrip : Border
     private string? _paneId;
     private string? _origin;
 
-    public ActivityStrip(ICockpitHost host, string surfaceId, ISurfaceActivityJournal journal, Action<string>? onJumpToObject)
+    public ActivityStrip(ICockpitUiHost host, string surfaceId, ISurfaceActivityJournal journal, Action<string>? onJumpToObject)
     {
         _host = host;
         _surfaceId = surfaceId;

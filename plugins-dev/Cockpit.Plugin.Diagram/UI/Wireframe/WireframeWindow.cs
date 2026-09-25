@@ -1,4 +1,3 @@
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
@@ -13,7 +12,7 @@ internal static class WireframeWindow
 
     // `sessionPaneId` is the session already running that this wireframe couples to on open — named by whoever
     // opens the window, never guessed here. Null opens with no agent on it, which is a state the surface draws.
-    public static Task OpenAsync(ICockpitHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId) =>
+    public static Task OpenAsync(ICockpitUiHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId) =>
         host.ShowDialogAsync(
             document.Title,
             () => new WireframeWorkspaceBody(host, channel, document, sessionPaneId),

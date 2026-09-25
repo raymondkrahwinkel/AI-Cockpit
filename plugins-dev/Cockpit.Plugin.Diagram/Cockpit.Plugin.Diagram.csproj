@@ -1,13 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Diagram-builder plugin-schil (AC-809). Avalonia/Skia/Svg.Controls.Skia.Avalonia are host-provided and
-       compile-only (measured: shipping the Svg control's own SkiaSharp copy breaks rendering, see AC-809). -->
+  <!-- Diagram-builder plugin-schil (AC-809). F2.13 (AC-1401): the physical split GitStatus piloted (AC-1390) — this
+       project is the backend half (the registries' channel and the MCP tools) and names no Avalonia; the windows,
+       the workspace bodies and everything else that needs a window live in UI/, its own project, which builds into
+       this project's bin/ (the reference below orders the build and references no assembly). -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,55 +20,24 @@
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </ProjectReference>
-    <!-- AC-1400: ICockpitPluginUi and the UI half of the channel. Host-provided like Abstractions itself. -->
-    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
-      <Private>false</Private>
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </ProjectReference>
-    <!-- Compile-only, same pattern as Avalonia below (AC-809): only IDiagramAccessRegistry's shape is needed at
+    <!-- Compile-only, same pattern as the packages below (AC-809): only the registry interfaces' shape is needed at
          compile time, and PluginLoadContext falls the actual type through to the host's own already-loaded copy
          at runtime — a plugin cannot ship a second identity of a type the host hands it through host.Services. -->
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration. Without it MSBuild strips Configuration off a reference
+         made outside a solution, the UI part lands in bin/Debug, and a Release copy of the plugin has no UI assembly;
+         discovery then skips the whole plugin, as its manifest names a file that is not there. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.Diagram.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Avalonia.Skia" Version="12.1.1">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <!-- Measured (AC-809): ExcludeAssets on Avalonia above only suppresses assets Avalonia itself
-         contributes, not those of its own dependency Avalonia.Remote.Protocol — that one still landed in the
-         build output as a stray, unloaded DLL until excluded explicitly here too. -->
-    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <!-- Measured (AC-809): must fall through, not ship — see the project-level comment above. -->
-    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <!-- Svg.Controls.Skia.Avalonia's own transitive deps — need the same runtime;native exclusion (see AC-809). -->
-    <PackageReference Include="Svg.Skia" Version="5.1.1">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="SkiaSharp" Version="3.119.4">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="HarfBuzzSharp" Version="8.3.1.3">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime;native</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
-    <!-- Mermaid-text -> SVG. Pure managed, no Avalonia or Skia dependency (AC-807) — ships in the zip. -->
-    <PackageReference Include="Mermaider" Version="0.12.2" />
     <!-- The [McpServerTool] attributes for the cockpit-diagram MCP (AC-889). Host-provided (the cockpit already
          loads ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one
          identity. -->

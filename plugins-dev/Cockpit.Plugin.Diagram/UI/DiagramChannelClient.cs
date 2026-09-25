@@ -6,10 +6,9 @@ using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Wireframe;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.UI;
-using static Cockpit.Plugin.Diagram.DiagramChannel;
+using static Cockpit.Plugin.Diagram.DiagramChannelContract;
 using D = Cockpit.Core.Abstractions.Diagrams.IDiagramAccessRegistry;
 using W = Cockpit.Core.Abstractions.Whiteboard.IWhiteboardAccessRegistry;
 using F = Cockpit.Core.Abstractions.Wireframe.IWireframeAccessRegistry;
@@ -257,7 +256,7 @@ internal sealed class SurfaceWindowOpener : IDisposable
     private readonly IPluginUiChannel _channel;
     private readonly IDisposable _subscription;
 
-    public SurfaceWindowOpener(ICockpitHost host, IPluginUiChannel channel)
+    public SurfaceWindowOpener(ICockpitUiHost host, IPluginUiChannel channel)
     {
         _channel = channel;
         _subscription = channel.Subscribe(OpenSurface, channelEvent => _Open(host, channel, channelEvent.Payload));
@@ -278,7 +277,7 @@ internal sealed class SurfaceWindowOpener : IDisposable
     }
 
     // Posted: the event arrives on the tool's thread. The window couples to the calling session as it always did.
-    private static void _Open(ICockpitHost host, IPluginUiChannel channel, JsonElement payload)
+    private static void _Open(ICockpitUiHost host, IPluginUiChannel channel, JsonElement payload)
     {
         var surfaceId = ReadString(payload, 0);
         var kind = ReadString(payload, 1);

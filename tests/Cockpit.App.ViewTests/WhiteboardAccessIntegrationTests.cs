@@ -97,7 +97,8 @@ public class WhiteboardAccessIntegrationTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -108,7 +109,7 @@ public class WhiteboardAccessIntegrationTests
         var registry = new WhiteboardAccessRegistry();
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
-        DiagramPluginUi.Initialize(plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
 
         // AC-850/AC-896: the whiteboard is no longer a workspace type — the "Whiteboards" toolbar action opens the
         // list dialog, whose header's "New whiteboard" button opens the board as a window bound to the active

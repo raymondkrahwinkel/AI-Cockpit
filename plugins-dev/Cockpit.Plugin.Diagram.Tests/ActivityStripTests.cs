@@ -6,9 +6,18 @@ using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.CompanionTools;
+using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Docking;
+using Cockpit.Plugins.Abstractions.ManagedCli;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -220,7 +229,12 @@ public class ActivityStripTests
         }
     }
 
-    internal sealed class FakeHost : ICockpitHost
+    // F2.13/AC-1401: ActivityStrip and the workspace bodies take ICockpitUiHost now the UI part is its own assembly.
+    // Unlike ICockpitHost this interface has no default members, so everything beyond what a test actually reaches
+    // (ShowToast, and the members DiagramWorkspaceBody/WireframeWorkspaceBody/SurfaceSessionBinding touch) throws —
+    // same shape as Cockpit.Plugin.Discord.Tests.FakeCockpitUiHost. The registry reaches production code through
+    // UiChannel (TestChannel), never through a Services lookup — ICockpitUiHost carries no Services at all.
+    internal sealed class FakeHost : ICockpitUiHost
     {
         // AC-904 hands in a real IWireframeAccessRegistry rather than a fake: the wireframe surface's own tests want
         // the line surgery that actually runs, not a stand-in that agrees with them.
@@ -229,7 +243,6 @@ public class ActivityStripTests
             FakeWhiteboardRegistry? whiteboard = null,
             IWireframeAccessRegistry? wireframe = null)
         {
-            Services = new FakeServices(diagram, whiteboard, wireframe);
             UiChannel = diagram is null && whiteboard is null && wireframe is null ? null : TestChannel.For(diagram, whiteboard, wireframe);
         }
 
@@ -238,13 +251,19 @@ public class ActivityStripTests
 
         public List<string> Toasts { get; } = [];
 
-        public IServiceProvider Services { get; }
-
-        public ICockpitActions Actions => throw new NotSupportedException();
+        public IPluginUiChannel Channel => throw new NotSupportedException("No test reaches host.Channel directly — production code takes its own channel parameter.");
 
         public IPluginStorage Storage => throw new NotSupportedException();
 
-        public ICockpitSessionObserver Sessions => throw new NotSupportedException();
+        public bool HasSettings => throw new NotSupportedException();
+
+        public string? ActivePaneId => null;
+
+        public string? ActiveSessionWorkingDirectory => null;
+
+        public SessionUsageSnapshot? ActiveSessionUsage => null;
+
+        public event EventHandler? ActiveSessionChanged { add { } remove { } }
 
         public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
             Toasts.Add(message);
@@ -253,28 +272,137 @@ public class ActivityStripTests
         {
         }
 
+        public void AddSettings(Func<Control> createView, string category)
+        {
+        }
+
+        public Task ShowSettingsAsync() => Task.CompletedTask;
+
+        public void OnSettingsSaved(Action callback)
+        {
+        }
+
         public void AddSideMenuButton(string title, Action onInvoke)
         {
         }
+
+        public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke) =>
+            throw new NotSupportedException();
 
         public void AddSideMenuSection(string title, Func<Control> createView)
         {
         }
 
+        public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)
+        {
+        }
+
+        public void AddSessionBanner(Func<IPluginSessionContext, Control> createView)
+        {
+        }
+
+        public void AddSessionHeaderAction(PluginSessionAction action)
+        {
+        }
+
+        public void AddToolbarAction(ToolbarAction action)
+        {
+        }
+
+        public void AddShortcut(PluginShortcut shortcut)
+        {
+        }
+
+        public void AddConversationPicker(ConversationPickerRegistration picker)
+        {
+        }
+
+        public void AddProviderConfigView(string providerId, Func<string?, IPluginProviderConfigView> createView)
+        {
+        }
+
+        public void AddWidget(WidgetRegistration registration)
+        {
+        }
+
+        public void AddDockPanel(DockPanelRegistration registration)
+        {
+        }
+
+        public void AddCompanionTool(CompanionToolRegistration registration)
+        {
+        }
+
+        public void AddWorkspaceType(WorkspaceTypeRegistration registration)
+        {
+        }
+
+        public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
+
+        public Control? CreateEmbeddedSessionView(string paneId) => null;
+
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
             Task.CompletedTask;
 
-        private sealed class FakeServices(
-            FakeDiagramRegistry? diagram,
-            FakeWhiteboardRegistry? whiteboard,
-            IWireframeAccessRegistry? wireframe) : IServiceProvider
+        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
+            Task.CompletedTask;
+
+        public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null) =>
+            Task.CompletedTask;
+
+        public Control CreateMarkdownView(string markdown) => new TextBlock();
+
+        public Control CreateHelpHint(string article, string? section = null, string? label = null) => new Panel();
+
+        public void OpenHelp(string article, string? section = null)
         {
-            public object? GetService(Type serviceType) =>
-                serviceType == typeof(IDiagramAccessRegistry) ? diagram :
-                serviceType == typeof(IWhiteboardAccessRegistry) ? whiteboard :
-                serviceType == typeof(IWireframeAccessRegistry) ? wireframe :
-                null;
         }
+
+        public bool HasHelp(string article, string? section = null) => false;
+
+        public Task SetClipboardTextAsync(string text) => Task.CompletedTask;
+
+        public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => Task.FromResult(false);
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
+            throw new NotSupportedException("No test reaches consent.");
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("No test reaches consent.");
+
+        public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
+
+        public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+        public Task InsertIntoSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProjectMemoryRow>>([]);
+
+        public Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
+            Task.FromResult<IReadOnlyDictionary<string, string>?>(null);
+
+        public bool CanSendIntent(string targetPluginId, string action) => false;
+
+        public string? ResolveManagedCliPath(string cliName) => null;
+
+        public Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public bool RemoveManagedCli(string cliName) => throw new NotSupportedException();
+
+        public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     // A strip's ScrollViewer is a templated control — its content only joins the visual tree once the template

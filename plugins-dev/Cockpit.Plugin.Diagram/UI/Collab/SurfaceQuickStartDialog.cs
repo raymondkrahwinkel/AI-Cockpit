@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram.Collab;
 
@@ -17,7 +17,7 @@ internal sealed record SurfaceQuickStart(string Name, string? SessionPaneId, str
 internal static class SurfaceQuickStartDialog
 {
     public static async Task<SurfaceQuickStart?> ShowAsync(
-        ICockpitHost host,
+        ICockpitUiHost host,
         string title,
         string dialogKey,
         string defaultName,
@@ -37,8 +37,8 @@ internal static class SurfaceQuickStartDialog
                 nameBox.SelectAll();
             };
 
-            var activePaneId = host.Sessions.ActivePaneId;
-            var sessionLabel = host.Sessions.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
+            var activePaneId = host.ActivePaneId;
+            var sessionLabel = host.ActiveSessionUsage?.ProfileLabel ?? activePaneId;
             var coupleSession = new CheckBox
             {
                 Content = activePaneId is null ? "No active session to link" : $"Link to session · {sessionLabel}",
