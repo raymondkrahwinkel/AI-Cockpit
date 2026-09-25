@@ -1,10 +1,13 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -28,7 +31,8 @@ public class GitHubModelsProviderPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // AC-1393: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "github-models-provider", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -60,6 +64,14 @@ public class GitHubModelsProviderPluginLoadTests
             // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
             PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
         }
+
+        // AC-1393: the UI part registers the real config view the backend's own CreateConfigView only placeholds.
+        Assert.Equal("Cockpit.Plugin.GitHubModelsProvider.UI.dll", manifest.UiAssembly);
+        Assert.Equal("Cockpit.Plugin.GitHubModelsProvider.UI.GitHubModelsProviderUi", manifest.UiEntryType);
+        var uiPart = Assert.IsAssignableFrom<ICockpitPluginUi>(PluginUiManager.ActivateUi(discovered, plugin));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiPart.InitializeUi(uiHost);
+        uiHost.Received(1).AddProviderConfigView("github-models-provider.github-models", Arg.Any<Func<string?, IPluginProviderConfigView>>());
 
         plugin.Dispose();
     }
