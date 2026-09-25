@@ -117,22 +117,22 @@ internal sealed class SessionPullRequestBannerControl : UserControl
         IsVisible = false;
 
         _refresh = new DispatcherTimer { Interval = RefreshInterval };
-        _refresh.Tick += (_, _) => _ = _LoadAsync();
+        _refresh.Tick += _OnLoadRequested;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _loadCts = new CancellationTokenSource();
-        _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
+        _session.WorkingDirectoryChanged += _OnLoadRequested;
         _refresh.Start();
-        _ = _LoadAsync();
+        _OnLoadRequested(this, EventArgs.Empty);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
+        _session.WorkingDirectoryChanged -= _OnLoadRequested;
         _refresh.Stop();
         // Cancel any in-flight gh call so a hung network request does not outlive the closed panel.
         _loadCts?.Cancel();
@@ -140,7 +140,20 @@ internal sealed class SessionPullRequestBannerControl : UserControl
         _loadCts = null;
     }
 
-    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _ = _LoadAsync();
+    // AC-1396: what the timer, the attach and a directory change all start. An event handler cannot hand the task
+    // back, so the load is awaited here and a failure hides the banner instead of going unobserved.
+    private async void _OnLoadRequested(object? sender, EventArgs e)
+    {
+        try
+        {
+            await _LoadAsync();
+        }
+        catch (Exception)
+        {
+            _current = null;
+            IsVisible = false;
+        }
+    }
 
     private async Task _LoadAsync()
     {

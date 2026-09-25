@@ -139,19 +139,29 @@ internal sealed class GitHubSessionHeaderControl : UserControl
     }
 
     // Opens the picker for one pane — what the header menu's "Track a GitHub issue" runs.
-    public static void Pick(ICockpitUiHost host, IPluginSessionContext session) =>
-        // One picker per session pane: a second pick for the same pane should refocus it, not open another.
-        _ = host.ShowDialogAsync(
-            "Track an issue in this session",
-            () => new GitHubIssuePickerControl(
-                host,
-                session.PaneId,
-                issue => host.Channel.AskAsync<object>(
-                    GitHubIssuesChannel.Link,
-                    new GitHubIssuesLinkRequest(session.PaneId, issue, session.WorkingDirectory))),
-            $"track.{session.PaneId}",
-            width: 720,
-            height: 520);
+    // A menu action cannot await, so the picker is awaited here and a failure to open it is told rather than lost.
+    public static async void Pick(ICockpitUiHost host, IPluginSessionContext session)
+    {
+        try
+        {
+            // One picker per session pane: a second pick for the same pane should refocus it, not open another.
+            await host.ShowDialogAsync(
+                "Track an issue in this session",
+                () => new GitHubIssuePickerControl(
+                    host,
+                    session.PaneId,
+                    issue => host.Channel.AskAsync<object>(
+                        GitHubIssuesChannel.Link,
+                        new GitHubIssuesLinkRequest(session.PaneId, issue, session.WorkingDirectory))),
+                $"track.{session.PaneId}",
+                width: 720,
+                height: 520);
+        }
+        catch (Exception exception)
+        {
+            host.ShowToast($"Could not open the issue picker: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
 
     private void _ShowMenu(GitHubIssue issue)
     {

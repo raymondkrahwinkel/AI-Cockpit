@@ -269,7 +269,25 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         root.Children.Add(split);
         Content = root;
 
-        _ = _LoadAsync(forceRefresh: false);
+        AttachedToVisualTree += _OnFirstAttached;
+    }
+
+    // AC-1396: the first load, explicit rather than fired from the constructor and forgotten; the first attach
+    // awaits it, and a caller or a test may await it too.
+    internal Task InitializeAsync() => _LoadAsync(forceRefresh: false);
+
+    // An event handler is the one place that cannot hand the task back, so the load is awaited and caught here.
+    private async void _OnFirstAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        AttachedToVisualTree -= _OnFirstAttached;
+        try
+        {
+            await InitializeAsync();
+        }
+        catch (Exception exception)
+        {
+            _SetStatus($"Could not load pull requests: {exception.Message}");
+        }
     }
 
     private async Task _LoadAsync(bool forceRefresh)

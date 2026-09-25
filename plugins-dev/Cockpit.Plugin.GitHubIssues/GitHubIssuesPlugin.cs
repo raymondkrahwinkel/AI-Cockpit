@@ -138,10 +138,10 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         _Handle<GitHubIssuesPaneRequest, string?>(host, GitHubIssuesChannel.LinkedRepository, (request, cancellationToken) =>
             GitHubRepositoryField.ResolvePreferredRepositoryAsync(host, request.PaneId, cancellationToken));
 
-        _Handle<GitHubIssuesLinkRequest, object?>(host, GitHubIssuesChannel.Link, (request, _) =>
+        _Handle<GitHubIssuesLinkRequest, object?>(host, GitHubIssuesChannel.Link, async (request, _) =>
         {
-            links.Link(request.PaneId, request.Issue, request.WorkingDirectory);
-            return Task.FromResult<object?>(null);
+            await links.LinkAsync(request.PaneId, request.Issue, request.WorkingDirectory);
+            return null;
         });
 
         _Handle<GitHubIssuesPaneRequest, object?>(host, GitHubIssuesChannel.Unlink, (request, _) =>

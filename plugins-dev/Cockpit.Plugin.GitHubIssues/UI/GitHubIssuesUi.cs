@@ -1,5 +1,6 @@
 using Material.Icons;
 using Cockpit.Plugin.GitHubIssues.Contracts;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -23,7 +24,7 @@ public sealed class GitHubIssuesUi : ICockpitPluginUi
         host.AddSideMenuButton(
             "GitHub Issues",
             // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host), "issues", width: 1280, height: 860));
+            () => _OpenDialog(host, settings));
 
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
         host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, settings));
@@ -35,5 +36,18 @@ public sealed class GitHubIssuesUi : ICockpitPluginUi
         {
             IconKind = MaterialIconKind.Github,
         });
+    }
+
+    // A menu click cannot await, so the dialog is awaited here and a failure to open it is told rather than lost.
+    private static async void _OpenDialog(ICockpitUiHost host, GitHubIssuesSettings settings)
+    {
+        try
+        {
+            await host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host), "issues", width: 1280, height: 860);
+        }
+        catch (Exception exception)
+        {
+            host.ShowToast($"Could not open GitHub Issues: {exception.Message}", PluginToastSeverity.Error);
+        }
     }
 }

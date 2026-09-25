@@ -111,7 +111,20 @@ internal sealed class PullRequestRefreshSource : IDisposable
 
         // Due time zero: a fetch starts the moment the source exists, not after the first full interval — the
         // persisted/empty snapshot above is what a view shows in the meantime, never a wait.
-        _timer = new Timer(_ => _ = RefreshAsync(forceRefresh: false), null, TimeSpan.Zero, pollInterval);
+        _timer = new Timer(_ => _OnTick(), null, TimeSpan.Zero, pollInterval);
+    }
+
+    // AC-1396: a timer callback cannot await, so the poll is awaited here; RefreshAsync keeps its own failure as
+    // LastError, and this catch is only the last line before an async void would take the process down.
+    private async void _OnTick()
+    {
+        try
+        {
+            await RefreshAsync(forceRefresh: false);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     // The last known answer — always available synchronously, whatever loaded it (a previous run, an earlier tick, a manual refresh).
