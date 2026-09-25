@@ -80,6 +80,9 @@
     <!-- Same pattern for the YouTrack plugin (#42) — HTTP-only (no CLI), mirroring the Pull Requests plugin. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for Autopilot (AC-1398): builds it first, so the split test can read its run backend's IL. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
     <!-- Same pattern for the Gemini/OpenAI provider plugin (#45) — the first session-provider plugin, so
          the loader integration test can load its real assembly and prove AddSessionProvider registers. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GeminiProvider\Cockpit.Plugin.GeminiProvider.csproj"

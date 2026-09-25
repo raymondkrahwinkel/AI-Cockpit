@@ -47,7 +47,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
@@ -84,7 +84,7 @@ public class AutopilotRunCoordinatorTests
 
         var environment = new AutopilotRunEnvironment(
             "/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", RunId: "run-1", RunLabel: "run");
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
@@ -118,7 +118,7 @@ public class AutopilotRunCoordinatorTests
 
         var environment = new AutopilotRunEnvironment(
             "/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", CollectionBranch: "release/epic");
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
@@ -163,7 +163,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "tried but it does not compile"));
@@ -192,7 +192,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "done"));
@@ -221,7 +221,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
@@ -243,7 +243,7 @@ public class AutopilotRunCoordinatorTests
 
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request => request.StartWithInputDisabled && request.IsolateInWorktree));
@@ -264,7 +264,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
         var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", RunId: "run-7", RunLabel: "AC-251 - persist usage");
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
@@ -287,7 +287,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
         var environment = new AutopilotRunEnvironment("/plain/folder", null, IsolateSteps: false);
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
 
@@ -315,7 +315,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.EnableCurrentStepInput();
@@ -349,7 +349,7 @@ public class AutopilotRunCoordinatorTests
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
         var shown = new TaskCompletionSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         // The step session ends with a reason (the fail-closed refusal in the host) before it ever reports done.
@@ -384,7 +384,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
         var run = coordinator.RunAsync(
-            context, _Session("ceo-pane"), _Settings(maxAttempts: 2),
+            context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 2),
             _ => Interlocked.Increment(ref shownCount), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await _Until(() => shownCount >= 1);
@@ -420,7 +420,7 @@ public class AutopilotRunCoordinatorTests
             stepStallTimeout: TimeSpan.FromMilliseconds(80));
 
         var shown = new TaskCompletionSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         await run.WaitAsync(Timeout);
@@ -454,7 +454,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
 
         // Steady progress across ~180ms — far past the 100ms stall window, but each 30ms gap resets it.
@@ -489,7 +489,7 @@ public class AutopilotRunCoordinatorTests
         var ceoSends = 0;
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await _Until(() => ceoSends >= 1); // the validation turn reached the CEO — a validation is now pending
@@ -525,7 +525,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
         // Park the run on the operator through the live mechanism: a worker consults, the CEO escalates it to the operator.
@@ -617,7 +617,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         // The run moved the issue to Develop the moment it started — before any step reports, so it never sits on Backlog.
@@ -649,7 +649,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
@@ -691,7 +691,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
@@ -766,7 +766,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "reviewed"));
         await validationSent.Task.WaitAsync(Timeout);
@@ -810,7 +810,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
         using var cancel = new CancellationTokenSource();
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cancel.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cancel.Token);
         await shown.Task.WaitAsync(Timeout);
         Assert.True(coordinator.ReportStepDone("step-pane", "reviewed"));
         await validationSent.Task.WaitAsync(Timeout);
@@ -882,7 +882,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
         // The worker consults its manager — the question is relayed into the CEO session and the run stays Running (a
@@ -913,7 +913,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
         Assert.True((await coordinator.ReportConsultAsync("step-pane", "Which db?")));
@@ -947,7 +947,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
         Assert.True((await coordinator.ReportConsultAsync("step-pane", "Need a prod credential.")));
@@ -982,7 +982,7 @@ public class AutopilotRunCoordinatorTests
         using var cts = new CancellationTokenSource();
         // The CEO session has already ended (its Completion has fired) — there is no live manager to consult.
         var endedCeo = _Session("ceo-pane", Task.FromResult<string?>("the CEO session ended"));
-        var run = coordinator.RunAsync(context, endedCeo, _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, endedCeo, _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
         // Fail-closed: with no live CEO the consult goes straight to the operator instead of being dropped.
@@ -1012,7 +1012,7 @@ public class AutopilotRunCoordinatorTests
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1, maxConsults: 1), _ => Interlocked.Increment(ref embeds), _ => { }, _Env(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 1, maxConsults: 1), _ => Interlocked.Increment(ref embeds), _ => { }, _Env(), _DirectUi, cts.Token);
 
         // Step 1: first consult reaches the CEO (count 1, not over the cap of 1).
         await _Until(() => embeds >= 1);
@@ -1063,7 +1063,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
         var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run");
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
@@ -1085,7 +1085,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
         var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run");
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context.EmbedSession, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
@@ -1121,7 +1121,7 @@ public class AutopilotRunCoordinatorTests
         // maxAttempts: 1 — a rejected gate settles Failed immediately (no rework), so this test isolates the
         // validation-routing question from the shared-fix-step machinery covered elsewhere.
         var run = coordinator.RunAsync(
-            context, _Session("ceo-pane"), _Settings(maxAttempts: 1),
+            context.EmbedSession, _Session("ceo-pane"), _Settings(maxAttempts: 1),
             _ => Interlocked.Increment(ref shownCount), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await _Until(() => shownCount >= 2);
@@ -1221,7 +1221,8 @@ public class AutopilotRunCoordinatorTests
 
         public ProgressingSession(string paneId) => PaneId = paneId;
 
-        public Control View { get; } = new TextBlock();
+        // AC-1398: the run backend never reads a view; reading one fails the test.
+        public Control View => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view.");
 
         public string PaneId { get; }
 
@@ -1245,7 +1246,7 @@ public class AutopilotRunCoordinatorTests
     private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)
     {
         var session = Substitute.For<IEmbeddedSession>();
-        session.View.Returns(new TextBlock());
+        session.View.Returns(_ => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view."));
         session.PaneId.Returns(paneId);
         session.CloseAsync().Returns(Task.CompletedTask);
         // A live session's Completion has not fired; a never-completing task models that, so the coordinator waits on

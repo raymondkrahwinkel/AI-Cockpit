@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Cockpit.TestSupport;
 using NSubstitute;
@@ -82,6 +83,7 @@ public class ThemePaletteBaselineTests
 
         return new AutopilotPlanWorkspaceBody(
             host,
+            Substitute.For<ICockpitUiHost>(),
             context,
             new AutopilotSettings(storage),
             new AutopilotPlanController(),

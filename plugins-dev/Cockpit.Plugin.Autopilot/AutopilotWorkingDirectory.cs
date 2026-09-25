@@ -1,4 +1,4 @@
-using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot;
 
@@ -7,11 +7,11 @@ namespace Cockpit.Plugin.Autopilot;
 // on whether it is a git repository — that decision is made downstream, this only resolves where it is.
 internal static class AutopilotWorkingDirectory
 {
-    public static string Resolve(IWorkspaceContext context, string? chosen)
+    public static string Resolve(ICockpitSessionObserver sessions, string? chosen)
     {
         var directory = !string.IsNullOrWhiteSpace(chosen)
             ? chosen
-            : context.Sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
+            : sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
                 ? active
                 : Directory.GetCurrentDirectory();
 

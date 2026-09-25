@@ -73,7 +73,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
 | `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
-| `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync` |
+| `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync`, `ICockpitHost.EmbedSession` |
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitActions.SetClipboardTextAsync` |
@@ -575,7 +575,10 @@ public interface IWorkspaceContext
 - `EmbedSession` — starts a real host session and returns a control embedding its live view, for your body to
   place wherever it wants (see [`IEmbeddedSession`](#iembeddedsession)). **The host owns the session's
   lifetime** — it keeps it out of the session grid and ends it when the workspace (or the app) closes; your body
-  owns only the place, never the lifetime.
+  owns only the place, never the lifetime. A backend part that drives the sessions a workspace shows embeds them
+  with `host.EmbedSession(workspaceId, request)` instead (AC-1398, host 0.43.0): the UI part hands it the
+  `WorkspaceId`, the backend holds the session by `PaneId`, and the UI part places its view with
+  `CreateEmbeddedSessionView(paneId)`. Null when the host cannot embed.
 - `RefreshRequested` — raised when the host asks this workspace to refresh.
 - **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
   theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured

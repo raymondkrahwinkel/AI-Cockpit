@@ -1,15 +1,13 @@
-using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
-using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// Autopilot (AC-94/AC-174): the operator-triggered "issue → merge-ready PR" plugin. The CEO plans the work, the
-// operator approves it once, then an autonomous run drives each step — embedding an isolated session per step,
-// validating it, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands the issue to the CEO.
+// Autopilot (AC-94/AC-174): "issue → merge-ready PR" — the CEO plans, the operator approves once, a run drives each step.
+// AC-1398: the backend part — the runs, the plan and the MCP tools. It names no UI type, so a backend without a window
+// loads it; AutopilotUi, the UI entry type in this same assembly, registers the workspace.
 public sealed class AutopilotPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -17,6 +15,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         DisplayName: "Autopilot",
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
+
+    // ponytail: the in-process handoff to AutopilotUi while both parts share this assembly; AC-1418 replaces it with
+    // the channel. One plugin instance per load context, so one value.
+    internal static AutopilotParts? Parts { get; private set; }
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -157,12 +159,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             return new Dictionary<string, string> { ["status"] = "planning", ["issue"] = run.IssueId };
         });
 
-        // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history, templates))
-        {
-            IconKind = MaterialIconKind.RobotHappyOutline,
-            Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
-        });
+        Parts = new AutopilotParts(host, settings, planController, manager, queue, history, templates);
 
         // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
         // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without

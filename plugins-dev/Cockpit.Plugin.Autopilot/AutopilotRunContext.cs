@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -6,12 +5,12 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.Plugin.Autopilot;
 
 // One running Autopilot run and its surface state (AC-174): its own plan controller and coordinator, the CEO validator
-// session it embeds, and the live step view to show. Runs the plan to a settled end, raising `Changed` as its
+// session it embeds, and the pane of the live step session to show. Runs the plan to a settled end, raising `Changed` as its
 // pipeline or step view moves. Several can run at once: each is independent and self-gates its own panes.
 internal sealed class AutopilotRunContext
 {
     private readonly ICockpitHost _host;
-    private readonly IWorkspaceContext _context;
+    private readonly string _workspaceId;
     private readonly AutopilotSettings _settings;
     private readonly Func<Action, Task> _runOnUi;
     private readonly CancellationTokenSource _cts = new();
@@ -71,10 +70,10 @@ internal sealed class AutopilotRunContext
                 : $"{AutopilotValidatorBrief.For(plan)}\n\n{carryOver}",
         };
 
-    public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
+    public AutopilotRunContext(ICockpitHost host, string workspaceId, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
     {
         _host = host;
-        _context = context;
+        _workspaceId = workspaceId;
         _settings = settings;
         _runOnUi = runOnUi;
 
@@ -113,11 +112,11 @@ internal sealed class AutopilotRunContext
     // the next sub on a surface that is going away, even when the run's own phase already read as settled.
     public bool IsCancelled => _cts.IsCancellationRequested;
 
-    // The running step's live view, or null between steps.
-    public Control? StepView { get; private set; }
+    // The pane of the running step's session, or null between steps. The surface asks the host for its view (AC-1398).
+    public string? StepPaneId { get; private set; }
 
-    // The CEO validator's live session view — shown in place of the step while the CEO validates a finished step.
-    public Control? CeoView => _ceo?.View;
+    // The pane of the CEO validator's session — shown in place of the step while the CEO validates a finished step.
+    public string? CeoPaneId => _ceo?.PaneId;
 
     // Whether the CEO is validating a just-finished step right now: the surface swaps the
     // right pane to the CEO session and a clear banner while this is true, so the validation is not a small side note.
@@ -155,7 +154,7 @@ internal sealed class AutopilotRunContext
 
         try
         {
-            var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
+            var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_host.Sessions, plan.WorkingDirectory);
 
             // Whether the run isolates each step in a worktree (AC-174). Only a folder the host positively reports
             // is NOT a git repository runs without isolation; Unknown (older host, failed probe) stays isolated,
@@ -198,7 +197,7 @@ internal sealed class AutopilotRunContext
             IEmbeddedSession? ceo = null;
             await _runOnUi(() =>
             {
-                ceo = _context.EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, plan, RunId));
+                ceo = _EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, plan, RunId));
             });
 
             if (ceo is null)
@@ -211,7 +210,7 @@ internal sealed class AutopilotRunContext
             Controller.Approve();
 
             var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch, RunId, plan.Label, collectionBranch);
-            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
+            await Coordinator.RunAsync(_EmbedSession, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
         }
         catch (Exception)
         {
@@ -222,7 +221,7 @@ internal sealed class AutopilotRunContext
             Controller.Changed -= OnControllerChanged;
             await _runOnUi(() =>
             {
-                StepView = null;
+                StepPaneId = null;
                 if (_ceo is { } settled)
                 {
                     _ceo = null;
@@ -274,7 +273,7 @@ internal sealed class AutopilotRunContext
         IEmbeddedSession? fresh = null;
         await _runOnUi(() =>
         {
-            fresh = _context.EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, Plan, RunId, carryOver));
+            fresh = _EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, Plan, RunId, carryOver));
             if (fresh is null)
             {
                 return;
@@ -289,9 +288,14 @@ internal sealed class AutopilotRunContext
         return fresh;
     }
 
-    private void _ShowStepView(Control view)
+    // AC-1398: the run's sessions are embedded in its workspace by id, so the run holds no workspace object of the UI's.
+    // A host that cannot embed throws, as the workspace's own EmbedSession did, so a step still notes why it faulted.
+    private IEmbeddedSession _EmbedSession(EmbeddedSessionRequest request) =>
+        _host.EmbedSession(_workspaceId, request) ?? throw new InvalidOperationException("This host cannot embed sessions.");
+
+    private void _ShowStepView(string paneId)
     {
-        StepView = view;
+        StepPaneId = paneId;
         Changed?.Invoke();
     }
 
