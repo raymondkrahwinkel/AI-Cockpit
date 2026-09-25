@@ -30,6 +30,12 @@
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Docker\Cockpit.Plugin.Docker.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
+    <!-- AC-1394 acceptance 2: IntegrationPluginMcpEndpointMountTests.cs is one Theory over Docker, Kind,
+         Kubernetes and Proxmox, hosted here rather than duplicated four times — these three backend-only
+         references exist only for that Theory. -->
+    <ProjectReference Include="..\Cockpit.Plugin.Kind\Cockpit.Plugin.Kind.csproj" />
+    <ProjectReference Include="..\Cockpit.Plugin.Kubernetes\Cockpit.Plugin.Kubernetes.csproj" />
+    <ProjectReference Include="..\Cockpit.Plugin.Proxmox\Cockpit.Plugin.Proxmox.csproj" />
   </ItemGroup>
 
   <ItemGroup>
