@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -457,7 +456,7 @@ public class AutopilotEvidenceGateTests
     private static IEmbeddedSession _Session(string paneId, string? worktreePath = null)
     {
         var session = Substitute.For<IEmbeddedSession>();
-        session.View.Returns(new TextBlock());
+        session.View.Returns(_ => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view."));
         session.PaneId.Returns(paneId);
         session.WorktreePath.Returns(worktreePath);
         session.CloseAsync().Returns(Task.CompletedTask);

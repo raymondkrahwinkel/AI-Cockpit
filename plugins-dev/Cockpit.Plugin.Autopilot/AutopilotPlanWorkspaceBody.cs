@@ -31,8 +31,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly AutopilotTemplateStore _templates;
     private readonly AutopilotWorkspaceRuns _runs;
 
-    // Panes a view was asked for after the host had let them go (AC-1398), so each is traced once, not per render.
-    private readonly HashSet<string> _unknownPanes = new(StringComparer.Ordinal);
+    private readonly AutopilotSessionViews _sessionViews;
     private readonly ContentControl _bodyHost = new();
 
     // Which active run's pipeline the right pane shows, when picked explicitly via the "Needs you" badge (AC-440)
@@ -67,6 +66,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         _host = host;
         _uiHost = uiHost;
+        _sessionViews = new AutopilotSessionViews(uiHost, message => Trace.TraceWarning(message));
         _context = context;
         _settings = settings;
         _plan = plan;
@@ -1285,7 +1285,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Child = new DockPanel
             {
                 LastChildFill = true,
-                Children = { working, new Border { Child = _SessionView(ceo.PaneId) } },
+                Children = { working, new Border { Child = _sessionViews.For(ceo.PaneId) } },
             },
         };
         right.DetachedFromVisualTree += (_, _) => busy.Dispose();
@@ -1660,8 +1660,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // The right pane, in priority: a blockade the operator must answer (AC-155); the CEO's validation of a finished
         // step, shown as the CEO session under a clear banner so it is obvious the CEO is reviewing;
         // the live step session under an intervene bar; or a hint between steps.
-        var ceoView = _SessionView(context.CeoPaneId);
-        var stepView = _SessionView(context.StepPaneId);
+        var ceoView = _sessionViews.For(context.CeoPaneId);
+        var stepView = _sessionViews.For(context.StepPaneId);
         var validating = context.IsValidating && ceoView is not null;
         var right = new Border
         {
@@ -1780,28 +1780,6 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             LastChildFill = true,
             Children = { bar, new Border { Child = ceoView } },
         };
-    }
-
-    // AC-1398: a session's view comes from the host by its pane id. A pane the host has let go of shows nothing
-    // rather than an empty frame, and is traced once.
-    private Control? _SessionView(string? paneId)
-    {
-        if (paneId is null)
-        {
-            return null;
-        }
-
-        if (_uiHost.CreateEmbeddedSessionView(paneId) is { } view)
-        {
-            return view;
-        }
-
-        if (_unknownPanes.Add(paneId))
-        {
-            Trace.TraceWarning($"Autopilot: no embedded session view for pane '{paneId}'; nothing is shown for it.");
-        }
-
-        return null;
     }
 
     // Removes a control from whatever container currently parents it, so a persistent control (the live step view) can be
