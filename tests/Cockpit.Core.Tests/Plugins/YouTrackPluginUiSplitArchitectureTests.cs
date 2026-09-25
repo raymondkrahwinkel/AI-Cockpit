@@ -36,8 +36,12 @@ public class YouTrackPluginUiSplitArchitectureTests
     [InlineData("SetActiveSessionStatusAsync")]
     public void TheBackendAssembly_CallsNoActiveSessionMember(string member)
     {
-        var configuration = Path.GetFileName(Path.GetDirectoryName(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)));
-        var assembly = Path.Combine(_RepositoryRoot(), "plugins-dev", "Cockpit.Plugin.YouTrack", "bin", configuration ?? string.Empty, "net10.0", "Cockpit.Plugin.YouTrack.dll");
+        // The newest build under bin/, whatever its configuration: built through this project's reference, the
+        // plugin lands in bin/Debug even for a Release test run (the Configuration is not passed on, see AC-1392).
+        var assembly = Directory
+            .EnumerateFiles(Path.Combine(_RepositoryRoot(), "plugins-dev", "Cockpit.Plugin.YouTrack", "bin"), "Cockpit.Plugin.YouTrack.dll", SearchOption.AllDirectories)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .First();
 
         Assert.Empty(_CallersOf(assembly, member));
     }
