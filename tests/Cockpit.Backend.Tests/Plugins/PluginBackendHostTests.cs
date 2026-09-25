@@ -25,6 +25,7 @@ public class PluginBackendHostTests
         { "SetSessionName", host => host.SetSessionName(PaneId, "AC-1392"), pane => pane.Received(1).SetNameAsync("AC-1392") },
         { "SuggestSessionName", host => host.SuggestSessionName(PaneId, "AC-1392"), pane => pane.Received(1).SuggestNameAsync("AC-1392") },
         { "SetSessionStatusline", host => host.SetSessionStatusline(PaneId, "reviewing"), pane => pane.Received(1).SetStatuslineAsync("reviewing") },
+        { "InsertIntoSessionAsync", host => host.InsertIntoSessionAsync(PaneId, "draw a box"), pane => pane.Received(1).InsertTextAsync("draw a box") },
     };
 
     // Acceptance 2: decided under the launcher's exclusion, and the pane it found is the one acted on.
@@ -44,6 +45,25 @@ public class PluginBackendHostTests
         Assert.NotEmpty(member);
         await launcher.Received(1).RunExclusiveAsync(Arg.Any<Func<ISessionHandle?>>());
         reached(pane);
+    }
+
+    // AC-1399: placing text answers whether a live pane took it — false for a pane that is not there, and false for one
+    // whose handle has no input (headless), so a workflow step can fail visibly instead of doing nothing.
+    [Theory]
+    [InlineData(PaneId, true, true)]
+    [InlineData(PaneId, false, false)]
+    [InlineData("pane-9", true, false)]
+    public async Task InsertIntoSessionAsync_AnswersWhetherALivePaneTookTheText(string paneId, bool paneTakesText, bool expected)
+    {
+        var registry = new SessionRegistry();
+        var pane = _Pane(PaneId, "Echo");
+        pane.InsertTextAsync(Arg.Any<string>()).Returns(paneTakesText);
+        registry.Register(pane);
+        var host = _Host(registry, _InlineLauncher());
+
+        var answer = await Task.Run(() => host.InsertIntoSessionAsync(paneId, "draw a box"));
+
+        Assert.Equal(expected, answer);
     }
 
     // Acceptance 2's counter-proof: the pane closes on another thread after the decision and before the action. The
