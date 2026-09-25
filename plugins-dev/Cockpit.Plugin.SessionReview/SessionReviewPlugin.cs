@@ -1,14 +1,16 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Material.Icons;
+using Cockpit.Plugin.SessionReview.Contracts;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.SessionReview;
 
-// Per-session diff/review panel (AC-50): adds a "Review changes…" action to each session's header that opens a panel
-// showing the uncommitted git diff of that session's working directory, with one click to ask the session to review
-// its own changes. Makes the cockpit a review station — the quality guard before an agent's output lands. No local
-// state, so `ConfigureServices` is empty.
+// Per-session diff/review panel (AC-50): the backend part. It adds a "Review changes…" action to each session's
+// header that opens a panel showing the uncommitted git diff of that session's working directory — everything
+// that action needs (the panel, its dialog) lives in the UI part, SessionReviewUi (AC-1395), since it needs a
+// window. The backend keeps the intent handler: RegisterIntentHandler has no ICockpitUiHost equivalent, so the
+// git-status badge still reaches this plugin through it, and the backend forwards the open request to the UI
+// part over the plugin's own channel. No local state, so `ConfigureServices` is empty.
 public sealed class SessionReviewPlugin : ICockpitPlugin
 {
     // The intent another plugin opens this panel with (AC-961): the git-status badge in a session's header sends it
@@ -32,56 +34,18 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        host.AddSessionHeaderAction(new PluginSessionAction(
-            "Review changes…",
-            string.Empty,
-            session => _ = _OpenAsync(host, session))
-        {
-            IconKind = MaterialIconKind.FileCompare,
-        });
-
         host.RegisterIntentHandler(OpenIntentAction, intent =>
         {
-            _ = _OpenAsync(host, new IntentSession(
+            var request = new SessionReviewOpenRequest(
                 intent.Data.TryGetValue("paneId", out var pane) ? pane : string.Empty,
-                intent.Data.TryGetValue("workingDirectory", out var directory) ? directory : null));
+                intent.Data.TryGetValue("workingDirectory", out var directory) ? directory : null);
+            host.Channel.Publish(SessionReviewChannel.OpenEvent, JsonSerializer.SerializeToElement(request, SessionReviewChannel.Json));
 
             return Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
         });
     }
 
-    // One review dialog per pane: reopening for the same session should refocus it, not stack another.
-    private static Task _OpenAsync(ICockpitHost host, IPluginSessionContext session) => host.ShowDialogAsync(
-        "Session review",
-        () => new SessionDiffDialogControl(host, session),
-        $"review.{session.PaneId}",
-        // Wider and taller than the old flat list needed: the tree takes a fixed 260 on the left, and what
-        // is left has to hold a line of code plus two number gutters without wrapping every other line.
-        width: 1100,
-        height: 720);
-
     public void Dispose()
     {
-    }
-
-    // An intent carries strings, not a live session, so the caller's pane and directory come across as a snapshot —
-    // enough for the panel, which reads both only when it loads a diff.
-    private sealed class IntentSession(string paneId, string? workingDirectory) : IPluginSessionContext
-    {
-        public string PaneId { get; } = paneId;
-
-        public string? WorkingDirectory { get; } = workingDirectory;
-
-        public event EventHandler? WorkingDirectoryChanged
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<SessionOutputText>? OutputProduced
-        {
-            add { }
-            remove { }
-        }
     }
 }

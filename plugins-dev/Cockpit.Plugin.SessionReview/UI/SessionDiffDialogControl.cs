@@ -5,20 +5,21 @@ using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.SessionReview;
+namespace Cockpit.Plugin.SessionReview.UI;
 
 // The per-session review panel (AC-50): the uncommitted changes of the session's working directory as a tree of
 // changed files on the left and one file's diff on the right, with one click to ask the session to review its own
 // changes or to copy the whole diff. Read-only and operator-triggered — no consent gate.
-// The panel used to draw the entire diff as one flat list of coloured strings, headers and all, which made a review
-// of more than one file an exercise in scrolling for the next `diff --git` line. `DiffParser` now
-// recovers the structure git had already written into that text, and this control only lays it out.
+
+// The panel used to draw the entire diff as one flat list of coloured strings, headers and all, which made a
+// review of more than one file an exercise in scrolling for the next `diff --git` line. `DiffParser` now
+// recovers that structure so this control only lays it out.
 internal sealed class SessionDiffDialogControl : UserControl
 {
     // A large file is for scanning, not for rendering ten thousand text blocks; cap what is drawn and say
@@ -30,7 +31,7 @@ internal sealed class SessionDiffDialogControl : UserControl
 
     private static readonly FontFamily Mono = new("Cascadia Code,Consolas,DejaVu Sans Mono,monospace");
 
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginSessionContext _session;
     private readonly GitDiffReader _reader = new();
 
@@ -48,7 +49,7 @@ internal sealed class SessionDiffDialogControl : UserControl
     private string _diff = string.Empty;
     private string _branch = string.Empty;
 
-    public SessionDiffDialogControl(ICockpitHost host, IPluginSessionContext session)
+    public SessionDiffDialogControl(ICockpitUiHost host, IPluginSessionContext session)
     {
         _host = host;
         _session = session;
@@ -479,10 +480,10 @@ internal sealed class SessionDiffDialogControl : UserControl
     {
         try
         {
-            // InjectIntoActiveSessionAsync writes to the selected session, but this panel is about one specific
-            // session. Only inject when that session is the selected one — otherwise the review prompt would land in
-            // an unrelated session's input. If it is not selected (or none is), say so rather than inject blindly.
-            if (!string.Equals(_host.Sessions.ActivePaneId, _session.PaneId, StringComparison.Ordinal))
+            // ShowDialogAsync opens this panel for one specific session, but the active pane can still change
+            // while it is open. Only send when this panel's own session is the selected one — otherwise the
+            // review prompt would land in an unrelated session's input.
+            if (!string.Equals(_host.ActivePaneId, _session.PaneId, StringComparison.Ordinal))
             {
                 _host.ShowToast(
                     "Select this session first, then click Review — the prompt goes to the selected session.",
@@ -490,11 +491,11 @@ internal sealed class SessionDiffDialogControl : UserControl
                 return;
             }
 
-            await _host.Actions.InjectIntoActiveSessionAsync(ReviewPrompt.Build(_branch));
+            await _host.SendToSessionAsync(_session.PaneId, ReviewPrompt.Build(_branch));
         }
         catch (Exception)
         {
-            // Injecting is a convenience — a failure must not crash the dialog.
+            // Sending is a convenience — a failure must not crash the dialog.
         }
     }
 
@@ -504,7 +505,7 @@ internal sealed class SessionDiffDialogControl : UserControl
         {
             if (!string.IsNullOrEmpty(_diff))
             {
-                await _host.Actions.SetClipboardTextAsync(_diff);
+                await _host.SetClipboardTextAsync(_diff);
             }
         }
         catch (Exception)

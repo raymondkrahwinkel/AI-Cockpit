@@ -2,8 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.SessionReview.UI;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.TestSupport;
 using NSubstitute;
 using Path = System.IO.Path;
@@ -150,7 +151,7 @@ public class SessionDiffDialogControlTests : IDisposable
             var session = Substitute.For<IPluginSessionContext>();
             session.WorkingDirectory.Returns(repository);
 
-            var control = new SessionDiffDialogControl(Substitute.For<ICockpitHost>(), session);
+            var control = new SessionDiffDialogControl(Substitute.For<ICockpitUiHost>(), session);
             var window = new Window { Width = 1100, Height = 720, Content = control };
             window.Show();
             return new _Panel(window, control);
