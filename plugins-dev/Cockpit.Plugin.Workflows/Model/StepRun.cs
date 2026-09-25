@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace Cockpit.Plugin.Workflows.Engine;
+namespace Cockpit.Plugin.Workflows.Model;
 
 // One step of a run: what it was handed, what it produced, and what became of it.
 public sealed class StepRun

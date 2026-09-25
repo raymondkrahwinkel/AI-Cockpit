@@ -1,8 +1,10 @@
+extern alias UiAsm;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
-using Cockpit.Plugin.Workflows.Canvas;
-using Cockpit.Plugin.Workflows.Model;
+using UiAsm::Cockpit.Plugin.Workflows.UI.Canvas;
+using UiAsm::Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 

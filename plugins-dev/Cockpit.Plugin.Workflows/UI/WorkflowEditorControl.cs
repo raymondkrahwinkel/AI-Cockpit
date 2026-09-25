@@ -3,16 +3,17 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugin.Workflows.Canvas;
-using Cockpit.Plugin.Workflows.Engine;
+using Avalonia.Threading;
+using Cockpit.Plugin.Workflows.Contracts;
+using Cockpit.Plugin.Workflows.UI.Canvas;
 using Cockpit.Plugin.Workflows.Model;
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Workflows;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows;
+namespace Cockpit.Plugin.Workflows.UI;
 
 // Building one flow (#69): a toolbar that says which flow this is and whether it is armed, the canvas, and the
 // step picker standing open on the right — not hiding behind a click, because "what can I even add" is the
@@ -21,9 +22,9 @@ internal sealed class WorkflowEditorControl : UserControl
 {
     private readonly Workflow _workflow;
     private readonly Action _save;
-    private readonly WorkflowEngine _engine;
-    private readonly RunStore _runs;
+    private readonly ICockpitUiHost _host;
     private readonly RunPanel _runPanel;
+    private IDisposable? _runsRecorded;
 
     private WorkflowRun? _lastRun;
 
@@ -38,17 +39,13 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly TextBlock _status;
     private readonly TextBlock _saved;
 
-    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitHost host, RunStore runs, IReadOnlyList<IWorkflowStep> contributed)
+    // `lastRun` is the flow's most recent run, which the dialog asks the backend part for before opening this.
+    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitUiHost host, WorkflowRun? lastRun)
     {
         _workflow = workflow;
         _save = save;
-        _runs = runs;
+        _host = host;
         _runPanel = new RunPanel();
-
-        // The steps this build can actually perform. A type without a runner is skipped with a reason at run time,
-        // never counted as a success.
-        // The same engine the watcher uses: a flow must not do different things depending on who started it.
-        _engine = EngineFactory.Create(host, contributed);
 
         _execute = _ExecuteButton();
 
@@ -116,8 +113,8 @@ internal sealed class WorkflowEditorControl : UserControl
         // What a step has to work with comes from the last run, and a run outlives the session it was made in: the
         // history is stored. Without this a flow you ran yesterday opened with "nothing has flowed into this step",
         // which is not true, and is exactly the moment the panes are worth having.
-        _lastRun = runs.Load().FirstOrDefault(run => run.WorkflowId == workflow.Id);
-        if (_lastRun is { } lastRun)
+        _lastRun = lastRun;
+        if (lastRun is not null)
         {
             // Including a run this flow's own trigger fired while nobody was looking — a schedule catching up late,
             // or logged as missed (#AC-1359) — so opening the flow is how you find out, not a toast you had to see.
@@ -312,18 +309,49 @@ internal sealed class WorkflowEditorControl : UserControl
 
         try
         {
-            var run = await _engine.RunAsync(_workflow, trigger.Id, RunOrigin.Operator);
-
-            _lastRun = run;
-            _runs.Add(run);
-            _runPanel.Show(run);
-            _canvas.ShowRun(run);
+            // Run by the backend part, with the engine the watcher uses: a flow must not do different things depending
+            // on who started it. It records the run too; the answer is shown here, and the event again (harmlessly).
+            var run = await _host.Channel.AskAsync<WorkflowRun>(WorkflowsChannel.Run, new WorkflowsRunRequest(WorkflowJson.Write(_workflow), trigger.Id))
+                ?? throw new InvalidOperationException("The backend sent no run.");
+            _ShowRun(run);
+        }
+        catch (Exception exception)
+        {
+            _status.Text = $"Could not run this flow: {exception.Message}";
         }
         finally
         {
             _execute.Content = _ExecuteLabel();
             _RefreshExecutable();
         }
+    }
+
+    private void _ShowRun(WorkflowRun run)
+    {
+        _lastRun = run;
+        _runPanel.Show(run);
+        _canvas.ShowRun(run);
+    }
+
+    // AC-1399: a run of this flow that a trigger or an agent started shows here while the editor is open, as the
+    // editor's own does; the backend part publishes every run it records.
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _runsRecorded = _host.Channel.Subscribe(WorkflowsChannel.RunRecorded, recorded =>
+        {
+            if (recorded.Payload.Deserialize<WorkflowRun>(WorkflowsChannel.Json) is { } run && run.WorkflowId == _workflow.Id)
+            {
+                Dispatcher.UIThread.Post(() => _ShowRun(run));
+            }
+        });
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _runsRecorded?.Dispose();
+        _runsRecorded = null;
     }
 
     private static Control _Separator() => new Border

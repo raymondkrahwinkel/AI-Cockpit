@@ -4,7 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // The `+` that hangs off a way out with nothing after it (#69): click it and the picker asks what comes
 // next; drag it onto a step and you have drawn a wire to it. Both, because both are what a hand reaches for.

@@ -6,7 +6,7 @@ using Cockpit.Plugins.Abstractions.Workflows;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows;
+namespace Cockpit.Plugin.Workflows.UI;
 
 // The templates, as a dialog you can search rather than a menu you have to read (#69). A flyout works for three
 // flows; at thirty it is a wall of headings — and the plugins that ship them are only going to get more numerous, so

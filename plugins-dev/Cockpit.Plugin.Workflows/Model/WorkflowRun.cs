@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Workflows.Engine;
+namespace Cockpit.Plugin.Workflows.Model;
 
 // One execution of a flow (#69) — what happened, step by step. Kept, not thrown away: "it did not work" is not
 // something an operator can act on, and the only way to answer "why" is to have written down what each step got,

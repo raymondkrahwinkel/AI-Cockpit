@@ -23,9 +23,9 @@ public partial class ThemeHexColorGuardTests
             // job is to be told apart from each other and from the trigger's accent. Pointing them at status
             // tokens would give a decision node a colour this app reads as "blocked" — and the card's border is
             // already the channel that carries run status, so the two would contradict each other on one card.
-            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#C79A4A")] =
+            [("plugins-dev/Cockpit.Plugin.Workflows/UI/Canvas/WorkflowNodeControl.cs", "#C79A4A")] =
                 (1, "the decision node's kind stripe — a categorical colour, not a status"),
-            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
+            [("plugins-dev/Cockpit.Plugin.Workflows/UI/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
                 (1, "the plain step's kind stripe — a neutral slate, deliberately hueless so it cannot be read as a faded accent"),
         };
 

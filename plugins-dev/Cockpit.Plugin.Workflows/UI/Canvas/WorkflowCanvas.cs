@@ -6,7 +6,7 @@ using Avalonia.Threading;
 using Cockpit.Plugin.Workflows.Model;
 using Path = Avalonia.Controls.Shapes.Path;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // The flow editor's surface (#69), in n8n's visual language and with the cockpit's own steps: square icon tiles
 // on a dotted grid, wires with arrowheads, a labelled branch on a decision, and a `+` on every way out that
@@ -182,7 +182,7 @@ internal sealed class WorkflowCanvas : Border
     }
 
     // Paints the last run onto the flow: where it succeeded, where it was passed by, and where it broke.
-    public void ShowRun(Engine.WorkflowRun? run)
+    public void ShowRun(WorkflowRun? run)
     {
         foreach (var control in _nodes.Values)
         {
@@ -203,8 +203,8 @@ internal sealed class WorkflowCanvas : Border
 
             control.ShowRunStatus(step.Status switch
             {
-                Engine.RunStatus.Succeeded => "CockpitStatusDoneBrush",
-                Engine.RunStatus.Failed => "CockpitStatusWaitingBrush",
+                RunStatus.Succeeded => "CockpitStatusDoneBrush",
+                RunStatus.Failed => "CockpitStatusWaitingBrush",
                 _ => "CockpitTextFaintBrush",
             });
         }

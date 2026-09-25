@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // The canvas's dotted background (#69). A grid of dots rather than lines: it tells you where you are while you
 // pan and how far you have zoomed, without drawing a cage around the flow. Rendered as a tiled brush, so it

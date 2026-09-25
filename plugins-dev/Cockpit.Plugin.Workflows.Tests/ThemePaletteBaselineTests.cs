@@ -1,7 +1,10 @@
+extern alias UiAsm;
+
 using Avalonia.Controls;
-using Cockpit.Plugin.Workflows.Canvas;
-using Cockpit.Plugin.Workflows.Model;
-using Cockpit.Plugins.Abstractions;
+using UiAsm::Cockpit.Plugin.Workflows.UI.Canvas;
+using UiAsm::Cockpit.Plugin.Workflows.Model;
+using UiAsm::Cockpit.Plugin.Workflows.UI;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.TestSupport;
 using NSubstitute;
 
@@ -112,7 +115,7 @@ public class ThemePaletteBaselineTests
             },
         };
 
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         return new WorkflowManagerControl(workflows, host, templates: [], save: () => { });
     }
 

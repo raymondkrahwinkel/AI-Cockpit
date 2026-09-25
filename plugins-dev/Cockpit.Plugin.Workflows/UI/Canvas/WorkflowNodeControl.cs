@@ -8,7 +8,7 @@ using Cockpit.Plugin.Workflows.Model;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.Workflows.Canvas;
+namespace Cockpit.Plugin.Workflows.UI.Canvas;
 
 // One step on the canvas (#69). The interaction is n8n's, because it is proven; the look is the cockpit's, because
 // a copy of someone else's app is not a product. So: a wide card, not a square icon tile — the same compact,

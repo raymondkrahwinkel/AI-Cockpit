@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Workflows.Engine;
+namespace Cockpit.Plugin.Workflows.Model;
 
 // How a run, or one step of it, ended (#69).
 public enum RunStatus
