@@ -46,7 +46,7 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
             host.SuggestSessionName(paneId, SessionLabel.Name(issue)));
 
         Changed?.Invoke(this, paneId);
-        Picked?.Invoke(this, new IssuePicked(issue, workingDirectory));
+        Picked?.Invoke(this, new IssuePicked(issue, workingDirectory, paneId));
     }
 
     public void Unlink(string paneId)
@@ -62,5 +62,5 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
     }
 }
 
-// An issue was picked for a session: which issue, and where that session is working.
-internal sealed record IssuePicked(GitHubIssue Issue, string? WorkingDirectory);
+// An issue was picked for a session: which issue, where that session is working, and which session it is.
+internal sealed record IssuePicked(GitHubIssue Issue, string? WorkingDirectory, string PaneId);

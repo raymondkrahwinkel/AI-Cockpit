@@ -53,6 +53,7 @@ internal static class YouTrackWorkflowSteps
             ["branch"] = "web-14-fix-the-login-redirect",
             ["state"] = "Backlog",
             ["directory"] = "/home/you/projects/webshop",
+            ["session"] = "3f9c2a7e1b5d4c08a6e2f1d0b9c8a7e6",
         };
     }
 

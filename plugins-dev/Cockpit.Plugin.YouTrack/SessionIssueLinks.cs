@@ -48,7 +48,7 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
         _ = host.SuggestSessionName(paneId, link.Issue.IdReadable);
 
         Changed?.Invoke(this, paneId);
-        Linked?.Invoke(this, new IssueLinked(link, workingDirectory));
+        Linked?.Invoke(this, new IssueLinked(link, workingDirectory, paneId));
     }
 
     public void Unlink(string paneId)
@@ -65,4 +65,4 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
 }
 
 // A ticket was picked for a session: which ticket, and where that session is working.
-internal sealed record IssueLinked(LinkedIssue Link, string? WorkingDirectory);
+internal sealed record IssueLinked(LinkedIssue Link, string? WorkingDirectory, string PaneId);

@@ -106,12 +106,12 @@ public static class NodeCatalog
         new(
             "cockpit.inject",
             "Send to session",
-            "Put text into a session's prompt — the agent picks it up as if you typed it.",
+            "Put text into the prompt of the session you name — its name, its pane id, or {Start session.session} after a step that started one. It is placed, not sent: the session's input holds it as if you typed it.",
             "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Text"])
+            ["Session", "Text"])
         {
             IconKind = MaterialIconKind.Keyboard,
         },
@@ -132,12 +132,12 @@ public static class NodeCatalog
         new(
             "cockpit.set-status",
             "Set session status",
-            "Set the statusline under the active session's name — what it is working on, like a ticket number — and optionally rename it. Pair it with Start session to label a session after the ticket it just picked up; an empty status clears the line.",
+            "Set the statusline under the name of the session you name — what it is working on, like a ticket number — and optionally rename it. Pair it with Start session and name {Start session.session} to label a session after the ticket it just picked up; an empty status clears the line.",
             "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Status", "Name"])
+            ["Session", "Status", "Name"])
         {
             IconKind = MaterialIconKind.Tag,
         },

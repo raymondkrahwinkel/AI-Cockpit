@@ -54,6 +54,7 @@ internal static class GitHubWorkflowSteps
             ["url"] = "https://github.com/acme/webshop/issues/42",
             ["branch"] = "42-fix-the-login-redirect",
             ["directory"] = "/home/you/projects/webshop",
+            ["session"] = "3f9c2a7e1b5d4c08a6e2f1d0b9c8a7e6",
         };
     }
 

@@ -91,6 +91,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
                 ["branch"] = BranchName.From(linked.Link.Issue.IdReadable, linked.Link.Issue.Summary, settings.BranchPattern),
                 ["state"] = linked.Link.Issue.State ?? string.Empty,
                 ["directory"] = linked.WorkingDirectory ?? string.Empty,
+                ["session"] = linked.PaneId,
             });
 
         // The same rule for the second trigger: it fires on the move itself, wherever the operator made it.
