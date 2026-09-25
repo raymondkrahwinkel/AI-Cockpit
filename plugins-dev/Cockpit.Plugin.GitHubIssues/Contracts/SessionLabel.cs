@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.Contracts;
 
 // What a session working on an issue is called, and what it says it is doing. One definition, because the two
 // routes onto a session — starting a new one from the dialog and linking an issue to one already running (#AC-310)

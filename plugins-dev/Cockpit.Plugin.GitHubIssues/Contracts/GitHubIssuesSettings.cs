@@ -1,6 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.Contracts;
 
 // The plugin's settings, persisted through the host's per-plugin `IPluginStorage`. Two modes:
 // the local GitHub CLI (`UseGitHubCli` — uses your existing `gh` login and shows open

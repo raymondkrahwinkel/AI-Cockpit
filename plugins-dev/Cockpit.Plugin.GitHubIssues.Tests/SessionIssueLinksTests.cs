@@ -1,4 +1,6 @@
 
+using Cockpit.Plugin.GitHubIssues.Contracts;
+
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 // Linking an issue to a session is also what makes that session recognisable (#AC-310). Before this, only the

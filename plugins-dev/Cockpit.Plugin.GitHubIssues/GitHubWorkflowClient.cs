@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.GitHubIssues;

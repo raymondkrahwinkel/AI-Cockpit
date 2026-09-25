@@ -1,3 +1,5 @@
+extern alias UiAsm;
+
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -6,8 +8,14 @@ using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using NSubstitute;
 using Xunit.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.TestSupport;
+using GitHubIssue = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssue;
+using GitHubIssuesSettings = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssuesSettings;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -19,6 +27,9 @@ namespace Cockpit.Plugin.GitHubIssues.Tests;
 // The dialog fetches its own issues and there is no seam to hand it a list, so the loaded set is planted in
 // `_all` and every rebuild is driven the way the operator drives it — by typing in the search box, which is
 // the same `_ApplyFilter` path a refresh takes.
+//
+// AC-1396: the dialog talks to an ICockpitUiHost and reaches the backend part over the channel; the harness wires
+// the real backend plugin to an in-process channel, so linking an issue goes through the same handlers it does live.
 //
 // Every assertion here reads a value out first and asserts on that value: an assertion written as
 // `maybeNull?.Field.Should()...` is skipped in full when the value is null, which is precisely the state the
@@ -76,7 +87,7 @@ public class GitHubIssuesDialogControlTests
         // prompt reports its outcome the same way those do and needs no GitHub behind it, so it stands in for them
         // here: what is under test is that a rebuild-plus-restore does not wipe the line.
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = true;
+        harness.ActivePane = "pane-1";
         harness.Select(First);
         harness.Click("Add to prompt");
 
@@ -96,7 +107,7 @@ public class GitHubIssuesDialogControlTests
     {
         // The other half of the same rule: keeping the line across a rebuild must not turn into keeping it forever.
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = true;
+        harness.ActivePane = "pane-1";
         harness.Select(First);
         harness.Click("Add to prompt");
 
@@ -110,10 +121,26 @@ public class GitHubIssuesDialogControlTests
     });
 
     [Fact]
+    public void AddToPrompt_WithTwoSessions_SendsToTheOneThisWindowHasActive_AndNeverTheOther() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-1396 (D6): the UI host has no "inject into the active session"; the prompt goes to a pane by id. Two
+        // sessions are open — pane-1 and pane-2 — and this window has the second selected, so that is where it lands.
+        var harness = DialogHarness.Open(First, Second);
+        harness.ActivePane = "pane-2";
+        harness.Select(First);
+
+        harness.Click("Add to prompt");
+        harness.Close();
+
+        harness.Host.Received(1).SendToSessionAsync("pane-2", Arg.Is<string>(prompt => prompt.Contains("#41")));
+        harness.Host.DidNotReceive().SendToSessionAsync("pane-1", Arg.Any<string>());
+    });
+
+    [Fact]
     public void AddToPrompt_WithoutASession_ExplainsItselfWhileDisabled() => HeadlessAvalonia.Run(() =>
     {
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = false;
+        harness.ActivePane = null;
 
         harness.Select(First);
         var inject = harness.Button("Add to prompt");
@@ -131,13 +158,13 @@ public class GitHubIssuesDialogControlTests
     public void AStartedSession_MakesAddToPromptUsableAgain() => HeadlessAvalonia.Run(() =>
     {
         var harness = DialogHarness.Open(First, Second);
-        harness.Host.FakeActions.HasActiveSession = false;
+        harness.ActivePane = null;
         harness.Select(First);
         harness.Click("New session");
 
         // New session created the very thing Add to prompt was missing.
-        harness.Host.FakeActions.HasActiveSession = true;
-        harness.Host.OnSessionStarted?.Invoke("pane-1");
+        harness.ActivePane = "pane-1";
+        harness.OnSessionStarted?.Invoke("pane-1");
 
         var isEnabled = harness.Button("Add to prompt").IsEnabled;
         _out.WriteLine($"enabled after onStarted={isEnabled}");
@@ -149,21 +176,21 @@ public class GitHubIssuesDialogControlTests
     [Fact]
     public void AStartedSession_LinksTheIssueToWhereThatSessionWorks() => HeadlessAvalonia.Run(() =>
     {
+        // AC-1396: the link is made by the backend part, so what it raised — the issue-picked trigger — is the proof.
         var harness = DialogHarness.Open(First, Second);
-        harness.Observer.ActiveSessionWorkingDirectory = "/home/operator/repo";
-        IssuePicked? picked = null;
-        harness.Links.Picked += (_, args) => picked = args;
+        harness.WorkingDirectory = "/home/operator/repo";
 
         harness.Select(First);
         harness.Click("New session");
-        harness.Host.OnSessionStarted?.Invoke("pane-1");
+        harness.OnSessionStarted?.Invoke("pane-1");
 
-        var pickedNumber = picked?.Issue.Number;
-        var directory = picked?.WorkingDirectory;
-        _out.WriteLine($"picked={pickedNumber?.ToString() ?? "<none>"} directory={directory ?? "<null>"}");
+        var picked = harness.Backend.Triggers.Select(trigger => trigger.Data).FirstOrDefault();
+        var pickedNumber = picked?["issue"];
+        var directory = picked?["directory"];
+        _out.WriteLine($"picked={pickedNumber ?? "<none>"} directory={directory ?? "<null>"}");
         harness.Close();
 
-        Assert.Equal(First.Number, pickedNumber);
+        Assert.Equal(First.Number.ToString(), pickedNumber);
         Assert.Equal("/home/operator/repo", directory);
     });
 
@@ -178,7 +205,7 @@ public class GitHubIssuesDialogControlTests
 
         harness.Click("New session");
 
-        var sessionName = harness.Host.LastPrefill?.SessionName;
+        var sessionName = harness.LastPrefill?.SessionName;
         _out.WriteLine($"session name={sessionName ?? "<null>"}");
         harness.Close();
 
@@ -196,7 +223,7 @@ public class GitHubIssuesDialogControlTests
 
         harness.Click("New session");
 
-        var sessionName = harness.Host.LastPrefill?.SessionName;
+        var sessionName = harness.LastPrefill?.SessionName;
         _out.WriteLine($"session name={sessionName ?? "<null>"}");
         harness.Close();
 
@@ -218,7 +245,7 @@ public class GitHubIssuesDialogControlTests
 
         harness.Click("New session");
 
-        var link = harness.Host.LastPrefill?.LinkedProject;
+        var link = harness.LastPrefill?.LinkedProject;
         var fieldKey = link?.FieldKey;
         var value = link?.Value;
         _out.WriteLine($"link={fieldKey ?? "<null>"}={value ?? "<null>"}");
@@ -239,7 +266,7 @@ public class GitHubIssuesDialogControlTests
 
         harness.Click("New session");
 
-        var link = harness.Host.LastPrefill?.LinkedProject;
+        var link = harness.LastPrefill?.LinkedProject;
         _out.WriteLine($"link={link?.Value ?? "<null>"}");
         harness.Close();
 
@@ -256,7 +283,7 @@ public class GitHubIssuesDialogControlTests
 
         harness.Click("New session");
 
-        var opened = harness.Host.NewSessionDialogsOpened;
+        var opened = harness.NewSessionDialogsOpened;
         var stillArmed = harness.Button("New session").IsEnabled;
         _out.WriteLine($"dialogs opened={opened} button still armed={stillArmed}");
         harness.Close();
@@ -272,7 +299,7 @@ public class GitHubIssuesDialogControlTests
         harness.Select(First);
         harness.Click("New session");
 
-        harness.Host.CloseNewSessionDialog();
+        harness.CloseNewSessionDialog();
 
         var isEnabled = harness.Button("New session").IsEnabled;
         _out.WriteLine($"enabled after close={isEnabled}");
@@ -335,7 +362,7 @@ public class GitHubIssuesDialogControlTests
         harness.Select(First);
         harness.Click("Prompt preview");
 
-        harness.Host.MarkdownFailure = new MissingMethodException("ICockpitHost", "CreateMarkdownView");
+        harness.MarkdownFailure = new MissingMethodException("ICockpitHost", "CreateMarkdownView");
         harness.Select(Second);
 
         var description = harness.DescriptionText();
@@ -359,7 +386,7 @@ public class GitHubIssuesDialogControlTests
         harness.Select(First);
         harness.Click("Prompt preview");
 
-        harness.Host.MarkdownFailure = new InvalidOperationException("rendering failed for some other reason");
+        harness.MarkdownFailure = new InvalidOperationException("rendering failed for some other reason");
         var selectSecond = () => harness.Select(Second);
 
         Assert.Throws<InvalidOperationException>(selectSecond);
@@ -544,7 +571,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
-        harness.SetPossiblyTruncated(true);
+        harness.SetLoadedPage(possiblyTruncated: true, GitHubGhClient.IssueSearchLimit);
 
         harness.ReportLoaded();
 
@@ -564,7 +591,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
-        harness.SetPossiblyTruncated(false);
+        harness.SetLoadedPage(possiblyTruncated: false, GitHubGhClient.IssueSearchLimit);
 
         harness.ReportLoaded();
 
@@ -581,13 +608,14 @@ public class GitHubIssuesDialogControlTests
         // The two paths have their own constants (AC-519, criterion 4 — a test per pad), currently both 100, which
         // means a count-based assertion cannot tell "read GitHubIssuesClient.IssuePageLimit" apart from "read
         // GitHubGhClient.IssueSearchLimit by mistake" — the two happen to agree. What this does prove: the ternary's
-        // HTTP-mode branch runs and warns at its own boundary rather than only ever exercising the gh one.
+        // HTTP-mode branch runs and warns at its own boundary rather than only ever exercising the gh one. AC-1396: which
+        // route and limit applies is the backend part's call now; the dialog names the limit the search answered with.
         var issues = Enumerable.Range(1, GitHubIssuesClient.IssuePageLimit)
             .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = false };
         var harness = DialogHarness.Open(settings, "octocat", issues);
-        harness.SetPossiblyTruncated(true);
+        harness.SetLoadedPage(possiblyTruncated: true, GitHubIssuesClient.IssuePageLimit);
 
         harness.ReportLoaded();
 
@@ -610,7 +638,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
-        harness.SetPossiblyTruncated(true);
+        harness.SetLoadedPage(possiblyTruncated: true, GitHubGhClient.IssueSearchLimit);
 
         harness.ReportLoaded();
 
@@ -632,7 +660,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
-        harness.SetPossiblyTruncated(false);
+        harness.SetLoadedPage(possiblyTruncated: false, GitHubGhClient.IssueSearchLimit);
 
         harness.ReportLoaded();
 
@@ -647,25 +675,65 @@ public class GitHubIssuesDialogControlTests
     // kept to hand.
     private sealed class DialogHarness
     {
-        private DialogHarness(Window window, GitHubIssuesDialogControl dialog, GitHubIssuesSettings settings, FakeCockpitHost host, SessionIssueLinks links)
-        {
-            _window = window;
-            _dialog = dialog;
-            Settings = settings;
-            Host = host;
-            Links = links;
-        }
-
         private readonly Window _window;
         private readonly GitHubIssuesDialogControl _dialog;
+        private readonly GitHubIssuesPlugin _backend = new();
+        private TaskCompletionSource? _openDialog;
 
-        public GitHubIssuesSettings Settings { get; }
+        private DialogHarness(GitHubIssuesSettings settings)
+        {
+            var channel = new InProcessChannel();
+            Backend = new FakeCockpitHost { Channel = channel };
+            _backend.Initialize(Backend);
 
-        public FakeCockpitHost Host { get; }
+            Host = UiHostFake.Create(channel);
+            Host.ActivePaneId.Returns(_ => ActivePane);
+            Host.ActiveSessionWorkingDirectory.Returns(_ => WorkingDirectory);
+            Host.CreateMarkdownView(Arg.Any<string>()).Returns(call => MarkdownFailure is { } failure
+                ? throw failure
+                : new SelectableTextBlock { Text = call.Arg<string>(), TextWrapping = TextWrapping.Wrap });
 
-        public SessionIssueLinks Links { get; }
+            // The returned task completes when the dialog closes, exactly as the host's own does — a fake that completed
+            // it straight away would let a caller look like it never held the dialog open at all.
+            Host.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<Action<string>?>(), Arg.Any<Action?>())
+                .Returns(call =>
+                {
+                    NewSessionDialogsOpened++;
+                    LastPrefill = call.ArgAt<NewSessionPrefill?>(0);
+                    OnSessionStarted = call.ArgAt<Action<string>?>(1);
+                    _openDialog = new TaskCompletionSource();
+                    return _openDialog.Task;
+                });
 
-        public FakeSessionObserver Observer => Host.Observer;
+            _dialog = new GitHubIssuesDialogControl(settings, Host);
+            _window = new Window { Width = 1280, Height = 860, Content = _dialog };
+            _window.Show();
+            _window.UpdateLayout();
+        }
+
+        public ICockpitUiHost Host { get; }
+
+        // The backend part's host, where what the plugin did on a link (the trigger it raised) is recorded.
+        public FakeCockpitHost Backend { get; }
+
+        // The pane this window has selected — null for none, the way ICockpitUiHost.ActivePaneId says it.
+        public string? ActivePane { get; set; }
+
+        public string? WorkingDirectory { get; set; }
+
+        // What the markdown seam should throw instead of rendering, if anything. A `MissingMethodException`
+        // stands in for a cockpit older than this plugin's `minHostVersion` — one whose contract has no
+        // `CreateMarkdownView`. Any other exception stands in for the rest of the ways rendering a body can fail (AC-304).
+        public Exception? MarkdownFailure { get; set; }
+
+        // How many times the New-session dialog was asked for — what proves a second click cannot open a second one.
+        public int NewSessionDialogsOpened { get; private set; }
+
+        // What the last New-session request asked the dialog to open with — the fields the operator is shown.
+        public NewSessionPrefill? LastPrefill { get; private set; }
+
+        // The callback the last New-session request handed over, so a test can play the operator pressing Start.
+        public Action<string>? OnSessionStarted { get; private set; }
 
         public DataGrid Grid => _window.GetVisualDescendants().OfType<DataGrid>().First();
 
@@ -694,19 +762,14 @@ public class GitHubIssuesDialogControlTests
         // Opens with settings the caller configured first — e.g. an `GitHubIssuesSettings.InProgressLabel` to prove the label filter's preselection (AC-519).
         public static DialogHarness Open(GitHubIssuesSettings settings, string filter, params GitHubIssue[] issues)
         {
-            var host = new FakeCockpitHost();
-            var links = new SessionIssueLinks(host);
-            var dialog = new GitHubIssuesDialogControl(settings, host, links);
-
-            var window = new Window { Width = 1280, Height = 860, Content = dialog };
-            window.Show();
-            window.UpdateLayout();
-
-            var harness = new DialogHarness(window, dialog, settings, host, links);
+            var harness = new DialogHarness(settings);
             harness._PlantLoadedIssues(issues);
             harness.Type(filter);
             return harness;
         }
+
+        // Plays the operator closing the New-session dialog, which is what completes the task the caller awaited.
+        public void CloseNewSessionDialog() => _openDialog?.TrySetResult();
 
         // Drives the private label-filter population directly (AC-519) — the real fetch behind it goes through
         // `gh`/HTTP with no seam for a test to hand it a fake, so this proves the rendering/preselection half
@@ -727,23 +790,17 @@ public class GitHubIssuesDialogControlTests
             method.Invoke(_dialog, []);
         }
 
-        // Plants the AC-519 truncation signal a real fetch would have handed back — measured by the client against
-        // the raw page it received, before any local filtering. There is no live fetch here (see the class doc), so
-        // this is planted alongside `_PlantLoadedIssues` the same way that field is: directly, by name.
-        public void SetPossiblyTruncated(bool value)
+        // Plants the AC-519 truncation signal a real fetch would have handed back (measured by the client against the
+        // raw page, before local filtering) and, AC-1396, the page limit of the backend's route. No live fetch here
+        // (see the class doc), so both are planted the way `_PlantLoadedIssues` plants `_all`: directly, by name.
+        public void SetLoadedPage(bool possiblyTruncated, int pageLimit)
         {
-            var field = typeof(GitHubIssuesDialogControl).GetField("_possiblyTruncated", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _possiblyTruncated.");
-            field.SetValue(_dialog, value);
+            _SetField("_possiblyTruncated", possiblyTruncated);
+            _SetField("_pageLimit", pageLimit);
         }
 
-        // Plants what AC-317 would have resolved from the linked project's own repository field, bypassing `_host.GetProjectFieldValueAsync` (there is no live session/project here).
-        public void SetLinkedRepository(string repository)
-        {
-            var field = typeof(GitHubIssuesDialogControl).GetField("_linkedRepository", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _linkedRepository.");
-            field.SetValue(_dialog, repository);
-        }
+        // Plants what AC-317 would have resolved from the linked project's own repository field, bypassing the backend's LinkedRepository answer (there is no live session/project here).
+        public void SetLinkedRepository(string repository) => _SetField("_linkedRepository", repository);
 
         // Drives the private repo-filter population directly (AC-317) — same reasoning as
         // `PopulateLabelFilter`: the real fetch behind the repository list (gh's own repository list,
@@ -824,7 +881,11 @@ public class GitHubIssuesDialogControlTests
 
         public string? PromptPreviewText() => _TextIn(PromptScroll());
 
-        public void Close() => _window.Close();
+        public void Close()
+        {
+            _window.Close();
+            _backend.Dispose();
+        }
 
         private ScrollViewer? _Scroller(string name) => _window.GetVisualDescendants().OfType<ScrollViewer>()
             .FirstOrDefault(scroller => scroller.Name == name);
@@ -836,11 +897,13 @@ public class GitHubIssuesDialogControlTests
             : string.Concat(scroller.GetVisualDescendants().OfType<SelectableTextBlock>()
                 .Select(text => text.Text ?? string.Concat((text.Inlines ?? []).OfType<Run>().Select(run => run.Text))));
 
-        private void _PlantLoadedIssues(GitHubIssue[] issues)
+        private void _PlantLoadedIssues(GitHubIssue[] issues) => _SetField("_all", issues);
+
+        private void _SetField(string name, object value)
         {
-            var loaded = typeof(GitHubIssuesDialogControl).GetField("_all", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer keeps its loaded issues in _all.");
-            loaded.SetValue(_dialog, issues);
+            var field = typeof(GitHubIssuesDialogControl).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException($"GitHubIssuesDialogControl no longer has {name}.");
+            field.SetValue(_dialog, value);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;

@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.UI;
 
 // The plugin's settings view (opened from the gear in the plugin manager), built in code. Toggles between
 // the GitHub CLI mode (an owner whose repos to search) and the single-repository HTTP mode (owner/name +
@@ -22,7 +24,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     private readonly TextBox _pickerTerms;
     private readonly TextBox _branchPattern;
 
-    public GitHubIssuesSettingsControl(ICockpitHost host, GitHubIssuesSettings settings)
+    public GitHubIssuesSettingsControl(ICockpitUiHost host, GitHubIssuesSettings settings)
     {
         _settings = settings;
 
@@ -147,7 +149,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
 
     // AC-1033: a label with the SDK-drawn `?` beside it, pointing at this plugin's own setup walkthrough —
     // replaces the old hand-rolled hover tooltip (SettingsHelpRow) field by field.
-    private static Control _LabelWithHelp(ICockpitHost host, string text, string sectionId) => new StackPanel
+    private static Control _LabelWithHelp(ICockpitUiHost host, string text, string sectionId) => new StackPanel
     {
         Orientation = Avalonia.Layout.Orientation.Horizontal,
         Margin = new Thickness(0, 6, 0, 0),

@@ -1,4 +1,6 @@
 
+using Cockpit.Plugin.GitHubIssues.Contracts;
+
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 // The repository field this plugin puts on a cockpit project (AC-317). Its key is shared with the Pull Requests

@@ -1,4 +1,6 @@
-namespace Cockpit.Plugin.GitHubIssues;
+using Cockpit.Plugin.GitHubIssues.Contracts;
+
+namespace Cockpit.Plugin.GitHubIssues.UI;
 
 // Finds the issue that survives a grid reload by identity — the same defect `YouTrackDialogControl` has
 // (AC-299 bug 2), and the same fix. `GitHubIssuesDialogControl` rebuilds its grid's

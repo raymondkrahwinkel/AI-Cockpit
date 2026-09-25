@@ -1,3 +1,5 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
+
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 // The template both "Add to prompt" and "New session" render from, via the dialog's own `_RenderPrompt` —

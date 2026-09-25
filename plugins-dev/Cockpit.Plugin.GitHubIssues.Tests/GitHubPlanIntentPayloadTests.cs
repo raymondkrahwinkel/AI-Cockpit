@@ -1,3 +1,8 @@
+extern alias UiAsm;
+
+using GitHubIssue = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssue;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
+
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 // What "Plan in Autopilot" hands over. The stage field is the one Autopilot's start gate refuses on (AC-345), so

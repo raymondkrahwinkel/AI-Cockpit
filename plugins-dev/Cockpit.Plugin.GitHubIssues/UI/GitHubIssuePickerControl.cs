@@ -2,21 +2,23 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.GitHubIssues.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.UI;
 
 // Picks a GitHub issue for one session (#77). Opened from that session's own header, so the issue lands on the pane
 // you opened it from. A list of the open issues for the owner you configured, and a box to narrow it — the question
 // is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repositories the
 // session's project is linked to when it has any (AC-548/AC-940), the same as the full issues dialog.
+//
+// AC-1396: the backend part resolves those repositories and runs the gh search (GitHubIssuesChannel.PickerIssues);
+// this control no longer creates a gh client or reads the project link itself.
 internal sealed class GitHubIssuePickerControl : UserControl
 {
-    private readonly GitHubIssuesSettings _settings;
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly string? _paneId;
-    private readonly Action<GitHubIssue> _picked;
-    private readonly GitHubGhClient _client = new();
+    private readonly Func<GitHubIssue, Task> _picked;
 
     private readonly TextBox _search;
     private readonly CheckBox _mine;
@@ -25,9 +27,8 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
     private IReadOnlyList<GitHubIssue> _all = [];
 
-    public GitHubIssuePickerControl(GitHubIssuesSettings settings, ICockpitHost host, string? paneId, Action<GitHubIssue> picked)
+    public GitHubIssuePickerControl(ICockpitUiHost host, string? paneId, Func<GitHubIssue, Task> picked)
     {
-        _settings = settings;
         _host = host;
         _paneId = paneId;
         _picked = picked;
@@ -41,10 +42,10 @@ internal sealed class GitHubIssuePickerControl : UserControl
         _mine.IsCheckedChanged += async (_, _) => await _LoadAsync();
 
         _issues = new ListBox { Margin = new Thickness(0, 8, 0, 0) };
-        _issues.DoubleTapped += (_, _) => _Pick();
+        _issues.DoubleTapped += async (_, _) => await _PickAsync();
 
         var use = new Button { Content = "Track in this session", Classes = { "Accent" } };
-        use.Click += (_, _) => _Pick();
+        use.Click += async (_, _) => await _PickAsync();
 
         Content = new DockPanel
         {
@@ -78,19 +79,9 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         try
         {
-            // AC-548/AC-940: every repository the session's project is linked to, not only the owner's whole set.
-            // Sent as `--repo` flags (see GitHubGhClient.SearchArguments) — never a `repo:` term, which ANDs.
-            var linkedRepositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(_host, _paneId, CancellationToken.None);
-
-            // The truncation signal (AC-519) is a dialog-only concern so far — this picker has never warned about a
-            // capped page and stays out of that scope here; only the loaded issues are kept.
-            (_all, _) = await _client.SearchOpenIssuesAsync(
-                _settings.GhOwner,
-                _mine.IsChecked == true,
-                forceRefresh: false,
-                CancellationToken.None,
-                string.IsNullOrWhiteSpace(_settings.PickerTerms) ? null : _settings.PickerTerms,
-                linkedRepositories.Count > 0 ? linkedRepositories : null);
+            _all = await _host.Channel.AskAsync<IReadOnlyList<GitHubIssue>>(
+                GitHubIssuesChannel.PickerIssues,
+                new GitHubIssuesPickerRequest(_paneId, _mine.IsChecked == true)) ?? [];
 
             _status.Text = _all.Count == 0 ? "No open issues here." : string.Empty;
             _Render();
@@ -121,11 +112,21 @@ internal sealed class GitHubIssuePickerControl : UserControl
         }
     }
 
-    private void _Pick()
+    private async Task _PickAsync()
     {
-        if (_issues.SelectedItem is IssueRow row)
+        if (_issues.SelectedItem is not IssueRow row)
         {
-            _picked(row.Issue);
+            return;
+        }
+
+        // AC-1396: linking is a round trip to the backend part now, so a failure is said here rather than lost.
+        try
+        {
+            await _picked(row.Issue);
+        }
+        catch (Exception exception)
+        {
+            _status.Text = exception.Message;
         }
     }
 

@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.Contracts;
 
 // The branch name for an issue (#77) — `42-fix-the-login-redirect`. The step that starts an issue is the only
 // one that knows both its number and its title, so it hands the name on and the flow does not have to build it out of

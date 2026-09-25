@@ -1,8 +1,12 @@
+extern alias UiAsm;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using Xunit.Abstractions;
+using GitHubIssuesSettings = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssuesSettings;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -23,7 +27,7 @@ public class SettingsControlTemplateFitTests
     {
         const string marker = "AC-521-FIT-MARKER";
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { Template = marker };
-        var view = new GitHubIssuesSettingsControl(new FakeCockpitHost(), settings);
+        var view = new GitHubIssuesSettingsControl(UiHostFake.Create(), settings);
 
         // The window a real plugin-settings dialog opens at (CockpitViewModel.OpenPluginSettingsAsync: 640x560).
         // The view itself is the whole dialog body here — no chrome/footer subtracted — so this is the most

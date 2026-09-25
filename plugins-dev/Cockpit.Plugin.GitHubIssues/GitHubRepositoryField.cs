@@ -1,3 +1,4 @@
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -9,7 +10,7 @@ namespace Cockpit.Plugin.GitHubIssues;
 internal static class GitHubRepositoryField
 {
     // What the link is stored under on the project. Never change it: already-linked projects are keyed by it.
-    public const string Key = "github.repository";
+    public const string Key = GitHubIssuesChannel.RepositoryFieldKey;
 
     // AC-317: the repository the operator linked this project to. A link may name several (AC-940) — this hands
     // back only the first, the pinned one (also what `GH_REPO` becomes); see `ResolvePreferredRepositoriesAsync`

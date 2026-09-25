@@ -8,10 +8,11 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.UI;
 
 // The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a label filter, a search box,
 // and a sortable `DataGrid` of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
@@ -26,17 +27,17 @@ namespace Cockpit.Plugin.GitHubIssues;
 // since filtering client-side over a page GitHub may have capped would silently miss whatever was cut off. "Add to
 // prompt" injects into the active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to
 // the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
+//
+// AC-1396: the issues, labels, repositories and the project's linked repository come from the backend part over the
+// plugin's channel, as does linking an issue to a pane. "Add to prompt" sends the prompt to the session this window
+// has active (ICockpitUiHost.ActivePaneId) — the UI host has no "inject into the active session" of its own.
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
     private const string AllRepositoriesOption = "All";
     private const string AllLabelsOption = "All labels";
 
     private readonly GitHubIssuesSettings _settings;
-    private readonly ICockpitHost _host;
-    private readonly ICockpitActions _actions;
-    private readonly SessionIssueLinks _links;
-    private readonly GitHubIssuesClient _http = new();
-    private readonly GitHubGhClient _gh = new();
+    private readonly ICockpitUiHost _host;
 
     private readonly ComboBox _repoFilter;
     private readonly ComboBox _labelFilter;
@@ -101,6 +102,9 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     // check (comparing _all.Count itself to the limit) missed.
     private bool _possiblyTruncated;
 
+    // The page size of the route the backend took for _all (gh or HTTP), named in the truncation notice.
+    private int _pageLimit;
+
     private string _renderedPrompt = string.Empty;
 
     // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
@@ -109,12 +113,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     // operator could read it (AC-292, the same defect the YouTrack dialog had).
     private string? _detailStatusFor;
 
-    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitHost host, SessionIssueLinks links)
+    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitUiHost host)
     {
         _settings = settings;
         _host = host;
-        _actions = host.Actions;
-        _links = links;
 
         _repoFilter = new ComboBox
         {
@@ -178,7 +180,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn { Header = "#", Binding = new Binding(nameof(GitHubIssue.Number)), Width = new DataGridLength(64) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Title", Binding = new Binding(nameof(GitHubIssue.Title)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubIssue);
-        _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
+        _grid.DoubleTapped += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as GitHubIssue);
 
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
@@ -220,7 +222,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         // Without this the button's own explanation of why it is inert never appears: Avalonia shows no tooltip
         // on a disabled control unless asked to.
         ToolTip.SetShowOnDisabled(_inject, true);
-        _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
+        _inject.Click += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as GitHubIssue);
 
         _newSession = new Button { Content = "New session" };
         _newSession.Click += async (_, _) => await _StartNewSessionAsync();
@@ -448,9 +450,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             IReadOnlyList<string> labelOptions;
             try
             {
-                labelOptions = _settings.UseGitHubCli
-                    ? await _gh.ListRepositoryLabelsAsync(_settings.GhOwner, CancellationToken.None)
-                    : await _http.GetRepositoryLabelsAsync(_settings.Owner, _settings.Repo, _settings.Token, CancellationToken.None);
+                labelOptions = await _host.Channel.AskAsync<IReadOnlyList<string>>(GitHubIssuesChannel.ListLabels, new GitHubIssuesPaneRequest(null)) ?? [];
             }
             catch
             {
@@ -468,30 +468,29 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             // label would otherwise vanish from the dropdown along with its issues, taking the AC-317 preselection
             // down with it. gh mode already has its own repository source (GitHubRepositoryField uses the same
             // one for the project editor's repository field); HTTP mode has only ever had the one repository the
-            // settings name, whether or not it has a matching issue right now.
+            // settings name, whether or not it has a matching issue right now. AC-1396: that choice is the backend's.
             IReadOnlyList<string> repoOptions;
             try
             {
-                repoOptions = _settings.UseGitHubCli
-                    ? await _gh.ListRepositoriesAsync(_settings.GhOwner, CancellationToken.None)
-                    : (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo)
-                        ? []
-                        : [$"{_settings.Owner}/{_settings.Repo}"]);
+                repoOptions = await _host.Channel.AskAsync<IReadOnlyList<string>>(GitHubIssuesChannel.ListRepositories, new GitHubIssuesPaneRequest(null)) ?? [];
             }
             catch
             {
                 repoOptions = [];
             }
 
-            (_all, _possiblyTruncated) = _settings.UseGitHubCli
-                ? await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None, label is null ? null : GitHubGhClient.LabelSearchTerm(label))
-                : await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None, label);
+            var result = await _host.Channel.AskAsync<GitHubIssuesSearchResult>(
+                GitHubIssuesChannel.SearchIssues,
+                new GitHubIssuesSearchRequest(assignedToMe, forceRefresh, label))
+                ?? throw new InvalidOperationException("The backend answered no issue list.");
+            (_all, _possiblyTruncated, _pageLimit) = (result.Issues, result.PossiblyTruncated, result.PageLimit);
 
             // AC-317: what the session's own project says it lives in, resolved once so the first population can
             // open on it. After that the filter keeps whatever the operator chose, link or no link. Routed through
             // GitHubRepositoryField.ResolvePreferredRepositoryAsync (AC-548) — the same resolution the session
-            // picker now uses, so the two cannot answer "which repository" differently.
-            _linkedRepository ??= await GitHubRepositoryField.ResolvePreferredRepositoryAsync(_host, paneId: null, CancellationToken.None) ?? string.Empty;
+            // picker now uses, so the two cannot answer "which repository" differently. AC-1396: asked about this
+            // window's active pane by id, as the backend part has no active session of its own.
+            _linkedRepository ??= await _host.Channel.AskAsync<string>(GitHubIssuesChannel.LinkedRepository, new GitHubIssuesPaneRequest(_host.ActivePaneId)) ?? string.Empty;
 
             // A repository seen on a loaded issue but somehow missing from repoOptions (e.g. the repository list
             // call above failed open to []) still belongs in the dropdown — the issue is right there in the grid.
@@ -522,7 +521,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private void _ReportLoaded()
     {
         var baseline = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
-        var limit = _settings.UseGitHubCli ? GitHubGhClient.IssueSearchLimit : GitHubIssuesClient.IssuePageLimit;
+        var limit = _pageLimit;
 
         // Whether to warn comes from _possiblyTruncated, not from comparing _all.Count to the limit here: both
         // clients filter their raw page (pull requests, archived-repo issues) after the page limit is already
@@ -712,11 +711,13 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     // the very session the button was missing (AC-292).
     private void _UpdateInjectAvailability()
     {
-        _inject.IsEnabled = _actions.HasActiveSession;
-        ToolTip.SetTip(_inject, _actions.HasActiveSession
+        _inject.IsEnabled = _HasActiveSession;
+        ToolTip.SetTip(_inject, _HasActiveSession
             ? "Inject this issue's prompt into the active session."
             : "No active session — start one, or use New session.");
     }
+
+    private bool _HasActiveSession => _host.ActivePaneId is { Length: > 0 };
 
     // The result of an action, tied to the issue it was produced for — see _detailStatusFor. A number alone is
     // not an identity here: it is only unique within a repository, and CLI mode lists every repo an owner has.
@@ -786,7 +787,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             // link with nothing to match on is not one worth sending.
             LinkedProject = string.IsNullOrWhiteSpace(issue.Repository)
                 ? null
-                : new ProjectLink(GitHubRepositoryField.Key, issue.Repository),
+                : new ProjectLink(GitHubIssuesChannel.RepositoryFieldKey, issue.Repository),
         };
 
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
@@ -797,14 +798,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         {
             await _host.ShowNewSessionDialogAsync(
                 prefill,
-                onStarted: paneId =>
-                {
-                    _LinkIssue(paneId, issue);
-
-                    // That pane is a live session, which is what Add to prompt was waiting for.
-                    _UpdateInjectAvailability();
-                    _SetDetailStatus(issue, $"Started a new session for #{issue.Number}, linked to it.");
-                },
+                onStarted: async paneId => await _OnSessionStartedAsync(paneId, issue),
                 onCancelled: () => _SetDetailStatus(issue, "New session cancelled."));
         }
         catch (Exception exception)
@@ -817,25 +811,50 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         }
     }
 
-    // The one place that actually calls SessionIssueLinks.Link — shared by "Link to session" (the active pane)
+    private async Task _OnSessionStartedAsync(string paneId, GitHubIssue issue)
+    {
+        try
+        {
+            await _LinkIssueAsync(paneId, issue);
+
+            // That pane is a live session, which is what Add to prompt was waiting for.
+            _UpdateInjectAvailability();
+            _SetDetailStatus(issue, $"Started a new session for #{issue.Number}, linked to it.");
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Started a new session, but could not link #{issue.Number} to it: {exception.Message}");
+        }
+    }
+
+    // The one place that actually asks for SessionIssueLinks.Link — shared by "Link to session" (the active pane)
     // and New session's onStarted callback (the pane it just created), so the two do not each keep their own copy.
     // The working directory travels with the link: a flow that cuts a branch or a worktree when an issue is picked
-    // is given the path to do it in, instead of an empty string (AC-292).
-    private void _LinkIssue(string paneId, GitHubIssue issue) =>
-        _links.Link(paneId, issue, _host.Sessions.ActiveSessionWorkingDirectory);
+    // is given the path to do it in, instead of an empty string (AC-292). AC-1396: over the channel.
+    private Task<object?> _LinkIssueAsync(string paneId, GitHubIssue issue) =>
+        _host.Channel.AskAsync<object>(
+            GitHubIssuesChannel.Link,
+            new GitHubIssuesLinkRequest(paneId, issue, _host.ActiveSessionWorkingDirectory));
 
     // Ties the issue to the session pane that is selected right now, and says what came of it. The pane is the
     // one the operator has in front of them — the dialog itself belongs to no session.
-    private void _LinkToActiveSession(GitHubIssue issue)
+    private async Task _LinkToActiveSessionAsync(GitHubIssue issue)
     {
-        if (_host.Sessions.ActivePaneId is not { Length: > 0 } paneId)
+        if (_host.ActivePaneId is not { Length: > 0 } paneId)
         {
             _SetDetailStatus(issue, "No active session to link this issue to.");
             return;
         }
 
-        _LinkIssue(paneId, issue);
-        _SetDetailStatus(issue, $"#{issue.Number} linked to the active session.");
+        try
+        {
+            await _LinkIssueAsync(paneId, issue);
+            _SetDetailStatus(issue, $"#{issue.Number} linked to the active session.");
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not link #{issue.Number}: {exception.Message}");
+        }
     }
 
     // Conditional entries live only here, never as toolbar buttons that would appear and disappear: Plan in
@@ -858,10 +877,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             items.Add(planItem);
         }
 
-        if (_host.Sessions.ActivePaneId is { Length: > 0 })
+        if (_HasActiveSession)
         {
             var linkItem = new MenuItem { Header = "Link to session" };
-            linkItem.Click += (_, _) => _LinkToActiveSession(issue);
+            linkItem.Click += async (_, _) => await _LinkToActiveSessionAsync(issue);
             items.Add(linkItem);
         }
 
@@ -877,7 +896,9 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         menu.Open(_overflow);
     }
 
-    private void _AddToPrompt(GitHubIssue? issue)
+    // AC-1396 (D6): sent to the session this window has active, by pane id — with several sessions open, the one
+    // selected here and no other. Without one the prompt goes to the clipboard, so the click is never lost.
+    private async Task _AddToPromptAsync(GitHubIssue? issue)
     {
         if (issue is null)
         {
@@ -885,13 +906,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             return;
         }
 
-        if (!_actions.HasActiveSession)
+        if (_host.ActivePaneId is not { Length: > 0 } paneId)
         {
-            _SetDetailStatus(issue, "No active session — use Copy to put the prompt on the clipboard.");
+            await _host.SetClipboardTextAsync(_RenderPrompt(issue));
+            _SetDetailStatus(issue, "No active session — the prompt is on the clipboard instead.");
             return;
         }
 
-        _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(issue));
+        await _host.SendToSessionAsync(paneId, _RenderPrompt(issue));
         _SetDetailStatus(issue, $"Added issue #{issue.Number} to the active session's prompt.");
     }
 
@@ -902,7 +924,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             return;
         }
 
-        await _actions.SetClipboardTextAsync(_renderedPrompt);
+        await _host.SetClipboardTextAsync(_renderedPrompt);
         _SetDetailStatus(issue, "Prompt copied to the clipboard.");
     }
 

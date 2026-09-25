@@ -1,7 +1,12 @@
+extern alias UiAsm;
+
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
+using GitHubIssue = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssue;
+using GitHubIssuesSettings = UiAsm::Cockpit.Plugin.GitHubIssues.Contracts.GitHubIssuesSettings;
+using UiAsm::Cockpit.Plugin.GitHubIssues.UI;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -56,9 +61,7 @@ public class ThemePaletteBaselineTests
     {
         var storage = new InMemoryPluginStorage();
         var settings = new GitHubIssuesSettings(storage);
-        var host = new FakeCockpitHost();
-        var links = new SessionIssueLinks(host);
-        var dialog = new GitHubIssuesDialogControl(settings, host, links);
+        var dialog = new GitHubIssuesDialogControl(settings, UiHostFake.Create(storage: storage));
 
         var window = new Window { Width = 1280, Height = 860, Content = dialog };
         window.Show();

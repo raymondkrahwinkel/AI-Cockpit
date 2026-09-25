@@ -1,9 +1,13 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -11,7 +15,7 @@ namespace Cockpit.Core.Tests.Plugins;
 /// End-to-end loader proof (#14): loads the real compiled example plugin through the actual
 /// <see cref="PluginActivator"/> / <see cref="PluginLoadContext"/> and asserts type-identity holds (the
 /// plugin's ICockpitPlugin resolves to the host's copy — the cast would be null otherwise), its metadata
-/// is right, and its Options-tab + side-menu contributions register. The test project builds the plugin
+/// is right, and its Options-tab + side-menu contributions register — from its UI part since AC-1396. The test project builds the plugin
 /// (a ReferenceOutputAssembly=false project reference), so its output is always present.
 /// </summary>
 public class GitHubIssuesPluginLoadTests
@@ -26,7 +30,8 @@ public class GitHubIssuesPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // AC-1396: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
         var discovered = new DiscoveredPlugin(folder, "github-issues", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -42,8 +47,19 @@ public class GitHubIssuesPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        Assert.Equal(1, host.SettingsRegistered);
-        Assert.Equal("GitHub Issues", Assert.Single(host.SideButtons));
+        // AC-1396: the backend part contributes nothing with a window; the settings view, the side-menu button and
+        // the session header come from the UI part.
+        Assert.Equal(0, host.SettingsRegistered);
+        Assert.Empty(host.SideButtons);
+
+        Assert.Equal("Cockpit.Plugin.GitHubIssues.UI.dll", manifest.UiAssembly);
+        Assert.Equal("Cockpit.Plugin.GitHubIssues.UI.GitHubIssuesUi", manifest.UiEntryType);
+        var uiPart = Assert.IsAssignableFrom<ICockpitPluginUi>(PluginUiManager.ActivateUi(discovered, plugin));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiPart.InitializeUi(uiHost);
+        uiHost.Received(1).AddSettings(Arg.Any<Func<Control>>());
+        uiHost.Received(1).AddSideMenuButton("GitHub Issues", Arg.Any<Action>());
+        uiHost.Received(1).AddSessionHeaderItem(Arg.Any<Func<IPluginSessionContext, Control>>());
 
         plugin.Dispose();
     }

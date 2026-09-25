@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.Contracts;
 
 // One open GitHub issue shown in the dialog grid and rendered into the prompt template. `Repository` is the owner/name it belongs to (for the cross-repo view).
 public sealed record GitHubIssue(int Number, string Title, string Url, string? Body, string Repository)

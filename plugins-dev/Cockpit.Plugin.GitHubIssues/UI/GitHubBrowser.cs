@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.UI;
 
 // Opens a GitHub URL in the operator's browser. Only ever http(s): anything else is reported rather than handed
 // to the shell. A browser that will not start is worth saying out loud, and not worth taking the cockpit down

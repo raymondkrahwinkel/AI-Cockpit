@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugin.GitHubIssues.Contracts;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 

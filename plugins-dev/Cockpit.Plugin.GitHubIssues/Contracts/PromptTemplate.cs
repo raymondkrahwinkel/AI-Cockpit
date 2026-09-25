@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubIssues;
+namespace Cockpit.Plugin.GitHubIssues.Contracts;
 
 // The prompt dropped into the active session when an issue is clicked. English by default (the cockpit's
 // UI language) and editable in the plugin's Options tab; placeholders are substituted per issue:
