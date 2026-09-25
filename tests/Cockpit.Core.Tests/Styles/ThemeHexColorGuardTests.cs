@@ -52,14 +52,12 @@ public partial class ThemeHexColorGuardTests
         "plugins-dev/Cockpit.Plugin.UsageTrend/UI/UsageTrendChartControl.cs",
 
         // The whiteboard's own surface (AC-821/AC-822), one named palette since AC-860: white paper, a yellow pencil
-        // ink and a blue shape stroke — a whiteboard's content is deliberately not theme-driven, the way a real sheet
-        // of paper stays white under any repaint of the app around it.
+        // ink and a blue shape stroke — content deliberately not theme-driven, like a real sheet of paper.
         // F2.13/AC-1401: moved into the plugin's UI/ project with every other Avalonia file.
         "plugins-dev/Cockpit.Plugin.Diagram/UI/Whiteboard/Rendering/WhiteboardPalette.cs",
 
-        // The wireframe sketch's greys (AC-871): a wireframe must read as a sketch, never as a finished design, so
-        // no product colour belongs in it. All eight literals are achromatic — no token to point at even in
-        // principle — and whole-file by this set's own criterion, since it is one reason repeated.
+        // The wireframe sketch's greys (AC-871): must read as a sketch, never a finished design, so no product
+        // colour belongs in it — all eight literals are achromatic, whole-file since it is one reason repeated.
         // F2.13/AC-1401: moved into the plugin's UI/ project with every other Avalonia file.
         "plugins-dev/Cockpit.Plugin.Diagram/UI/Wireframe/Rendering/WireframePalette.cs",
     };

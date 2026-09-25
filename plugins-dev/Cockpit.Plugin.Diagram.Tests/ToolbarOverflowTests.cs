@@ -33,11 +33,9 @@ public class ToolbarOverflowTests
     [Fact]
     public void Diagram_ErDialectAtAWiderWindow_AttributesButtonIsVisibleAndReachable()
     {
-        // AC-973 criterion 4's diagram case: an ER diagram shows Attributes… instead of Shape…. That needs a real
-        // IDiagramAccessRegistry to detect the dialect — ActivityStripTests.FakeHost's own fake registry always
-        // reports Flowchart, so this test wires up the real one instead, same as DiagramMcpToolsTests does. The
-        // registry reaches DiagramWorkspaceBody over the channel (F2.13/AC-1401: production code no longer reads
-        // it off host.Services), so a plain FakeHost is enough here too.
+        // AC-973 criterion 4's diagram case: an ER diagram shows Attributes… instead of Shape…, which needs a real
+        // IDiagramAccessRegistry (ActivityStripTests.FakeHost's own fake always reports Flowchart). The registry
+        // reaches DiagramWorkspaceBody over the channel (F2.13/AC-1401), so a plain FakeHost is enough here too.
         var registry = new DiagramAccessRegistry();
         var document = DiagramDocument.New("Test ER diagram", ErSource);
         var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), TestChannel.For(registry), document, null);

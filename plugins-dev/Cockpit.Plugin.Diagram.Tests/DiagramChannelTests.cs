@@ -19,13 +19,9 @@ using DiagramMcpTools = backend::Cockpit.Plugin.Diagram.DiagramMcpTools;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-1400 (F2.12): the windows reach the access registries through the plugin's channel only — calls one way,
-// events the other, in the backend's seq order — and an open_* tool with no UI part says nothing opened.
-//
-// F2.13/AC-1401 removed UiClasses_NeverReachTheContainer_AndTheScanNamesOneThatDoes (the IL scan for a type outside
-// the backend reaching ICockpitHost.Services): the physical split now makes that structurally impossible rather
-// than merely unobserved — the UI assembly does not reference the backend one at all, let alone its host. See
-// DiagramAssemblyLayoutTests for the split's own architecture tests.
+// AC-1400 (F2.12): the windows reach the access registries through the plugin's channel only, and an open_* tool
+// with no UI part says nothing opened. F2.13/AC-1401 removed the IL scan for a UI type reaching ICockpitHost.Services:
+// the physical split now makes that structurally impossible — see DiagramAssemblyLayoutTests.
 [Collection("avalonia")]
 public class DiagramChannelTests
 {

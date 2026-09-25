@@ -230,10 +230,8 @@ public class ActivityStripTests
     }
 
     // F2.13/AC-1401: ActivityStrip and the workspace bodies take ICockpitUiHost now the UI part is its own assembly.
-    // Unlike ICockpitHost this interface has no default members, so everything beyond what a test actually reaches
-    // (ShowToast, and the members DiagramWorkspaceBody/WireframeWorkspaceBody/SurfaceSessionBinding touch) throws —
-    // same shape as Cockpit.Plugin.Discord.Tests.FakeCockpitUiHost. The registry reaches production code through
-    // UiChannel (TestChannel), never through a Services lookup — ICockpitUiHost carries no Services at all.
+    // Unlike ICockpitHost this has no default members, so anything beyond what a test reaches throws — same shape
+    // as Cockpit.Plugin.Discord.Tests.FakeCockpitUiHost. The registry reaches production code via UiChannel, never Services.
     internal sealed class FakeHost : ICockpitUiHost
     {
         // AC-904 hands in a real IWireframeAccessRegistry rather than a fake: the wireframe surface's own tests want

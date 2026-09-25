@@ -10,10 +10,9 @@ using F = Cockpit.Core.Abstractions.Wireframe.IWireframeAccessRegistry;
 
 namespace Cockpit.Plugin.Diagram;
 
-// AC-1400 (F2.12): the backend half of Diagram's channel — the registries' members as actions and events, named after
-// the member, with its arguments in order as one JSON array (an event's first element is the surface id). Transport
-// only: the registry stays the one document model and nothing here keeps state of its own. Action names, Json and
-// the argument helpers live in Contracts/DiagramChannelContract.cs (F2.13/AC-1401), linked into the UI project too.
+// AC-1400 (F2.12): the backend half of Diagram's channel — the registries' members as actions and events, named
+// after the member, with its arguments in order as one JSON array. Transport only, no state of its own. Action
+// names/Json/argument helpers live in Contracts/DiagramChannelContract.cs (F2.13/AC-1401), linked into UI too.
 internal sealed class DiagramChannel : IDisposable
 {
     private readonly ICockpitHost _host;

@@ -1580,11 +1580,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return chip;
     }
 
-    // AC-914 criterion 6: switching which state is open re-renders the screen and, per the grooming, also selects
-    // the state itself — so Delete and «Text…» are of a piece with picking it, the same as clicking any component.
-    // AC-972: a state clicked for the first time carries no id yet (AC-906 mints lazily). EnsureComponentId stamps
-    // the registry's copy of the source, not _sourceBox.Text, so rendering must pull the registry's (already
-    // stamped) text rather than the stale local echo — else _RenderInto's "forgotten" guard erases it right back.
+    // AC-914 criterion 6: switching which state is open also selects it, so Delete/«Text…» apply like any component.
+    // AC-972: a first-clicked state has no id yet; EnsureComponentId stamps the registry's copy, so rendering must
+    // pull that (not the stale _sourceBox.Text) or _RenderInto's "forgotten" guard erases it right back.
     private void _SelectState(WireframeNode? state)
     {
         _stateId = state is null ? null : _registry?.EnsureComponentId(_surfaceId, state.Line) ?? state.Id;
@@ -1696,10 +1694,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // ---- Properties panel (AC-905): the operator's way to set the same modifiers the agent could always set ----
 
-    // A fixed column rather than a flyout: it stays put across a run of selections instead of reopening every click,
-    // which is calmer with the toolbar/coupling bar/presence/activity strip already docked around the same window.
-    // AC-907: the numbered notes, in a column of their own above the properties panel — never on the canvas (see the
-    // grooming on this ticket: fit-zoom and the overlay's own sweep both work against a list living there).
+    // A fixed column rather than a flyout: it stays put across a run of selections, calmer with the toolbar/
+    // coupling bar/presence/activity strip already docked around the window. AC-907: numbered notes go in their
+    // own column above the properties panel, never on the canvas (fit-zoom and the overlay's sweep fight a list there).
     private static (Border Panel, StackPanel Content) _BuildNotesPanel()
     {
         var content = new StackPanel { Spacing = 6 };

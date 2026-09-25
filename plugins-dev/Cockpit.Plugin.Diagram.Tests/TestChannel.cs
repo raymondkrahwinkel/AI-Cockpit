@@ -15,10 +15,9 @@ using DiagramChannel = backend::Cockpit.Plugin.Diagram.DiagramChannel;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-1400: Diagram's channel as the host builds it — a real PluginChannelHub with DiagramChannel on its backend half
-// — so a test hands a window the same UI half the plugin does, over whichever registries (fake or real) it needs.
-// F2.13/AC-1401: DiagramChannel lives in the backend assembly, aliased "backend" in the csproj so an unqualified
-// DiagramSettings (linked into both projects) is not ambiguous — see the csproj comment.
+// AC-1400: Diagram's channel as the host builds it — a real PluginChannelHub with DiagramChannel on its backend
+// half, so a test hands a window the same UI half the plugin does. F2.13/AC-1401: aliased "backend" in the csproj
+// so an unqualified DiagramSettings (linked into both projects) is not ambiguous — see the csproj comment.
 internal static class TestChannel
 {
     private const string PluginId = "diagram";
@@ -34,9 +33,8 @@ internal static class TestChannel
     public static WhiteboardChannelClient Whiteboard(IWhiteboardAccessRegistry registry) => new(For(whiteboards: registry));
 
     // The desktop as it runs: the backend half, and a UI part that opens the window an open_* tool asks for.
-    // F2.13/AC-1401: SurfaceWindowOpener takes ICockpitUiHost, not the backend's ICockpitHost, so the UI host here
-    // is its own substitute — its ShowDialogAsync forwards to `host`'s, the one these tests already assert against,
-    // exactly as calling it on the pre-split combined host once did.
+    // F2.13/AC-1401: SurfaceWindowOpener takes ICockpitUiHost now, so the UI host here is its own substitute whose
+    // ShowDialogAsync forwards to `host`'s — the one these tests already assert against, as before the split.
     public static DiagramChannel Desktop(
         ICockpitHost host,
         IDiagramAccessRegistry? diagrams = null,

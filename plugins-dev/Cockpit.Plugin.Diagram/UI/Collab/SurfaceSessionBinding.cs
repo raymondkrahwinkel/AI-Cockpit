@@ -6,13 +6,9 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Diagram.Collab;
 
-// The session a surface is coupled to, and the "are they still there" state around it (AC-870). The registry's own
-// Couple stays the caller's: IDiagramAccessRegistry.Couple and IWhiteboardAccessRegistry.Couple are unrelated types
-// with the same shape, not a common interface.
-//
-// F2.13/AC-1401: ICockpitUiHost carries no BindToSession/Sessions (those stay backend-only), so this reads a bound
-// pane's liveness and name over DiagramChannelContract.SessionBind/SessionList instead of ICockpitHost.BindToSession — the
-// same "reach the backend through the channel, not host.Services" move AC-1400 already made for the registries.
+// The session a surface is coupled to, and the "are they still there" state around it (AC-870). F2.13/AC-1401:
+// ICockpitUiHost carries no BindToSession/Sessions, so a bound pane's liveness/name and the open-sessions picker
+// round-trip over DiagramChannelContract.SessionBind/SessionList instead — the same move AC-1400 made for registries.
 internal sealed class SurfaceSessionBinding
 {
     private readonly ICockpitUiHost _host;

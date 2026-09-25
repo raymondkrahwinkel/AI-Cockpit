@@ -445,10 +445,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // math, not scroll offset, so a huge diagram never grows the layout past the window around it.
     private Border _BuildViewport()
     {
-        // AC-924: Focusable since the object menu's keyboard route (Menu key / Shift+F10) needs a focused control
-        // to fire ContextRequested against — the diagram had none of the three surfaces' keyboard routes before this.
-        // AC-978: `_emptyState` is a sibling of `_surface`, not a child of it, so it tracks the viewport's own
-        // bounds and stays put — never scaled or panned away — same reasoning as WhiteboardCanvasControl's.
+        // AC-924: Focusable for the object menu's keyboard route (Menu/Shift+F10) to fire ContextRequested.
+        // AC-978: `_emptyState` is a sibling of `_surface`, not a child, so it tracks the viewport's own bounds
+        // and stays put — never scaled or panned away, same reasoning as WhiteboardCanvasControl's.
         var viewport = new Border
         {
             Background = Brushes.Transparent,

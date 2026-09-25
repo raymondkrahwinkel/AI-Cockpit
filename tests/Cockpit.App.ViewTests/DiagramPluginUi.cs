@@ -6,11 +6,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewTests;
 
-// The second half of loading Diagram as PluginManager/PluginUiManager do — InitializeUi after Initialize, on a UI
-// host whose channel is the same hub the test host's backend Channel publishes on, so windows reach the registries.
-// F2.13/AC-1401: Diagram's UI part is its own assembly now (uiAssembly/uiEntryType in plugin.json), activated the
-// same way PluginUiManager.ActivateUi loads any plugin's UI part in production — this used to just cast the
-// backend plugin itself to ICockpitPluginUi, which stopped being possible once the two parts physically split.
+// The second half of loading Diagram as PluginManager/PluginUiManager do — InitializeUi on a UI host sharing the
+// test host's channel hub. F2.13/AC-1401: activates the UI part via PluginUiManager.ActivateUi like production does,
+// instead of casting the backend plugin to ICockpitPluginUi — no longer possible once the parts physically split.
 internal static class DiagramPluginUi
 {
     public const string PluginId = "diagram";
