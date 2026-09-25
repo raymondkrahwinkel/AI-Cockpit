@@ -8,7 +8,10 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.43.0: ICockpitHost gains EmbedSession(workspaceId, request) (AC-1398), the route a workspace's own
+    <!-- 0.44.0: ICockpitHost gains InsertIntoSessionAsync(paneId, text) (AC-1399), answered by the backend host through
+         the pane's handle, so a backend part places text in a named pane's input unsent and hears false when that
+         pane is gone or has no input. A plugin that relies on it sets minHostVersion 0.44.0.
+         0.43.0: ICockpitHost gains EmbedSession(workspaceId, request) (AC-1398), the route a workspace's own
          EmbedSession takes, reachable by workspace id: a backend part embeds the sessions its UI part's workspace
          shows and holds them by pane id. A plugin that relies on it sets minHostVersion 0.43.0.
          0.42.0: ICockpitSessionObserver gains GetWorkingDirectory(paneId) (AC-1397), answered by both the desktop's
@@ -297,7 +300,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.43.0</VersionPrefix>
+    <VersionPrefix>0.44.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

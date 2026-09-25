@@ -109,6 +109,8 @@ internal sealed class SessionPanelHandle(
 
     public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(() => pane.InjectAndSubmit(text));
 
+    public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(() => pane.InjectText(text));
+
     private bool _IsLive() => isLive?.Invoke() ?? true;
 
     private Task<bool> _WhileLiveAsync(Action act) => UiThreadCall.RunAsync(() =>

@@ -98,7 +98,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `workflows.trigger-raise` | Starting a workflow | Dangerous | 0.3.0 | `typeId` | `ICockpitHost.RaiseWorkflowTrigger` |
 | `sessions.start` | Starting sessions | Dangerous | 0.3.0 | `profileLabel` | `ICockpitActions.StartSessionAsync` |
 | `sessions.delegate` | Handing work to a profile | Dangerous | 0.3.0 | `profileLabel`, `permission` | `ICockpitActions.DelegateAsync` |
-| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.InjectIntoActiveSessionAsync`, `ICockpitActions.HasActiveSession` |
+| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.InjectIntoActiveSessionAsync`, `ICockpitActions.HasActiveSession` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
 | `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync` |
@@ -186,6 +186,8 @@ public interface ICockpitPluginUi
   part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
   for an unknown pane. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
+  A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.43.0),
+  which answers false for an unknown pane or one without an input, so the caller can say so.
 - **No `Services`.** The UI part cannot resolve the container, so it cannot reach its backend part around the
   channel — which is what keeps it working when the backend runs in another process.
 

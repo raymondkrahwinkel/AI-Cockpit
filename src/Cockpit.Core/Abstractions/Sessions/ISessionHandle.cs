@@ -183,6 +183,12 @@ public interface ISessionHandle
     Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
 
     /// <summary>
+    /// Places <paramref name="text"/> in the session's input without submitting it, for the operator to edit or send
+    /// (AC-1399); true when a live pane took it. False by default: a handle with no input of its own has nowhere to put it.
+    /// </summary>
+    Task<bool> InsertTextAsync(string text) => Task.FromResult(false);
+
+    /// <summary>
     /// The three fields a wake decision reads as one instant, not as three separate moments a consent banner or a
     /// turn starting could fall between (AC-1374). Use this, not the individual properties, wherever a decision
     /// chains more than one of them.
