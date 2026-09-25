@@ -117,10 +117,10 @@ public static class CapabilityCatalog
         new(
             "workspaces.types",
             "Its own kind of workspace",
-            "Registers a workspace type the operator can open, and reads the types other plugins registered.",
+            "Registers a workspace type the operator can open, reads the types other plugins registered, and embeds sessions in its workspaces.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddWorkspaceType", "ICockpitHost.WorkspaceTypes", "ICockpitHost.OpenWorkspaceAsync"],
+            ["ICockpitHost.AddWorkspaceType", "ICockpitHost.WorkspaceTypes", "ICockpitHost.OpenWorkspaceAsync", "ICockpitHost.EmbedSession"],
             []),
 
         new(
