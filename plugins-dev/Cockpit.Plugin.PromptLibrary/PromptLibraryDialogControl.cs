@@ -4,7 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -14,12 +14,12 @@ namespace Cockpit.Plugin.PromptLibrary;
 // (name + body + a field per `{{variable}}` found in the body), and Insert/Copy actions. Selecting a
 // template loads it into the editor; Save persists edits, New adds a blank one, Delete removes the selected
 // one — all via `PromptLibrarySettings`. Insert substitutes the variable fields into the body and
-// hands the result to `ICockpitActions.InjectIntoActiveSessionAsync`, falling back to the
+// hands the result to `ICockpitUiHost.SendToSessionAsync`, falling back to the
 // clipboard when no session is active. Built in code, matching the other plugin dialogs.
 internal sealed class PromptLibraryDialogControl : UserControl
 {
     private readonly PromptLibrarySettings _settings;
-    private readonly ICockpitActions _actions;
+    private readonly ICockpitUiHost _host;
 
     private readonly TextBox _search;
     private readonly ListBox _list;
@@ -38,10 +38,10 @@ internal sealed class PromptLibraryDialogControl : UserControl
     private bool _loadingEditor;
     private IReadOnlyList<string> _renderedVariableNames = [];
 
-    public PromptLibraryDialogControl(PromptLibrarySettings settings, ICockpitActions actions)
+    public PromptLibraryDialogControl(PromptLibrarySettings settings, ICockpitUiHost host)
     {
         _settings = settings;
-        _actions = actions;
+        _host = host;
 
         // Left column: search + list + new/delete.
         _search = new TextBox { PlaceholderText = "Search templates…", Margin = new Thickness(0, 0, 0, 6) };
@@ -328,7 +328,7 @@ internal sealed class PromptLibraryDialogControl : UserControl
 
         var template = _all.FirstOrDefault(t => t.Id == _selectedId);
         var name = string.IsNullOrWhiteSpace(template?.Name) ? "this template" : $"'{template!.Name}'";
-        if (!await _actions.ConfirmAsync("Delete template", $"Delete {name}? This can't be undone.", "Delete"))
+        if (!await _host.ConfirmAsync("Delete template", $"Delete {name}? This can't be undone.", "Delete"))
         {
             return;
         }
@@ -349,14 +349,14 @@ internal sealed class PromptLibraryDialogControl : UserControl
             return;
         }
 
-        if (_actions.HasActiveSession)
+        if (_host.ActivePaneId is { } paneId)
         {
-            await _actions.InjectIntoActiveSessionAsync(text);
+            await _host.SendToSessionAsync(paneId, text);
             _status.Text = "Inserted into the active session.";
         }
         else
         {
-            await _actions.SetClipboardTextAsync(text);
+            await _host.SetClipboardTextAsync(text);
             _status.Text = "No active session — copied to the clipboard instead.";
         }
     }
@@ -370,7 +370,7 @@ internal sealed class PromptLibraryDialogControl : UserControl
             return;
         }
 
-        await _actions.SetClipboardTextAsync(text);
+        await _host.SetClipboardTextAsync(text);
         _status.Text = "Copied to the clipboard.";
     }
 

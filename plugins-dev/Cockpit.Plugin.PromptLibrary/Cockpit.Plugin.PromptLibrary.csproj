@@ -1,10 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Prompt Library plugin (#14 / idea #2): reusable prompt templates in the left menu, click-to-insert
-       with {{variable}} substitution. Built OUTSIDE the main solution (plugins-dev/) like the other example
-       plugins; package bin/<config>/net10.0 into a .zip and install via Options → Plugins. EnableDynamicLoading
-       emits the .deps.json the host's AssemblyDependencyResolver needs. Shared assemblies
-       (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are compile-only (Private=false /
+  <!-- Prompt Library plugin (AC-1395, pure UI per F2.1): reusable prompt templates in the left menu,
+       click-to-insert with {{variable}} substitution. Its only contribution (AddSideMenuButton, AddShortcut,
+       ShowDialogAsync) needs a window, so it has no backend part at all — ships bundled with the host. Built
+       OUTSIDE the main solution (plugins-dev/) like the other example plugins; package bin/<config>/net10.0
+       into a .zip and install via Options → Plugins. EnableDynamicLoading emits the .deps.json the host's
+       AssemblyDependencyResolver needs. Shared assemblies are compile-only (Private=false /
        ExcludeAssets=runtime) so the host's copies load and shared types keep one identity — the plugin folder
        ships only its own DLL + plugin.json. -->
   <PropertyGroup>
@@ -20,6 +21,10 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -27,9 +32,6 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
