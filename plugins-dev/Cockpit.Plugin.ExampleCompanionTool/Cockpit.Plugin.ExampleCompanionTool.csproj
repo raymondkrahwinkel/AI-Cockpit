@@ -1,9 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The example companion-tool plugin (AC-240): a mini-tool contributed from outside the host through
-       `ICockpitHost.AddCompanionTool`, proving that extension point end to end the way ExampleWorkspace proves
-       the workspace-type SDK and the clock proves the widget SDK. Bundled so it is there out of the box. Built
-       OUTSIDE Cockpit.slnx (plugins-dev/) like the other example plugins. Shared assemblies are compile-only
+       `ICockpitUiHost.AddCompanionTool`, proving that extension point end to end the way ExampleWorkspace proves
+       the workspace-type SDK and the clock proves the widget SDK. Bundled so it is there out of the box.
+       AC-1395 (F2.7, following GitStatus's pilot AC-1390): pure UI, per F2.1 — its only contribution needs a
+       window, so it has no backend part at all; plugin.json names only a uiAssembly. The whole project is the
+       UI project.
+       Built OUTSIDE Cockpit.slnx (plugins-dev/) like the other example plugins. Shared assemblies are compile-only
        (Private=false / ExcludeAssets=runtime) so the host's copies load and shared types keep one identity —
        the plugin folder ships only its own DLL + plugin.json. -->
   <PropertyGroup>
@@ -19,6 +22,10 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -26,9 +33,6 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

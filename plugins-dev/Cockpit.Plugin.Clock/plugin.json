@@ -1,11 +1,11 @@
 {
   "id": "clock",
   "name": "Clock",
-  "version": "1.0.6",
-  "entryAssembly": "Cockpit.Plugin.Clock.dll",
-  "entryType": "Cockpit.Plugin.Clock.ClockPlugin",
+  "version": "1.0.7",
+  "uiAssembly": "Cockpit.Plugin.Clock.dll",
+  "uiEntryType": "Cockpit.Plugin.Clock.ClockUi",
   "abstractionsVersion": 2,
-  "minHostVersion": "0.1.0",
+  "minHostVersion": "0.41.0",
   "description": "The time and date, for a Dashboard workspace.",
   "author": "Cockpit"
 }

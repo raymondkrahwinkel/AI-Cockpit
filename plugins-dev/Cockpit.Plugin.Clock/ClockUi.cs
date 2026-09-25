@@ -1,12 +1,11 @@
 using Material.Icons;
-using Microsoft.Extensions.DependencyInjection;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.Clock;
 
-// The clock. A plugin whose only contribution is `ICockpitHost.AddWidget` — which is exactly what
-// a "standalone" widget is: there is no separate widget package and no second installer, so a clock ships,
+// The clock (AC-1395, pure UI per F2.1): its only contribution is `ICockpitUiHost.AddWidget` — which is exactly
+// what a "standalone" widget is: there is no separate widget package and no second installer, so a clock ships,
 // installs and is trusted the same way a provider or an issue tracker does.
 //
 // It ships with the app because a Dashboard workspace with nothing to put on it is a worse first impression
@@ -14,19 +13,9 @@ namespace Cockpit.Plugin.Clock;
 // store (wanting the clock but not the system monitor means being able to download and install just the clock)
 // — one plugin per widget is what makes that possible. Between them they still
 // prove the settings icon is really gated: this one has no settings, that one has.
-public sealed class ClockPlugin : ICockpitPlugin
+public sealed class ClockUi : ICockpitPluginUi
 {
-    public PluginMetadata Metadata { get; } = new(
-        Id: "clock",
-        DisplayName: "Clock",
-        Author: "Cockpit",
-        Description: "The time and date, for a Dashboard workspace.");
-
-    public void ConfigureServices(IServiceCollection services)
-    {
-    }
-
-    public void Initialize(ICockpitHost host)
+    public void InitializeUi(ICockpitUiHost host)
     {
         // The type id keeps its "widgets." prefix on purpose. It is persisted with every placed instance, so
         // changing it would orphan the clocks on dashboards people have already arranged — the id is an API
@@ -42,9 +31,5 @@ public sealed class ClockPlugin : ICockpitPlugin
             DefaultColumnSpan = 6,
             DefaultRowSpan = 4,
         });
-    }
-
-    public void Dispose()
-    {
     }
 }
