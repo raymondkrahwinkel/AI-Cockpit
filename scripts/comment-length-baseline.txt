@@ -307,7 +307,6 @@ inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/HttpRunner.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/IStepRunner.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/IfRunner.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/Schedule.cs	1
-inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/SetStatusRunner.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/ShellQuoting.cs	2
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/StepContext.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/Engine/StepData.cs	2
