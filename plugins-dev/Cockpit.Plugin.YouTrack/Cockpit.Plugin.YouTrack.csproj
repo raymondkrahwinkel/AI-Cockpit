@@ -7,15 +7,21 @@
        Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean; package its
        bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins. EnableDynamicLoading
        emits the .deps.json the host's AssemblyDependencyResolver needs. The shared assemblies
-       (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are compile-only (Private=false /
-       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity — the plugin
-       folder ships only its own DLL + plugin.json. -->
+       (Cockpit.Plugins.Abstractions, the DI abstractions) are compile-only (Private=false / ExcludeAssets=runtime)
+       so the host's copies load and shared types keep one identity — the plugin folder ships only its own DLLs +
+       plugin.json.
+       AC-1397: the two-assembly layout of GitStatus's pilot (AC-1390). The dialog, the session header, the picker
+       and the settings live in UI/, their own project, which builds into this project's bin/ (the reference below
+       orders the build and references no assembly); this project names no Avalonia. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,17 +29,14 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration, so a Release copy of the plugin has its UI assembly. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.YouTrack.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+    <!-- MaterialIconKind for the workflow steps' icons. The host ships the runtime copy. -->
+    <PackageReference Include="Material.Icons" Version="3.0.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">

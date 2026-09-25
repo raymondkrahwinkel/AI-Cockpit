@@ -45,6 +45,11 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
 
     public event EventHandler<string>? SessionClosed;
 
+    // AC-1397: the same panes OpenSessions lists, the assistant included, read from the registry's own snapshot.
+    public string? GetWorkingDirectory(string paneId) =>
+        (_registry.Find(paneId) ?? (_registry.Assistant is { } assistant && string.Equals(assistant.PaneId, paneId, StringComparison.Ordinal) ? assistant : null))
+            ?.WorkingDirectory;
+
     // Changed says only that something moved; the panes that were live before and are not now are the ones that
     // closed. Read and swapped under the gate, so two changes on two threads are compared in the order they read.
     private void _OnRegistryChanged(object? sender, EventArgs e)

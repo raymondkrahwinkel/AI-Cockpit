@@ -1,9 +1,12 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -28,7 +31,10 @@ public class YouTrackPluginLoadTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
         Assert.NotNull(manifest);
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
+        // AC-1397: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
+        var entryAssembly = manifest.EntryAssembly;
+        Assert.NotNull(entryAssembly);
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, entryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "youtrack", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
@@ -44,9 +50,19 @@ public class YouTrackPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        Assert.Equal(1, host.SettingsRegistered);
-        Assert.Equal("YouTrack", Assert.Single(host.SideButtons));
+        // AC-1397: the backend part contributes nothing that needs a window; the UI part registers the settings and
+        // the side-menu button that opens the issues dialog.
+        Assert.Equal(0, host.SettingsRegistered);
+        Assert.Empty(host.SideButtons);
         Assert.Empty(host.SideSections);
+
+        Assert.Equal("Cockpit.Plugin.YouTrack.UI.dll", manifest.UiAssembly);
+        Assert.Equal("Cockpit.Plugin.YouTrack.UI.YouTrackUi", manifest.UiEntryType);
+        var uiPart = Assert.IsAssignableFrom<ICockpitPluginUi>(PluginUiManager.ActivateUi(discovered, plugin));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiPart.InitializeUi(uiHost);
+        uiHost.Received(1).AddSettings(Arg.Any<Func<Control>>());
+        uiHost.Received(1).AddSideMenuButton("YouTrack", Arg.Any<Action>());
 
         plugin.Dispose();
     }

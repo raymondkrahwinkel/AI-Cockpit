@@ -1,8 +1,12 @@
+extern alias UiAsm;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using Xunit.Abstractions;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -22,7 +26,7 @@ public class SettingsControlTemplateFitTests
     public void TemplateBox_StaysFullyReachableWithinTheSettingsDialogsOwnScrollViewer() => HeadlessAvalonia.Run(() =>
     {
         const string marker = "AC-521-FIT-MARKER";
-        var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Template = marker };
+        var settings = new UiSettings(new InMemoryPluginStorage()) { Template = marker };
         var view = new YouTrackSettingsControl(new FakeCockpitHost(), settings);
 
         // The window a real plugin-settings dialog opens at (CockpitViewModel.OpenPluginSettingsAsync: 640x560).

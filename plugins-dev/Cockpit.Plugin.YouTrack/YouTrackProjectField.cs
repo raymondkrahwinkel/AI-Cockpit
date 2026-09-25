@@ -6,11 +6,8 @@ namespace Cockpit.Plugin.YouTrack;
 // The field this plugin puts on a cockpit project (AC-317): which YouTrack project it is tracked in. The stored
 // value is the short name — `AC` — because that is what every query this plugin makes is written in; the
 // operator picks it by the full name, which is the only half they know by heart.
-internal static class YouTrackProjectField
+internal static partial class YouTrackProjectField
 {
-    // What the link is stored under on the project. Never change it: already-linked projects are keyed by it.
-    public const string Key = "youtrack.project";
-
     // AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
     // project wins over the instance-wide default (AC-548). Null when neither carries a tag; only ever the
     // first when the link names several (AC-884) — see ResolvePreferredTagsAsync for the rest.
@@ -24,7 +21,8 @@ internal static class YouTrackProjectField
     public static async Task<IReadOnlyList<string>> ResolvePreferredTagsAsync(
         ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken)
     {
-        var linked = await host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
+        // AC-1397: no pane named asks the host nothing — its fallback for a missing pane is the window's active one.
+        IReadOnlyList<string> linked = string.IsNullOrEmpty(paneId) ? [] : await host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
         return linked.Count > 0 ? linked : string.IsNullOrWhiteSpace(defaultProjectTag) ? [] : [defaultProjectTag];
     }
 

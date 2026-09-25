@@ -4,8 +4,9 @@ namespace Cockpit.Plugin.YouTrack;
 
 // Which issue each session pane is working on (#75). One instance is shared by the plugin's contributions, so
 // starting an issue from the dialog reaches the header of the session it was started for: the dialog knows the
-// active pane (`ICockpitSessionObserver.ActivePaneId`), the header knows its own
-// (`IPluginSessionContext.PaneId`), and this is the only thing that connects them.
+// active pane (`ICockpitUiHost.ActivePaneId`), the header knows its own (`IPluginSessionContext.PaneId`), and
+// this is the only thing that connects them. It lives in the backend part (AC-1397); both reach it over the
+// channel, naming the pane.
 //
 // It is also where the session gets labelled after the ticket (#AC-310). Linking used to be invisible outside this
 // plugin's own header — a session could carry a ticket while its sidebar row still read "default - 3", which is

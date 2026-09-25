@@ -1,7 +1,11 @@
+extern alias UiAsm;
+
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -12,22 +16,22 @@ public partial class SettingsControlPlaceholderHelpTests
     [Fact]
     public void PromptTemplateHelp_DocumentsExactlyThePlaceholdersRenderReplaces() => HeadlessAvalonia.Run(() =>
     {
-        var label = _LabelFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { Template = marker });
+        var label = _LabelFor(marker => new UiSettings(new InMemoryPluginStorage()) { Template = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("PromptTemplate.cs"), _DocumentedPlaceholders(label, "prompt-template"));
+        Assert.Equal(_ReplacedPlaceholders("Contracts/PromptTemplate.cs"), _DocumentedPlaceholders(label, "prompt-template"));
     });
 
     [Fact]
     public void BranchPatternHelp_DocumentsExactlyThePlaceholdersBranchNameReplaces() => HeadlessAvalonia.Run(() =>
     {
-        var label = _LabelFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { BranchPattern = marker });
+        var label = _LabelFor(marker => new UiSettings(new InMemoryPluginStorage()) { BranchPattern = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("BranchName.cs"), _DocumentedPlaceholders(label, "branch-pattern"));
+        Assert.Equal(_ReplacedPlaceholders("Contracts/BranchName.cs"), _DocumentedPlaceholders(label, "branch-pattern"));
     });
 
     // Builds the control with a unique marker in whichever field the caller sets on the settings object, then reads
     // back that field's own label row — so the template's help is never mistaken for the branch pattern's.
-    private static string _LabelFor(Func<string, YouTrackSettings> buildSettingsWithMarker)
+    private static string _LabelFor(Func<string, UiSettings> buildSettingsWithMarker)
     {
         const string marker = "AC-521-MARKER";
         var settings = buildSettingsWithMarker(marker);

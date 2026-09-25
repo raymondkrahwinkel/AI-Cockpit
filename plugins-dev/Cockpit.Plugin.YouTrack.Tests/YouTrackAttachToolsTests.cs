@@ -114,6 +114,33 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         }
     }
 
+    // AC-1397: the path is checked against the calling session's own directory, never the window's active session's —
+    // pane-1 calls while pane-2 is selected, so its own folder is allowed and pane-2's is not.
+    [Theory]
+    [InlineData("caller", "Attached 1 image to AC-1.")]
+    [InlineData("active", "outside the folders this tool may attach from")]
+    public async Task Path_IsCheckedAgainstTheCallersOwnDirectory_NotTheActiveSessions(string whose, string expected)
+    {
+        var callerDirectory = Directory.CreateTempSubdirectory("ac1397-caller-").FullName;
+        var activeDirectory = Directory.CreateTempSubdirectory("ac1397-active-").FullName;
+        var (host, tools) = _MakeTools(callerDirectory);
+        host.Observer.ActivePaneId = "pane-2";
+        host.Observer.ActiveSessionWorkingDirectory = activeDirectory;
+        var file = Path.Combine(new Dictionary<string, string> { ["caller"] = callerDirectory, ["active"] = activeDirectory }[whose], "screenshot.png");
+        await File.WriteAllBytesAsync(file, PngBytes);
+        try
+        {
+            var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
+
+            Assert.Contains(expected, result);
+        }
+        finally
+        {
+            Directory.Delete(callerDirectory, recursive: true);
+            Directory.Delete(activeDirectory, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task Path_OutsideBothAllowedRoots_IsRejected()
     {
@@ -185,7 +212,7 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
     private (FakeCockpitHost Host, YouTrackAttachTools Tools) _MakeTools(string? workingDirectory)
     {
         var host = new FakeCockpitHost();
-        host.Observer.ActiveSessionWorkingDirectory = workingDirectory;
+        host.Observer.WorkingDirectories["pane-1"] = workingDirectory;
         var settings = new YouTrackSettings(new InMemoryPluginStorage())
         {
             Instances = [new YouTrackInstance("Personal", $"{_prefix}api", "token", "AC")],

@@ -1,3 +1,7 @@
+extern alias UiAsm;
+
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 // `YouTrackDialogControl.BuildSearchTerm` (AC-518 follow-up): the server-side widen-search's query

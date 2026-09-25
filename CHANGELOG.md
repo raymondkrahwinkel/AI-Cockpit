@@ -580,6 +580,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: for plugin authors, the YouTrack plugin now follows Git status into the two-part layout — a backend part
+  and a UI part talking over the plugin's own channel. The issues dialog, the session header and the picker look
+  and work exactly as before; "Add to prompt" goes to the session selected in the window, as it always did.
 - changed: for plugin authors, nine integration plugins (Depot, Discord, Docker, Kind, Kubernetes, Proxmox, Slack,
   Local CI, GitHub Actions) now follow Git status into the two-part layout — a backend part and a UI part talking
   over the plugin's own channel. They look and work exactly as before.
@@ -701,6 +704,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the YouTrack attach tool, handed a file path, now checks it against the working folder of the session
+  that called it rather than the one currently selected in the window, so an agent can no longer attach a file
+  from another session's folder, and one working in the background can attach from its own.
 - fixed: the project editor's MCP servers list for a project shared through Depot now shows the servers this
   project's sessions actually start with. It used to show every server ticked, with "Pre-select" off, whenever the
   shared definition made no MCP choice, and a Save then quietly threw the project's own selection away.

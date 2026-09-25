@@ -1,3 +1,8 @@
+extern alias UiAsm;
+
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
+
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 // What "Plan in Autopilot" hands over. The stage field is the one Autopilot's start gate refuses on (AC-345), so
@@ -6,7 +11,7 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 // project use: that package is commercially licensed from v8 on.
 public class YouTrackPlanIntentPayloadTests
 {
-    private static YouTrackIssue Issue(string? state) =>
+    private static UiIssue Issue(string? state) =>
         new("3-1", "AC-345", "A summary", "The description", "AC", state);
 
     [Fact]

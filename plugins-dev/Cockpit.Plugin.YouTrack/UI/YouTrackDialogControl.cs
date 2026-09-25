@@ -9,10 +9,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // The "YouTrack Issues" dialog opened from the side-menu button (#48): an instance selector (which of the
 // configured `YouTrackInstance`s to query), a project filter (plus "All", populated from the
@@ -43,12 +43,8 @@ internal sealed class YouTrackDialogControl : UserControl
     private static readonly YouTrackProjectOption AllProjectOption = new(null, AllOption);
 
     private readonly YouTrackSettings _settings;
-    private readonly ICockpitHost _host;
-    private readonly ICockpitActions _actions;
-    private readonly SessionIssueLinks _links;
-    private readonly IssueStateChanges _stateChanges;
-    private readonly YouTrackClient _client = new();
-    private readonly YouTrackWorkflow _workflow;
+    private readonly ICockpitUiHost _host;
+    private readonly YouTrackBackend _backend;
 
     private readonly ComboBox _instanceSelector;
     private readonly ComboBox _projectFilter;
@@ -130,14 +126,11 @@ internal sealed class YouTrackDialogControl : UserControl
     // now answers a filter the operator has since changed away from.
     private int _loadToken;
 
-    public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links, IssueStateChanges stateChanges)
+    public YouTrackDialogControl(YouTrackSettings settings, ICockpitUiHost host, YouTrackBackend backend)
     {
         _settings = settings;
         _host = host;
-        _actions = host.Actions;
-        _links = links;
-        _stateChanges = stateChanges;
-        _workflow = new YouTrackWorkflow(_client);
+        _backend = backend;
 
         _instanceSelector = new ComboBox
         {
@@ -209,7 +202,7 @@ internal sealed class YouTrackDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn { Header = "Summary", Binding = new Binding(nameof(YouTrackIssue.Summary)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(YouTrackIssue.State)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as YouTrackIssue);
-        _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as YouTrackIssue);
+        _grid.DoubleTapped += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as YouTrackIssue);
 
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
@@ -254,7 +247,7 @@ internal sealed class YouTrackDialogControl : UserControl
         // Without this the button's own explanation of why it is inert never appears: Avalonia shows no tooltip
         // on a disabled control unless asked to.
         ToolTip.SetShowOnDisabled(_inject, true);
-        _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as YouTrackIssue);
+        _inject.Click += async (_, _) => await _AddToPromptAsync(_grid.SelectedItem as YouTrackIssue);
 
         _newSession = new Button { Content = "New session" };
         _newSession.Click += async (_, _) => await _StartNewSessionAsync();
@@ -506,7 +499,7 @@ internal sealed class YouTrackDialogControl : UserControl
         _SetStatus("Loading projects…");
         var projects = string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token)
             ? []
-            : await _client.GetProjectsAsync(instance.InstanceUrl, instance.Token, CancellationToken.None);
+            : await _backend.ProjectsAsync(instance);
 
         var options = new List<YouTrackProjectOption> { AllProjectOption };
         options.AddRange(projects
@@ -515,11 +508,10 @@ internal sealed class YouTrackDialogControl : UserControl
                 project.ShortName,
                 string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
-        // AC-317/AC-548/AC-884: routed through YouTrackProjectField.ResolvePreferredTagsAsync, the one resolution
-        // this dialog and the session picker both call. This filter is a single ComboBox selection, so a project
-        // linked to more than one prefix preselects "All" rather than silently picking the first.
-        var preferredTags = await YouTrackProjectField.ResolvePreferredTagsAsync(
-            _host, paneId: null, instance.DefaultProjectTag, CancellationToken.None);
+        // AC-317/AC-548/AC-884: the one resolution this dialog and the session picker share, for the window's active
+        // pane (AC-1397 — the backend has none). A single ComboBox selection, so a project linked to more than one
+        // prefix preselects "All" rather than silently picking the first.
+        var preferredTags = await _backend.PreferredTagsAsync(_host.ActivePaneId, instance.DefaultProjectTag);
 
         _isSyncingProjectFilter = true;
         _projectFilter.ItemsSource = options;
@@ -609,7 +601,7 @@ internal sealed class YouTrackDialogControl : UserControl
                 ? $"#Unresolved {_QuotedFieldName(fieldName)}: {{{selectedState}}}"
                 : null;
 
-            var fetched = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag is { } tag ? [tag] : null, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            var fetched = await _backend.IssuesAsync(instance, projectTag is { } tag ? [tag] : null, extraFilter, _assignedToMe.IsChecked == true, MaxResults);
             if (token != _loadToken)
             {
                 // Superseded while the fetch was in flight — applying this now would let a stale, older request
@@ -703,7 +695,7 @@ internal sealed class YouTrackDialogControl : UserControl
             var selectedState = _stateFilter.SelectedItem as string;
             var searchTerm = BuildSearchTerm(_stateFieldName, selectedState, query);
 
-            var results = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag is { } tag ? [tag] : null, searchTerm, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            var results = await _backend.IssuesAsync(instance, projectTag is { } tag ? [tag] : null, searchTerm, _assignedToMe.IsChecked == true, MaxResults);
 
             if (results.Count > 0)
             {
@@ -778,7 +770,7 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        var (fieldName, values) = await _client.GetProjectStateFieldAsync(instance.InstanceUrl, instance.Token, projectTag, CancellationToken.None);
+        var (fieldName, values) = await _backend.ProjectStateFieldAsync(instance, projectTag);
         if (values.Count == 0)
         {
             // A failed call, or a project whose status field YouTrackFieldParser does not recognize — leaves
@@ -961,8 +953,9 @@ internal sealed class YouTrackDialogControl : UserControl
     // pane is the very session the button was missing (AC-292).
     private void _UpdateInjectAvailability()
     {
-        _inject.IsEnabled = _actions.HasActiveSession;
-        ToolTip.SetTip(_inject, _actions.HasActiveSession
+        var hasActiveSession = _host.ActivePaneId is { Length: > 0 };
+        _inject.IsEnabled = hasActiveSession;
+        ToolTip.SetTip(_inject, hasActiveSession
             ? "Inject this issue's prompt into the active session."
             : "No active session — start one, or use New session.");
     }
@@ -1018,14 +1011,14 @@ internal sealed class YouTrackDialogControl : UserControl
         var token = ++_fieldsToken;
         try
         {
-            var fields = await _client.GetIssueFieldsAsync(instance.InstanceUrl, instance.Token, issue, CancellationToken.None);
+            var fields = await _backend.IssueFieldsAsync(instance, issue);
             if (token != _fieldsToken || !ReferenceEquals(_grid.SelectedItem, issue))
             {
                 return;
             }
 
             _fields = fields;
-            var hasStart = fields.State is { } state && YouTrackWorkflow.FindStartTarget(state) is not null;
+            var hasStart = fields.State is { } state && StateFlow.Start(state) is not null;
             var hasTargets = fields.State?.AvailableTargets.Count > 0;
             _setState.IsEnabled = hasStart || hasTargets;
         }
@@ -1048,7 +1041,7 @@ internal sealed class YouTrackDialogControl : UserControl
     {
         if (_instanceSelector.SelectedItem is not YouTrackInstance instance
             || _fields is not { State: { } state } fields
-            || YouTrackWorkflow.FindStartTarget(state) is not { } target)
+            || StateFlow.Start(state) is not { } target)
         {
             return;
         }
@@ -1056,13 +1049,11 @@ internal sealed class YouTrackDialogControl : UserControl
         _setState.IsEnabled = false;
         try
         {
-            var previous = state.CurrentValue ?? string.Empty;
-            var startResult = await _workflow.StartAsync(instance, issue, fields, target, CancellationToken.None);
-            _stateChanges.Moved(instance, issue, previous, target, _host.Sessions.ActiveSessionWorkingDirectory);
+            var startResult = await _backend.StartAsync(instance, issue, fields, target, _host.ActivePaneId);
 
-            // _LinkToActiveSession reports its own outcome; without combining the two, its message silently
+            // _LinkToActiveSessionAsync reports its own outcome; without combining the two, its message silently
             // replaced Start's own result and the operator never saw it (AC-299 bug 1).
-            var linkResult = _LinkToActiveSession(issue);
+            var linkResult = await _LinkToActiveSessionAsync(issue);
             _SetDetailStatus(issue, string.IsNullOrEmpty(linkResult) ? startResult : $"{startResult} {linkResult}");
             await _LoadIssuesAsync();
         }
@@ -1085,7 +1076,7 @@ internal sealed class YouTrackDialogControl : UserControl
         // Start work sits above the board's own targets, set apart by a separator: it is not a value the project
         // defines but the fixed first move on a ticket (AC-297) — the reason "Start" was free to become New
         // session's name.
-        if (fields.State is { } state && YouTrackWorkflow.FindStartTarget(state) is not null)
+        if (fields.State is { } state && StateFlow.Start(state) is not null)
         {
             var startItem = new MenuItem { Header = "Start work" };
             startItem.Click += async (_, _) => await _StartAsync(issue);
@@ -1119,8 +1110,7 @@ internal sealed class YouTrackDialogControl : UserControl
         _setState.IsEnabled = false;
         try
         {
-            await _client.SetStateAsync(instance.InstanceUrl, instance.Token, issue, state, target, CancellationToken.None);
-            _stateChanges.Moved(instance, issue, state.CurrentValue ?? string.Empty, target, _host.Sessions.ActiveSessionWorkingDirectory);
+            await _backend.SetStateAsync(instance, issue, state, target, _host.ActivePaneId);
             _SetDetailStatus(issue, $"{issue.IdReadable} → {target}.");
             await _LoadIssuesAsync();
         }
@@ -1163,6 +1153,9 @@ internal sealed class YouTrackDialogControl : UserControl
                 : new ProjectLink(YouTrackProjectField.Key, issue.Project),
         };
 
+        // The link is kept and awaited once the dialog is gone, so a failure to link still reaches the status line.
+        var linking = Task.CompletedTask;
+
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
         // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert
         // until the dialog the operator already has in front of them is gone (AC-292).
@@ -1173,13 +1166,14 @@ internal sealed class YouTrackDialogControl : UserControl
                 prefill,
                 onStarted: paneId =>
                 {
-                    _LinkIssue(paneId, instance, issue);
+                    linking = _LinkIssueAsync(paneId, instance, issue);
 
                     // That pane is a live session, which is what Add to prompt was waiting for.
                     _UpdateInjectAvailability();
                     _SetDetailStatus(issue, $"Started a new session for {issue.IdReadable}, linked to it.");
                 },
                 onCancelled: () => _SetDetailStatus(issue, "New session cancelled."));
+            await linking;
         }
         catch (Exception exception)
         {
@@ -1195,26 +1189,26 @@ internal sealed class YouTrackDialogControl : UserControl
     // and New session's onStarted callback (the pane it just created), so the two do not each keep their own copy.
     // The working directory travels with the link: a flow that cuts a branch or a worktree when a ticket is picked
     // is given the path to do it in, instead of an empty string (AC-292).
-    private void _LinkIssue(string paneId, YouTrackInstance instance, YouTrackIssue issue) =>
-        _links.Link(paneId, new LinkedIssue(instance, issue), _host.Sessions.ActiveSessionWorkingDirectory);
+    private Task _LinkIssueAsync(string paneId, YouTrackInstance instance, YouTrackIssue issue) =>
+        _backend.LinkAsync(paneId, new LinkedIssue(instance, issue));
 
     // Ties the issue to the session pane that is selected right now, which is the one the header item showing it
     // sits in — the dialog itself belongs to no session. Returns the resulting message rather than setting
     // _detailStatus directly, so a caller that already has something to report (Start work's own result) can
     // combine both into one line instead of one overwriting the other (AC-299 bug 1).
-    private string _LinkToActiveSession(YouTrackIssue issue)
+    private async Task<string> _LinkToActiveSessionAsync(YouTrackIssue issue)
     {
         if (_instanceSelector.SelectedItem is not YouTrackInstance instance)
         {
             return string.Empty;
         }
 
-        if (_host.Sessions.ActivePaneId is not { Length: > 0 } paneId)
+        if (_host.ActivePaneId is not { Length: > 0 } paneId)
         {
             return "No active session to link this issue to.";
         }
 
-        _LinkIssue(paneId, instance, issue);
+        await _LinkIssueAsync(paneId, instance, issue);
         return $"{issue.IdReadable} linked to the active session.";
     }
 
@@ -1238,10 +1232,10 @@ internal sealed class YouTrackDialogControl : UserControl
             items.Add(planItem);
         }
 
-        if (_host.Sessions.ActivePaneId is { Length: > 0 })
+        if (_host.ActivePaneId is { Length: > 0 })
         {
             var linkItem = new MenuItem { Header = "Link to session" };
-            linkItem.Click += (_, _) => _SetDetailStatus(issue, _LinkToActiveSession(issue));
+            linkItem.Click += async (_, _) => await _LinkFromMenuAsync(issue);
             items.Add(linkItem);
         }
 
@@ -1257,7 +1251,20 @@ internal sealed class YouTrackDialogControl : UserControl
         menu.Open(_overflow);
     }
 
-    private void _AddToPrompt(YouTrackIssue? issue)
+    private async Task _LinkFromMenuAsync(YouTrackIssue issue)
+    {
+        try
+        {
+            _SetDetailStatus(issue, await _LinkToActiveSessionAsync(issue));
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not link {issue.IdReadable}: {exception.Message}");
+        }
+    }
+
+    // D6 (AC-1397): the window's active pane, named explicitly — placed in that session's input, unsent, as before.
+    private async Task _AddToPromptAsync(YouTrackIssue? issue)
     {
         if (issue is null)
         {
@@ -1265,14 +1272,21 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        if (!_actions.HasActiveSession)
+        if (_host.ActivePaneId is not { Length: > 0 } paneId)
         {
             _SetDetailStatus(issue, "No active session — use Copy to put the prompt on the clipboard.");
             return;
         }
 
-        _ = _actions.InjectIntoActiveSessionAsync(PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
-        _SetDetailStatus(issue, $"Added issue {issue.IdReadable} to the active session's prompt.");
+        try
+        {
+            await _host.InsertIntoSessionAsync(paneId, PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
+            _SetDetailStatus(issue, $"Added issue {issue.IdReadable} to the active session's prompt.");
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not add {issue.IdReadable} to the session: {exception.Message}");
+        }
     }
 
     private async Task _CopyPromptAsync()
@@ -1282,7 +1296,7 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        await _actions.SetClipboardTextAsync(_renderedPrompt);
+        await _host.SetClipboardTextAsync(_renderedPrompt);
         _SetDetailStatus(issue, "Prompt copied to the clipboard.");
     }
 
@@ -1302,7 +1316,7 @@ internal sealed class YouTrackDialogControl : UserControl
     // The selected instance's base URL, not the issue's own project — an issue never carries its instance.
     private string _BuildIssueUrl(YouTrackIssue issue) =>
         _instanceSelector.SelectedItem is YouTrackInstance instance
-            ? YouTrackClient.BuildIssueUrl(instance.InstanceUrl, issue.IdReadable)
+            ? YouTrackUrl.BuildIssueUrl(instance.InstanceUrl, issue.IdReadable)
             : string.Empty;
 
     private static FontFamily _MonoFont() =>

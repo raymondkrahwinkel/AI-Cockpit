@@ -2,9 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia;
-using Cockpit.Plugins.Abstractions;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // Picks an issue for one session (#75). Opened from that session's own header, so the issue lands on the pane you
 // opened it from — not on "the active session", which is a guess the moment four panes are on screen.
@@ -17,10 +16,9 @@ internal sealed class YouTrackIssuePickerControl : UserControl
     private const int MaxResults = 100;
 
     private readonly YouTrackSettings _settings;
-    private readonly ICockpitHost _host;
+    private readonly YouTrackBackend _backend;
     private readonly string? _paneId;
-    private readonly Action<LinkedIssue> _picked;
-    private readonly YouTrackClient _client = new();
+    private readonly Func<LinkedIssue, Task> _picked;
 
     private readonly ComboBox _instances;
     private readonly TextBox _search;
@@ -30,10 +28,10 @@ internal sealed class YouTrackIssuePickerControl : UserControl
 
     private List<(YouTrackInstance Instance, YouTrackIssue Issue)> _all = [];
 
-    public YouTrackIssuePickerControl(YouTrackSettings settings, ICockpitHost host, string? paneId, Action<LinkedIssue> picked)
+    public YouTrackIssuePickerControl(YouTrackSettings settings, YouTrackBackend backend, string? paneId, Func<LinkedIssue, Task> picked)
     {
         _settings = settings;
-        _host = host;
+        _backend = backend;
         _paneId = paneId;
         _picked = picked;
 
@@ -49,10 +47,10 @@ internal sealed class YouTrackIssuePickerControl : UserControl
         _mine.IsCheckedChanged += async (_, _) => await _LoadAsync();
 
         _issues = new ListBox { Margin = new Thickness(0, 8, 0, 0) };
-        _issues.DoubleTapped += (_, _) => _Pick();
+        _issues.DoubleTapped += async (_, _) => await _PickAsync();
 
         var use = new Button { Content = "Track in this session", Classes = { "Accent" } };
-        use.Click += (_, _) => _Pick();
+        use.Click += async (_, _) => await _PickAsync();
 
         Content = new DockPanel
         {
@@ -110,19 +108,11 @@ internal sealed class YouTrackIssuePickerControl : UserControl
             // AC-548/AC-884: the same resolution the issues dialog uses — the session's own linked project(s) win
             // over the instance-wide default, and every linked prefix is fetched in the one query below rather
             // than only the first.
-            var preferredTags = await YouTrackProjectField.ResolvePreferredTagsAsync(
-                _host, _paneId, instance.DefaultProjectTag, CancellationToken.None);
+            var preferredTags = await _backend.PreferredTagsAsync(_paneId, instance.DefaultProjectTag);
 
             // What the operator said they want to see. The client's own query is "#Unresolved"; anything written here
             // replaces the states half of it, so "done" issues stay out unless someone asks for them.
-            var issues = await _client.GetOpenIssuesAsync(
-                instance.InstanceUrl,
-                instance.Token,
-                preferredTags,
-                _settings.PickerQuery,
-                _mine.IsChecked == true,
-                MaxResults,
-                CancellationToken.None);
+            var issues = await _backend.IssuesAsync(instance, preferredTags, _settings.PickerQuery, _mine.IsChecked == true, MaxResults);
 
             _all = issues.Select(issue => (instance, issue)).ToList();
             _status.Text = _all.Count == 0 ? "No open issues here." : string.Empty;
@@ -156,14 +146,21 @@ internal sealed class YouTrackIssuePickerControl : UserControl
         }
     }
 
-    private void _Pick()
+    private async Task _PickAsync()
     {
         if (_issues.SelectedItem is not IssueRow row)
         {
             return;
         }
 
-        _picked(new LinkedIssue(row.Instance, row.Issue));
+        try
+        {
+            await _picked(new LinkedIssue(row.Instance, row.Issue));
+        }
+        catch (Exception exception)
+        {
+            _status.Text = $"Could not track {row.Issue.IdReadable}: {exception.Message}";
+        }
     }
 
     private static Control _Docked(Control control, Dock dock)

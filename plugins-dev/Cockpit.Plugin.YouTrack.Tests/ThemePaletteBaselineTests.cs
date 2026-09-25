@@ -1,7 +1,13 @@
+extern alias UiAsm;
+
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
+using UiInstance = UiAsm::Cockpit.Plugin.YouTrack.YouTrackInstance;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -14,9 +20,9 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
-    private static readonly YouTrackInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
-    private static readonly YouTrackIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
-    private static readonly YouTrackIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
+    private static readonly UiInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
+    private static readonly UiIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
+    private static readonly UiIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
 
     private const string Scene = "dialog";
 
@@ -56,10 +62,10 @@ public class ThemePaletteBaselineTests
     private static string _Painted()
     {
         var storage = new InMemoryPluginStorage();
-        var settings = new YouTrackSettings(storage) { Instances = [LocalInstance] };
+        var settings = new UiSettings(storage) { Instances = [LocalInstance] };
         var host = new FakeCockpitHost();
         var links = new SessionIssueLinks(host);
-        var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+        var dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
 
         var window = new Window { Width = 1280, Height = 860, Content = dialog };
         window.Show();

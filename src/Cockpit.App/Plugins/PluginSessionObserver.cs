@@ -68,6 +68,17 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
         return UiThreadCall.Run(Read);
     }
 
+    // AC-1397: marshalled for the same reason as GetCurrentTurnImages — the MCP tool that asks runs on a request thread.
+    public string? GetWorkingDirectory(string paneId)
+    {
+        string? Read() =>
+            _cockpit.Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane)
+                .FirstOrDefault(session => session is not null && string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+                ?.WorkingDirectory;
+
+        return UiThreadCall.Run(Read);
+    }
+
     // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header
     // pill renders, carrying the profile label so per-profile history has something to group on. Null when
     // nothing is selected.

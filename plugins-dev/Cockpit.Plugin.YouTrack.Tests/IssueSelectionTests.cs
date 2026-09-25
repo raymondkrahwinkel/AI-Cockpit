@@ -1,3 +1,8 @@
+extern alias UiAsm;
+
+
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -8,8 +13,8 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 // rather than by object or structural equality.
 public class IssueSelectionTests
 {
-    private static readonly YouTrackIssue Backlog = new("1-1", "AT-1", "Faster startup", null, "AT", "Backlog");
-    private static readonly YouTrackIssue Other = new("1-2", "AT-2", "Fix the sidebar", null, "AT", "Backlog");
+    private static readonly UiIssue Backlog = new("1-1", "AT-1", "Faster startup", null, "AT", "Backlog");
+    private static readonly UiIssue Other = new("1-2", "AT-2", "Fix the sidebar", null, "AT", "Backlog");
 
     [Fact]
     public void FindsTheSameIssue_ById_EvenWhenItsFieldsChanged()

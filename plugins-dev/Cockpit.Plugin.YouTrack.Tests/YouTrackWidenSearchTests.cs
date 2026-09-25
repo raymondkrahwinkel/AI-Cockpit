@@ -1,3 +1,5 @@
+extern alias UiAsm;
+
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Reflection;
@@ -6,6 +8,10 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.TestSupport;
 using Microsoft.AspNetCore.Http;
+using UiAsm::Cockpit.Plugin.YouTrack.UI;
+using UiIssue = UiAsm::Cockpit.Plugin.YouTrack.YouTrackIssue;
+using UiInstance = UiAsm::Cockpit.Plugin.YouTrack.YouTrackInstance;
+using UiSettings = UiAsm::Cockpit.Plugin.YouTrack.YouTrackSettings;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -29,7 +35,7 @@ public class YouTrackWidenSearchTests
         await using var harness = await _OpenAsync(issueQueries);
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", number == 1 ? "Fix the login bug" : $"Issue {number}", null, "AT", "Open"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", number == 1 ? "Fix the login bug" : $"Issue {number}", null, "AT", "Open"))
             .ToArray();
         harness.PlantAllAndFilter(issues, "login");
 
@@ -48,7 +54,7 @@ public class YouTrackWidenSearchTests
         await using var harness = await _OpenAsync(issueQueries);
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults - 1)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
             .ToArray();
         harness.PlantAllAndFilter(issues, "no such term anywhere");
 
@@ -66,7 +72,7 @@ public class YouTrackWidenSearchTests
         await using var harness = await _OpenAsync(issueQueries);
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
             .ToArray();
         harness.PlantAllAndFilter(issues, string.Empty);
 
@@ -86,7 +92,7 @@ public class YouTrackWidenSearchTests
         harness.SetResolvedState("State", "Ready");
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", "Fix the login bug", null, "AT", "Ready"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", "Fix the login bug", null, "AT", "Ready"))
             .ToArray();
         harness.PlantAllAndFilter(issues, "login");
 
@@ -103,13 +109,13 @@ public class YouTrackWidenSearchTests
     public async Task SuccessfulWiden_ReplacesTheGridAndReportsItInTheStatusLine()
     {
         var issueQueries = new ConcurrentQueue<string>();
-        var found = new YouTrackIssue("9-1", "AT-9", "Login bug found beyond page one", null, "AT", "Open");
+        var found = new UiIssue("9-1", "AT-9", "Login bug found beyond page one", null, "AT", "Open");
         await using var harness = await _OpenAsync(issueQueries, issuesResponse: $$"""
             [{"id":"{{found.Id}}","idReadable":"{{found.IdReadable}}","summary":"{{found.Summary}}","project":{"shortName":"AT"},"customFields":[]}]
             """);
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Open"))
             .ToArray();
         harness.PlantAllAndFilter(issues, "login");
 
@@ -130,7 +136,7 @@ public class YouTrackWidenSearchTests
         await using var harness = await _OpenAsync(issueQueries, issuesStatusCode: 500);
 
         var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
-            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", number == 1 ? "Fix the login bug" : $"Issue {number}", null, "AT", "Open"))
+            .Select(number => new UiIssue($"1-{number}", $"AT-{number}", number == 1 ? "Fix the login bug" : $"Issue {number}", null, "AT", "Open"))
             .ToArray();
         harness.PlantAllAndFilter(issues, "login");
 
@@ -146,16 +152,16 @@ public class YouTrackWidenSearchTests
     private static async Task<Harness> _OpenAsync(ConcurrentQueue<string> issueQueries, string issuesResponse = "[]", int issuesStatusCode = 200)
     {
         var server = await LoopbackHttpServer.StartAsync(context => _AnswerAsync(context, issueQueries, issuesResponse, issuesStatusCode));
-        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", string.Empty);
+        var instance = new UiInstance("Remote", $"{server.BaseUrl}api", "perm-token", string.Empty);
 
         YouTrackDialogControl? dialog = null;
         Window? window = null;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var settings = new UiSettings(new InMemoryPluginStorage()) { Instances = [instance] };
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
-            dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            dialog = new YouTrackDialogControl(settings, host, host.ConnectBackend(links));
             window = new Window { Width = 1280, Height = 860, Content = dialog };
             window.Show();
         });
@@ -212,9 +218,9 @@ public class YouTrackWidenSearchTests
             throw new TimeoutException("The dialog's initial load never reached /api/issues.");
         }
 
-        public void PlantAllAndFilter(YouTrackIssue[] issues, string searchText) => Dispatcher.UIThread.Invoke(() =>
+        public void PlantAllAndFilter(UiIssue[] issues, string searchText) => Dispatcher.UIThread.Invoke(() =>
         {
-            _Field("_all").SetValue(dialog, (IReadOnlyList<YouTrackIssue>)issues);
+            _Field("_all").SetValue(dialog, (IReadOnlyList<UiIssue>)issues);
             _Search().Text = searchText;
             _Method("_ApplyFilter").Invoke(dialog, []);
         });
@@ -252,8 +258,8 @@ public class YouTrackWidenSearchTests
             await task;
         });
 
-        public List<YouTrackIssue> GridItems() => Dispatcher.UIThread.Invoke(() =>
-            (_Grid().ItemsSource as ObservableCollection<YouTrackIssue>)?.ToList() ?? []);
+        public List<UiIssue> GridItems() => Dispatcher.UIThread.Invoke(() =>
+            (_Grid().ItemsSource as ObservableCollection<UiIssue>)?.ToList() ?? []);
 
         // Render-proof (same idiom as the MaxResults truncation notice): walks the shown window's real visual
         // tree by the status TextBlock's Name, rather than reading the private field directly — that way a

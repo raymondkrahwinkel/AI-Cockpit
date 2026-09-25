@@ -43,7 +43,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1397: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of UI/ fails this project rather than going unseen.
+         Aliased: Contracts/*.cs is linked source, compiled once per assembly, so the model types exist twice; the
+         unaliased names are the backend's, and a UI test names the UI part's through UiAsm — see Depot.Tests. -->
+    <Reference Include="Cockpit.Plugin.YouTrack.UI">
+      <HintPath>..\Cockpit.Plugin.YouTrack\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.YouTrack.UI.dll</HintPath>
+      <Aliases>UiAsm</Aliases>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
     <!-- The loopback test server these attachment tests post against (AC-371). Shared with the host's test
          projects rather than copied, because a copy is how the port race in AC-350 got to exist twice. -->
     <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />

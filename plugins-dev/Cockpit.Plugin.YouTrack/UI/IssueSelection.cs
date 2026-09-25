@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // Finds the issue that survives a grid reload by identity (AC-299 bug 2). `YouTrackDialogControl`
 // rebuilds its grid's `ItemsSource` as a brand-new `ObservableCollection&lt;YouTrackIssue&gt;` from

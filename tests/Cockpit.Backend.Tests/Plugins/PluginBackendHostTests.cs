@@ -86,13 +86,18 @@ public class PluginBackendHostTests
         await pane.Received(1).InjectAndSubmitAsync("pin this");
     }
 
-    // D6: the backend observer knows the open panes and which one closed, and has no selection to report.
+    // D6: the backend observer knows the open panes and which one closed, and has no selection to report — but it
+    // does know where each open pane works, by its id (AC-1397), and nothing for one that closed.
     [Fact]
     public void TheBackendObserver_ListsTheOpenPanes_ReportsEachClosedOneOnce_AndHasNoActiveSession()
     {
         var registry = new SessionRegistry();
-        registry.Register(_Pane("pane-1", "One"));
-        registry.Register(_Pane("pane-2", "Two"));
+        var one = _Pane("pane-1", "One");
+        one.WorkingDirectory.Returns("/work/one");
+        var two = _Pane("pane-2", "Two");
+        two.WorkingDirectory.Returns("/work/two");
+        registry.Register(one);
+        registry.Register(two);
         ICockpitSessionObserver observer = new PluginBackendSessionObserver(registry);
         var closed = new List<string>();
         observer.SessionClosed += (_, paneId) => closed.Add(paneId);
@@ -103,6 +108,7 @@ public class PluginBackendHostTests
         Assert.Equal([new OpenCockpitSession("pane-2", "Two"), new OpenCockpitSession("pane-3", "Three")], observer.OpenSessions);
         Assert.Equal(["pane-1"], closed);
         Assert.Equal(((string?)null, (string?)null), (observer.ActivePaneId, observer.ActiveSessionWorkingDirectory));
+        Assert.Equal(("/work/two", (string?)null), (observer.GetWorkingDirectory("pane-2"), observer.GetWorkingDirectory("pane-1")));
     }
 
     // The window members do nothing and say so once per plugin; the new-session dialog still keeps its
