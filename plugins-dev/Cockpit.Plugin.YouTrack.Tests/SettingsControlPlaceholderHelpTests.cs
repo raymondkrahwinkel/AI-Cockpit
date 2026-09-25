@@ -18,7 +18,7 @@ public partial class SettingsControlPlaceholderHelpTests
     {
         var label = _LabelFor(marker => new UiSettings(new InMemoryPluginStorage()) { Template = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("PromptTemplate.cs"), _DocumentedPlaceholders(label, "prompt-template"));
+        Assert.Equal(_ReplacedPlaceholders("Contracts/PromptTemplate.cs"), _DocumentedPlaceholders(label, "prompt-template"));
     });
 
     [Fact]
@@ -26,7 +26,7 @@ public partial class SettingsControlPlaceholderHelpTests
     {
         var label = _LabelFor(marker => new UiSettings(new InMemoryPluginStorage()) { BranchPattern = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("BranchName.cs"), _DocumentedPlaceholders(label, "branch-pattern"));
+        Assert.Equal(_ReplacedPlaceholders("Contracts/BranchName.cs"), _DocumentedPlaceholders(label, "branch-pattern"));
     });
 
     // Builds the control with a unique marker in whichever field the caller sets on the settings object, then reads
