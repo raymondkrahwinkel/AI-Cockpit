@@ -25,7 +25,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -53,7 +53,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         // The step's session is on screen, so the mark was already taken — the agent has not reported anything yet.
@@ -83,7 +83,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, new AutopilotRunEnvironment("/plain/folder", null, IsolateSteps: false), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -112,7 +112,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -142,7 +142,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -169,7 +169,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -197,7 +197,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane", "/repo/.worktrees/agent-2")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane", "/repo/.worktrees/agent-2")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -225,7 +225,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -249,7 +249,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -276,7 +276,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane", "/repo/.worktrees/run")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane", "/repo/.worktrees/run")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -300,7 +300,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
@@ -324,7 +324,7 @@ public class AutopilotEvidenceGateTests
 
         var shown = new TaskCompletionSource();
         var run = coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), _Settings(),
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), _Settings(),
             _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);

@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -45,12 +44,10 @@ public class AutopilotWorkingDirectoryTests
         Assert.Equal(expected, session);
     }
 
-    private static IWorkspaceContext _Context(string? activeSessionDirectory)
+    private static ICockpitSessionObserver _Context(string? activeSessionDirectory)
     {
         var sessions = Substitute.For<ICockpitSessionObserver>();
         sessions.ActiveSessionWorkingDirectory.Returns(activeSessionDirectory);
-        var context = Substitute.For<IWorkspaceContext>();
-        context.Sessions.Returns(sessions);
-        return context;
+        return sessions;
     }
 }

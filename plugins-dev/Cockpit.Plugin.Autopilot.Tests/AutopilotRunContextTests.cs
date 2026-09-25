@@ -41,7 +41,7 @@ public class AutopilotRunContextTests
     [Theory]
     [MemberData(nameof(Phases))]
     public void IsSettledOutcome_RecordsExactlyTheRunsThatEnded(object phase, bool settled) =>
-        Assert.Equal(settled, AutopilotPlanWorkspaceBody.IsSettledOutcome((AutopilotPlanPhase)phase));
+        Assert.Equal(settled, AutopilotWorkspaceRuns.IsSettledOutcome((AutopilotPlanPhase)phase));
 
     // The persistent "needs you" marker (AC-203): raised while any active run is in AwaitingOperator, cleared the
     // moment it leaves — answered or settled — so it never outlives the wait it signals. A CEO consult (spoor 2,

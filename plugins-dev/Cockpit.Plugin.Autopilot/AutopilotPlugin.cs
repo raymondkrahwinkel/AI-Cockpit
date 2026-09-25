@@ -3,20 +3,23 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// Autopilot (AC-94/AC-174): the operator-triggered "issue → merge-ready PR" plugin. The CEO plans the work, the
-// operator approves it once, then an autonomous run drives each step — embedding an isolated session per step,
-// validating it, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands the issue to the CEO.
-public sealed class AutopilotPlugin : ICockpitPlugin
+// Autopilot (AC-94/AC-174): "issue → merge-ready PR" — the CEO plans, the operator approves once, a run drives each step.
+// AC-1398: one assembly with both entry points until F2.10b moves the workspace to UI/ — Initialize owns the runs,
+// the plan and the MCP tools; InitializeUi registers the workspace, which places sessions by pane id.
+public sealed class AutopilotPlugin : ICockpitPlugin, ICockpitPluginUi
 {
     public PluginMetadata Metadata { get; } = new(
         Id: "autopilot",
         DisplayName: "Autopilot",
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
+
+    private Func<ICockpitUiHost, IWorkspaceContext, AutopilotPlanWorkspaceBody>? _createWorkspaceBody;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -157,17 +160,25 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             return new Dictionary<string, string> { ["status"] = "planning", ["issue"] = run.IssueId };
         });
 
-        // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history, templates))
-        {
-            IconKind = MaterialIconKind.RobotHappyOutline,
-            Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
-        });
+        // The workspace body still takes the backend's objects in-process; InitializeUi registers it (F2.10b: the channel).
+        _createWorkspaceBody = (uiHost, context) => new AutopilotPlanWorkspaceBody(host, uiHost, context, settings, planController, manager, queue, history, templates);
 
         // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
         // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
         // a profile set. A triggered run still opens straight into planning via the "plan" intent above.
         host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
+    }
+
+    public void InitializeUi(ICockpitUiHost host)
+    {
+        var createBody = _createWorkspaceBody ?? throw new InvalidOperationException("InitializeUi ran before Initialize.");
+
+        // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot", context => createBody(host, context))
+        {
+            IconKind = MaterialIconKind.RobotHappyOutline,
+            Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
+        });
     }
 
     public void Dispose()

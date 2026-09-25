@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
@@ -103,13 +102,13 @@ internal sealed class AutopilotRunCoordinator(
     private TrackerWorkStage? _lastAutoStage;
 
     // Runs the approved plan to a settled end, feeding the bounded run-driver the executeStep adapter; returns
-    // when the run settles or `cancellationToken` cancels it. `showStepSession` places a started step's view on
-    // the surface, invoked inside `runOnUi`, which runs session embedding/teardown on the UI thread.
+    // when the run settles or `cancellationToken` cancels it. `showStepSession` names the pane of a started step's
+    // session, invoked inside `runOnUi`, which runs session embedding/teardown on the UI thread.
     public async Task RunAsync(
-        IWorkspaceContext context,
+        Func<EmbeddedSessionRequest, IEmbeddedSession?> embedSession,
         IEmbeddedSession ceo,
         AutopilotSettings settings,
-        Action<Control> showStepSession,
+        Action<string> showStepSession,
         Action<bool> setValidating,
         AutopilotRunEnvironment environment,
         Func<Action, Task> runOnUi,
@@ -139,7 +138,7 @@ internal sealed class AutopilotRunCoordinator(
             settings.MaxSelfFixAttempts(),
             async step => AutopilotModelTier.HoldToCeiling(step, await host.GetProfilesAsync().ConfigureAwait(false) ?? [], settings.CostStrategy()));
         await driver.RunAsync(
-            step => _ExecuteStepAsync(context, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
+            step => _ExecuteStepAsync(embedSession, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);
 
         // AC-202: the run settled. When it reached merge-ready (every hard step passed), move the source issue to the
@@ -770,9 +769,9 @@ internal sealed class AutopilotRunCoordinator(
     // combined result. Only a real verdict returns Passed/Rejected; every other path returns Faulted —
     // reworked like Rejected, but never counted as a review finding (AC-347).
     private async Task<AutopilotStepOutcome> _ExecuteStepAsync(
-        IWorkspaceContext context,
+        Func<EmbeddedSessionRequest, IEmbeddedSession?> embedSession,
         AutopilotSettings settings,
-        Action<Control> showStepSession,
+        Action<string> showStepSession,
         Action<bool> setValidating,
         AutopilotRunEnvironment environment,
         Func<Action, Task> runOnUi,
@@ -889,11 +888,11 @@ internal sealed class AutopilotRunCoordinator(
                 IEmbeddedSession? embedded = null;
                 await runOnUi(() =>
                 {
-                    var session = context.EmbedSession(request);
+                    var session = embedSession(request);
                     embedded = session;
-                    if (showThisOne)
+                    if (showThisOne && session is not null)
                     {
-                        showStepSession(session.View);
+                        showStepSession(session.PaneId);
                     }
                 });
 

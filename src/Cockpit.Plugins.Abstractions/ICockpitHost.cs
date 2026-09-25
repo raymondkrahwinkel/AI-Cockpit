@@ -566,6 +566,19 @@ public interface ICockpitHost
         CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken);
 
     /// <summary>
+    /// Starts a host-owned session embedded in the workspace <paramref name="workspaceId"/>, exactly as that
+    /// workspace's <see cref="Workspaces.IWorkspaceContext.EmbedSession"/> would (AC-1398): the host ties it to that
+    /// workspace and ends it when the workspace closes. Null when this host cannot embed sessions.
+    /// </summary>
+    /// <remarks>
+    /// How a backend part drives sessions a workspace shows: the UI part hands over
+    /// <see cref="Workspaces.IWorkspaceContext.WorkspaceId"/>, the backend holds the returned session by its
+    /// <see cref="Workspaces.IEmbeddedSession.PaneId"/>, and the UI part places its view with
+    /// <c>ICockpitUiHost.CreateEmbeddedSessionView</c>. Default null, so existing hosts keep compiling.
+    /// </remarks>
+    Workspaces.IEmbeddedSession? EmbedSession(string workspaceId, Workspaces.EmbeddedSessionRequest request) => null;
+
+    /// <summary>
     /// Reports whether <paramref name="directory"/> is a git repository (AC-174), so a plugin can decide up front
     /// whether work there can be isolated in a worktree.
     /// </summary>

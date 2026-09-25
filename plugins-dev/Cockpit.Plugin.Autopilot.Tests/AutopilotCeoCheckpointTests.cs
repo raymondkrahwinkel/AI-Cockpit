@@ -231,7 +231,7 @@ public class AutopilotCeoCheckpointTests
 
     private static Task _Start(AutopilotRunCoordinator coordinator, ICockpitHost host, AutopilotSettings settings) =>
         coordinator.RunAsync(
-            _Context(_Session("step-pane")), _Session("ceo-pane"), settings,
+            _Context(_Session("step-pane")).EmbedSession, _Session("ceo-pane"), settings,
             _ => { }, _ => { }, new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run"), _DirectUi, CancellationToken.None);
 
     private static List<(string Pane, string Text)> _CaptureTurns(ICockpitHost host)

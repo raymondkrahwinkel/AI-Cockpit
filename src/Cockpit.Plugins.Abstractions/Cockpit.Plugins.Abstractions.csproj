@@ -475,7 +475,11 @@
          default): the per-pane successor of InjectIntoActiveSessionAsync, placing text in a pane's input unsent, where
          SendToSessionAsync submits it. A plugin that relies on either sets minHostVersion 0.42.0. Additive — a minor;
          major and abstractionsVersion stay 2. -->
-    <Version>1.70.0</Version>
+    <!-- 1.71.0 (AC-1398): added ICockpitHost.EmbedSession(workspaceId, request), defaulting to null — how a backend
+         part embeds the sessions its UI part's workspace shows, holding them by pane id while the UI part places
+         their views. A plugin that relies on it sets minHostVersion 0.43.0. Additive — a minor; major and
+         abstractionsVersion stay 2. -->
+    <Version>1.71.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

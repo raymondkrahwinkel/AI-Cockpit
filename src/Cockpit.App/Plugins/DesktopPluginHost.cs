@@ -158,6 +158,11 @@ internal sealed class DesktopPluginHost(
     public override IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes =>
         Services.GetRequiredService<IWorkspaceTypeRegistry>().WorkspaceTypes;
 
+    // AC-1398: the route WorkspaceContext.EmbedSession takes, reachable by workspace id so a backend part can embed
+    // what its UI part's workspace shows. Unmarshalled like that route: the caller is on the UI thread already.
+    public IEmbeddedSession? EmbedSession(string workspaceId, EmbeddedSessionRequest request) =>
+        Services.GetService<IEmbeddedSessionHost>()?.Embed(workspaceId, request);
+
     // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
     // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
     // thread; a design-time/headless host (no view model resolved) simply does nothing.

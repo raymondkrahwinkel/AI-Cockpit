@@ -31,7 +31,7 @@ public class AutopilotEpicProgressCommentTests
     public void BuildEpicProgressComment_SaysHowTheSubActuallyEnded(
         string issueId, object outcome, string? blockReason, bool pullRequestMissing, string[] present, string[] absent)
     {
-        var comment = AutopilotPlanWorkspaceBody.BuildEpicProgressComment(
+        var comment = AutopilotWorkspaceRuns.BuildEpicProgressComment(
             issueId, $"{issueId} - a sub", (AutopilotPlanPhase)outcome, blockReason, pullRequestMissing, Reliability());
 
         Assert.All(present, fragment => Assert.Contains(fragment, comment));
