@@ -2,10 +2,10 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.OpenRouterProvider;
+namespace Cockpit.Plugin.OpenRouterProvider.UI;
 
 // AC-806: the "add/edit profile" config panel for this plugin's OpenRouter provider, mirroring the sibling
 // OpenAiCompat plugins' own config view. OpenRouter's `vendor/model` strings need no dedicated parsing,
@@ -20,7 +20,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null

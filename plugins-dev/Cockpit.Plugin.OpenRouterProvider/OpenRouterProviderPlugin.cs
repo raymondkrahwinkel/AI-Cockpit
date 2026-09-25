@@ -9,9 +9,6 @@ namespace Cockpit.Plugin.OpenRouterProvider;
 // chat-completions response carries no rolling allowance/context figure to read.
 public sealed class OpenRouterProviderPlugin : ICockpitPlugin
 {
-    // OpenRouter's OpenAI-compatible endpoint (openrouter.ai/docs/quickstart).
-    internal const string OpenRouterDefaultBaseUrl = "https://openrouter.ai/api/v1";
-
     public PluginMetadata Metadata { get; } = new(
         Id: "openrouter-provider",
         DisplayName: "OpenRouter",
@@ -37,8 +34,10 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenRouterDefaultBaseUrl, host),
-            DefaultBaseUrl: OpenRouterDefaultBaseUrl));
+            // AC-1393: the UI part's InitializeUi (OpenRouterProviderUi) replaces this with the real config view
+            // via ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenRouter));
     }
 
     public void Dispose()
