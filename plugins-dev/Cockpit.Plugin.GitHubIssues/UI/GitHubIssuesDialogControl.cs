@@ -29,8 +29,8 @@ namespace Cockpit.Plugin.GitHubIssues.UI;
 // the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
 //
 // AC-1396: the issues, labels, repositories and the project's linked repository come from the backend part over the
-// plugin's channel, as does linking an issue to a pane. "Add to prompt" sends the prompt to the session this window
-// has active (ICockpitUiHost.ActivePaneId) — the UI host has no "inject into the active session" of its own.
+// plugin's channel, as does linking an issue to a pane. "Add to prompt" places the prompt, unsent, in the input of
+// the session this window has active (InsertIntoSessionAsync on ICockpitUiHost.ActivePaneId, AC-1397).
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
     private const string AllRepositoriesOption = "All";
@@ -931,7 +931,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             return;
         }
 
-        await _host.SendToSessionAsync(paneId, _RenderPrompt(issue));
+        await _host.InsertIntoSessionAsync(paneId, _RenderPrompt(issue));
         _SetDetailStatus(issue, $"Added issue #{issue.Number} to the active session's prompt.");
     }
 

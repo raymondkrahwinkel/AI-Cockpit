@@ -462,8 +462,8 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             return;
         }
 
-        await _host.SendToSessionAsync(paneId, _RenderPrompt(pullRequest));
-        _detailStatus.Text = $"Sent pull request #{pullRequest.Number} to the active session.";
+        await _host.InsertIntoSessionAsync(paneId, _RenderPrompt(pullRequest));
+        _detailStatus.Text = $"Added pull request #{pullRequest.Number} to the active session's prompt.";
     }
 
     private async Task _CopyPromptAsync()

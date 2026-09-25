@@ -121,10 +121,10 @@ public class GitHubIssuesDialogControlTests
     });
 
     [Fact]
-    public void AddToPrompt_WithTwoSessions_SendsToTheOneThisWindowHasActive_AndNeverTheOther() => HeadlessAvalonia.Run(() =>
+    public void AddToPrompt_WithTwoSessions_InsertsIntoTheOneThisWindowHasActive_AndSendsNothing() => HeadlessAvalonia.Run(() =>
     {
-        // AC-1396 (D6): the UI host has no "inject into the active session"; the prompt goes to a pane by id. Two
-        // sessions are open — pane-1 and pane-2 — and this window has the second selected, so that is where it lands.
+        // AC-1396 (D6): the prompt goes to a pane by id, into its input and unsent (AC-1397). Two sessions are open —
+        // pane-1 and pane-2 — and this window has the second selected, so that is where it lands.
         var harness = DialogHarness.Open(First, Second);
         harness.ActivePane = "pane-2";
         harness.Select(First);
@@ -132,8 +132,9 @@ public class GitHubIssuesDialogControlTests
         harness.Click("Add to prompt");
         harness.Close();
 
-        harness.Host.Received(1).SendToSessionAsync("pane-2", Arg.Is<string>(prompt => prompt.Contains("#41")));
-        harness.Host.DidNotReceive().SendToSessionAsync("pane-1", Arg.Any<string>());
+        harness.Host.Received(1).InsertIntoSessionAsync("pane-2", Arg.Is<string>(prompt => prompt.Contains("#41")));
+        harness.Host.DidNotReceive().InsertIntoSessionAsync("pane-1", Arg.Any<string>());
+        harness.Host.DidNotReceive().SendToSessionAsync(Arg.Any<string>(), Arg.Any<string>());
     });
 
     [Fact]

@@ -9,7 +9,8 @@ namespace Cockpit.Plugin.GitHubPullRequests.UI;
 // dashboard widget (#AC-18) so "click a PR" and "open a PR" mean exactly the same thing in both, down to the
 // toast they raise.
 //
-// AC-1396: "the active session" is the one this window has selected, handed on by id.
+// AC-1396: "the active session" is the one this window has selected, handed on by id; the prompt is placed in its
+// input unsent (InsertIntoSessionAsync, AC-1397), as InjectIntoActiveSessionAsync did before the split.
 internal static class PullRequestActions
 {
     public static async Task InjectAsync(ICockpitUiHost host, GitHubPullRequestsSettings settings, GitHubPullRequest pullRequest)
@@ -21,8 +22,8 @@ internal static class PullRequestActions
 
         if (host.ActivePaneId is { Length: > 0 } paneId)
         {
-            await host.SendToSessionAsync(paneId, prompt);
-            host.ShowToast($"PR #{pullRequest.Number} sent to the active session.", PluginToastSeverity.Success);
+            await host.InsertIntoSessionAsync(paneId, prompt);
+            host.ShowToast($"PR #{pullRequest.Number} added to the session's prompt.", PluginToastSeverity.Success);
         }
         else
         {
