@@ -3,13 +3,19 @@
   <!-- Proxmox VE plugin (AC-1038), sibling of Docker/Kubernetes: talks to the Proxmox REST API directly via plain
        `HttpClient` (no community library — a Proxmox API token needs no CSRF/ticket dance). Built OUTSIDE the main
        solution like the other plugins; package bin/<config>/net10.0 into a .zip for the plugin store.
-       Shared assemblies below are compile-only (ExcludeAssets=runtime) so the host's own copies load. -->
+       Shared assemblies below are compile-only (ExcludeAssets=runtime) so the host's own copies load.
+       AC-1394: split into a backend and a UI part. The overview workspace and the settings view live in Ui/, their
+       own project, which builds into this project's bin/ (the reference below orders the build and references no
+       assembly); this project names no Avalonia any more — everything that needed it moved to Ui/. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Ui\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,15 +23,14 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration. Without it MSBuild strips Configuration off a reference
+         made outside a solution, the UI part lands in bin/Debug, and a Release copy of the plugin has no UI assembly;
+         discovery then skips the whole plugin, as its manifest names a file that is not there. -->
+    <ProjectReference Include="Ui\Cockpit.Plugin.Proxmox.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

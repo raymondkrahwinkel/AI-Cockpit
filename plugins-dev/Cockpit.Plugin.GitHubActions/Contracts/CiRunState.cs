@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.Contracts;
 
 // The at-a-glance state of a workflow run, derived from GitHub's status/conclusion pair (AC-52).
 internal enum CiRunState

@@ -2,8 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Material.Icons;
+using Cockpit.Plugin.GitHubActions.Contracts;
 
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.UI;
 
 // The at-a-glance appearance of a workflow run's state (AC-52/AC-1065), shared by the session header's single dot
 // and the dock panel's list so both read the same icon and colour for the same state.

@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Plugin.Slack.Contracts;
 using Cockpit.Plugin.Slack.Settings;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -22,6 +24,7 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
     private ICockpitHost? _host;
     private SlackChannelSettings? _settings;
     private SlackGatewayConnection? _connection;
+    private readonly List<IDisposable> _handlers = [];
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -32,8 +35,13 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
         _host = host;
         _settings = new SlackChannelSettings(host.Storage);
 
-        host.AddSettings(() => new SlackChannelSettingsControl(host, _settings), "Assistant Plugins");
-        host.OnSettingsSaved(_Reconnect);
+        // AC-1394: the UI part's settings dialog lives in its own assembly now, so it tells us over the channel
+        // when the operator saves — the same reconnect a save used to trigger directly through OnSettingsSaved.
+        _handlers.Add(host.Channel.Handle(SlackChannel.SettingsSaved, (_, _) =>
+        {
+            _Reconnect();
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, SlackChannel.Json));
+        }));
 
         _Reconnect();
     }
@@ -93,6 +101,12 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
         _connection?.Dispose();
         _connection = null;
     }

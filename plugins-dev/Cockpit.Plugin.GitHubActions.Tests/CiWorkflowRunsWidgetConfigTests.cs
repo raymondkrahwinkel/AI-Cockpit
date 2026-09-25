@@ -1,4 +1,7 @@
+extern alias UiAsm;
+
 using Cockpit.Plugins.Abstractions;
+using CiWorkflowRunsWidgetConfig = UiAsm::Cockpit.Plugin.GitHubActions.UI.CiWorkflowRunsWidgetConfig;
 
 namespace Cockpit.Plugin.GitHubActions.Tests;
 

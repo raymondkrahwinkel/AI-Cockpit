@@ -1,7 +1,10 @@
+using Cockpit.Plugin.GitHubActions.Contracts;
+
 namespace Cockpit.Plugin.GitHubActions.Tests;
 
-// The GitHub Actions plugin's non-UI logic (AC-52): the gh argument list, run-list JSON parsing, run-state derivation
-// and the browser-open URL guard — all without shelling out.
+// The GitHub Actions plugin's non-UI logic (AC-52): the gh argument list, run-list JSON parsing and run-state
+// derivation — all without shelling out. The browser-open URL guard moved to CiRunLinksTests (AC-1394: it is
+// shared source, not part of this backend class any more).
 public class CiWorkflowRunClientTests
 {
     [Theory]
@@ -69,18 +72,5 @@ public class CiWorkflowRunClientTests
         var run = Assert.Single(CiWorkflowRunClient.ParseRuns(json));
 
         Assert.Equal(TimeSpan.FromMinutes(3.5), run.Duration);
-    }
-
-    [Theory]
-    [InlineData("https://github.com/owner/repo/actions/runs/1", true)]
-    [InlineData("https://api.github.com/x", true)]
-    [InlineData("http://github.com/owner/repo", false)]      // not https
-    [InlineData("https://github.com.evil.com/x", false)]     // look-alike host
-    [InlineData("https://evil.com/github.com", false)]
-    [InlineData("file:///etc/passwd", false)]
-    [InlineData("", false)]
-    public void IsGitHubRunUrl_AcceptsOnlyHttpsGitHub(string url, bool expected)
-    {
-        Assert.Equal(expected, CiWorkflowRunClient.IsGitHubRunUrl(url));
     }
 }

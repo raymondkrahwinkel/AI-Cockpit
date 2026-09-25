@@ -1,13 +1,13 @@
-using Material.Icons;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Docker.Compose;
+using Cockpit.Plugin.Docker.Contracts;
 using Cockpit.Plugin.Docker.Engine;
 using Cockpit.Plugin.Docker.Mcp;
 using Cockpit.Plugin.Docker.Security;
 using Cockpit.Plugin.Docker.Settings;
 using Cockpit.Plugin.Docker.StatusBar;
-using Cockpit.Plugin.Docker.Ui;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Docker;
 
@@ -27,6 +27,7 @@ public sealed class DockerPlugin : ICockpitPlugin
             "asks for consent, and every change asks afresh with the literal command shown and is never remembered.");
 
     private DockerEngine? _engine;
+    private readonly List<IDisposable> _handlers = [];
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -43,16 +44,29 @@ public sealed class DockerPlugin : ICockpitPlugin
         var running = new RunningContainerRegistry(engine, () => DateTimeOffset.UtcNow);
         var tools = new DockerMcpTools(settings, gate, engine, compose, docker, running);
 
-        host.AddSettings(() => new DockerSettingsControl(host, settings));
-        host.AddToolbarAction(new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-docker", tools, isEnabled: () => settings.McpEnabled);
 
         // Detached containers this plugin started show in the status bar with an operator-only Kill (AC-82).
         host.AddSupervisedActivityProvider(running);
 
-        // A settings save may have changed the daemon endpoint; drop the cached client so the next call rebuilds.
-        host.OnSettingsSaved(engine.Invalidate);
+        // AC-1394: the UI part's settings dialog lives in its own assembly now, so it tells us over the channel
+        // when the operator saves — a settings save may have changed the daemon endpoint, so drop the cached
+        // client and let the next call rebuild it.
+        _handlers.Add(host.Channel.Handle(DockerChannel.SettingsSaved, (_, _) =>
+        {
+            engine.Invalidate();
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, DockerChannel.Json));
+        }));
     }
 
-    public void Dispose() => _engine?.Dispose();
+    public void Dispose()
+    {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
+        _engine?.Dispose();
+    }
 }

@@ -1,7 +1,9 @@
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.Contracts;
 
 // One GitHub Actions workflow run (AC-52/AC-1065), as returned by `gh run list --json …`. UpdatedAt is optional
 // (defaults null) so the existing positional construction in tests and ParseRuns keeps compiling unchanged.
+// AC-1394: shared between the backend and UI parts as linked source (see GitHubActionsChannel.cs), since the
+// backend answers this type over the plugin's channel and the UI renders it.
 internal sealed record CiRun(
     string WorkflowName,
     string Branch,

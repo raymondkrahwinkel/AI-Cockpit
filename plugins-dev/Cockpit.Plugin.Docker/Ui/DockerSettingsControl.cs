@@ -1,8 +1,9 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugin.Docker.Settings;
 
-namespace Cockpit.Plugin.Docker.Ui;
+namespace Cockpit.Plugin.Docker.UI;
 
 // The plugin's settings view (all code-behind Avalonia, like the other plugins). The host renders the Save/Close
 // footer and wraps this in its own ScrollViewer, so we do not nest one.
@@ -15,7 +16,7 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
     private readonly ComboBox _consentMode;
     private readonly string _originalEndpoint;
 
-    public DockerSettingsControl(ICockpitHost host, DockerSettings settings)
+    public DockerSettingsControl(ICockpitUiHost host, DockerSettings settings)
     {
         _settings = settings;
 

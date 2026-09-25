@@ -1,13 +1,15 @@
+extern alias UiAsm;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugin.Depot.Model;
-using Cockpit.Plugin.Depot.Settings;
-using Cockpit.Plugin.Depot.Ui;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
+using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
+using DepotSettings = UiAsm::Cockpit.Plugin.Depot.UI.DepotSettings;
+using DepotSettingsControl = UiAsm::Cockpit.Plugin.Depot.UI.DepotSettingsControl;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -25,7 +27,7 @@ public class DepotSettingsRenderTests
         {
             Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
         };
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
         var view = new DepotSettingsControl(host, settings);

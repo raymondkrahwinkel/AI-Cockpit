@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.UI;
 
 // One dock-panel instance's own settings (AC-1065), mirroring GitHubPullRequestsWidgetConfig: a dashboard pane
 // is sized by hand — a tall one has room for twenty, a short one for three — so how many runs it shows is per

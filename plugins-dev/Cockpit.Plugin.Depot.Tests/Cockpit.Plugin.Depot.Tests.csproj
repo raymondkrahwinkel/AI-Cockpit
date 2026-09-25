@@ -45,7 +45,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of UI/ fails this project rather than going unseen —
+         see Cockpit.Plugin.GitStatus.Tests.csproj's identical note.
+         Aliased: Contracts/*.cs is linked source, compiled once per assembly (never shared as a reference), so
+         this project — which needs both parts' internals — would otherwise see two identically-named DepotChannel
+         types and every plain use of it would be ambiguous; same fix as Cockpit.Plugin.GitHubActions.Tests.csproj. -->
+    <Reference Include="Cockpit.Plugin.Depot.UI">
+      <HintPath>..\Cockpit.Plugin.Depot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Depot.UI.dll</HintPath>
+      <Aliases>UiAsm</Aliases>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Depot\Cockpit.Plugin.Depot.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
     <!-- AC-605 criterion 4: this is the test project, not the plugin itself — the "a plugin must not reference
          Cockpit.Core" rule (AC-244) binds Cockpit.Plugin.Depot, not its own test project. Referenced only so
          ProjectResourceScopeParityTests can pin the host's ProjectResourcePathPortability.ClassifyScope and this

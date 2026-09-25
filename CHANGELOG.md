@@ -580,6 +580,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: for plugin authors, nine integration plugins (Depot, Discord, Docker, Kind, Kubernetes, Proxmox, Slack,
+  Local CI, GitHub Actions) now follow Git status into the two-part layout — a backend part and a UI part talking
+  over the plugin's own channel. They look and work exactly as before.
 - changed: a cockpit running without its window, the backend on its own, now loads the installed plugins and
   runs their background part: the providers, workflow steps and agent tools they add are there without a desktop.
   Anything a plugin would show in a window is left out there. On the desktop, plugins look and work as before. For

@@ -21,7 +21,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of UI/ fails this project rather than going unseen —
+         see Cockpit.Plugin.GitStatus.Tests.csproj's identical note. -->
+    <Reference Include="Cockpit.Plugin.Discord.UI">
+      <HintPath>..\Cockpit.Plugin.Discord\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Discord.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Discord\Cockpit.Plugin.Discord.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

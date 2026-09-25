@@ -1,78 +1,101 @@
+using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Cockpit.Plugin.LocalCi.Execution;
+using Cockpit.Plugin.LocalCi.Contracts;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.LocalCi.Ui;
+namespace Cockpit.Plugin.LocalCi.UI;
 
-// The last local run in this session's checkout, in this session's header. A strip has room for an indicator and
-// not for a panel, so it is one short line with the whole story on its tooltip — and nothing at all until a run
-// has happened, which is most sessions most of the time.
+// The last local run in this session's checkout, in this session's header (AC-1394: the UI part — LocalCiPlugin,
+// the backend part, keeps the tracker and answers what this control asks over the plugin's channel). A strip has
+// room for an indicator and not for a panel, so it is one short line with the whole story on its tooltip — and
+// nothing at all until a run has happened, which is most sessions most of the time.
 // Deliberately not the session's statusline: that line carries the ticket the session is working on, and a build
 // result written over it trades a fact that lasts all day for one that lasts until the next run.
 internal sealed class LocalCiSessionBadge : UserControl
 {
+    private readonly ICockpitUiHost _host;
     private readonly IPluginSessionContext _session;
-    private readonly LocalRunTracker _tracker;
-    private readonly ICockpitSessionObserver _sessions;
     private readonly TextBlock _label = new();
 
-    public LocalCiSessionBadge(IPluginSessionContext session, LocalRunTracker tracker, ICockpitSessionObserver sessions)
+    private IDisposable? _runChanged;
+    private int _loadToken;
+
+    public LocalCiSessionBadge(ICockpitUiHost host, IPluginSessionContext session)
     {
+        _host = host;
         _session = session;
-        _tracker = tracker;
-        _sessions = sessions;
 
         Content = _label;
         IsVisible = false;
-
-        tracker.Changed += _OnChanged;
-        session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
-        // The pane closing — not DetachedFromVisualTree — is the reliable teardown cue. A closed session's visuals
-        // are held by the composition tree and never detach, so the old detach-only unsubscribe leaked: the badge
-        // stayed on the plugin-lived tracker's Changed list, keeping the session (and its whole transcript) alive.
-        // Unsubscribe on either signal; both are idempotent.
-        sessions.SessionClosed += _OnSessionClosed;
-        DetachedFromVisualTree += (_, _) => _Unsubscribe();
-
-        _Show();
     }
 
-    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _Show();
-
-    private void _OnSessionClosed(object? sender, string paneId)
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        if (string.Equals(paneId, _session.PaneId, StringComparison.Ordinal))
-        {
-            _Unsubscribe();
-        }
+        base.OnAttachedToVisualTree(e);
+        _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
+        _runChanged = _host.Channel.Subscribe(LocalCiChannel.RunChanged, _OnRunChanged);
+        _ = _ShowAsync();
     }
 
-    private void _Unsubscribe()
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _tracker.Changed -= _OnChanged;
+        base.OnDetachedFromVisualTree(e);
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
-        _sessions.SessionClosed -= _OnSessionClosed;
+        _runChanged?.Dispose();
+        _runChanged = null;
     }
 
-    private void _OnChanged() => Dispatcher.UIThread.Post(_Show);
+    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _ = _ShowAsync();
 
-    private void _Show()
+    // Raised on the backend's publishing thread, not the UI thread — marshal before touching a control.
+    private void _OnRunChanged(PluginChannelEvent channelEvent) => Dispatcher.UIThread.Post(() => _ = _ShowAsync());
+
+    private async Task _ShowAsync()
     {
-        if (_session.WorkingDirectory is not { Length: > 0 } checkout || _tracker.LastFor(checkout) is not { } last)
+        if (_session.WorkingDirectory is not { Length: > 0 } checkout)
         {
             IsVisible = false;
             return;
         }
 
-        IsVisible = true;
-        _label.Text = last.Result.Outcome switch
+        // Guard against overlapping loads (a signal burst, or the directory arriving mid-read): only the latest wins.
+        var token = ++_loadToken;
+        try
         {
-            LocalRunOutcome.Passed => $"local: {last.Result.JobId} ✓",
-            LocalRunOutcome.Failed => $"local: {last.Result.JobId} ✗",
-            _ => $"local: {last.Result.JobId} —",
-        };
+            var payload = JsonSerializer.SerializeToElement(new LocalCiProjectRequest(checkout), LocalCiChannel.Json);
+            var answer = await _host.Channel.InvokeAsync(LocalCiChannel.LastRun, payload);
+            var summary = answer.Deserialize<LocalCiRunSummary>(LocalCiChannel.Json);
+            if (token != _loadToken)
+            {
+                return;
+            }
 
-        ToolTip.SetTip(_label, last.Result.Headline);
+            if (summary is null)
+            {
+                IsVisible = false;
+                return;
+            }
+
+            IsVisible = true;
+            _label.Text = summary.Outcome switch
+            {
+                "Passed" => $"local: {summary.JobId} ✓",
+                "Failed" => $"local: {summary.JobId} ✗",
+                _ => $"local: {summary.JobId} —",
+            };
+            ToolTip.SetTip(_label, summary.Headline);
+        }
+        catch (Exception)
+        {
+            // Best-effort: the badge keeps its last-known state and the next trigger tries again.
+            if (token == _loadToken)
+            {
+                IsVisible = false;
+            }
+        }
     }
 }

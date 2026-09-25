@@ -28,7 +28,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of Ui/ fails this project rather than going unseen. -->
+    <Reference Include="Cockpit.Plugin.Kind.UI">
+      <HintPath>..\Cockpit.Plugin.Kind\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Kind.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Kind\Cockpit.Plugin.Kind.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
 </Project>

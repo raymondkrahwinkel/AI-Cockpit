@@ -1,23 +1,29 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Material.Icons.Avalonia;
+using Cockpit.Plugin.GitHubActions.Contracts;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.GitHubActions;
+namespace Cockpit.Plugin.GitHubActions.UI;
 
 // The GitHub Actions status of the branch a session is working in, in that session's header (AC-52): a coloured icon
 // for the latest workflow run on the current branch — green pass, red fail, amber running — with the run's details on
 // hover, click to open it on GitHub. Mirrors the git-status header's per-session lifecycle: it re-reads when the
 // session's working directory becomes known and on a modest timer (a run's state changes on GitHub, not locally), and
 // stays out of the header entirely when there is no repo, no run, or no gh.
+//
+// AC-1394: asks the backend part for the branch's most recent run over the plugin's channel, rather than shelling
+// out to `gh`/`git` itself.
 internal sealed class CiStatusHeaderControl : UserControl
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
+    private readonly ICockpitUiHost _host;
     private readonly IPluginSessionContext _session;
-    private readonly CiWorkflowRunClient _client = new();
     private readonly DispatcherTimer _refresh;
     private readonly MaterialIcon _icon;
     private readonly Button _row;
@@ -26,8 +32,9 @@ internal sealed class CiStatusHeaderControl : UserControl
     private int _loadToken;
     private CancellationTokenSource? _loadCts;
 
-    public CiStatusHeaderControl(IPluginSessionContext session)
+    public CiStatusHeaderControl(ICockpitUiHost host, IPluginSessionContext session)
     {
+        _host = host;
         _session = session;
 
         _icon = new MaterialIcon { Width = 13, Height = 13, VerticalAlignment = VerticalAlignment.Center };
@@ -64,7 +71,7 @@ internal sealed class CiStatusHeaderControl : UserControl
         base.OnDetachedFromVisualTree(e);
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _refresh.Stop();
-        // Cancel any in-flight gh call so a hung network request does not outlive the closed panel.
+        // Cancel any in-flight channel call so a hung request cannot outlive the closed panel.
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
@@ -86,7 +93,8 @@ internal sealed class CiStatusHeaderControl : UserControl
         CiRun? run;
         try
         {
-            run = await _client.GetLatestRunAsync(directory, cts.Token);
+            var runs = await _RecentRunsAsync(directory, 1, cts.Token);
+            run = runs.Count > 0 ? runs[0] : null;
         }
         catch (Exception)
         {
@@ -111,7 +119,14 @@ internal sealed class CiStatusHeaderControl : UserControl
         ToolTip.SetTip(_row, Describe(run));
     }
 
-    // Internal so a test can pin the tooltip text a run produces without driving the async gh-backed load.
+    private async Task<IReadOnlyList<CiRun>> _RecentRunsAsync(string workingDirectory, int limit, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.SerializeToElement(new GitHubActionsRunsRequest(workingDirectory, limit), GitHubActionsChannel.Json);
+        var answer = await _host.Channel.InvokeAsync(GitHubActionsChannel.RecentRuns, payload, cancellationToken);
+        return answer.Deserialize<IReadOnlyList<CiRun>>(GitHubActionsChannel.Json) ?? [];
+    }
+
+    // Internal so a test can pin the tooltip text a run produces without driving the async channel-backed load.
     internal static string Describe(CiRun run)
     {
         var state = run.State switch
@@ -126,5 +141,5 @@ internal sealed class CiStatusHeaderControl : UserControl
         return $"CI: {workflow} on '{run.Branch}' — {state} ({run.Event}){when}\n\nClick to open the run on GitHub.";
     }
 
-    private void _OpenRun() => CiWorkflowRunClient.OpenRunInBrowser(_current?.Url);
+    private void _OpenRun() => CiRunLinks.OpenRunInBrowser(_current?.Url);
 }

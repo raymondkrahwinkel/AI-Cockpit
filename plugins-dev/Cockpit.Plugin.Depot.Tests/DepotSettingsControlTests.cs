@@ -1,18 +1,27 @@
+extern alias UiAsm;
+
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
-using Cockpit.Plugins.Abstractions.Projects;
-using Cockpit.Plugin.Depot.Model;
-using Cockpit.Plugin.Depot.Settings;
-using Cockpit.Plugin.Depot.Ui;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
+using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
+using DepotConnectionRowControl = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRowControl;
+using DepotSettings = UiAsm::Cockpit.Plugin.Depot.UI.DepotSettings;
+using DepotSettingsControl = UiAsm::Cockpit.Plugin.Depot.UI.DepotSettingsControl;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotSettingsControl.Save` (AC-243, reworked AC-504): persists the connection list, and reclaims a
-// removed or renamed connection's *old* "Depot: &lt;name&gt;" MCP-registry entry — left over from before
-// AC-504 moved to offering a connection's server per-project instead of the shared registry.
+// `DepotSettingsControl` (AC-243, reworked AC-504, split by AC-1394): the UI-only half of what used to be a
+// single Save() — validating rows (a name/URL collision refuses the whole batch) and writing the connection list
+// itself. The registry-sync side effects that used to run right here (memory-source / shared-project-source sync,
+// reclaiming an orphaned MCP-registry entry) moved to DepotPlugin's own SaveConnections channel handler on the
+// backend part; those tests moved to DepotPluginSaveConnectionsTests.cs, which drives that handler directly. What
+// stays here is genuinely UI-only: it cannot be pinned any other way, since ICockpitUiHost — the type this view
+// takes now — carries none of the registry members the old assertions read.
 [Collection("avalonia")]
 public class DepotSettingsControlTests
 {
@@ -28,62 +37,6 @@ public class DepotSettingsControlTests
         Assert.NotNull(commit);
         commit();
         return true;
-    }
-
-    [Fact]
-    public void Save_NewConnection_NeverPushesItIntoTheSharedMcpRegistry()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com");
-
-        var saved = _Save(view);
-
-        Assert.True(saved);
-        _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
-        Assert.Equal("Work", settings.Connections.Single().Name);
-    }
-
-    [Fact]
-    public void Save_RemovedConnection_ReclaimsItsOldMcpServerEntry()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _RemoveRow(view, index: 0);
-
-        var saved = _Save(view);
-
-        Assert.True(saved);
-        _ = host.Received(1).RemoveMcpServer("Depot: Work");
-        _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
-        Assert.Empty(settings.Connections);
-    }
-
-    // The guard this pins: a rename changes McpServerName, so the old entry would otherwise be left behind forever
-    // — reclaimed here even though Save no longer re-adds anything under the new name.
-    [Fact]
-    public void Save_RenamedConnection_ReclaimsTheOldNameAndAddsNothingNew()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Work (new)", url: "https://depot.example.com");
-
-        _Save(view);
-
-        _ = host.Received(1).RemoveMcpServer("Depot: Work");
-        _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
     }
 
     [Theory]
@@ -104,7 +57,7 @@ public class DepotSettingsControlTests
     public void Save_TwoRowsThatWouldCollide_RefusesTheWholeSave_AndWritesNothing(
         string firstName, string firstUrl, string secondName, string secondUrl)
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
@@ -123,7 +76,7 @@ public class DepotSettingsControlTests
     [Fact]
     public async Task SignInAsync_SaveFailsOnAUrlCollision_NamesTheAlreadyConnectedRow()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var settings = new DepotSettings(new FakePluginStorage())
         {
@@ -140,441 +93,10 @@ public class DepotSettingsControlTests
         Assert.Contains("already connected as \"Work\"", _AuthStatusText(newRow), StringComparison.Ordinal);
     }
 
-    // AC-501: memory sources sync the same save a connection's MCP contribution does, live, without an app restart.
-    [Fact]
-    public void Save_NewConnection_RegistersItsOwnMemorySourceUnderThePlainDepotScheme()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
-
-        _Save(view);
-
-        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
-            registration.Scheme == "depot" && registration.Title.Contains("Acme")));
-    }
-
-    [Fact]
-    public void Save_SecondConnection_RegistersItUnderANamespacedScheme()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _SetRowFields(view, index: 1, name: "Wispslate", url: "https://wispslate.example.com");
-
-        _Save(view);
-
-        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration => registration.Scheme == "depot.wispslate"));
-    }
-
-    [Fact]
-    public void Save_RemovedConnection_ReclaimsItsOldMemorySourceScheme()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _RemoveRow(view, index: 0);
-
-        _Save(view);
-
-        host.Received(1).RemoveProjectMemorySource("depot");
-        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
-    }
-
-    // The guard this pins: without this, a rename would only re-add under the same scheme (Register refuses it as
-    // "already taken" — by itself) and the picker would keep showing the operator's old name forever.
-    [Fact]
-    public void Save_RenamedConnection_ReclaimsTheOldSchemeAndRegistersTheRenamedTitle()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
-
-        _Save(view);
-
-        host.Received(1).RemoveProjectMemorySource("depot");
-        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
-            registration.Scheme == "depot" && registration.Title.Contains("Acme (renamed)")));
-    }
-
-    [Fact]
-    public void Save_UnchangedConnection_DoesNotReRegisterItsMemorySource()
-    {
-        // Re-adding unchanged content would only hit Register's "scheme already taken" refusal — this pins that
-        // Save() does not even try, rather than relying on the registry to swallow a no-op call quietly.
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-
-        _Save(view);
-
-        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
-        host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
-    }
-
-    // --- AC-245: shared-project sources sync the same save, the same live-refresh reasoning as memory sources ---
-
-    [Fact]
-    public void Save_NewConnection_RegistersItsOwnSharedProjectSourceUnderThePlainDepotKey()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
-
-        _Save(view);
-
-        host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
-            source.Key == "depot" && source.SourceName.Contains("Acme")));
-    }
-
-    [Fact]
-    public void Save_SecondConnection_RegistersItsSharedProjectSourceUnderANamespacedKey()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _SetRowFields(view, index: 1, name: "Wispslate", url: "https://wispslate.example.com");
-
-        _Save(view);
-
-        host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source => source.Key == "depot.wispslate"));
-    }
-
-    [Fact]
-    public void Save_RemovedConnection_ReclaimsItsOldSharedProjectSourceKey()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _RemoveRow(view, index: 0);
-
-        _Save(view);
-
-        host.Received(1).RemoveSharedProjectSource("depot");
-        host.DidNotReceive().AddSharedProjectSource(Arg.Any<ISharedProjectSource>());
-    }
-
-    [Fact]
-    public void Save_RenamedConnection_ReclaimsTheOldSharedProjectSourceKeyAndRegistersUnderTheSameKeyAgain()
-    {
-        // Unlike a memory source (whose Title changes on rename), the shared-project source's Key is the connection's
-        // scheme, not its name — a rename keeps the same key, but Save still reclaims and re-adds it because the
-        // underlying DepotSharedProjectSource instance now closes over the renamed connection (for its SourceName).
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
-
-        _Save(view);
-
-        host.Received(1).RemoveSharedProjectSource("depot");
-        host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
-            source.Key == "depot" && source.SourceName.Contains("Acme (renamed)")));
-    }
-
-    [Fact]
-    public void Save_UnchangedConnection_DoesNotReRegisterItsSharedProjectSource()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-
-        _Save(view);
-
-        host.DidNotReceive().AddSharedProjectSource(Arg.Any<ISharedProjectSource>());
-        host.DidNotReceive().RemoveSharedProjectSource(Arg.Any<string>());
-    }
-
-    // AC-502/AC-503: `_SyncMemorySources` calls `BuildRegistrationPairs` twice, wiring new delegate closures
-    // each time that are never delegate-equal. `ProjectMemorySourceRegistration`'s equality (AC-502)
-    // deliberately ignores those closures, comparing only Scheme/Title/Instruction — so the plain `==` diff still skips an unchanged connection.
-    [Fact]
-    public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosures()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-
-        var first = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
-        var second = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
-        Assert.Equal(first, second);
-        Assert.NotSame(first.CheckReachability, second.CheckReachability);
-        Assert.NotSame(first.ListLocationsAsync, second.ListLocationsAsync);
-
-        var view = new DepotSettingsControl(host, settings);
-
-        _Save(view);
-
-        // And Save — which runs exactly this shape internally — must not treat the connection as changed.
-        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
-        host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
-    }
-
-    // A connection removed ahead of another in the list promotes the survivor into the primary slot — its scheme
-    // changes from a namespaced one to the plain "depot", which existing "depot:<slug>"-linked projects rely on.
-    [Fact]
-    public void Save_RemovingThePrimaryConnection_PromotesTheSurvivorToTheDepotScheme()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections =
-            [
-                new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com"),
-                new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
-            ],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _RemoveRow(view, index: 0);
-
-        _Save(view);
-
-        host.Received(1).RemoveProjectMemorySource("depot");
-        host.Received(1).RemoveProjectMemorySource("depot.wispslate");
-        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
-            registration.Scheme == "depot" && registration.Title.Contains("Wispslate")));
-    }
-
-    // Regression: retiring/registering per connection one at a time let an Add claim a scheme a later
-    // connection in the same save still held, silently dropping one on a name swap. A call-counting
-    // substitute can't see that ordering gap, so this asserts on a registry stand-in's end state instead.
-    [Fact]
-    public void Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry()
-    {
-        var registry = new FakeMemorySourceRegistry();
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
-            .Do(call => registry.Add(call.Arg<ProjectMemorySourceRegistration>()));
-        host.When(cockpit => cockpit.RemoveProjectMemorySource(Arg.Any<string>()))
-            .Do(call => registry.Remove(call.Arg<string>()));
-
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections =
-            [
-                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
-                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
-                new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
-            ],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
-        _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
-
-        _Save(view);
-
-        Assert.Equal(3, registry.Sources.Count);
-        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta) && beta.Title.Contains("Beta"));
-        Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma) && gamma.Title.Contains("Gamma"));
-    }
-
-    // AC-499: Equals now also compares FamilyKey/InstanceTitle, which _SyncMemorySources' before/after diff
-    // relies on. These pin the registry's actual end state, not call counts, for the same ordering-bug
-    // reasoning as Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above.
-
-    private static FakeMemorySourceRegistry _WireRegistry(ICockpitHost host)
-    {
-        var registry = new FakeMemorySourceRegistry();
-        host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
-            .Do(call => registry.Add(call.Arg<ProjectMemorySourceRegistration>()));
-        host.When(cockpit => cockpit.RemoveProjectMemorySource(Arg.Any<string>()))
-            .Do(call => registry.Remove(call.Arg<string>()));
-        return registry;
-    }
-
-    [Fact]
-    public void Save_NewConnection_EndState_CarriesTheDepotFamilyKeyAndItsOwnInstanceTitle()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
-
-        _Save(view);
-
-        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
-        Assert.Equal("depot", registration!.FamilyKey);
-        Assert.Equal("Acme", registration.InstanceTitle);
-    }
-
-    [Fact]
-    public void Save_RenamedConnection_EndState_InstanceTitleFollowsTheRename()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
-
-        _Save(view);
-
-        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
-        Assert.Equal("depot", registration!.FamilyKey);
-        Assert.Equal("Acme (renamed)", registration.InstanceTitle);
-    }
-
-    [Fact]
-    public void Save_SwappingTwoConnectionNames_EndState_InstanceTitlesFollowTheSwap()
-    {
-        // Same swap shape as Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above, checked
-        // against InstanceTitle specifically: a name swap must not leave either row's instance dropdown label
-        // pointing at the other connection's name.
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections =
-            [
-                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
-                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
-                new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
-            ],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
-        _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
-
-        _Save(view);
-
-        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta));
-        Assert.Equal("Beta", beta!.InstanceTitle);
-        Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma));
-        Assert.Equal("Gamma", gamma!.InstanceTitle);
-        Assert.All(registry.Sources.Values, registration => Assert.Equal("depot", registration.FamilyKey));
-    }
-
-    [Fact]
-    public void Save_RenameProducesASymbolOnlyName_EndState_FallsBackToTheIdSchemeButKeepsTheRealInstanceTitle()
-    {
-        // The name-slug fallback in DepotMemorySource._NamespacedScheme kicks in for the scheme, but the
-        // InstanceTitle shown in the picker must still read the operator's literal (symbol-only) name, not the
-        // scheme's id-based fallback.
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections =
-            [
-                new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com"),
-                new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
-            ],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 1, name: "★★★", url: "https://wispslate.example.com");
-
-        _Save(view);
-
-        Assert.True(registry.Sources.TryGetValue("depot.conn-2", out var registration));
-        Assert.Equal("depot", registration!.FamilyKey);
-        Assert.Equal("★★★", registration.InstanceTitle);
-    }
-
-    [Fact]
-    public void Save_TwoNonPrimaryConnectionsSlugCollide_EndState_BothSurviveUnderDistinctSchemesWithTheirOwnInstanceTitles()
-    {
-        // Two connections named alike enough to slugify to the same string ("Work"/"work!") — DepotMemorySource
-        // falls the second back to its own connection id, so both still end up in the registry rather than one
-        // silently losing the "scheme already taken" race.
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _AddRow(view);
-        _SetRowFields(view, index: 1, name: "Work", url: "https://work-a.example.com");
-        _SetRowFields(view, index: 2, name: "work!", url: "https://work-b.example.com");
-
-        _Save(view);
-
-        Assert.Equal(3, registry.Sources.Count);
-        Assert.True(registry.Sources.TryGetValue("depot.work", out var first));
-        Assert.Equal("Work", first!.InstanceTitle);
-        var second = registry.Sources.Values.Single(registration => registration != first && registration.Scheme != "depot");
-        Assert.Equal("work!", second.InstanceTitle);
-        Assert.Equal("depot", second.FamilyKey);
-    }
-
     [Fact]
     public void Save_BlankRow_IsDropped_AndContributesNothing()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
@@ -583,7 +105,6 @@ public class DepotSettingsControlTests
 
         Assert.True(saved);
         Assert.Empty(settings.Connections);
-        _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
     }
 
     // --- AC-499: a row's own Sign-in action saves through this same Save() route before signing in ---------------
@@ -591,13 +112,17 @@ public class DepotSettingsControlTests
     [Fact]
     public async Task SignInAsync_RenamedRow_SignsInUnderTheNewStoredName_NotTheOldOne()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         host.SignInMcpServerAsync("Depot: Work (renamed)", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
         var settings = new DepotSettings(new FakePluginStorage())
         {
             Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
         };
+        // The real backend part writes the connection list when it handles SaveConnections (DepotPlugin's own
+        // comment on _SaveConnectionsAsync explains why it, not this view, owns that write); this substitute
+        // stands in for that one effect so SignInAsync's post-save read of `settings` sees the rename too.
+        _WireSaveConnectionsWrite(host, settings);
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Work (renamed)", url: "https://depot.example.com");
         var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
@@ -607,8 +132,10 @@ public class DepotSettingsControlTests
         _ = host.Received(1).SignInMcpServerAsync("Depot: Work (renamed)", Arg.Any<CancellationToken>());
         _ = host.DidNotReceive().SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>());
         Assert.Equal("Work (renamed)", settings.Connections.Single().Name);
-        // The save that ran before sign-in reclaims the old registry entry through the existing route.
-        _ = host.Received(1).RemoveMcpServer("Depot: Work");
+        // AC-1394: the reclaim of the old "Depot: Work" registry entry now runs on the backend part, asked over the
+        // channel the save before sign-in goes through — DepotPluginSaveConnectionsTests pins the backend's own
+        // reaction to that ask directly; this only pins that the ask itself was made.
+        await host.Channel.Received(1).InvokeAsync(DepotChannel.SaveConnections, Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
     }
 
     // AC-499: a row whose typed name collides with another row's kept one must never sign in under its own
@@ -617,7 +144,7 @@ public class DepotSettingsControlTests
     [Fact]
     public async Task SignInAsync_RowCollidesOnName_NeverSignsIn_AndLeavesBothRowsUnsaved()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
@@ -635,12 +162,14 @@ public class DepotSettingsControlTests
 
     // Fix 2's failure scenario: two stored, signed-in connections, one renamed into a collision. Pins the
     // full end state a call-counting "did not sign in" assert alone would miss — nothing reclaimed silently.
+    // AC-1394: what "memory sources untouched" now means from this UI-only substitute — ICockpitUiHost carries no
+    // registry members at all, so the only way to see this refusal never reached the backend's own sync is that
+    // the channel itself was never invoked; DepotPluginSaveConnectionsTests pins the backend's own diff logic.
     [Fact]
     public async Task SignInAsync_RenameCollidesWithAnAlreadyStoredRow_RefusesTheWholeSave_AndLeavesStorageAndMemorySourcesUntouched()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
         var settings = new DepotSettings(new FakePluginStorage())
         {
             Connections =
@@ -649,10 +178,6 @@ public class DepotSettingsControlTests
                 new DepotConnectionRegistration("conn-2", "Work2", "https://work2.example.com"),
             ],
         };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 1, name: "Work", url: "https://work2.example.com");
         var renamedRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
@@ -660,77 +185,25 @@ public class DepotSettingsControlTests
         await renamedRow.SignInAsync();
 
         _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        _ = host.DidNotReceive().RemoveMcpServer(Arg.Any<string>());
+        await host.Channel.DidNotReceive().InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
         Assert.Equal(2, settings.Connections.Count);
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-1" && connection.Name == "Work");
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-2" && connection.Name == "Work2");
-        Assert.Equal(2, registry.Sources.Count);
-        Assert.True(registry.Sources.ContainsKey("depot"));
-        Assert.True(registry.Sources.ContainsKey("depot.work2"));
         Assert.Contains("Work", _AuthStatusText(renamedRow), StringComparison.Ordinal);
     }
 
-    // AC-499 fix: _originalConnections must become each successful save's new reality, or a rename-then-rename-back
-    // across two separate Sign-in saves on the same open view diffs the second save against the dialog's *opening*
-    // snapshot instead of the first save's actual result — losing track of which scheme the connection now holds.
-    [Fact]
-    public async Task SignInAsync_TwoConsecutiveSaves_RenameThenRenameBack_EndStateHasOnlyTheCurrentScheme()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections =
-            [
-                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
-                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
-            ],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
-        var betaRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
-        await betaRow.SignInAsync();
-
-        _SetRowFields(view, index: 1, name: "Beta", url: "https://beta.example.com");
-        await betaRow.SignInAsync();
-
-        Assert.Equal(2, registry.Sources.Count);
-        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta));
-        Assert.Equal("Beta", beta!.InstanceTitle);
-        Assert.False(registry.Sources.ContainsKey("depot.gamma"));
-    }
-
-    // AC-499: Save()'s reclaim and memory-source sync run identically whether triggered by the Save button
-    // or a row's Sign-in click — checked on the registry's actual end state for the same reason
-    // Save_SwappingTwoConnectionNames_* above distrusts a call-counting substitute.
-    [Fact]
-    public async Task SignInAsync_RenamedRow_EndState_MemorySourceInstanceTitleFollowsTheRename()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var registry = _WireRegistry(host);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Acme", "https://depot.example.com")],
-        };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
-        {
-            registry.Add(pair.Registration);
-        }
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
-        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
-
-        await row.SignInAsync();
-
-        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
-        Assert.Equal("Acme (renamed)", registration!.InstanceTitle);
-    }
+    // Stands in for DepotPlugin's own SaveConnections handler writing `settings.Connections` — see the comment
+    // where this is called. Only the write; the registry-sync side effects are DepotPluginSaveConnectionsTests's.
+    private static void _WireSaveConnectionsWrite(ICockpitUiHost host, DepotSettings settings) =>
+        host.Channel.InvokeAsync(DepotChannel.SaveConnections, Arg.Any<JsonElement>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var request = callInfo.ArgAt<JsonElement>(1).Deserialize<DepotSaveConnectionsRequest>(DepotChannel.Json)
+                    ?? throw new InvalidOperationException("The request names no connections.");
+                settings.Connections = [.. request.Connections.Select(connection =>
+                    new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))];
+                return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
+            });
 
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached
     // tree has no realised visual children to walk, the same reason CanvasThemeRenderTests always shows a window
@@ -768,29 +241,5 @@ public class DepotSettingsControlTests
         _Show(view);
         var add = view.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "+ Add connection"));
         add.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-    }
-
-    private static void _RemoveRow(DepotSettingsControl view, int index)
-    {
-        _Show(view);
-        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(index);
-        var remove = row.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Remove connection"));
-
-        // The row wires Click, not Command — raise the routed event RemoveRequested actually listens to.
-        remove.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-    }
-
-    // A minimal stand-in for `ProjectMemorySourceRegistry` (internal to Cockpit.App) with the same
-    // first-one-wins-by-scheme rule. Exists because a call-counting substitute cannot see an ordering bug
-    // where a later Add silently loses to an earlier connection's not-yet-retired scheme.
-    private sealed class FakeMemorySourceRegistry
-    {
-        private readonly Dictionary<string, ProjectMemorySourceRegistration> _sources = new(StringComparer.OrdinalIgnoreCase);
-
-        public IReadOnlyDictionary<string, ProjectMemorySourceRegistration> Sources => _sources;
-
-        public void Add(ProjectMemorySourceRegistration registration) => _sources.TryAdd(registration.Scheme, registration);
-
-        public void Remove(string scheme) => _sources.Remove(scheme);
     }
 }

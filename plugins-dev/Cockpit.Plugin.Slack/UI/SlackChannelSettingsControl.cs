@@ -4,8 +4,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugin.Slack.Settings;
 
-namespace Cockpit.Plugin.Slack.Settings;
+namespace Cockpit.Plugin.Slack.UI;
 
 // The plugin's settings view (opened from the gear in the plugin manager): AC-1023 §3's three-level access
 // model verbatim (the warning texts are AssistantChannelAccess's own constants), the bot/app-level tokens and
@@ -30,7 +32,7 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
     private readonly TextBlock _errorText;
     private readonly TextBlock _notConfiguredText;
 
-    public SlackChannelSettingsControl(ICockpitHost host, SlackChannelSettings settings)
+    public SlackChannelSettingsControl(ICockpitUiHost host, SlackChannelSettings settings)
     {
         _settings = settings;
         var current = settings.Access;

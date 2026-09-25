@@ -20,7 +20,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
+         its own, so the backend project dropping the build of Ui/ fails this project rather than going unseen. -->
+    <Reference Include="Cockpit.Plugin.Proxmox.UI">
+      <HintPath>..\Cockpit.Plugin.Proxmox\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Proxmox.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Proxmox\Cockpit.Plugin.Proxmox.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

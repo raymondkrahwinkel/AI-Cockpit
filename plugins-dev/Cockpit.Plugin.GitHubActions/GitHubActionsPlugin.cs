@@ -1,22 +1,21 @@
-using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Material.Icons;
+using Cockpit.Plugin.GitHubActions.Contracts;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubActions;
 
-// GitHub Actions CI status (AC-52): adds an indicator to each session's header showing the latest workflow-run status
-// of the branch that session is working in — green pass, red fail, amber running — click to open the run on GitHub.
-// Completes the GitHub set (Issues + Pull Requests + Git status → + CI). Uses the machine's existing `gh` login;
-// no local state, so `ConfigureServices` is empty.
+// GitHub Actions CI status (AC-52): the backend part. Answers the UI part's GitHubActionsChannel.RecentRuns
+// requests — the branch's recent workflow runs, read via the local `gh` CLI. Uses the machine's existing `gh`
+// login; no local state, so `ConfigureServices` is empty.
 //
-// AC-1065: a Dashboard widget and a dock-rail panel — same pattern as the pull-requests plugin's own pair — showing
-// the branch's recent runs (workflow, branch, status, duration) kept open next to your work, each placed instance
-// with its own per-instance run count (CiWorkflowRunsWidgetConfig). Read-only: no restart/cancel, that is a change
-// and belongs behind its own consent-gated ticket.
+// AC-1394: before this split, the UI controls shelled out to `gh`/`git` themselves; this plugin had no backend
+// behaviour at all. CiWorkflowRunClient (the actual `gh run list` / `git rev-parse` logic) moved here unchanged.
 public sealed class GitHubActionsPlugin : ICockpitPlugin
 {
+    private readonly CiWorkflowRunClient _client = new();
+    private readonly List<IDisposable> _handlers = [];
+
     public PluginMetadata Metadata { get; } = new(
         Id: "github-actions",
         DisplayName: "GitHub Actions",
@@ -30,42 +29,29 @@ public sealed class GitHubActionsPlugin : ICockpitPlugin
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // No local state or background services — the header indicator, widget and dock panel all read gh on demand.
+        // No local state or background services — every answer reads gh on demand.
     }
 
     public void Initialize(ICockpitHost host)
     {
-        // In each session's own header rather than the sidebar: CI status describes the branch that one session is on,
-        // the same reasoning the git-status badge follows.
-        host.AddSessionHeaderItem(session => new CiStatusHeaderControl(session));
-
-        // AC-1065: the same status, as a list for a workspace given over to it. CreateConfigView postdates 0.1.0, so
-        // this is behind the same older-host guard the dock-panel registrar below uses — an old host keeps the
-        // header and just never gets the widget, rather than failing Initialize and losing both.
-        try
-        {
-            _RegisterWidget(host);
-        }
-        catch (Exception exception) when (exception is MissingMethodException or MissingMemberException or TypeLoadException)
-        {
-        }
-
-        // AC-1065: the same list, reachable as a dock-rail panel too, next to the header dot.
-        CiWorkflowRunsDockPanelRegistrar.Register(host);
+        _handlers.Add(host.Channel.Handle(GitHubActionsChannel.RecentRuns, _AnswerRecentRunsAsync));
     }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void _RegisterWidget(ICockpitHost host) =>
-        host.AddWidget(new WidgetRegistration("widgets.github-actions", "GitHub Actions", context => new CiWorkflowRunsWidget(context))
-        {
-            IconKind = MaterialIconKind.Cog,
-            Description = "The branch's recent GitHub Actions runs, with a configurable count.",
-            DefaultColumnSpan = 6,
-            DefaultRowSpan = 8,
-            CreateConfigView = context => new CiWorkflowRunsWidgetSettingsView(context),
-        });
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
+    }
+
+    private async Task<JsonElement> _AnswerRecentRunsAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = payload.Deserialize<GitHubActionsRunsRequest>(GitHubActionsChannel.Json)
+            ?? throw new ArgumentException("The request names no working directory.", nameof(payload));
+        var runs = await _client.GetRecentRunsAsync(request.WorkingDirectory, request.Limit, cancellationToken);
+        return JsonSerializer.SerializeToElement(runs, GitHubActionsChannel.Json);
     }
 }
