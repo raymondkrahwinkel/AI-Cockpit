@@ -34,10 +34,19 @@ public class AutopilotRunBackendArchitectureTests
         using var image = new PEReader(stream);
         var reader = image.GetMetadataReader();
         var names = new NamesAvalonia();
+        // Every token an instruction can carry that leads to an Avalonia type: a member of another assembly, a generic
+        // method instance, this assembly's own methods and fields (another class's Control), and the types themselves.
         var tokens = reader.MemberReferences.Where(handle => _Names(reader, names, handle)).Select(handle => MetadataTokens.GetToken(handle))
             .Concat(Enumerable.Range(1, reader.GetTableRowCount(TableIndex.MethodSpec))
                 .Select(MetadataTokens.MethodSpecificationHandle)
                 .Where(handle => _Names(reader, names, handle))
+                .Select(handle => MetadataTokens.GetToken(handle)))
+            .Concat(reader.MethodDefinitions.Where(handle => _Signature(reader.GetMethodDefinition(handle).DecodeSignature(names, null))).Select(handle => MetadataTokens.GetToken(handle)))
+            .Concat(reader.FieldDefinitions.Where(handle => reader.GetFieldDefinition(handle).DecodeSignature(names, null)).Select(handle => MetadataTokens.GetToken(handle)))
+            .Concat(reader.TypeReferences.Where(handle => NamesAvalonia.IsAvalonia(reader, handle)).Select(handle => MetadataTokens.GetToken(handle)))
+            .Concat(Enumerable.Range(1, reader.GetTableRowCount(TableIndex.TypeSpec))
+                .Select(MetadataTokens.TypeSpecificationHandle)
+                .Where(handle => reader.GetTypeSpecification(handle).DecodeSignature(names, null))
                 .Select(handle => MetadataTokens.GetToken(handle)))
             .ToHashSet();
 
@@ -52,7 +61,7 @@ public class AutopilotRunBackendArchitectureTests
                 .Select(field => reader.GetString(field.Name));
             var methods = type.GetMethods().Select(reader.GetMethodDefinition)
                 .Where(method => _Signature(method.DecodeSignature(names, null))
-                    || (method.RelativeVirtualAddress != 0 && _References(image.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [], tokens)))
+                    || (method.RelativeVirtualAddress != 0 && _Body(reader, names, image.GetMethodBody(method.RelativeVirtualAddress), tokens)))
                 .Select(method => reader.GetString(method.Name));
             return fields.Concat(methods).Select(member => $"{_TypeName(reader, handle)}.{member}");
         })];
@@ -82,11 +91,17 @@ public class AutopilotRunBackendArchitectureTests
 
     private static bool _Signature(MethodSignature<bool> signature) => signature.ReturnType || signature.ParameterTypes.Contains(true);
 
-    // ponytail: the same raw scan YouTrackPluginUiSplitArchitectureTests uses, widened to newobj and the field opcodes;
-    // a false hit needs one of these exact tokens inside another operand. Decode instruction by instruction if one shows up.
+    // A body names Avalonia through a local of that type or an instruction carrying one of the tokens.
+    private static bool _Body(MetadataReader reader, NamesAvalonia names, MethodBodyBlock body, HashSet<int> tokens) =>
+        (!body.LocalSignature.IsNil && reader.GetStandaloneSignature(body.LocalSignature).DecodeLocalSignature(names, null).Contains(true))
+        || _References(body.GetILBytes() ?? [], tokens);
+
+    // ponytail: the raw scan YouTrackPluginUiSplitArchitectureTests uses, widened to every token-carrying opcode (calls,
+    // fields, casts, box, newarr, ldtoken); a false hit needs such a token inside another operand. Decode if one shows up.
     private static bool _References(byte[] il, HashSet<int> tokens) =>
         Enumerable.Range(0, Math.Max(0, il.Length - 4))
-            .Any(index => (il[index] is 0x28 or 0x6F or 0x73 or 0x7B or 0x7D or 0x7E or 0x80 && tokens.Contains(BitConverter.ToInt32(il, index + 1)))
+            .Any(index => (il[index] is 0x28 or 0x6F or 0x73 or 0x74 or 0x75 or 0x79 or 0x7B or 0x7C or 0x7D or 0x7E or 0x7F or 0x80 or 0x8C or 0x8D or 0xA5 or 0xD0
+                    && tokens.Contains(BitConverter.ToInt32(il, index + 1)))
                 || (index + 5 < il.Length && il[index] == 0xFE && (il[index + 1] == 0x06 || il[index + 1] == 0x07)
                     && tokens.Contains(BitConverter.ToInt32(il, index + 2))));
 

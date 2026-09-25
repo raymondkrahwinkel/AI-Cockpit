@@ -167,6 +167,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Dispatcher.UIThread.Post(() => _ = _ShowPlanningPopoutAsync());
         }
 
+        _sessionViews.Retain(_runs.Active.SelectMany(context => new[] { context.StepPaneId, context.CeoPaneId }));
         _bodyHost.Content = _BuildSurface();
     }
 

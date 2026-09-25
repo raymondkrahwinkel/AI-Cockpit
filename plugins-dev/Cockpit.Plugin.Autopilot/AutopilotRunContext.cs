@@ -289,7 +289,9 @@ internal sealed class AutopilotRunContext
     }
 
     // AC-1398: the run's sessions are embedded in its workspace by id, so the run holds no workspace object of the UI's.
-    private IEmbeddedSession? _EmbedSession(EmbeddedSessionRequest request) => _host.EmbedSession(_workspaceId, request);
+    // A host that cannot embed throws, as the workspace's own EmbedSession did, so a step still notes why it faulted.
+    private IEmbeddedSession _EmbedSession(EmbeddedSessionRequest request) =>
+        _host.EmbedSession(_workspaceId, request) ?? throw new InvalidOperationException("This host cannot embed sessions.");
 
     private void _ShowStepView(string paneId)
     {

@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 public class AutopilotWorkspaceRunsTests
 {
     [Fact]
-    public void EmbedPlanningCeo_EmbedsInItsWorkspaceAndBindsThePlanToThatPane()
+    public void PlanningCeo_IsEmbeddedInItsWorkspace_BindsThePlanToItsPane_AndClosesOnce()
     {
         var request = new EmbeddedSessionRequest { ProfileId = "ceo" };
         var ceo = Substitute.For<IEmbeddedSession>();
@@ -17,9 +17,14 @@ public class AutopilotWorkspaceRunsTests
         host.EmbedSession("workspace-1", request).Returns(ceo);
         var plan = new AutopilotPlanController();
 
-        var embedded = _Runs(host, plan, _Manager()).EmbedPlanningCeo(request);
+        var runs = _Runs(host, plan, _Manager());
+
+        var embedded = runs.EmbedPlanningCeo(request);
+        runs.ClosePlanningCeo();
+        runs.ClosePlanningCeo();
 
         Assert.Equal((ceo, "ceo-pane"), (embedded, plan.SessionPaneId));
+        ceo.Received(1).CloseAsync();
     }
 
     [Fact]

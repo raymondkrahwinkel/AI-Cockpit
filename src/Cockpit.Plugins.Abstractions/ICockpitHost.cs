@@ -574,7 +574,8 @@ public interface ICockpitHost
     /// How a backend part drives sessions a workspace shows: the UI part hands over
     /// <see cref="Workspaces.IWorkspaceContext.WorkspaceId"/>, the backend holds the returned session by its
     /// <see cref="Workspaces.IEmbeddedSession.PaneId"/>, and the UI part places its view with
-    /// <c>ICockpitUiHost.CreateEmbeddedSessionView</c>. Default null, so existing hosts keep compiling.
+    /// <c>ICockpitUiHost.CreateEmbeddedSessionView</c>. Call it on the UI thread, as the workspace's own route is: the
+    /// host builds the session's view there. Default null, so existing hosts keep compiling.
     /// </remarks>
     Workspaces.IEmbeddedSession? EmbedSession(string workspaceId, Workspaces.EmbeddedSessionRequest request) => null;
 
