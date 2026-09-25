@@ -49,7 +49,7 @@ public partial class ThemeHexColorGuardTests
         // has one job — three lines you can tell apart. The file says in so many words why it does not borrow the
         // theme's status colours: an amber line pointed at CockpitStatusWaitingBrush would read as a warning about
         // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
-        "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
+        "plugins-dev/Cockpit.Plugin.UsageTrend/UI/UsageTrendChartControl.cs",
 
         // The whiteboard's own surface (AC-821/AC-822), one named palette since AC-860: white paper, a yellow pencil
         // ink and a blue shape stroke — a whiteboard's content is deliberately not theme-driven, the way a real sheet

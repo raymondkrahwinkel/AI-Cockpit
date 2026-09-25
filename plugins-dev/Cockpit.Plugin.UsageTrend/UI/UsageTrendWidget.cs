@@ -1,49 +1,38 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.UsageTrend.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.UsageTrend;
+namespace Cockpit.Plugin.UsageTrend.UI;
 
-// The usage-trend widget (AC-54): the ctx / 5h / weekly figures the session header shows as now-values, charted
-// over time and split per profile. It samples the active session's usage as the host reports it moving
-// (`ICockpitSessionObserver.ActiveSessionUsageChanged`), debounced so it does not rewrite the settings file
-// every few seconds, and keeps a rolling fourteen days in its own per-instance storage. With no history yet it
-// shows a plain line about what it is waiting for rather than an empty frame.
+// The usage-trend widget (AC-54): ctx / 5h / weekly, charted over time per profile. AC-1395 split: the debounce/
+// prune rules and the cache file live in the backend part (UsageTrendPlugin), reached over the plugin's channel
+// — ICockpitUiHost does not expose ICockpitHost.Cache.
 internal sealed class UsageTrendWidget : UserControl
 {
-    // The storage key this instance keeps its sampled history under, within its own slice.
+    // The storage key a pre-AC-1395 install left this instance's history under, migrated once then removed.
     internal const string HistoryKey = "history";
 
-    private string _CacheKey => $"widget:{_context.InstanceId}:{HistoryKey}";
-
     private readonly IWidgetContext _context;
-    private readonly IPluginCache _cache;
+    private readonly IPluginUiChannel _channel;
     private readonly StackPanel _profiles = new() { Spacing = 12 };
 
-    private IReadOnlyList<UsageTrendSample> _history;
+    private IReadOnlyList<UsageTrendSample> _history = [];
 
-    public UsageTrendWidget(IWidgetContext context, IPluginCache cache)
+    public UsageTrendWidget(IWidgetContext context, IPluginUiChannel channel)
     {
         _context = context;
-        _cache = cache;
-        if (_cache.Get<List<UsageTrendSample>>(_CacheKey) is null && _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) is { } history)
-        {
-            _cache.Set(_CacheKey, history);
-        }
-
-        _context.Storage.Remove(HistoryKey);
-
-        // What survived a restart, with anything past retention shed before it is ever charted.
-        _history = _LoadHistory();
+        _channel = channel;
 
         Content = _BuildLayout();
         _Render();
 
         // Placing the widget should catch the current reading at once, not only the next time it moves.
-        _Sample();
+        _ = _InitializeAsync();
 
         _context.Sessions.ActiveSessionUsageChanged += _OnUsageChanged;
         _context.RefreshRequested += _OnRefreshRequested;
@@ -82,27 +71,44 @@ internal sealed class UsageTrendWidget : UserControl
         return root;
     }
 
-    private void _OnUsageChanged(object? sender, EventArgs e) => _Sample();
+    // Migrates a pre-AC-1395 install's legacy per-instance storage into the backend's cache (once, only when
+    // that cache is still empty — the backend enforces the guard), then loads and takes the first sample.
+    private async Task _InitializeAsync()
+    {
+        if (_context.Storage.Get<List<UsageTrendSample>>(HistoryKey) is { } legacy)
+        {
+            // Cleared only once it actually reached the backend's cache — a failed round trip leaves it in
+            // Storage for the next load to retry, rather than losing it.
+            if (await _SeedAsync(legacy))
+            {
+                _context.Storage.Remove(HistoryKey);
+            }
+        }
 
-    private void _OnRefreshRequested(object? sender, EventArgs e)
+        _history = await _LoadAsync();
+        _Render();
+        await _SampleAsync();
+    }
+
+    private async void _OnUsageChanged(object? sender, EventArgs e) => await _SampleAsync();
+
+    private async void _OnRefreshRequested(object? sender, EventArgs e)
     {
         // A refresh re-reads the store (another instance of this widget may have appended) and redraws; it never
         // samples, so ↻ cannot forge a data point.
-        _history = _LoadHistory();
+        _history = await _LoadAsync();
         _Render();
     }
 
-    // Reads the stored history, defensively. Storage.Get deserializes the raw cockpit.json blob, and a hand-edited or
-    // otherwise corrupt one (malformed JSON, or an array with a null element) would throw — out of the widget's
-    // construction, which WorkspacesViewModel does while rebuilding every dashboard pane, so one bad blob would cost
-    // the operator the whole workspace rather than this one pane. A store it cannot read becomes an empty history; the
-    // next sample starts a fresh, valid one. Prune already skips null elements for the same reason.
-    private IReadOnlyList<UsageTrendSample> _LoadHistory()
+    // Reads the backend's cache-backed history for this instance. A failed round trip (backend not yet up,
+    // corrupt cache) leaves the widget on an empty history rather than throwing out of an event handler.
+    private async Task<IReadOnlyList<UsageTrendSample>> _LoadAsync()
     {
         try
         {
-            var stored = _cache.Get<List<UsageTrendSample>>(_CacheKey) ?? [];
-            return UsageTrendHistory.Prune(stored, DateTimeOffset.UtcNow);
+            var payload = JsonSerializer.SerializeToElement(new UsageTrendHistoryRequest(_context.InstanceId), UsageTrendChannel.Json);
+            var answer = await _channel.InvokeAsync(UsageTrendChannel.Get, payload);
+            return answer.Deserialize<List<UsageTrendSample>>(UsageTrendChannel.Json) ?? [];
         }
         catch (Exception)
         {
@@ -110,7 +116,21 @@ internal sealed class UsageTrendWidget : UserControl
         }
     }
 
-    private void _Sample()
+    private async Task<bool> _SeedAsync(IReadOnlyList<UsageTrendSample> history)
+    {
+        try
+        {
+            var payload = JsonSerializer.SerializeToElement(new UsageTrendSeedRequest(_context.InstanceId, history), UsageTrendChannel.Json);
+            await _channel.InvokeAsync(UsageTrendChannel.Seed, payload);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private async Task _SampleAsync()
     {
         if (_context.Sessions.ActiveSessionUsage is not { HasAny: true } snapshot)
         {
@@ -118,16 +138,16 @@ internal sealed class UsageTrendWidget : UserControl
         }
 
         var candidate = UsageTrendSample.From(snapshot, DateTimeOffset.UtcNow);
-        var updated = UsageTrendHistory.Append(_history, candidate);
-        if (updated is null)
+        try
         {
-            // Debounced away — the same story a moment later, not worth a whole-file rewrite.
-            return;
+            var payload = JsonSerializer.SerializeToElement(new UsageTrendAppendRequest(_context.InstanceId, candidate), UsageTrendChannel.Json);
+            var answer = await _channel.InvokeAsync(UsageTrendChannel.Append, payload);
+            _history = answer.Deserialize<List<UsageTrendSample>>(UsageTrendChannel.Json) ?? _history;
+            _Render();
         }
-
-        _history = updated;
-        _cache.Set(_CacheKey, _history);
-        _Render();
+        catch (Exception)
+        {
+        }
     }
 
     private void _Render()

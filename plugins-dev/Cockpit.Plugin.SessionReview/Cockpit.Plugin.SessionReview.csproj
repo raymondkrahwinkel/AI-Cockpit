@@ -5,13 +5,19 @@
        ask the session to review its own changes. Turns the parallel-agent flow into a review station — the quality
        guard against AI-slop. Built OUTSIDE the main solution like the other example plugins; package
        bin/<config>/net10.0 into a .zip for the store. Shared assemblies are compile-only (Private=false /
-       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity. -->
+       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity.
+       AC-1395 (following GitStatus's pilot, AC-1390): the header action and the dialog it opens live in UI/, their
+       own project, which builds into this project's bin/ (the reference below orders the build and references no
+       assembly); this project names no Avalonia. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,15 +25,14 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration. Without it MSBuild strips Configuration off a reference
+         made outside a solution, the UI part lands in bin/Debug, and a Release copy of the plugin has no UI assembly;
+         discovery then skips the whole plugin, as its manifest names a file that is not there. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.SessionReview.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

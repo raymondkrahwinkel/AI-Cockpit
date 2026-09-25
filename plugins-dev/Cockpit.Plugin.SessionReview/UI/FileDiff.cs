@@ -19,14 +19,9 @@ internal enum FileChangeKind
     Binary,
 }
 
-// One row of a file's diff: what kind of line it is, where it sits in the old and new file, and its text without the
-// leading `+`/`-`/space. The sign is dropped here because the panel draws it in its own column and because
-// the word-level comparison must line up the actual content, not content-plus-marker.
-//
-// `Kind`: Added, removed, context, or the hunk header itself.
-// `OldLine`: Line number in the old file, or null for an added line and for hunk headers.
-// `NewLine`: Line number in the new file, or null for a removed line and for hunk headers.
-// `Text`: The line without its marker. For a hunk header this is the whole `@@ … @@ …` line.
+// One row of a file's diff: its kind, its old/new line numbers (null where not applicable), and its text
+// without the leading `+`/`-`/space — dropped so the word-level comparison lines up actual content, not
+// content-plus-marker. A hunk header's Text is the whole `@@ … @@ …` line.
 internal sealed record DiffRow(DiffLineKind Kind, int? OldLine, int? NewLine, string Text);
 
 // One file's worth of parsed diff (AC-578). `Added` and `Removed` are counted once at

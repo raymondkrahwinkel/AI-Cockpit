@@ -2,11 +2,8 @@ using System.Globalization;
 
 namespace Cockpit.Plugin.SessionReview;
 
-// Turns unified `git diff` text into one `FileDiff` per file (AC-578), carrying the old and new line
-// number of every row. The panel used to render the diff as one flat list of coloured strings, which is why it could
-// offer neither a file tree nor a line-number gutter — all the structure git had already written into the text was
-// thrown away at the first `Split('\n')`. Everything the UI needs is derived here, where it can be tested
-// without a window.
+// Turns unified `git diff` text into one `FileDiff` per file (AC-578), carrying the old and new line number of
+// every row — what lets the panel offer a file tree and a line-number gutter instead of a flat coloured list.
 internal static class DiffParser
 {
     // Parses a whole diff. Anything before the first `diff --git` line is ignored, so a synthesised block for an
@@ -105,11 +102,8 @@ internal static class DiffParser
     public static (int Old, int New) ParseHunkStart(string header) =>
         (_NumberAfter(header, '-'), _NumberAfter(header, '+'));
 
-    // The stretch that actually differs between a removed line and the added line that replaced it: the shared
-    // prefix and suffix are peeled off and what remains is highlighted. This is what makes a one-character edit
-    // readable — a version bump or a renamed identifier otherwise arrives as two whole red-and-green lines with
-    // nothing pointing at the change.
-    // Start index (shared by both), and the exclusive end index in the old and in the new text.
+    // The stretch that actually differs between a removed line and its replacement: shared prefix/suffix peeled
+    // off, what remains highlighted. Returns the shared start index and the exclusive end in each text.
     public static (int Start, int OldEnd, int NewEnd) WordSpan(string removed, string added)
     {
         var start = 0;

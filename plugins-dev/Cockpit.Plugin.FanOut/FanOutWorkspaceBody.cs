@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.FanOut;
@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.FanOut;
 // to put what comes back.
 internal sealed class FanOutWorkspaceBody : UserControl
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IWorkspaceContext _context;
     private readonly List<FanOutVariantEditor> _variants = [];
     private readonly StackPanel _variantList = new() { Spacing = 6 };
@@ -26,7 +26,7 @@ internal sealed class FanOutWorkspaceBody : UserControl
     private IReadOnlyList<string> _profiles = [];
     private bool _started;
 
-    public FanOutWorkspaceBody(ICockpitHost host, IWorkspaceContext context)
+    public FanOutWorkspaceBody(ICockpitUiHost host, IWorkspaceContext context)
     {
         _host = host;
         _context = context;

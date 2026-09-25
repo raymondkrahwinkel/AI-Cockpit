@@ -7,7 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
@@ -19,7 +19,7 @@ namespace Cockpit.Plugin.PromptLibrary;
 internal sealed class PromptQuickPickControl : UserControl
 {
     private readonly PromptLibrarySettings _settings;
-    private readonly ICockpitActions _actions;
+    private readonly ICockpitUiHost _host;
     private readonly Border _searchBar;
     private readonly TextBlock _icon;
     private readonly TextBox _search;
@@ -28,10 +28,10 @@ internal sealed class PromptQuickPickControl : UserControl
     private readonly ObservableCollection<PromptTemplate> _visible = [];
     private List<PromptTemplate> _all = [];
 
-    public PromptQuickPickControl(PromptLibrarySettings settings, ICockpitActions actions)
+    public PromptQuickPickControl(PromptLibrarySettings settings, ICockpitUiHost host)
     {
         _settings = settings;
-        _actions = actions;
+        _host = host;
 
         // A spotlight-style search bar: a rounded pill with an accent spark icon and a borderless input, so the
         // whole thing reads as one search field rather than a boxed TextBox.
@@ -186,13 +186,13 @@ internal sealed class PromptQuickPickControl : UserControl
             return;
         }
 
-        if (_actions.HasActiveSession)
+        if (_host.ActivePaneId is { } paneId)
         {
-            await _actions.InjectIntoActiveSessionAsync(template.Body);
+            await _host.InsertIntoSessionAsync(paneId, template.Body);
         }
         else
         {
-            await _actions.SetClipboardTextAsync(template.Body);
+            await _host.SetClipboardTextAsync(template.Body);
         }
 
         _Close();

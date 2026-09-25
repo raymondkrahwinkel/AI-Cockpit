@@ -4,14 +4,9 @@ using System.Text;
 
 namespace Cockpit.Plugin.SessionReview;
 
-// Reads the uncommitted changes of a working directory (AC-50) via `git diff HEAD`, plus the branch and repo
-// root via `git rev-parse`, plus the untracked files via `git status` — all run in the directory, with
-// `ArgumentList` (no shell). Fails soft: no git, not a repo, or no changes all yield an empty result rather
-// than an error. Bounded by a per-call timeout.
-// A file that has never been staged does not appear in `git diff HEAD` at all, so the panel's promise to show
-// "what this session changed before it lands" used to skip exactly the files a session most often adds. Each one is
-// read here and appended to the diff as the all-added block git itself would have written, which keeps one parsing
-// path for the panel and leaves the copied text a valid diff.
+// Reads the uncommitted changes of a working directory (AC-50): `git diff HEAD` plus branch/root via
+// `git rev-parse`, plus untracked files via `git status` appended as the all-added block git itself would have
+// written for them — one parsing path for the panel. Fails soft: no git, no repo, no changes all yield empty.
 internal sealed class GitDiffReader
 {
     // A file this large is not something anyone reviews line by line; it is listed, not drawn.
