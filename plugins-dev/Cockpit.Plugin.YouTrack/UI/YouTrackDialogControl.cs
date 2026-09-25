@@ -1278,8 +1278,15 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        await _host.SendToSessionAsync(paneId, PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
-        _SetDetailStatus(issue, $"Added issue {issue.IdReadable} to the active session's prompt.");
+        try
+        {
+            await _host.SendToSessionAsync(paneId, PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
+            _SetDetailStatus(issue, $"Added issue {issue.IdReadable} to the active session's prompt.");
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not add {issue.IdReadable} to the session: {exception.Message}");
+        }
     }
 
     private async Task _CopyPromptAsync()

@@ -21,7 +21,8 @@ internal static partial class YouTrackProjectField
     public static async Task<IReadOnlyList<string>> ResolvePreferredTagsAsync(
         ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken)
     {
-        var linked = await host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
+        // AC-1397: no pane named asks the host nothing — its fallback for a missing pane is the window's active one.
+        IReadOnlyList<string> linked = string.IsNullOrEmpty(paneId) ? [] : await host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
         return linked.Count > 0 ? linked : string.IsNullOrWhiteSpace(defaultProjectTag) ? [] : [defaultProjectTag];
     }
 

@@ -59,12 +59,14 @@ public class YouTrackPluginUiSplitArchitectureTests
             .Select(method => $"{_TypeName(reader, method.GetDeclaringType())}.{reader.GetString(method.Name)}")];
     }
 
-    // ponytail: scans the raw IL for a call/callvirt opcode followed by one of the tokens rather than decoding each
-    // instruction; a false hit needs those exact five bytes inside another operand, which a member-reference token
-    // all but rules out. Decode instruction by instruction if one ever shows up.
+    // ponytail: scans the raw IL for call/callvirt, or ldftn/ldvirtftn (a method group), followed by one of the tokens
+    // rather than decoding each instruction; a false hit needs those exact bytes inside another operand, which a
+    // member-reference token all but rules out. Decode instruction by instruction if one ever shows up.
     private static bool _Calls(byte[] il, HashSet<int> tokens) =>
         Enumerable.Range(0, Math.Max(0, il.Length - 4))
-            .Any(index => (il[index] == 0x28 || il[index] == 0x6F) && tokens.Contains(BitConverter.ToInt32(il, index + 1)));
+            .Any(index => ((il[index] == 0x28 || il[index] == 0x6F) && tokens.Contains(BitConverter.ToInt32(il, index + 1)))
+                || (index + 5 < il.Length && il[index] == 0xFE && (il[index + 1] == 0x06 || il[index + 1] == 0x07)
+                    && tokens.Contains(BitConverter.ToInt32(il, index + 2))));
 
     private static string _TypeName(MetadataReader reader, TypeDefinitionHandle handle)
     {

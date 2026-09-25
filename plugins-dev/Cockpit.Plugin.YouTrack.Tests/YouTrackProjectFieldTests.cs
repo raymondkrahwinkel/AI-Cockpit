@@ -1,3 +1,6 @@
+using Cockpit.Plugins.Abstractions;
+using NSubstitute;
+
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 // The choices this plugin offers the project editor (AC-317). What is stored is the short name — the tag every
@@ -170,5 +173,20 @@ public class YouTrackProjectFieldTests
         var tags = await YouTrackProjectField.ResolvePreferredTagsAsync(host, "pane-1", defaultProjectTag: null, CancellationToken.None);
 
         Assert.Empty(tags);
+    }
+
+    // AC-1397: with no pane named the host is not asked at all — its fallback for a missing pane is the window's
+    // active one, which the backend must never read, even indirectly.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task ResolvePreferredTags_WithNoPaneNamed_AsksTheHostNothing(string? paneId)
+    {
+        var host = Substitute.For<ICockpitHost>();
+
+        var tags = await YouTrackProjectField.ResolvePreferredTagsAsync(host, paneId, defaultProjectTag: "KON", CancellationToken.None);
+
+        Assert.Equal(["KON"], tags);
+        await host.DidNotReceive().GetProjectFieldValuesAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 }
