@@ -1,6 +1,6 @@
 using Avalonia.Controls;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 
 namespace Cockpit.Plugin.FanOut.Tests;
@@ -97,9 +97,9 @@ public class FanOutWorkspaceBodyTests
         Assert.Empty(context.Requests);
     }
 
-    private static ICockpitHost _Host()
+    private static ICockpitUiHost _Host()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitUiHost>();
         host.GetProfilesAsync().Returns(Task.FromResult<IReadOnlyList<PluginProfileInfo>>(
         [
             new PluginProfileInfo("Personal", "Plugin", string.Empty),
