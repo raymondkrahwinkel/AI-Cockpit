@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Cockpit.Plugin.SessionReview.UI;
@@ -122,11 +123,28 @@ public class SessionDiffDialogControlTests : IDisposable
         Assert.Contains(panel.Texts(), t => t.Contains("No uncommitted changes", StringComparison.Ordinal));
     }
 
-    private _Panel _Open()
+    // Acceptance 3 (AC-1395/D6): clicking Review sends to the pane the window has active, not to whichever pane
+    // this panel happens to be showing — proven with two sessions and the second one active.
+    [Fact]
+    public void ClickingReview_WithTwoSessions_SendsToTheSecondSessionTheWindowHasActive()
+    {
+        var host = Substitute.For<ICockpitUiHost>();
+        host.ActivePaneId.Returns("pane-2");
+
+        using var panel = _Open(host, "pane-2");
+        panel.ClickReview();
+
+        host.Received(1).SendToSessionAsync("pane-2", Arg.Any<string>());
+        host.DidNotReceive().SendToSessionAsync("pane-1", Arg.Any<string>());
+    }
+
+    private _Panel _Open() => _Open(Substitute.For<ICockpitUiHost>(), "pane-1");
+
+    private _Panel _Open(ICockpitUiHost host, string paneId)
     {
         // Build on the UI thread, then wait from this one. Waiting inside the Invoke would hold the very thread the
         // control's own load continuation needs, and the panel would never finish reading — a 30-second deadlock.
-        var panel = HeadlessAvalonia.Run(() => _Panel.Attach(_repo));
+        var panel = HeadlessAvalonia.Run(() => _Panel.Attach(_repo, host, paneId));
         panel.WaitUntilLoaded();
         return panel;
     }
@@ -146,16 +164,24 @@ public class SessionDiffDialogControlTests : IDisposable
     // A shown window holding the panel, with the reads the tests make of it.
     private sealed class _Panel(Window window, SessionDiffDialogControl control) : IDisposable
     {
-        public static _Panel Attach(string repository)
+        public static _Panel Attach(string repository, ICockpitUiHost host, string paneId)
         {
             var session = Substitute.For<IPluginSessionContext>();
+            session.PaneId.Returns(paneId);
             session.WorkingDirectory.Returns(repository);
 
-            var control = new SessionDiffDialogControl(Substitute.For<ICockpitUiHost>(), session);
+            var control = new SessionDiffDialogControl(host, session);
             var window = new Window { Width = 1100, Height = 720, Content = control };
             window.Show();
             return new _Panel(window, control);
         }
+
+        public void ClickReview() => HeadlessAvalonia.Run(() =>
+        {
+            var button = control.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Ask this session to review"));
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+        });
 
         public IReadOnlyList<TreeNode> TreeNodes() => HeadlessAvalonia.Run(
             () => (control.GetLogicalDescendants().OfType<TreeView>().Single().ItemsSource as IEnumerable<TreeNode>)?.ToList() ?? []);

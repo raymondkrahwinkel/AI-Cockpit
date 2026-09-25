@@ -1,48 +1,50 @@
-using Avalonia.Controls;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.Infrastructure.Plugins;
+using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.CompanionTools;
+using Cockpit.Plugins.Abstractions.UI;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-/// <summary>
-/// AC-240 counter-proof: loads the real, compiled example companion-tool plugin and asserts its
-/// <c>Initialize</c> calls <see cref="ICockpitHost.AddCompanionTool"/> with its own tool id — not just that the
-/// registry is non-empty, which the assistant's tool (AC-238) already satisfies before this plugin runs.
-/// </summary>
+// AC-240 counter-proof: loads the real, compiled example companion-tool plugin and asserts its InitializeUi
+// calls ICockpitUiHost.AddCompanionTool with its own tool id. AC-1395: became a pure UI plugin (no backend
+// contribution left once InitializeUi could carry the registration itself) — mirrors ClockPluginLoadTests.
 public class ExampleCompanionToolPluginLoadTests
 {
     [Fact]
-    public void Initialize_RegistersItsOwnCompanionTool_WhenBuilt()
+    public void ThePluginHasNoBackendPart_AndItsUiPartRegistersItsOwnCompanionTool_WhenBuilt()
     {
-        var folder = _LocatePluginOutput();
-        Assert.NotNull(folder);
+        if (_LocatePluginOutput() is not { } folder)
+        {
+            Assert.Fail("The built ExampleCompanionTool plugin output was not found.");
+            return;
+        }
 
-        var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
-        Assert.NotNull(manifest);
+        var manifestJson = File.ReadAllText(Path.Combine(folder, "plugin.json"));
+        if (!PluginManifest.TryParse(manifestJson, out var manifest, out _) || manifest is not { } parsedManifest)
+        {
+            Assert.Fail("ExampleCompanionTool's plugin.json did not parse.");
+            return;
+        }
 
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.Assemblies.Single())));
-        var discovered = new DiscoveredPlugin(folder, "example-companion-tool", manifest, hash, PluginLoadDecision.Load);
+        Assert.Null(parsedManifest.EntryAssembly);
+        Assert.Equal("Cockpit.Plugin.ExampleCompanionTool.dll", parsedManifest.UiAssembly);
+        Assert.Equal("Cockpit.Plugin.ExampleCompanionTool.ExampleCompanionToolUi", parsedManifest.UiEntryType);
 
+        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, "Cockpit.Plugin.ExampleCompanionTool.dll")));
+        var discovered = new DiscoveredPlugin(folder, "example-companion-tool", parsedManifest, hash, PluginLoadDecision.Load);
+
+        // The backend bootstrap has nothing to activate: no entryAssembly, so PluginActivator refuses politely
+        // rather than throwing.
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
-        var plugin = activator.Activate(discovered);
+        Assert.Null(activator.Activate(discovered));
 
-        // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
-        Assert.NotNull(plugin);
-        Assert.Equal("example-companion-tool", plugin!.Metadata.Id);
-
-        plugin.ConfigureServices(new ServiceCollection());
-
-        var host = new RecordingHost();
-        plugin.Initialize(host);
-
-        Assert.Equal("example-companion-tool.hello", Assert.Single(host.CompanionTools).Id);
-
-        plugin.Dispose();
+        var uiPart = Assert.IsAssignableFrom<ICockpitPluginUi>(PluginUiManager.ActivateUi(discovered, backend: null));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiPart.InitializeUi(uiHost);
+        uiHost.Received(1).AddCompanionTool(Arg.Is<CompanionToolRegistration>(registration => registration.Id == "example-companion-tool.hello"));
     }
 
     // Walks up from the test output to the repo root and finds the plugin's build output (either config).
@@ -64,50 +66,5 @@ public class ExampleCompanionToolPluginLoadTests
         }
 
         return null;
-    }
-
-    private sealed class RecordingHost : ICockpitHost
-    {
-        public List<CompanionToolRegistration> CompanionTools { get; } = [];
-
-        public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
-
-        public ICockpitActions Actions { get; } = new NoActions();
-
-        public IPluginStorage Storage { get; } = new MemoryStorage();
-
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
-
-        public void AddCompanionTool(CompanionToolRegistration registration) => CompanionTools.Add(registration);
-    }
-
-    private sealed class NoActions : ICockpitActions
-    {
-        public bool HasActiveSession => false;
-
-        public Task InjectIntoActiveSessionAsync(string text) => Task.CompletedTask;
-
-        public Task SetClipboardTextAsync(string text) => Task.CompletedTask;
-    }
-
-    private sealed class MemoryStorage : IPluginStorage
-    {
-        private readonly Dictionary<string, object?> _values = [];
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
-
-        public void Set<T>(string key, T value) => _values[key] = value;
     }
 }
