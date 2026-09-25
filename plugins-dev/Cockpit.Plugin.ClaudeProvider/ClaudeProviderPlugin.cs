@@ -91,7 +91,9 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // auditing AC-739 — all three were true on the driver instance and absent here, so the header's live
             // model/permission-mode controls and the AC-664 compact button were silently dead in the running app.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, SupportsMidTurnInput = true, SupportsLiveModelSwitch = true, SupportsPermissionModeSwitch = true, SupportsContextCompaction = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
-            CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
+            // AC-1393: the UI part's InitializeUi (ClaudeProviderUi) replaces this with the real config view via
+            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
+            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."))
         {
             Options =
             [
