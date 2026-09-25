@@ -9,10 +9,11 @@ namespace Cockpit.Plugins.Abstractions.Theming;
 /// not part of the plugin contract.
 /// </summary>
 /// <remarks>
-/// Shared by <see cref="Sessions.ProviderConfigStatus"/> and <see cref="ManagedCli.ManagedCliConfigSection"/> so
-/// both track a host theme swap.
+/// Shared by <see cref="Sessions.ProviderConfigStatus"/> and, since AC-1393 moved it to
+/// <c>Cockpit.Plugins.Abstractions.UI</c>, <c>ManagedCli.ManagedCliConfigSection</c> — public rather than
+/// internal so that assembly can still reach it, even though this one is the SDK's own plumbing.
 /// </remarks>
-internal static class ThemeBrush
+public static class ThemeBrush
 {
     public static IBrush Resolve(string key, string fallbackHex) =>
         Application.Current is { } app && app.TryGetResource(key, app.ActualThemeVariant, out var value) && value is IBrush brush

@@ -3,6 +3,7 @@ using Avalonia.Layout;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Theming;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugins.Abstractions.ManagedCli;
 
@@ -12,12 +13,13 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// executable-path field.
 /// </summary>
 /// <remarks>
-/// Deliberately in the shared abstractions assembly, like <see cref="Sessions.ProviderConfigStatus"/>, so the
-/// panel stays identical across providers instead of each plugin hand-rolling it.
+/// AC-1393: moved here from <c>Cockpit.Plugins.Abstractions</c> once its constructor took
+/// <see cref="ICockpitUiHost"/> instead of <c>ICockpitHost</c> — a provider's config view is a UI-only concern,
+/// and this panel is the one piece of it that used to reach the backend host directly.
 /// </remarks>
 public sealed class ManagedCliConfigSection
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly string _cliName;
     private readonly string _displayName;
     private readonly Action? _onStateChanged;
@@ -39,7 +41,7 @@ public sealed class ManagedCliConfigSection
     /// Invoked (on the UI thread) after an install or remove changes what is on disk, so the host config view can
     /// refresh its own "what will run" line — keeping the executable-status and this panel from disagreeing.
     /// </param>
-    public ManagedCliConfigSection(ICockpitHost host, string cliName, string displayName, Action? onStateChanged = null)
+    public ManagedCliConfigSection(ICockpitUiHost host, string cliName, string displayName, Action? onStateChanged = null)
     {
         _host = host;
         _cliName = cliName;
