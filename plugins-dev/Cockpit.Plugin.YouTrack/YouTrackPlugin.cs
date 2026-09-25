@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Material.Icons;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
@@ -15,11 +13,14 @@ namespace Cockpit.Plugin.YouTrack;
 // in the host's per-plugin storage, so `ConfigureServices` is empty. Also registers the
 // JetBrains remote MCP server (#60) for every fully-configured instance, on `Initialize` and
 // again whenever settings are saved — see `YouTrackMcpRegistration`.
+// AC-1397: this is the backend part. The dialog, the session header, the picker and the settings are the UI part
+// (UI/YouTrackUi), which reaches YouTrack and the session links only through the handlers below.
 public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 {
     // The instances live in the host's per-plugin storage; kept here from Initialize so GetMcpServers can read the
     // current set each time the host asks (AC-11), rather than a snapshot taken once.
     private YouTrackSettings? _settings;
+    private readonly List<IDisposable> _handlers = [];
 
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
@@ -41,14 +42,13 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         var settings = new YouTrackSettings(host.Storage);
         _settings = settings;
 
-        // One registry, shared by the dialog (which links an issue to the active session) and the header items
-        // (each of which shows the issue linked to its own session) — see SessionIssueLinks.
+        // One registry, shared through the channel by the dialog, the picker and the header items (each showing the
+        // issue linked to its own session) — see SessionIssueLinks.
         var links = new SessionIssueLinks(host);
 
         // And one bus for the moves themselves, shared by the two places a ticket can be moved from — see IssueStateChanges.
         var stateChanges = new IssueStateChanges();
-
-        host.AddSettings(() => new YouTrackSettingsControl(host, settings));
+        _handlers.AddRange(new YouTrackChannelHandlers(host, links, stateChanges).Register(host.Channel));
 
         // The writing half (AC-154): a consumer (Autopilot) posts evidence and moves an issue's stage back to YouTrack
         // through this, tracker-neutrally.
@@ -57,16 +57,6 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // Which YouTrack project a cockpit project is tracked in (AC-317), picked from the instance's own list in the
         // project editor. Read back by the issues dialog, which then opens on that project.
         host.AddProjectField(YouTrackProjectField.Registration(settings, new YouTrackClient()));
-
-        // 1280×860 (AC-297, up from 1040×700): the chips strip, fixed action toolbar and rendered description
-        // all want more room than the old size gave them. PluginDialogHost clamps this against the cockpit's own
-        // window size (94%) the same way it clamps MinWidth/MinHeight, so a smaller screen still gets a dialog
-        // that fits rather than one cropped at 1280 (verified in PluginDialogHost._TryCreateWindow).
-        void OpenIssues() =>
-            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), "issues", width: 1280, height: 860);
-
-        host.AddSideMenuButton("YouTrack", OpenIssues);
 
         // What a flow can do with a ticket (#69): the workflow plugin knows nothing about YouTrack, and should not.
         // It knows that someone offers a trigger called youtrack.picked and a step that sets a status.
@@ -116,8 +106,6 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
                 ["directory"] = moved.WorkingDirectory ?? string.Empty,
             });
 
-        host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, links, settings, stateChanges));
-
         // AC-116: when the agent creates or updates a YouTrack issue in a turn whose message carried images, attach
         // those images to that issue — automatically, no per-session toggle or tracking. The host surfaces the tool
         // call and this turn's images generically (the read/observe surface); this watcher does the YouTrack-specific
@@ -134,18 +122,6 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
             new YouTrackAttachTools(host, settings),
             isEnabled: () => settings.Instances.Any(instance =>
                 !string.IsNullOrWhiteSpace(instance.InstanceUrl) && !string.IsNullOrWhiteSpace(instance.Token)));
-
-        // Picking a ticket is an action, so it lives in the header's one menu rather than in a button of its own — two
-        // issue trackers meant two buttons asking the same question of a strip with room for neither.
-        host.AddSessionHeaderAction(new PluginSessionAction(
-            "Track a YouTrack issue…",
-            "",
-            session => YouTrackSessionHeaderControl.Pick(host, session, links, settings))
-        {
-            IconKind = MaterialIconKind.TicketOutline,
-        });
-        // Same action on a keyboard shortcut (#: shortcuts) — the SDK's AddShortcut, shown in Options → Shortcuts.
-        host.AddShortcut(new PluginShortcut("youtrack.open", "YouTrack issues", "Shift+Y", OpenIssues));
 
         // AC-11: the plugin no longer pushes its MCP servers into the shared registry — the host asks for them
         // through GetMcpServers when a session is assembled. Reclaim what an earlier version pushed, so those
@@ -164,5 +140,11 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
     }
 }

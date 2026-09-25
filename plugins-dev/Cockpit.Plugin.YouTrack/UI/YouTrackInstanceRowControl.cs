@@ -2,11 +2,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // One editable row in the instances list of `YouTrackSettingsControl` (#48): a label, instance
 // base URL, permanent token and optional default project short-name, plus a remove button. Exposes
@@ -23,7 +23,7 @@ internal sealed class YouTrackInstanceRowControl : UserControl
 
     public event Action? RemoveRequested;
 
-    public YouTrackInstanceRowControl(ICockpitHost host, YouTrackInstance instance)
+    public YouTrackInstanceRowControl(ICockpitUiHost host, YouTrackInstance instance)
     {
         _label = new TextBox { Text = instance.Label, PlaceholderText = "e.g. Team A" };
         _instanceUrl = new TextBox { Text = instance.InstanceUrl, PlaceholderText = "https://<instance>.youtrack.cloud/api" };

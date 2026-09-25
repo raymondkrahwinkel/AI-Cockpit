@@ -215,7 +215,7 @@ internal static class YouTrackWorkflowSteps
         {
             if (wanted.Length == 0)
             {
-                return YouTrackWorkflow.FindStartTarget(state)
+                return StateFlow.Start(state)
                     ?? throw new InvalidOperationException($"{issue.IdReadable}'s board has no status that means \"in progress\", so this step cannot guess one. Name the status you want.");
             }
 

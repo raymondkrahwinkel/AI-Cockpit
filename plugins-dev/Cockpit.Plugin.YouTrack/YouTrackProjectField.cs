@@ -6,11 +6,8 @@ namespace Cockpit.Plugin.YouTrack;
 // The field this plugin puts on a cockpit project (AC-317): which YouTrack project it is tracked in. The stored
 // value is the short name — `AC` — because that is what every query this plugin makes is written in; the
 // operator picks it by the full name, which is the only half they know by heart.
-internal static class YouTrackProjectField
+internal static partial class YouTrackProjectField
 {
-    // What the link is stored under on the project. Never change it: already-linked projects are keyed by it.
-    public const string Key = "youtrack.project";
-
     // AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
     // project wins over the instance-wide default (AC-548). Null when neither carries a tag; only ever the
     // first when the link names several (AC-884) — see ResolvePreferredTagsAsync for the rest.

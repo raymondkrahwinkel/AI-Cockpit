@@ -2,8 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // The plugin's settings view (opened from the gear in the plugin manager), built in code: a manageable list
 // of `YouTrackInstance` rows (add/remove, each with its own base URL/token/default project — #48)
@@ -12,7 +13,7 @@ namespace Cockpit.Plugin.YouTrack;
 internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly YouTrackSettings _settings;
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly StackPanel _instancesPanel;
     private readonly List<YouTrackInstanceRowControl> _rows = [];
     private readonly TextBox _template;
@@ -20,7 +21,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     private readonly TextBox _branchPattern;
     private readonly CheckBox _autoAttachImages;
 
-    public YouTrackSettingsControl(ICockpitHost host, YouTrackSettings settings)
+    public YouTrackSettingsControl(ICockpitUiHost host, YouTrackSettings settings)
     {
         _settings = settings;
         _host = host;

@@ -13,6 +13,15 @@ namespace Cockpit.Plugin.YouTrack;
 // deliberately. Pretending we know more than that would be inventing a rule and blaming YouTrack for it.
 internal static class StateFlow
 {
+    // The target that means "I am working on this now", or null when the board offers nothing like it — in which case Start is not offered at all rather than guessing.
+    public static string? Start(YouTrackStateField field)
+    {
+        var targets = field.AvailableTargets;
+
+        return targets.FirstOrDefault(target => string.Equals(target, "In Progress", StringComparison.OrdinalIgnoreCase))
+            ?? targets.FirstOrDefault(target => target.Contains("progress", StringComparison.OrdinalIgnoreCase));
+    }
+
     // The next column: where "done with this bit" goes. Null at the end of the board, or when nothing says where we are.
     public static string? Forward(YouTrackStateField state) => _Neighbour(state, +1);
 

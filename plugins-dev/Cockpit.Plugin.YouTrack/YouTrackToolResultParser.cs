@@ -60,7 +60,7 @@ internal static partial class YouTrackToolResultParser
             ? value.GetString()
             : null;
 
-    // Matches both the API-derived "https://host/issue/AC-1" (YouTrackClient.BuildIssueUrl) and the
+    // Matches both the API-derived "https://host/issue/AC-1" (YouTrackUrl.BuildIssueUrl) and the
     // JetBrains web form "https://host/youtrack/issue/AC-1" — the path segment before /issue/ is optional.
     [GeneratedRegex(@"https?://(?<host>[^/\s""']+)(?:/[^\s""']*?)?/issue/(?<id>[A-Za-z][A-Za-z0-9_]*-\d+)", RegexOptions.IgnoreCase)]
     private static partial Regex IssueUrlPattern();

@@ -182,7 +182,9 @@ public interface ICockpitPluginUi
   project-memory rows, `SendToSessionAsync(paneId, …)`, intents.
 - **The active session is the window's.** `ActivePaneId`, `ActiveSessionWorkingDirectory`, `ActiveSessionUsage`
   and `ActiveSessionChanged` live on the UI host, next to `SetClipboardTextAsync` and `ConfirmAsync`. A backend
-  part has no active session: the UI part passes the pane id along when it asks the backend to act.
+  part has no active session: the UI part passes the pane id along when it asks the backend to act. A backend
+  part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
+  for an unknown pane.
 - **No `Services`.** The UI part cannot resolve the container, so it cannot reach its backend part around the
   channel — which is what keeps it working when the backend runs in another process.
 

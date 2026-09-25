@@ -450,18 +450,6 @@ internal sealed class YouTrackClient
         return assignedToMe ? $"{query} for: me" : query;
     }
 
-    // The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/PROJ-123".
-    internal static string BuildIssueUrl(string instanceBaseUrl, string idReadable)
-    {
-        var trimmed = instanceBaseUrl.TrimEnd('/');
-        if (trimmed.EndsWith("/api", StringComparison.OrdinalIgnoreCase))
-        {
-            trimmed = trimmed[..^4];
-        }
-
-        return $"{trimmed}/issue/{idReadable}";
-    }
-
     // The response's own project.shortName when present, otherwise the tag the query was scoped to (absent
     // for an "All projects" query, in which case the issue simply shows no project).
     private static string _ExtractProject(JsonElement element, string? fallbackProjectTag)

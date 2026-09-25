@@ -11,15 +11,6 @@ namespace Cockpit.Plugin.YouTrack;
 // a step you compose yourself.
 internal sealed class YouTrackWorkflow(YouTrackClient client)
 {
-    // The target that means "I am working on this now", or null when the board offers nothing like it — in which case Start is not offered at all rather than guessing.
-    public static string? FindStartTarget(YouTrackStateField field)
-    {
-        var targets = field.AvailableTargets;
-
-        return targets.FirstOrDefault(target => string.Equals(target, "In Progress", StringComparison.OrdinalIgnoreCase))
-            ?? targets.FirstOrDefault(target => target.Contains("progress", StringComparison.OrdinalIgnoreCase));
-    }
-
     // Moves the issue to `target` and assigns it to the token's own account. Returns what happened, in the operator's words.
     public async Task<string> StartAsync(YouTrackInstance instance, YouTrackIssue issue, YouTrackIssueFields fields, string target, CancellationToken cancellationToken)
     {

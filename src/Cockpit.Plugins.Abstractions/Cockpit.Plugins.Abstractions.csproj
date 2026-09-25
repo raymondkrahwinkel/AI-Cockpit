@@ -469,7 +469,11 @@
          Get/InstallManagedCliAsync, Get/SetManagedCliAutoUpdateAsync) already lived there). A plugin that builds
          a config view with ManagedCliConfigSection sets minHostVersion 0.41.0. On balance additive in effect (the
          removal has exactly the callers that moved with it) — a minor; major and abstractionsVersion stay 2. -->
-    <Version>1.69.0</Version>
+    <!-- 1.70.0 (AC-1397): added ICockpitSessionObserver.GetWorkingDirectory(paneId), defaulting to null — how a
+         backend part, which has no active session, reads the directory of the session it acts for (the YouTrack
+         attach tool's caller). A plugin that relies on it sets minHostVersion 0.42.0. Additive — a minor; major and
+         abstractionsVersion stay 2. -->
+    <Version>1.70.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

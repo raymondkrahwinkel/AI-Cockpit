@@ -1,13 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Threading;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // The issue a session is working on, in that session's own header bar (#75): its id and status, and a menu with
 // the moves the board actually allows. Which session matters here — the cockpit shows several at once, and the
@@ -16,26 +17,25 @@ namespace Cockpit.Plugin.YouTrack;
 // Shows nothing at all until an issue is linked: an empty indicator in every header is noise.
 internal sealed class YouTrackSessionHeaderControl : UserControl
 {
-    private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginSessionContext _session;
-    private readonly SessionIssueLinks _links;
+    private readonly YouTrackBackend _backend;
     private readonly YouTrackSettings _settings;
-    private readonly IssueStateChanges _stateChanges;
-    private readonly YouTrackClient _client = new();
 
     private readonly TextBlock _label;
     private readonly Button _row;
 
+    private LinkedIssue? _link;
     private YouTrackIssueFields? _fields;
     private int _loadToken;
+    private IDisposable? _linkChanged;
 
-    public YouTrackSessionHeaderControl(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings, IssueStateChanges stateChanges)
+    public YouTrackSessionHeaderControl(ICockpitUiHost host, IPluginSessionContext session, YouTrackBackend backend, YouTrackSettings settings)
     {
         _host = host;
         _session = session;
-        _links = links;
+        _backend = backend;
         _settings = settings;
-        _stateChanges = stateChanges;
 
         _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
         _row = new Button
@@ -63,21 +63,23 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _links.Changed += _OnLinkChanged;
+        _linkChanged = _backend.OnLinkChanged(_OnLinkChanged);
         _ = _LoadAsync();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _links.Changed -= _OnLinkChanged;
+        _linkChanged?.Dispose();
+        _linkChanged = null;
     }
 
-    private void _OnLinkChanged(object? sender, string paneId)
+    // Raised on the backend's publishing thread, not the UI thread — marshal before touching a control.
+    private void _OnLinkChanged(string paneId)
     {
         if (string.Equals(paneId, _session.PaneId, StringComparison.Ordinal))
         {
-            _ = _LoadAsync();
+            Dispatcher.UIThread.Post(() => _ = _LoadAsync());
         }
     }
 
@@ -85,22 +87,37 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     // latest load wins — clicking through the menu can start a second one before the first returns.
     private async Task _LoadAsync()
     {
-        if (_links.For(_session.PaneId) is not { } link)
+        var token = ++_loadToken;
+        LinkedIssue? link;
+        try
+        {
+            link = await _backend.LinkedAsync(_session.PaneId);
+        }
+        catch (Exception)
+        {
+            // The badge keeps its last-known state; the next link change tries again.
+            return;
+        }
+
+        if (token != _loadToken)
+        {
+            return;
+        }
+
+        _link = link;
+        if (link is null)
         {
             _fields = null;
             IsVisible = false;
             return;
         }
 
-        IsVisible = true;
-
-        var token = ++_loadToken;
         _label.Text = link.Issue.IdReadable;
         IsVisible = true;
 
         try
         {
-            var fields = await _client.GetIssueFieldsAsync(link.Instance.InstanceUrl, link.Instance.Token, link.Issue, CancellationToken.None);
+            var fields = await _backend.IssueFieldsAsync(link.Instance, link.Issue);
             if (token != _loadToken)
             {
                 return;
@@ -129,18 +146,18 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     }
 
     // Opens the picker for one pane — what the header menu's "Track a YouTrack issue" runs. Linking from the big dialog links to whichever session is selected, which is a guess as soon as four panes are open.
-    public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings) =>
+    public static void Pick(ICockpitUiHost host, IPluginSessionContext session, YouTrackBackend backend, YouTrackSettings settings) =>
         // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(
             "Track an issue in this session",
-            () => new YouTrackIssuePickerControl(settings, host, session.PaneId, link => links.Link(session.PaneId, link, session.WorkingDirectory)),
+            () => new YouTrackIssuePickerControl(settings, backend, session.PaneId, link => backend.LinkAsync(session.PaneId, link)),
             $"track.{session.PaneId}",
             width: 720,
             height: 520);
 
     private void _ShowMenu()
     {
-        if (_links.For(_session.PaneId) is not { } link)
+        if (_link is not { } link)
         {
             return;
         }
@@ -201,7 +218,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         items.Add(open);
 
         var unlink = new MenuItem { Header = "Unlink from this session" };
-        unlink.Click += (_, _) => _links.Unlink(_session.PaneId);
+        unlink.Click += async (_, _) => await _UnlinkAsync(link);
         items.Add(unlink);
 
         menu.ItemsSource = items;
@@ -218,9 +235,20 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
 
         try
         {
-            await _client.SetStateAsync(link.Instance.InstanceUrl, link.Instance.Token, link.Issue, state, target, CancellationToken.None);
-            _stateChanges.Moved(link.Instance, link.Issue, state.CurrentValue ?? string.Empty, target, _session.WorkingDirectory);
+            await _backend.SetStateAsync(link.Instance, link.Issue, state, target, _session.PaneId);
             await _LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"{link.Issue.IdReadable}: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
+
+    private async Task _UnlinkAsync(LinkedIssue link)
+    {
+        try
+        {
+            await _backend.UnlinkAsync(_session.PaneId);
         }
         catch (Exception exception)
         {
@@ -231,13 +259,13 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private async Task _CopyBranchNameAsync(LinkedIssue link)
     {
         var name = BranchName.From(link.Issue.IdReadable, link.Issue.Summary, _settings.BranchPattern);
-        await _host.Actions.SetClipboardTextAsync(name);
+        await _host.SetClipboardTextAsync(name);
         _host.ShowToast($"Branch name copied: {name}", PluginToastSeverity.Success);
     }
 
     private void _OpenInBrowser(LinkedIssue link)
     {
-        var url = YouTrackClient.BuildIssueUrl(link.Instance.InstanceUrl, link.Issue.IdReadable);
+        var url = YouTrackUrl.BuildIssueUrl(link.Instance.InstanceUrl, link.Issue.IdReadable);
         if (YouTrackBrowser.Open(url) is { } failure)
         {
             _host.ShowToast(failure, PluginToastSeverity.Error);

@@ -39,7 +39,7 @@ internal static class YouTrackMcpRegistration
     // "/api" (case-insensitive, tolerant of a trailing slash) and append "/mcp" — e.g.
     // "https://x.youtrack.cloud/api" -&gt; "https://x.youtrack.cloud/mcp". An instance URL with no "/api"
     // suffix (already the site root) just gets "/mcp" appended. Mirrors
-    // `YouTrackClient.BuildIssueUrl`'s own "/api"-stripping for the issue web URL.
+    // `YouTrackUrl.BuildIssueUrl`'s own "/api"-stripping for the issue web URL.
     internal static string DeriveMcpEndpoint(string instanceBaseUrl)
     {
         var trimmed = instanceBaseUrl.TrimEnd('/');

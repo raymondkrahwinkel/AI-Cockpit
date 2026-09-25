@@ -110,6 +110,13 @@ public interface ICockpitSessionObserver
     /// Default empty for a host that predates this member.
     /// </summary>
     IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId) => [];
+
+    /// <summary>
+    /// The directory the session in <paramref name="paneId"/> works in (AC-1397), or null when that pane is unknown
+    /// or its directory is not known yet. How a backend part, which has no active session, reads the directory of
+    /// the session it acts for — say the caller of its MCP tool. Default null for a host that predates this member.
+    /// </summary>
+    string? GetWorkingDirectory(string paneId) => null;
 }
 
 /// <summary>

@@ -53,7 +53,9 @@ internal sealed class YouTrackAttachTools
             // AC-170: `path` is a genuine outbound channel (an agent names a file and its bytes leave the
             // machine), so it gets the same allow-list + canonical-containment + content-sniff scrutiny any other
             // filesystem-facing tool input would — see AttachImagePathGuard / ImageContentSniffer for the "why".
-            if (!AttachImagePathGuard.TryResolve(path, _host.Sessions.ActiveSessionWorkingDirectory, out var resolvedPath, out var pathError))
+            // AC-1397: the caller's own directory, never the window's active session — an unknown pane allows only
+            // the paste folder (fail closed).
+            if (!AttachImagePathGuard.TryResolve(path, _host.Sessions.GetWorkingDirectory(caller), out var resolvedPath, out var pathError))
             {
                 return pathError;
             }

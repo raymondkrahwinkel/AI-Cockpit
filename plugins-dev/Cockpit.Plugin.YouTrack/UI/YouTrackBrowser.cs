@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Cockpit.Plugin.YouTrack;
+namespace Cockpit.Plugin.YouTrack.UI;
 
 // Opens an issue URL in the operator's browser. The URL is built from the instance address the operator typed
 // into the settings, so it is checked before it is handed to the shell: only http(s) is launched, and anything
