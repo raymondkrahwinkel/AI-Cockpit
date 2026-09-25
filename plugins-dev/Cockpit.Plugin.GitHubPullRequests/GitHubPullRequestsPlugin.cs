@@ -84,7 +84,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
             return _Serialize(await _sessionClient.GetOpenPullRequestAsync(request.WorkingDirectory, cancellationToken));
         }));
         _handlers.Add(host.Channel.Handle(GitHubPullRequestsChannel.BadgeCounts, (_, _) =>
-            Task.FromResult(_Serialize(badgeUpdater.Counts))));
+            Task.FromResult(_Serialize(badgeUpdater.Claim()))));
     }
 
     public void Dispose()

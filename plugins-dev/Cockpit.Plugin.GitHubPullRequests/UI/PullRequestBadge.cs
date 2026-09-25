@@ -23,6 +23,9 @@ internal sealed class PullRequestBadge : IDisposable
     private readonly Lock _gate = new();
     private long _events;
 
+    // UI thread only (_Announce runs there): the startup answer can carry an arrival an event also delivered.
+    private readonly HashSet<string> _announced = new(StringComparer.Ordinal);
+
     public PullRequestBadge(ICockpitUiHost host, GitHubPullRequestsSettings settings)
     {
         _host = host;
@@ -54,7 +57,7 @@ internal sealed class PullRequestBadge : IDisposable
         }
     }
 
-    // What the backend counted before this part subscribed — its arrivals were announced (to nobody) back then.
+    // What the backend counted before this part subscribed, and the arrivals it could not announce to anybody yet.
     private async void _ShowCurrent()
     {
         try
@@ -78,6 +81,11 @@ internal sealed class PullRequestBadge : IDisposable
                     _SetCounts(state);
                 }
             }
+
+            if (state.Arrived.Count > 0)
+            {
+                Dispatcher.UIThread.Post(() => _Announce(state.Arrived));
+            }
         }
         catch (Exception)
         {
@@ -93,7 +101,7 @@ internal sealed class PullRequestBadge : IDisposable
 
     private void _Announce(IReadOnlyList<GitHubPullRequest> arrived)
     {
-        foreach (var pullRequest in arrived)
+        foreach (var pullRequest in arrived.Where(pullRequest => _announced.Add(pullRequest.Url)))
         {
             _host.ShowToast(
                 $"Review requested — #{pullRequest.Number} {pullRequest.Title} ({pullRequest.Repository})",

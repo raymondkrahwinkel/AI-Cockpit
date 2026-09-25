@@ -29,6 +29,11 @@ internal sealed class PullRequestBadgeUpdater : IDisposable
     private readonly Lock _gate = new();
     private PullRequestBadgeState _counts = PullRequestBadgeState.Unknown;
 
+    // Arrivals published before any UI part claimed them: the first poll lands before UI parts initialise, and a
+    // published event with no subscriber is dropped. Kept to what is still waiting, until the first Claim.
+    private readonly Dictionary<string, GitHubPullRequest> _unclaimed = new(StringComparer.Ordinal);
+    private bool _claimed;
+
     public PullRequestBadgeUpdater(
         IPluginBackendChannel channel,
         ICockpitSessionObserver sessions,
@@ -67,6 +72,19 @@ internal sealed class PullRequestBadgeUpdater : IDisposable
             {
                 return _counts;
             }
+        }
+    }
+
+    // The badge-counts answer: the counts, plus every arrival nobody has been shown yet. The first call hands the
+    // announcing over to the BadgeChanged events for good.
+    public PullRequestBadgeState Claim()
+    {
+        lock (_gate)
+        {
+            _claimed = true;
+            var unclaimed = _counts with { Arrived = [.. _unclaimed.Values] };
+            _unclaimed.Clear();
+            return unclaimed;
         }
     }
 
@@ -113,10 +131,30 @@ internal sealed class PullRequestBadgeUpdater : IDisposable
                 ? _Arrivals(result.ReviewRequested)
                 : [];
             published = _counts with { Arrived = arrived };
+            _KeepUnclaimed(arrived, result.ReviewRequested);
 
             // Published under the lock so two updates cannot reach the UI part in the opposite order they were
             // counted in. The UI subscriber only marshals to its own thread, so holding the lock here is brief.
             _channel.Publish(GitHubPullRequestsChannel.BadgeChanged, JsonSerializer.SerializeToElement(published, GitHubPullRequestsChannel.Json));
+        }
+    }
+
+    private void _KeepUnclaimed(IReadOnlyList<GitHubPullRequest> arrived, IReadOnlyList<GitHubPullRequest> stillWaiting)
+    {
+        if (_claimed)
+        {
+            return;
+        }
+
+        foreach (var pullRequest in arrived)
+        {
+            _unclaimed[pullRequest.Url] = pullRequest;
+        }
+
+        var waiting = stillWaiting.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
+        foreach (var gone in _unclaimed.Keys.Where(url => !waiting.Contains(url)).ToList())
+        {
+            _unclaimed.Remove(gone);
         }
     }
 
