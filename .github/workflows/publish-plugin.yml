@@ -378,7 +378,7 @@ jobs:
             exit 1
           fi
 
-          echo "Verified: $PLUGIN $VERSION · sha256 $actual · manifest and $entry present · newest in the index."
+          echo "Verified: $PLUGIN $VERSION · sha256 $actual · manifest and its named assemblies present · newest in the index."
 
       # Open a PR against the store repo rather than pushing to its main: publishing to a store users install
       # from is outward-facing, and the zip + index diff is exactly what a reviewer wants to see. Dry runs stop
