@@ -485,6 +485,16 @@ public interface ICockpitHost
     Task SetSessionStatusline(string paneId, string statusline) => Task.CompletedTask;
 
     /// <summary>
+    /// Sets or clears the statusline of the session named by <paramref name="paneId"/> like
+    /// <see cref="SetSessionStatusline"/> does, and answers whether a live session took it (AC-1419).
+    /// </summary>
+    /// <remarks>
+    /// Answers false when no live session has that paneId or it closed before the act. Default answers false, the
+    /// honest answer of a host that predates this member.
+    /// </remarks>
+    Task<bool> SetSessionStatuslineAsync(string paneId, string statusline) => Task.FromResult(false);
+
+    /// <summary>
     /// Renames a session — the title shown in its header and the sidebar — named by its
     /// <c>IPluginSessionContext.PaneId</c> (#AC-13).
     /// </summary>
@@ -493,6 +503,16 @@ public interface ICockpitHost
     /// itself. Default no-op so existing implementations keep compiling untouched.
     /// </remarks>
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
+
+    /// <summary>
+    /// Renames the session named by <paramref name="paneId"/> like <see cref="SetSessionName"/> does, and answers
+    /// whether a live session took the name (AC-1419).
+    /// </summary>
+    /// <remarks>
+    /// Answers false for a blank name, when no live session has that paneId, or when it closed before the act.
+    /// Default answers false, the honest answer of a host that predates this member.
+    /// </remarks>
+    Task<bool> SetSessionNameAsync(string paneId, string name) => Task.FromResult(false);
 
     /// <summary>
     /// Names a session the way <see cref="SetSessionName"/> does, but leaves alone a session whose name somebody

@@ -183,7 +183,7 @@ public static class CapabilityCatalog
             "Sets the statusline and the name of a session — what it says it is doing, and what it is called.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.SetSessionStatusline", "ICockpitHost.SetSessionName", "ICockpitHost.SuggestSessionName", "ICockpitActions.SetActiveSessionStatusAsync"],
+            ["ICockpitHost.SetSessionStatusline", "ICockpitHost.SetSessionStatuslineAsync", "ICockpitHost.SetSessionName", "ICockpitHost.SetSessionNameAsync", "ICockpitHost.SuggestSessionName", "ICockpitActions.SetActiveSessionStatusAsync"],
             [new("paneId", "The session pane the plugin may rename.")]),
 
         new(

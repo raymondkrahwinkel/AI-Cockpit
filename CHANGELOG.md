@@ -580,6 +580,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: for plugin authors, a backend part can now ask whether a session took its label or its name, through
+  `ICockpitHost.SetSessionStatuslineAsync` and `ICockpitHost.SetSessionNameAsync` (cockpit 0.45.0 and later). The
+  Workflows step that sets a session's status now fails, naming the session, when it took no status or not the
+  name, instead of reporting success. Workflows now needs cockpit 0.45.0.
 - changed: the Workflows steps "Send to session" and "Set session status" now act on the session you name in the
   step: its name, its pane id, or `{Start session.session}` after a step that started one. They no longer use
   whichever session happens to be selected, which a flow fired by a schedule does not have. A saved flow whose

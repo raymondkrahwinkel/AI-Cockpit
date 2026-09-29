@@ -21,6 +21,7 @@ public class WorkflowsPluginChannelTests
         host.Storage.Returns(storage);
         host.Cache.Returns(storage);
         host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane-2", "api")]);
+        host.SetSessionStatuslineAsync("pane-2", Arg.Any<string>()).Returns(true);
         using var plugin = new WorkflowsPlugin();
         plugin.Initialize(host);
         var flow = new Workflow
@@ -44,7 +45,7 @@ public class WorkflowsPluginChannelTests
         Assert.Equal("Label it", Assert.Single(new WorkflowStore(storage).Load()).Name);
         Assert.Equal(run?.Id, lastRun.Deserialize<WorkflowRun>(WorkflowsChannel.Json)?.Id);
         Assert.Equal(run?.Id, Assert.Single(channel.Published, published => published.Name == WorkflowsChannel.RunRecorded).Payload.Deserialize<WorkflowRun>(WorkflowsChannel.Json)?.Id);
-        await host.Received(1).SetSessionStatusline("pane-2", "AC-1399");
+        await host.Received(1).SetSessionStatuslineAsync("pane-2", "AC-1399");
     }
 
     private static JsonElement _Json(object request) => JsonSerializer.SerializeToElement(request, request.GetType(), WorkflowsChannel.Json);

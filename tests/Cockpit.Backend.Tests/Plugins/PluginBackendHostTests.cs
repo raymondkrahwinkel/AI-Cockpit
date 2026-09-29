@@ -26,6 +26,15 @@ public class PluginBackendHostTests
         { "SuggestSessionName", host => host.SuggestSessionName(PaneId, "AC-1392"), pane => pane.Received(1).SuggestNameAsync("AC-1392") },
         { "SetSessionStatusline", host => host.SetSessionStatusline(PaneId, "reviewing"), pane => pane.Received(1).SetStatuslineAsync("reviewing") },
         { "InsertIntoSessionAsync", host => host.InsertIntoSessionAsync(PaneId, "draw a box"), pane => pane.Received(1).InsertTextAsync("draw a box") },
+        { "SetSessionStatuslineAsync", host => host.SetSessionStatuslineAsync(PaneId, "reviewing"), pane => pane.Received(1).SetStatuslineAsync("reviewing") },
+        { "SetSessionNameAsync", host => host.SetSessionNameAsync(PaneId, "AC-1419"), pane => pane.Received(1).SetNameAsync("AC-1419") },
+    };
+
+    // The two members and the handle call each one lands on, so one theory covers both.
+    public static TheoryData<Func<ICockpitHost, string, Task<bool>>, Action<ISessionHandle, bool>> AnsweringMembers => new()
+    {
+        { (host, paneId) => host.SetSessionStatuslineAsync(paneId, "reviewing"), (pane, takes) => pane.SetStatuslineAsync(Arg.Any<string>()).Returns(takes) },
+        { (host, paneId) => host.SetSessionNameAsync(paneId, "AC-1419"), (pane, takes) => pane.SetNameAsync(Arg.Any<string>()).Returns(takes) },
     };
 
     // Acceptance 2: decided under the launcher's exclusion, and the pane it found is the one acted on.
@@ -64,6 +73,31 @@ public class PluginBackendHostTests
         var answer = await Task.Run(() => host.InsertIntoSessionAsync(paneId, "draw a box"));
 
         Assert.Equal(expected, answer);
+    }
+
+    // AC-1419: a label or a name answers whether a live pane took it — false for an unknown pane and for a handle that
+    // refuses, so a workflow step can fail visibly.
+    [Theory]
+    [MemberData(nameof(AnsweringMembers))]
+    public async Task SetSessionStatuslineAsync_AndNameAsync_AnswerWhetherALivePaneTookIt(
+        Func<ICockpitHost, string, Task<bool>> ask, Action<ISessionHandle, bool> configure)
+    {
+        var registry = new SessionRegistry();
+        var live = _Pane(PaneId, "Echo");
+        configure(live, true);
+        registry.Register(live);
+        var refusing = _Pane("pane-2", "Echo");
+        configure(refusing, false);
+        registry.Register(refusing);
+        var host = _Host(registry, _InlineLauncher());
+
+        var took = await Task.Run(() => ask(host, PaneId));
+        var refused = await Task.Run(() => ask(host, "pane-2"));
+        var unknown = await Task.Run(() => ask(host, "pane-9"));
+
+        Assert.True(took);
+        Assert.False(refused);
+        Assert.False(unknown);
     }
 
     // Acceptance 2's counter-proof: the pane closes on another thread after the decision and before the action. The

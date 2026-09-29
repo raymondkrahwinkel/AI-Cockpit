@@ -759,12 +759,16 @@ public class PluginBackendHost(
             ? autoUpdateStore.SetAsync(cliName, enabled, cancellationToken)
             : Task.CompletedTask;
 
-    public Task SetSessionStatusline(string paneId, string statusline) =>
+    public Task SetSessionStatusline(string paneId, string statusline) => SetSessionStatuslineAsync(paneId, statusline);
+
+    public Task<bool> SetSessionStatuslineAsync(string paneId, string statusline) =>
         _ActOnSessionAsync(paneId, session => session.SetStatuslineAsync(statusline ?? string.Empty));
 
-    public Task SetSessionName(string paneId, string name) =>
+    public Task SetSessionName(string paneId, string name) => SetSessionNameAsync(paneId, name);
+
+    public Task<bool> SetSessionNameAsync(string paneId, string name) =>
         string.IsNullOrWhiteSpace(name)
-            ? Task.CompletedTask
+            ? Task.FromResult(false)
             : _ActOnSessionAsync(paneId, session => session.SetNameAsync(name));
 
     public Task SuggestSessionName(string paneId, string name) =>
