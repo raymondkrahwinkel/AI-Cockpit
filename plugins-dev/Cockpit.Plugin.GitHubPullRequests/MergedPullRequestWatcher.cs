@@ -21,6 +21,7 @@ internal sealed class MergedPullRequestWatcher : IDisposable
     private readonly ICockpitHost _host;
     private readonly Func<CancellationToken, Task<IReadOnlyList<GitHubPullRequest>>> _searchMerged;
     private readonly ITimer _timer;
+    private readonly CancellationTokenSource _lifetime = new();
 
     private HashSet<string> _seen = new(StringComparer.Ordinal);
     private bool _primed;
@@ -47,7 +48,11 @@ internal sealed class MergedPullRequestWatcher : IDisposable
         _timer = time.CreateTimer(_ => _OnTick(), null, TimeSpan.Zero, Interval);
     }
 
-    public void Dispose() => _timer.Dispose();
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _timer.Dispose();
+    }
 
     private async void _OnTick()
     {
@@ -72,7 +77,7 @@ internal sealed class MergedPullRequestWatcher : IDisposable
 
         try
         {
-            var merged = await _searchMerged(CancellationToken.None);
+            var merged = await _searchMerged(_lifetime.Token);
             var result = MergedPullRequests.Reconcile(merged, _seen, _primed);
 
             _seen = new HashSet<string>(result.Seen, StringComparer.Ordinal);
@@ -80,6 +85,12 @@ internal sealed class MergedPullRequestWatcher : IDisposable
 
             foreach (var pullRequest in result.Merged)
             {
+                // A search that ignores its token still returns; a disposed watcher must not start a flow with it.
+                if (_lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 _host.RaiseWorkflowTrigger(
                     PullRequestWorkflowSteps.MergedTrigger,
                     new Dictionary<string, string>

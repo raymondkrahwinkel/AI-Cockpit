@@ -197,19 +197,26 @@ internal sealed class PullRequestRefreshSource : IDisposable
 
         try
         {
-            var result = await _load(forceRefresh, CancellationToken.None);
-            _current = new PullRequestFeedSnapshot(result, DateTimeOffset.UtcNow);
-            _storage.Set(StorageKey, PersistedSnapshot.From(_current));
-            LastError = null;
-        }
-        catch (Exception exception)
-        {
-            // A failed background poll keeps the last known snapshot rather than clearing it — a view showing an
-            // older list is more useful than one showing nothing, and the next tick tries again. Still raised below:
-            // a subscriber that has never seen a successful fetch (a first-run failure) needs to hear that an
-            // attempt happened at all, or it would sit on an empty state that reads as "loading" forever. An
-            // explicit (manual/settings) caller reads LastError to report the failure; a quiet poll does not.
-            LastError = exception;
+            try
+            {
+                var result = await _load(forceRefresh, CancellationToken.None);
+                _current = new PullRequestFeedSnapshot(result, DateTimeOffset.UtcNow);
+                _storage.Set(StorageKey, PersistedSnapshot.From(_current));
+                LastError = null;
+            }
+            catch (Exception exception)
+            {
+                // A failed background poll keeps the last known snapshot rather than clearing it — a view showing an
+                // older list is more useful than one showing nothing, and the next tick tries again. Still raised below:
+                // a subscriber that has never seen a successful fetch (a first-run failure) needs to hear that an
+                // attempt happened at all, or it would sit on an empty state that reads as "loading" forever. An
+                // explicit (manual/settings) caller reads LastError to report the failure; a quiet poll does not.
+                LastError = exception;
+            }
+
+            // Raised while the gate is still held, so a later refresh cannot publish before this one has (AC-1416);
+            // the gate never waits, so a caller arriving meanwhile is just gated out.
+            Updated?.Invoke(this, _current);
         }
         finally
         {
@@ -225,11 +232,6 @@ internal sealed class PullRequestRefreshSource : IDisposable
                 // caller (the timer tick or the settings-saved handler) that kicked it off in the first place.
             }
         }
-
-        // Deliberately re-reads the field instead of publishing the snapshot this call's own load produced: a
-        // publisher overtaken between the release above and this line must raise the newest snapshot, never its
-        // own older one — the badge updater turns an older one arriving late into a repeated toast (AC-1250).
-        Updated?.Invoke(this, _current);
         return true;
     }
 

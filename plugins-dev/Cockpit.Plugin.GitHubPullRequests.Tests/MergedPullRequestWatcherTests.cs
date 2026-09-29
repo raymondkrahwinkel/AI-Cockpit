@@ -30,6 +30,36 @@ public class MergedPullRequestWatcherTests
         Assert.Equal(expectedLooks, looks);
     }
 
+    // AC-1416: a look that is already waiting on gh when the watcher is disposed must not start a flow with the
+    // answer it then gets. `disposals` is 1 or 0 so the test body never branches on the parameter.
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void ALookInFlight_RaisesTheTriggerOnlyIfTheWatcherWasNotDisposedFirst(int disposals, int expectedTriggers)
+    {
+        var clock = new TickingClock();
+        var host = Substitute.For<ICockpitHost>();
+        var answer = new TaskCompletionSource<IReadOnlyList<GitHubPullRequest>>();
+        var searches = 0;
+        var merged = new GitHubPullRequest(7, "Ship it", "https://github.com/o/r/pull/7", null, "o/r", "octocat");
+
+        using var watcher = new MergedPullRequestWatcher(
+            host,
+            _ => Interlocked.Increment(ref searches) == 1
+                ? Task.FromResult<IReadOnlyList<GitHubPullRequest>>([])
+                : answer.Task,
+            clock);
+
+        // Tick one primes; tick two is the look that is left waiting on the answer.
+        clock.Tick(2);
+        Enumerable.Repeat(watcher, disposals).ToList().ForEach(w => w.Dispose());
+        answer.SetResult([merged]);
+
+        host.Received(expectedTriggers).RaiseWorkflowTrigger(
+            PullRequestWorkflowSteps.MergedTrigger,
+            Arg.Any<IReadOnlyDictionary<string, string>>());
+    }
+
     // A clock whose timers fire only when the test says so; the watcher's search completes synchronously, so one
     // tick is one whole look.
     private sealed class TickingClock : TimeProvider
