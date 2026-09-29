@@ -46,6 +46,10 @@ public sealed class BackendPluginStartupTests : IDisposable
         {
             // A plugin's own file may still be held there; a temp folder the OS clears is fine.
         }
+        catch (UnauthorizedAccessException)
+        {
+            // A plugin's own file may still be held there; a temp folder the OS clears is fine.
+        }
     }
 
     // Acceptance 1: all nine load and initialise with no failure, and a provider, a workflow step and an MCP endpoint
