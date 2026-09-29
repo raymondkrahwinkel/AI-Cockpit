@@ -147,6 +147,46 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(2, ran.Count(x => !x));
     }
 
+    // AC-1416: Updated is raised while the refresh gate is held, so a newer refresh cannot publish ahead of an
+    // older one that is still inside its handlers.
+    [Fact]
+    public async Task WhileAnUpdatedHandlerRuns_AnotherRefreshIsGatedOut_AndOnceItIsDoneRefreshRunsAgain()
+    {
+        var subscribed = new TaskCompletionSource();
+        var inHandler = new TaskCompletionSource();
+        var handlerMayFinish = new TaskCompletionSource();
+        var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
+
+        // The startup tick is the refresh whose handler is held: the load waits for the subscription so the handler
+        // cannot miss it.
+        var source = new PullRequestRefreshSource(
+            new InMemoryPluginStorage(),
+            async (_, _) =>
+            {
+                await subscribed.Task;
+                return emptyResult;
+            },
+            pollInterval: TimeSpan.FromMinutes(10));
+
+        source.Updated += (_, _) =>
+        {
+            inHandler.TrySetResult();
+            handlerMayFinish.Task.Wait(TimeSpan.FromSeconds(5));
+        };
+        subscribed.SetResult();
+        await inHandler.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        var whileHandlerRuns = await source.RefreshAsync(forceRefresh: true);
+
+        handlerMayFinish.SetResult();
+        var ranAfterwards = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
+
+        source.Dispose();
+
+        Assert.False(whileHandlerRuns, "a refresh arriving while the previous one is still publishing has to be gated out");
+        Assert.True(ranAfterwards, "once the handler is done the gate has to be free again");
+    }
+
     // The JSON-backed test storage reproduces the host's deserialize path: malformed persisted data must fall
     // back to an empty snapshot instead of aborting plugin initialization.
     [Fact]
@@ -337,7 +377,9 @@ public class PullRequestRefreshSourceTests
         firstLoad.SetResult(new PullRequestFeedResult([], [], RepositoryMissing: false));
         await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        var ran = await source.RefreshAsync(forceRefresh: true);
+        // Updated is raised with the gate still held (AC-1416), so the call is retried until the tick has let go;
+        // a gated-out call runs no load and touches no LastError, so the retries cost nothing.
+        var ran = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
 
         source.Dispose();
 
@@ -351,6 +393,22 @@ public class PullRequestRefreshSourceTests
     // it (AC-1122). Never completing is what makes "nothing has fetched yet" hold rather than usually hold.
     private static Task<PullRequestFeedResult> _NeverLoads(bool forceRefresh, CancellationToken cancellationToken) =>
         new TaskCompletionSource<PullRequestFeedResult>().Task;
+
+    private static async Task<bool> _WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition())
+            {
+                return true;
+            }
+
+            await Task.Delay(10);
+        }
+
+        return await condition();
+    }
 
     private static async Task<bool> _WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
