@@ -50,8 +50,8 @@ internal sealed class MergedPullRequestWatcher : IDisposable
 
     public void Dispose()
     {
-        _lifetime.Cancel();
         _timer.Dispose();
+        _lifetime.Cancel();
     }
 
     private async void _OnTick()

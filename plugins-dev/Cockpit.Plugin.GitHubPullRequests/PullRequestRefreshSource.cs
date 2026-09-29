@@ -171,7 +171,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     // Runs one load and publishes it. Overlapping callers (a poll tick, a session-signal debounce and a manual
     // click landing together) collapse into one `gh` round trip instead of stacking one per caller: whichever
     // arrives first fetches; the rest return `false` immediately, gated out rather than queued —
-    // they are satisfied by the `Updated` that fetch is about to raise anyway, and must not read
+    // they are satisfied by the `Updated` that fetch raises (still under the gate, AC-1416) and must not read
     // `LastError` as if it were their own attempt's outcome.
     // `true` if this call actually ran the load (whether it then succeeded or failed), `false` if another call was already in flight.
     public async Task<bool> RefreshAsync(bool forceRefresh)
