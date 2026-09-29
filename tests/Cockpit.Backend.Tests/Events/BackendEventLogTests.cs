@@ -17,13 +17,21 @@ public sealed class BackendEventLogTests
         Assert.True(await replay.MoveNextAsync());
         Assert.Equal(second, replay.Current.Seq);
 
-        await using var live = log.ReadFromAsync(-1, CancellationToken.None).GetAsyncEnumerator();
+        using var stop = new CancellationTokenSource();
+        await using var live = log.ReadFromAsync(-1, stop.Token).GetAsyncEnumerator();
         var waiting = live.MoveNextAsync().AsTask();
-        var third = log.Append("row", null, new { value = 3 });
-        Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(1)));
-        Assert.Equal(third, live.Current.Seq);
-        Assert.Equal("row", live.Current.Kind);
-        Assert.Null(live.Current.PaneId);
+        try
+        {
+            var third = log.Append("row", null, new { value = 3 });
+            Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(1)));
+            Assert.Equal(third, live.Current.Seq);
+            Assert.Equal("row", live.Current.Kind);
+            Assert.Null(live.Current.PaneId);
+        }
+        finally
+        {
+            await StopAsync(stop, waiting);
+        }
     }
 
     [Fact]
@@ -48,18 +56,26 @@ public sealed class BackendEventLogTests
     public async Task SlowReaderGetsReset_WithoutSlowingAppend()
     {
         var log = new BackendEventLog();
-        await using var reader = log.ReadFromAsync(-1, CancellationToken.None).GetAsyncEnumerator();
+        using var stop = new CancellationTokenSource();
+        await using var reader = log.ReadFromAsync(-1, stop.Token).GetAsyncEnumerator();
         var waiting = reader.MoveNextAsync().AsTask();
-        log.Append("row", null, 0);
-        Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(1)));
+        try
+        {
+            log.Append("row", null, 0);
+            Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(1)));
 
-        var clock = Stopwatch.StartNew();
-        Array.ForEach(Enumerable.Range(1, 1_000).ToArray(), value => log.Append("row", null, value));
-        clock.Stop();
+            var clock = Stopwatch.StartNew();
+            Array.ForEach(Enumerable.Range(1, 1_000).ToArray(), value => log.Append("row", null, value));
+            clock.Stop();
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"Append took {clock.Elapsed}.");
-        Assert.True(await reader.MoveNextAsync());
-        Assert.Equal("reset", reader.Current.Kind);
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"Append took {clock.Elapsed}.");
+            Assert.True(await reader.MoveNextAsync());
+            Assert.Equal("reset", reader.Current.Kind);
+        }
+        finally
+        {
+            await StopAsync(stop, waiting);
+        }
     }
 
     [Fact]
@@ -75,5 +91,18 @@ public sealed class BackendEventLogTests
 
         Assert.NotNull(upsert);
         Assert.True(before < upsert.Value.Seq && upsert.Value.Seq < after);
+    }
+
+    // Mirrors EventsEndpoint: cancel, drain the pending MoveNextAsync, then let the caller dispose.
+    private static async Task StopAsync(CancellationTokenSource stop, Task pending)
+    {
+        await stop.CancelAsync();
+        try
+        {
+            await pending;
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 }
