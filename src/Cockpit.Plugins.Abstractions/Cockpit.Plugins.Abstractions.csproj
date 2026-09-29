@@ -482,7 +482,11 @@
     <!-- 1.72.0 (AC-1399): added ICockpitHost.InsertIntoSessionAsync(paneId, text), answering false by default — the
          backend's way to place text in a named pane's input unsent, which a Workflows step needs without a window. A
          plugin that relies on it sets minHostVersion 0.44.0. Additive — a minor; major and abstractionsVersion stay 2. -->
-    <Version>1.72.0</Version>
+    <!-- 1.73.0 (AC-1419): added ICockpitHost.SetSessionStatuslineAsync(paneId, statusline) and SetSessionNameAsync(paneId,
+         name), answering false by default — the bool-returning twins of SetSessionStatusline and SetSessionName, so a
+         caller can tell a pane that took the label from one that closed first. A plugin that relies on them sets
+         minHostVersion 0.45.0. Additive — a minor; major and abstractionsVersion stay 2. -->
+    <Version>1.73.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

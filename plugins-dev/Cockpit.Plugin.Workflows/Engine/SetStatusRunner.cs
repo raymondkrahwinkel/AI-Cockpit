@@ -15,12 +15,19 @@ internal sealed class SetStatusRunner(ICockpitHost host) : IStepRunner
         var status = context.Resolve(context.Node.Parameters.GetValueOrDefault("Status")).Text;
         var name = context.Resolve(context.Node.Parameters.GetValueOrDefault("Name")).Text.Trim();
 
-        await host.SetSessionStatusline(session.PaneId, status);
+        if (!await host.SetSessionStatuslineAsync(session.PaneId, status))
+        {
+            throw new InvalidOperationException($"'{session.Name}' took no status: it closed before it could be labelled.");
+        }
+
         if (name.Length > 0)
         {
             // A flow naming the session is a name somebody chose, same as a rename — so a ticket linked to that
             // session later offers its name rather than taking it (#AC-310).
-            await host.SetSessionName(session.PaneId, name);
+            if (!await host.SetSessionNameAsync(session.PaneId, name))
+            {
+                throw new InvalidOperationException($"'{session.Name}' took the status but not the name '{name}': it closed in between.");
+            }
         }
 
         var renamed = name.Length == 0 ? string.Empty : $", renamed to '{name}'";

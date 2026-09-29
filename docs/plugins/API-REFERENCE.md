@@ -80,7 +80,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
 | `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
 | `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId` |
-| `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionName`, `ICockpitHost.SuggestSessionName`, `ICockpitActions.SetActiveSessionStatusAsync` |
+| `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName`, `ICockpitActions.SetActiveSessionStatusAsync` |
 | `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitHost.ShowNewSessionDialogAsync` |
 | `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |
 | `workflows.trigger-observe` | Watching workflow triggers | Sensitive | 0.3.0 | `typeId` | `ICockpitHost.WorkflowTriggerRaised` |
@@ -272,6 +272,8 @@ public interface ICockpitHost
     IReadOnlyList<ISessionResourceProvider> SessionResourceProviders { get; }     // default []
     Task SetSessionStatusline(string paneId, string statusline);                 // default no-op
     Task SetSessionName(string paneId, string name);                             // default no-op
+    Task<bool> SetSessionStatuslineAsync(string paneId, string statusline);      // default false
+    Task<bool> SetSessionNameAsync(string paneId, string name);                  // default false
     Task SuggestSessionName(string paneId, string name);                         // default no-op
 }
 ```
@@ -1148,6 +1150,11 @@ session's title in its header and the sidebar; an empty string clears it. All th
 `IPluginSessionContext.PaneId`, or `ICockpitSessionObserver.ActivePaneId` from a dialog acting on the selected
 session — and a pane id matching nothing is a no-op, never an error. They marshal to the UI thread themselves, so call
 them fire-and-forget (`_ = host.SetSessionStatusline(...)`) from anywhere. Default no-op.
+
+A caller that must know whether the pane took the label uses `SetSessionStatuslineAsync(paneId, statusline)` and
+`SetSessionNameAsync(paneId, name)` (AC-1419, host 0.45.0) instead: same acts, answering true when a live pane took
+it and false for an unknown or already-closed pane, a refusing handle, or a blank name. Default false, the honest
+answer of a host that predates them; a plugin that relies on them sets `minHostVersion` 0.45.0.
 
 The two naming calls differ in who wins. `SetSessionName` renames regardless: use it when the caller is the authority
 on the name, as a workflow step naming the session it just started is. `SuggestSessionName` renames **only** a session
