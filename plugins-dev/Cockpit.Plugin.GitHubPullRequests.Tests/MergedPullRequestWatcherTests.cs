@@ -30,12 +30,19 @@ public class MergedPullRequestWatcherTests
         Assert.Equal(expectedLooks, looks);
     }
 
+    public static TheoryData<Action<IDisposable>, int> DisposeBeforeTheAnswer => new()
+    {
+        { watcher => watcher.Dispose(), 0 },
+        { _ => { }, 1 },
+    };
+
     // AC-1416: a look that is already waiting on gh when the watcher is disposed must not start a flow with the
-    // answer it then gets. `disposals` is 1 or 0 so the test body never branches on the parameter.
+    // answer it then gets.
     [Theory]
-    [InlineData(1, 0)]
-    [InlineData(0, 1)]
-    public void ALookInFlight_RaisesTheTriggerOnlyIfTheWatcherWasNotDisposedFirst(int disposals, int expectedTriggers)
+    [MemberData(nameof(DisposeBeforeTheAnswer))]
+    public void ALookInFlight_RaisesTheTriggerOnlyIfTheWatcherWasNotDisposedFirst(
+        Action<IDisposable> beforeTheAnswer,
+        int expectedTriggers)
     {
         var clock = new TickingClock();
         var host = Substitute.For<ICockpitHost>();
@@ -52,7 +59,7 @@ public class MergedPullRequestWatcherTests
 
         // Tick one primes; tick two is the look that is left waiting on the answer.
         clock.Tick(2);
-        Enumerable.Repeat(watcher, disposals).ToList().ForEach(w => w.Dispose());
+        beforeTheAnswer(watcher);
         answer.SetResult([merged]);
 
         host.Received(expectedTriggers).RaiseWorkflowTrigger(

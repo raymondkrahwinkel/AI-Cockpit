@@ -179,7 +179,7 @@ public class PullRequestRefreshSourceTests
         var whileHandlerRuns = await source.RefreshAsync(forceRefresh: true);
 
         handlerMayFinish.SetResult();
-        var ranAfterwards = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true).GetAwaiter().GetResult(), TimeSpan.FromSeconds(30));
+        var ranAfterwards = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
 
         source.Dispose();
 
@@ -379,7 +379,7 @@ public class PullRequestRefreshSourceTests
 
         // Updated is raised with the gate still held (AC-1416), so the call is retried until the tick has let go;
         // a gated-out call runs no load and touches no LastError, so the retries cost nothing.
-        var ran = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true).GetAwaiter().GetResult(), TimeSpan.FromSeconds(30));
+        var ran = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
 
         source.Dispose();
 
@@ -393,6 +393,22 @@ public class PullRequestRefreshSourceTests
     // it (AC-1122). Never completing is what makes "nothing has fetched yet" hold rather than usually hold.
     private static Task<PullRequestFeedResult> _NeverLoads(bool forceRefresh, CancellationToken cancellationToken) =>
         new TaskCompletionSource<PullRequestFeedResult>().Task;
+
+    private static async Task<bool> _WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition())
+            {
+                return true;
+            }
+
+            await Task.Delay(10);
+        }
+
+        return await condition();
+    }
 
     private static async Task<bool> _WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
