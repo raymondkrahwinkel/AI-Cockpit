@@ -377,7 +377,9 @@ public class PullRequestRefreshSourceTests
         firstLoad.SetResult(new PullRequestFeedResult([], [], RepositoryMissing: false));
         await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        var ran = await source.RefreshAsync(forceRefresh: true);
+        // Updated is raised with the gate still held (AC-1416), so the call is retried until the tick has let go;
+        // a gated-out call runs no load and touches no LastError, so the retries cost nothing.
+        var ran = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true).GetAwaiter().GetResult(), TimeSpan.FromSeconds(30));
 
         source.Dispose();
 
