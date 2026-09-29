@@ -114,22 +114,21 @@ public class PullRequestRefreshSourceTests
     public async Task OverlappingRefreshCalls_CollapseIntoOneLoad()
     {
         var calls = 0;
-        var firstLoad = new TaskCompletionSource<PullRequestFeedResult>();
-        var firstTickPublished = new TaskCompletionSource();
         var release = new TaskCompletionSource<PullRequestFeedResult>();
         var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
 
-        // The constructor's own due-time-zero tick fires as soon as construction returns and would otherwise race
-        // the three overlapping calls below for who counts as "the winner". Pinning that first load and releasing
-        // it only once we are listening drains it exactly, where a fixed delay used to bet on it (AC-1122).
+        // No startup tick: it would race the three overlapping calls below for who counts as "the winner", and
+        // waiting for its Updated is not enough — Updated is raised while the gate is still held (AC-1416), so
+        // the calls could still be gated out by the tick that had just published (AC-1122).
         var source = new PullRequestRefreshSource(
             new InMemoryPluginStorage(),
-            (_, _) => Interlocked.Increment(ref calls) == 1 ? firstLoad.Task : release.Task,
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        source.Updated += (_, _) => firstTickPublished.TrySetResult();
-        firstLoad.SetResult(emptyResult);
-        await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            (_, _) =>
+            {
+                Interlocked.Increment(ref calls);
+                return release.Task;
+            },
+            pollInterval: TimeSpan.FromMinutes(10),
+            firstTickDue: Timeout.InfiniteTimeSpan);
 
         var overlapping = new[]
         {
@@ -143,7 +142,7 @@ public class PullRequestRefreshSourceTests
 
         source.Dispose();
 
-        Assert.Equal(2, calls); // the initial tick, plus exactly one of the three overlapping callers
+        Assert.Equal(1, calls); // exactly one of the three overlapping callers loaded
         Assert.Equal(2, ran.Count(x => !x));
     }
 
@@ -261,8 +260,8 @@ public class PullRequestRefreshSourceTests
 
     // Adversarial-review defect: `Dispose()` tore down the gate a still-running `PullRequestRefreshSource.RefreshAsync`
     // call was about to release into. This reproduces the exact shape — a call holding the gate and mid-`_load`
-    // when `Dispose()` runs on top of it, then the load completing afterwards — by draining the constructor's
-    // own due-time-zero tick first (same technique as `OverlappingRefreshCalls_CollapseIntoOneLoad`) so
+    // when `Dispose()` runs on top of it, then the load completing afterwards — by suppressing the constructor's
+    // startup tick (same technique as `OverlappingRefreshCalls_CollapseIntoOneLoad`) so
     // the call under test is the only one holding the gate, then issuing it directly to get a real `Task{TResult}`
     // handle a fire-and-forget timer callback never gives the production code. Before the fix this call's task
     // faulted with `ObjectDisposedException` once `release` completed — unobserved in production,
@@ -270,20 +269,15 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task Dispose_WhileARefreshIsInFlight_DoesNotThrowFromTheGateItDisposes()
     {
-        var firstLoad = new TaskCompletionSource<PullRequestFeedResult>();
-        var firstTickPublished = new TaskCompletionSource();
         var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
         var release = new TaskCompletionSource<PullRequestFeedResult>();
-        var calls = 0;
 
+        // No startup tick, so the call below is the only one that can hold the gate (see the overlapping test).
         var source = new PullRequestRefreshSource(
             new InMemoryPluginStorage(),
-            (_, _) => Interlocked.Increment(ref calls) == 1 ? firstLoad.Task : release.Task,
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        source.Updated += (_, _) => firstTickPublished.TrySetResult();
-        firstLoad.SetResult(emptyResult);
-        await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            (_, _) => release.Task,
+            pollInterval: TimeSpan.FromMinutes(10),
+            firstTickDue: Timeout.InfiniteTimeSpan);
 
         // Holds the gate and is suspended awaiting `_load` (release.Task, still pending) the moment Dispose runs —
         // the callback-still-running-at-unload shape the review flagged.
