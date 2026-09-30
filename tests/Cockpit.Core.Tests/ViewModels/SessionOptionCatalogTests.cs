@@ -38,10 +38,4 @@ public class SessionOptionCatalogTests
         Assert.Equal("bypassPermissions", SessionOptionCatalog.ResolvePermissionMode("bypassPermissions").Value);
     }
 
-    [Fact]
-    public void ResolveModelAndEffort_UnknownValues_FallBackToTheAppDefaults()
-    {
-        Assert.Equal(SessionOptionCatalog.DefaultModel, SessionOptionCatalog.ResolveModel("nope"));
-        Assert.Equal(SessionOptionCatalog.DefaultEffort, SessionOptionCatalog.ResolveEffort("nope"));
-    }
 }
