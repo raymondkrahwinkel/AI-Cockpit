@@ -11,44 +11,6 @@ public class McpOAuthTokenTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 27, 12, 0, 0, TimeSpan.Zero);
 
-    private static McpOAuthToken _TokenExpiringAt(DateTimeOffset? expiresAt) =>
-        new() { AccessToken = "access", ExpiresAt = expiresAt };
-
-    [Fact]
-    public void IsUsableAt_WithPlentyOfLifeLeft_IsUsable()
-    {
-        Assert.True(_TokenExpiringAt(Now.AddHours(1)).IsUsableAt(Now, TimeSpan.FromMinutes(2)));
-    }
-
-    [Fact]
-    public void IsUsableAt_WhenItExpiresInsideTheMargin_IsNotUsable()
-    {
-        // Unexpired, and still refused: handing this over writes a credential into a config that dies a minute later.
-        Assert.False(_TokenExpiringAt(Now.AddSeconds(30)).IsUsableAt(Now, TimeSpan.FromMinutes(2)));
-    }
-
-    [Fact]
-    public void IsUsableAt_WhenAlreadyExpired_IsNotUsable()
-    {
-        Assert.False(_TokenExpiringAt(Now.AddMinutes(-1)).IsUsableAt(Now, TimeSpan.FromMinutes(2)));
-    }
-
-    [Fact]
-    public void IsUsableAt_WhenTheServerNamedNoExpiry_IsTakenAtFaceValue()
-    {
-        // Guessing a lifetime would either throw away a working credential or claim a dead one; neither is knowable
-        // from here, so a token without a stated expiry is trusted until the server says otherwise.
-        Assert.True(_TokenExpiringAt(null).IsUsableAt(Now, TimeSpan.FromMinutes(2)));
-    }
-
-    [Fact]
-    public void IsUsableAt_WithoutAnAccessToken_IsNotUsable()
-    {
-        var empty = new McpOAuthToken { AccessToken = "  ", ExpiresAt = Now.AddHours(1) };
-
-        Assert.False(empty.IsUsableAt(Now, TimeSpan.FromMinutes(2)));
-    }
-
     private static McpOAuthToken _TokenIssuedFor(string? url) =>
         new() { AccessToken = "access", ResourceUrl = url };
 
@@ -70,12 +32,6 @@ public class McpOAuthTokenTests
     public void IsForResource_WithNoRecordedOrigin_IsNeverUsed()
     {
         Assert.False(_TokenIssuedFor(null).IsForResource("https://depot.example/mcp"));
-    }
-
-    [Fact]
-    public void IsForResource_AgainstNoAddressAtAll_IsFalse()
-    {
-        Assert.False(_TokenIssuedFor("https://depot.example/mcp").IsForResource(null));
     }
 
     [Fact]

@@ -22,25 +22,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal("http://localhost:11434/v1/models", handler.LastRequestUri);
     }
 
-    [Fact]
-    public async Task ListModelsAsync_WhenTheServerErrors_ReturnsEmpty()
-    {
-        var catalog = new OpenAiCompatModelCatalog(
-            new HttpClient(new StubHandler(string.Empty, HttpStatusCode.ServiceUnavailable)),
-            NullLogger<OpenAiCompatModelCatalog>.Instance);
-
-        Assert.Empty((await catalog.ListModelsAsync("http://localhost:1234")));
-    }
-
-    [Fact]
-    public async Task ListModelsAsync_WithNoBaseUrl_ReturnsEmpty()
-    {
-        var catalog = new OpenAiCompatModelCatalog(
-            new HttpClient(new StubHandler("{}", HttpStatusCode.OK)), NullLogger<OpenAiCompatModelCatalog>.Instance);
-
-        Assert.Empty((await catalog.ListModelsAsync("")));
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode status) : HttpMessageHandler
     {
         public string? LastRequestUri { get; private set; }

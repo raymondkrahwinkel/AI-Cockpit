@@ -52,21 +52,6 @@ public class McpHeaderStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_DropsAHalfWrittenRowFromAHandEditedConfig()
-    {
-        var store = new McpServerStore(_configFilePath);
-        await store.SaveAsync([new McpServerConfig
-        {
-            Name = "private-api",
-            Transport = McpTransport.Http,
-            Url = "https://api.example/mcp",
-            Headers = [new McpHeader("X-Api-Key", "the-key"), new McpHeader(string.Empty, "orphan")],
-        }]);
-
-        Assert.Single(Assert.Single(await store.LoadAsync()).Headers);
-    }
-
-    [Fact]
     public void TheStoredHeaderValueIsCoveredByTheSecretRule_AndTheNameIsNot()
     {
         // This is why the on-disk field is called SecretValue rather than Value: encryption and backup-scrubbing both

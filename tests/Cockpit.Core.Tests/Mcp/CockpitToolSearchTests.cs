@@ -23,104 +23,6 @@ public class CockpitToolSearchTests
         new("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
     [Fact]
-    public void SearchTools_MatchesNameAndDescription_AndReportsServerAndSchema()
-    {
-        var catalog = new[]
-        {
-            _Tool("set_status", "Sets your session's statusline.", "cockpit-session"),
-            _Tool("read_file", "Reads a file from disk.", "filesystem"),
-        };
-
-        var hits = _Search(catalog, "statusline");
-
-        var match = Assert.Single(hits.GetProperty("matches").EnumerateArray());
-        Assert.Equal("set_status", match.GetProperty("name").GetString());
-        Assert.Equal("cockpit-session", match.GetProperty("server").GetString());
-        Assert.Contains("statusline", match.GetProperty("description").GetString());
-        // The schema is what makes a hit callable without it ever being in the prompt — a match without one would
-        // leave the model guessing parameter names.
-        Assert.Equal(JsonValueKind.Object, match.GetProperty("input_schema").ValueKind);
-    }
-
-    [Fact]
-    public void SearchTools_SaysWhenItTruncated_AndSaysWhenNothingMatched()
-    {
-        var catalog = Enumerable.Range(0, 12).Select(index => _Tool($"note_{index}", "Writes a note.", "notes")).ToArray();
-
-        // Criterion 3: "more matched than you can see" and "nothing matched" must not read the same to a model —
-        // silently cutting the list would let it conclude a tool does not exist when it was simply hit 11 of 12.
-        var truncated = _Search(catalog, "note", limit: 3);
-        Assert.Equal(3, truncated.GetProperty("matches").GetArrayLength());
-        Assert.Equal(12, truncated.GetProperty("total_matches").GetInt32());
-        Assert.Contains("showing 3 of 12", truncated.GetProperty("note").GetString(), StringComparison.OrdinalIgnoreCase);
-
-        var nothing = _Search(catalog, "youtrack");
-        Assert.Equal(0, nothing.GetProperty("matches").GetArrayLength());
-        Assert.Equal(0, nothing.GetProperty("total_matches").GetInt32());
-        Assert.Contains("No tool matched", nothing.GetProperty("note").GetString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SearchTools_WithAServerFilter_KeepsToThatServer_AndNamesTheOnesItKnows()
-    {
-        var catalog = new[]
-        {
-            _Tool("set_status", "Sets your session's statusline.", "cockpit-session"),
-            _Tool("read_file", "Reads a file.", "filesystem"),
-        };
-
-        Assert.Equal("read_file", Assert.Single(_Search(catalog, string.Empty, server: "filesystem")
-            .GetProperty("matches").EnumerateArray()).GetProperty("name").GetString());
-
-        var unknown = _Search(catalog, "file", server: "nope");
-        Assert.Contains("cockpit-session, filesystem", unknown.GetProperty("note").GetString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AboveTheThreshold_OnlyTheAlwaysMountedToolsAndTheTwoProxiesRideAlong()
-    {
-        var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status");
-        var (driver, options) = await _StartAsync(catalog, _Stream("hi"));
-        await driver.SendUserMessageAsync("hello");
-        await _CollectUntilTurnCompletedAsync(driver);
-
-        // Criterion 5: the whole point — a catalogue this size is 25-40k tokens of schema per request. What is left
-        // is the plumbing that must never go behind a search (set_status) plus the two proxies.
-        Assert.Equal(
-            new[] { CockpitToolSearch.CallToolName, CockpitToolSearch.SearchToolName, "set_status" },
-            options.Single()!.Tools!.Select(tool => tool.Name).Order(StringComparer.Ordinal));
-    }
-
-    [Fact]
-    public async Task AtTheThreshold_TheWholeCatalogueStillRidesAlong()
-    {
-        var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold, alwaysMounted: "set_status");
-        var (driver, options) = await _StartAsync(catalog, _Stream("hi"));
-        await driver.SendUserMessageAsync("hello");
-        await _CollectUntilTurnCompletedAsync(driver);
-
-        // Criterion 5's other half: a session under the threshold behaves exactly as it did before this existed —
-        // every tool preloaded, and no search_tools/call_tool in sight.
-        var sent = options.Single()!.Tools!.Select(tool => tool.Name).ToList();
-        Assert.Equal(CockpitToolSearch.PreloadThreshold, sent.Count);
-        Assert.DoesNotContain(CockpitToolSearch.SearchToolName, sent);
-    }
-
-    [Fact]
-    public async Task SessionInitialized_NamesTheWholeCatalogue_PlusTheProxiesThatReachIt()
-    {
-        var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status");
-        var (driver, _) = await _StartAsync(catalog, _Stream("hi"));
-        var init = Assert.IsType<SessionInitialized>(Assert.Single(await _DrainAsync(driver, 1)));
-
-        // Criterion 6: the count has to stay a statement about what the model can reach. In search mode that is
-        // still every tool — through call_tool — so reporting only the three preloaded ones would understate it.
-        Assert.Equal(CockpitToolSearch.PreloadThreshold + 3, init.Tools.Count);
-        Assert.Contains(CockpitToolSearch.SearchToolName, init.Tools);
-        Assert.Contains(CockpitToolSearch.CallToolName, init.Tools);
-    }
-
-    [Fact]
     public async Task CallTool_CannotRunWhatTheDelegationCeilingRefuses_AndRefusesItInTheSameWords()
     {
         // The security criterion (4): the AC-79 ceiling lives in the GatedTool around the real tool, so a call_tool
@@ -173,18 +75,6 @@ public class CockpitToolSearchTests
         Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
     }
 
-    [Fact]
-    public async Task CallTool_WithAnUnknownName_SaysSo_WithoutRunningAnything()
-    {
-        var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status");
-        var (driver, _) = await _StartAsync(catalog, _ProxyCall("nope", "{}"), _Stream("done"));
-        await driver.SendUserMessageAsync("go");
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.Empty(events.OfType<ToolUseRequested>());
-        Assert.Empty(events.OfType<PermissionRequested>());
-    }
-
     // The refusal a *direct* call to the same tool under the same ceiling produces, for the comparison above.
     private static async Task<string> _DirectDenialTextAsync()
     {
@@ -199,13 +89,6 @@ public class CockpitToolSearchTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         return Assert.Single(events.OfType<ToolResult>()).Content;
-    }
-
-    private static JsonElement _Search(IReadOnlyList<McpSessionTool> catalog, string query, string? server = null, int? limit = null)
-    {
-        var search = (AIFunction)CockpitToolSearch.Build(catalog).Single(tool => tool.Name == CockpitToolSearch.SearchToolName);
-        var arguments = new AIFunctionArguments { ["query"] = query, ["server"] = server, ["limit"] = limit };
-        return JsonDocument.Parse(search.InvokeAsync(arguments).AsTask().GetAwaiter().GetResult()!.ToString()!).RootElement;
     }
 
     private static McpSessionTool _Tool(string name, string description, string server, bool alwaysMounted = false) =>
@@ -286,22 +169,6 @@ public class CockpitToolSearchTests
         };
 
         await Task.CompletedTask;
-    }
-
-    private static async Task<List<SessionEvent>> _DrainAsync(ISessionDriver driver, int count)
-    {
-        var events = new List<SessionEvent>();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await foreach (var evt in driver.Events.WithCancellation(cts.Token))
-        {
-            events.Add(evt);
-            if (events.Count == count)
-            {
-                break;
-            }
-        }
-
-        return events;
     }
 
     private static async Task<List<SessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver)

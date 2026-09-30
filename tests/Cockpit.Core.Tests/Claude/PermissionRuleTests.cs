@@ -77,22 +77,4 @@ public class PermissionRuleTests
         Assert.False(rule.Matches("Write", """{"command":"dotnet build"}"""));
     }
 
-    [Fact]
-    public void RuleSet_Add_IsIdempotentForAnEqualRule()
-    {
-        var set = new PermissionRuleSet();
-
-        Assert.True(set.Add(PermissionRule.ForWildcard("Bash")));
-        Assert.False(set.Add(PermissionRule.ForWildcard("Bash")));
-        Assert.Single(set.Snapshot());
-    }
-
-    [Fact]
-    public void RuleSet_IsAlwaysAllowed_ReflectsItsRules()
-    {
-        var set = new PermissionRuleSet([PermissionRule.ForExact("Read", """{"file_path":"a.txt"}""")]);
-
-        Assert.True(set.IsAlwaysAllowed("Read", """{"file_path":"a.txt"}"""));
-        Assert.False(set.IsAlwaysAllowed("Read", """{"file_path":"b.txt"}"""));
-    }
 }

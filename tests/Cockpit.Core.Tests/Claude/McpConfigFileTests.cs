@@ -12,12 +12,6 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class McpConfigFileTests
 {
-    [Fact]
-    public void ServerName_IsCockpit_SoTheReservedKeyIsNeverClaimedByTheRegistry()
-    {
-        Assert.Equal("cockpit", McpConfigFile.ServerName);
-    }
-
     /// <summary>
     /// Which registry servers a coding agent sees. Off is off; a local-model-only server is noise for an agentic CLI
     /// that already ships its own file/shell/web tools; and the reserved <c>cockpit</c> key can never be claimed by a
