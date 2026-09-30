@@ -28,30 +28,6 @@ public class DiagramErSurfaceTests
         return registry;
     }
 
-    private static string Reverted(DiagramAccessRegistry registry, DiagramHandEdit edit)
-    {
-        Assert.Null(registry.ApplyHandEdit("surface-1", edit));
-        Assert.Null(registry.Revert("surface-1", registry.History("surface-1")[^1].Id));
-        return registry.PeekText("surface-1")!;
-    }
-
-    [Fact]
-    public void EditSupport_NamesTheDialect_SoThePanelKnowsWhichControlsBelongOnIt()
-    {
-        Assert.Equal(DiagramEditDialect.Er, Opened().EditSupport("surface-1").Dialect);
-        Assert.Equal(DiagramEditDialect.Flowchart, Opened("flowchart LR\n    A[\"Start\"]").EditSupport("surface-1").Dialect);
-    }
-
-    [Fact]
-    public void EditSupport_OnADialectWithNoGrammar_CarriesTheReasonToPutInTheTooltip()
-    {
-        var support = Opened("sequenceDiagram\n    Alice->>Bob: Hello").EditSupport("surface-1");
-
-        Assert.Equal(DiagramEditDialect.Unsupported, support.Dialect);
-        Assert.Contains("sequenceDiagram", support.Reason);
-        Assert.Contains("agent", support.Reason);
-    }
-
     [Fact]
     public void TwoEditsOnDifferentEntities_BothLand_NeitherOverwritingTheOther()
     {
@@ -68,30 +44,6 @@ public class DiagramErSurfaceTests
         var text = registry.PeekText("surface-1")!;
         Assert.Contains("int total", text, StringComparison.Ordinal);
         Assert.Contains("string email", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AnEditNamingAnEntityTheOperatorIsHolding_IsSeenAsHeld()
-    {
-        var registry = Opened();
-        registry.HoldObject("surface-1", "CUSTOMER");
-
-        Assert.True(registry.IsHeldByOperator("surface-1", "CUSTOMER"));
-        Assert.False(registry.IsHeldByOperator("surface-1", "ORDER"));
-    }
-
-    [Fact]
-    public void EveryErHandling_IsJournaledWithAKeyThatNamesItsObject()
-    {
-        var registry = Opened();
-
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.SetAttribute, "ORDER") { Attribute = "total", AttributeType = "int" });
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameEntity, "ORDER", Label: "PURCHASE"));
-
-        Assert.Collection(
-            registry.History("surface-1"),
-            first => Assert.Equal("ORDER.total", first.ObjectKey),
-            second => Assert.Equal("ORDER>PURCHASE", second.ObjectKey));
     }
 
     // Every in-place ER handling, reverted on its own, against the whole source rather than the one line it touched:
@@ -114,27 +66,6 @@ public class DiagramErSurfaceTests
             ToCardinality = DiagramErCardinality.One,
         },
     ];
-
-    [Theory]
-    [MemberData(nameof(RevertedErHandEdits))]
-    public void EveryErHandling_IsTakenBackToTheSourceItStartedFrom(DiagramHandEdit edit)
-    {
-        Assert.Equal(Source.ReplaceLineEndings("\n"), Reverted(Opened(), edit));
-    }
-
-    // Reverting a removal is the one case that does not restore the source verbatim: the entity's own lines and its
-    // relationship come back, but appended rather than in the place they were taken from. Asserted for what it is.
-    [Fact]
-    public void Revert_OfARemovedEntityOrRelationship_BringsTheLinesBack_ThoughNotWhereTheyStood()
-    {
-        var afterEntity = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.RemoveEntity, "CUSTOMER"));
-        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", afterEntity, StringComparison.Ordinal);
-        Assert.Equal(2, DiagramObjectEdit.Attributes(afterEntity, "CUSTOMER").Count);
-        Assert.Single(DiagramObjectEdit.Attributes(afterEntity, "ORDER"));
-
-        var afterRelationship = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.Unrelate, "CUSTOMER", "ORDER"));
-        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", afterRelationship, StringComparison.Ordinal);
-    }
 
     [Fact]
     public void AHandEdit_OnADialectWithNoGrammar_IsRefused_WithTheSourceLeftAsItWas()

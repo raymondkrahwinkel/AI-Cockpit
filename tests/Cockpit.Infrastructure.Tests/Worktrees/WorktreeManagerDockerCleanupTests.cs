@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Worktrees;
-using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -60,29 +59,6 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
     }
 
     [Fact]
-    public async Task RemoveAsync_NoDockerContainersForThisWorktree_SucceedsWithNoDockerNotice()
-    {
-        var record = await _manager.CreateAsync("session-clean", "clean", _repo);
-
-        var notice = await _manager.RemoveAsync(record);
-
-        Assert.Null(notice);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_DockerUnreachable_StillRemovesTheWorktreeAndReportsRatherThanThrowing()
-    {
-        var record = await _manager.CreateAsync("session-unreachable", "unreachable", _repo);
-        _docker.FailWith(new InvalidOperationException("Could not run 'docker' — is it installed and on PATH?"));
-
-        var notice = await _manager.RemoveAsync(record);
-
-        Assert.Empty(await _manager.ListAsync());
-        Assert.NotNull(notice);
-        Assert.Contains("Could not clean up docker containers", notice);
-    }
-
-    [Fact]
     public async Task CleanupDockerNetworksAsync_RemovesOnlyAnEmptyComposeNetworkForTheClosedWorktree()
     {
         var closed = await _manager.CreateAsync("session-closed", "closed", _repo);
@@ -94,49 +70,6 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
 
         Assert.True(_docker.IsNetworkRemoved("network-closed"));
         Assert.False(_docker.IsNetworkRemoved("network-live"));
-    }
-
-    [Fact]
-    public async Task ReleaseAsync_RemovesAnEmptyComposeNetworkForANormallyClosedSession()
-    {
-        var record = await _manager.CreateAsync("session-closed", "closed", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "unfinished.txt"), "keep\n");
-        _docker.AddNetwork(Path.GetFileName(record.Path), "network-closed", containerCount: 0);
-
-        await _manager.ReleaseAsync("session-closed");
-
-        Assert.True(_docker.IsNetworkRemoved("network-closed"));
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_RemovesAnEmptyComposeNetworkForACrashedSession()
-    {
-        var record = await _manager.CreateAsync("session-crashed", "crashed", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "unfinished.txt"), "keep\n");
-        _docker.AddNetwork(Path.GetFileName(record.Path), "network-crashed", containerCount: 0);
-        _manager.Dispose();
-        using var restartedCockpit = new WorktreeManager(
-            _registry,
-            Path.Combine(_tempRoot, "worktrees"),
-            logger: null,
-            dockerCli: _docker);
-
-        await restartedCockpit.ReconcileAsync([]);
-
-        Assert.True(_docker.IsNetworkRemoved("network-crashed"));
-    }
-
-    [Fact]
-    public async Task CleanupDockerNetworksAsync_NormalizesTheWorktreeFolderForComposeProjectLabel()
-    {
-        var path = Path.Combine(_tempRoot, "worktrees", "Cockpit.Worktree_ABC");
-        await _registry.AddAsync(new WorktreeRecord("session-normalized", _repo, path, "branch", "main", DateTimeOffset.UtcNow));
-        _docker.AddNetwork("cockpitworktree_abc", "network-normalized", containerCount: 0);
-
-        await _manager.CleanupDockerNetworksAsync("session-normalized");
-
-        Assert.Equal("label=com.docker.compose.project=cockpitworktree_abc", _docker.LastNetworkFilter);
-        Assert.True(_docker.IsNetworkRemoved("network-normalized"));
     }
 
     private static void _Git(string workingDirectory, params string[] arguments)

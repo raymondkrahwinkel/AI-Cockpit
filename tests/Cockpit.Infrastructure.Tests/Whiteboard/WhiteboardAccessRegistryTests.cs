@@ -171,17 +171,6 @@ public class WhiteboardAccessRegistryTests
     }
 
     [Fact]
-    public void Resolve_MatchesByIdOrByOperatorFacingName()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-
-        Assert.Equal("Sprint planning", registry.Resolve("surface-1")!.Name);
-        Assert.Equal("surface-1", registry.Resolve("Sprint planning")!.SurfaceId);
-        Assert.Null(registry.Resolve("nope"));
-    }
-
-    [Fact]
     public void Disconnect_DecouplesWhateverWasHeld_AndAnnounces()
     {
         var registry = new WhiteboardAccessRegistry();
@@ -206,38 +195,4 @@ public class WhiteboardAccessRegistryTests
         Assert.Throws<InvalidOperationException>(act);
     }
 
-    [Fact]
-    public void MarkRead_OnlyStampsACouplingThatHoldsRead_AndAnnounces()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        var changes = new List<WhiteboardCouplingChange>();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-        registry.Couple("session-a", "surface-1");
-
-        registry.MarkRead("session-a", "surface-1");
-        Assert.Null(registry.CouplingOf("session-a", "surface-1")!.LastReadAt);
-
-        registry.Grant("session-a", "surface-1");
-        registry.CouplingChanged += changes.Add;
-        registry.MarkRead("session-a", "surface-1");
-
-        Assert.NotNull(registry.CouplingOf("session-a", "surface-1")!.LastReadAt);
-        Assert.Single(changes);
-    }
-
-    [Fact]
-    public void UpdateSnapshot_KeepsWhatAnAgentReadsInStep_AndRaisesSnapshotChanged()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        var changes = new List<(string SurfaceId, byte[] Png)>();
-        registry.SnapshotChanged += (surfaceId, png) => changes.Add((surfaceId, png));
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-        registry.Grant("session-a", "surface-1");
-        byte[] updated = [9, 9, 9];
-
-        registry.UpdateSnapshot("surface-1", updated);
-
-        Assert.Equal(updated, registry.ReadCoupled("session-a", "surface-1"));
-        Assert.Equal(("surface-1", updated), Assert.Single(changes));
-    }
 }

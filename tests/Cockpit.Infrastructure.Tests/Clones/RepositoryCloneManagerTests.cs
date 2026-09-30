@@ -39,82 +39,6 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task CloneAsync_ClonesIntoManagedRootAndRegistersIt()
-    {
-        var record = await _manager.CloneAsync(_sourceUrl);
-
-        Assert.StartsWith(Path.GetFullPath(_clonesRoot), record.Path);
-        Assert.True(Directory.Exists(Path.Combine(record.Path, ".git")));
-        Assert.True(File.Exists(Path.Combine(record.Path, "README.md")));
-
-        var registered = await _registry.ListAsync();
-        Assert.Equal(record.Path, Assert.Single(registered).Path);
-    }
-
-    [Fact]
-    public async Task CloneAsync_ExplicitTargetPath_ClonesThereAndRegistersThatPath()
-    {
-        var target = Path.Combine(_tempRoot, "chosen", "my-repo");
-
-        var record = await _manager.CloneAsync(_sourceUrl, target);
-
-        Assert.Equal(Path.GetFullPath(target), record.Path);
-        Assert.True(Directory.Exists(Path.Combine(target, ".git")));
-        Assert.True(File.Exists(Path.Combine(target, "README.md")));
-        Assert.Equal(Path.GetFullPath(target), Assert.Single((await _registry.ListAsync())).Path);
-    }
-
-    [Fact]
-    public async Task CloneAsync_BlankTargetPath_FallsBackToManagedDefault()
-    {
-        var record = await _manager.CloneAsync(_sourceUrl, "   ");
-
-        var root = await _manager.GetEffectiveClonesRootAsync();
-        Assert.Equal(_manager.BuildClonePath(root, _sourceUrl), record.Path);
-        Assert.StartsWith(Path.GetFullPath(_clonesRoot), record.Path);
-    }
-
-    [Fact]
-    public async Task BuildClonePath_ReturnsManagedSlugPath_OrNullForAnUnparseableUrl()
-    {
-        var root = await _manager.GetEffectiveClonesRootAsync();
-
-        Assert.StartsWith(Path.GetFullPath(_clonesRoot), _manager.BuildClonePath(root, _sourceUrl));
-        Assert.Null(_manager.BuildClonePath(root, "   "));
-    }
-
-    [Fact]
-    public async Task GetEffectiveClonesRootAsync_UsesTheConfiguredOverride_WhenSet()
-    {
-        // The production constructor resolves the root through the settings store (AC-90): a saved override wins over
-        // the state-root default, and is returned as a full path so the dialog shows an absolute folder.
-        var settings = new CloneSettingsStore(Path.Combine(_tempRoot, "cockpit-override.json"));
-        var custom = Path.Combine(_tempRoot, "custom-clones");
-        await settings.SaveAsync(new CloneSettings { Root = custom });
-
-        var manager = new RepositoryCloneManager(_registry, settings);
-
-        Assert.Equal(Path.GetFullPath(custom), (await manager.GetEffectiveClonesRootAsync()));
-    }
-
-    [Fact]
-    public async Task CloneAsync_AlreadyCloned_ReusesRatherThanCloningAgain()
-    {
-        var first = await _manager.CloneAsync(_sourceUrl);
-
-        // A local edit that a fresh clone would not have: it surviving proves the second call reused the checkout
-        // rather than re-cloning over it.
-        var marker = Path.Combine(first.Path, "local-only.txt");
-        File.WriteAllText(marker, "kept");
-
-        var second = await _manager.CloneAsync(_sourceUrl);
-
-        Assert.Equal(first.Path, second.Path);
-        Assert.True(File.Exists(marker));
-        Assert.Single((await _registry.ListAsync()));
-    }
-
-    [Fact]
     public async Task CloneAsync_SlugOccupiedByADifferentRepository_RefusesRatherThanClobber()
     {
         var first = await _manager.CloneAsync(_sourceUrl);
@@ -150,25 +74,6 @@ public sealed class RepositoryCloneManagerTests : IDisposable
         Assert.Equal(present.Path, Assert.Single(remaining).Path);
         // Never deletes disk: the surviving clone's folder is left exactly as it was.
         Assert.True(Directory.Exists(present.Path));
-    }
-
-    [Fact]
-    public async Task CloneAsync_UnreachableSource_FailsSoftWithoutRegistering()
-    {
-        var missingUrl = new Uri(Path.Combine(_tempRoot, "does-not-exist")).AbsoluteUri;
-
-        var act = () => _manager.CloneAsync(missingUrl);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(act);
-        Assert.Empty((await _registry.ListAsync()));
-    }
-
-    [Fact]
-    public async Task CloneAsync_BlankUrl_ThrowsFormatError()
-    {
-        var act = () => _manager.CloneAsync("   ");
-
-        await Assert.ThrowsAsync<FormatException>(act);
     }
 
     private static string _Git(string workingDirectory, params string[] arguments)

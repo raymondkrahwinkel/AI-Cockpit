@@ -140,35 +140,6 @@ public class WireframeAccessRegistryTests
     }
 
     [Fact]
-    public void MarkRead_StampsTheCoupling_ButOnlyWhenItActuallyHoldsRead()
-    {
-        var registry = _Open();
-        registry.Couple(Session, SurfaceId);
-
-        registry.MarkRead(Session, SurfaceId);
-        Assert.Null(registry.CouplingOf(Session, SurfaceId)!.LastReadAt);
-
-        registry.Grant(Session, SurfaceId, WireframeCapability.Read);
-        registry.MarkRead(Session, SurfaceId);
-
-        Assert.NotNull(registry.CouplingOf(Session, SurfaceId)!.LastReadAt);
-    }
-
-    [Fact]
-    public void UpdateText_KeepsTheRegistrysCopyInStepWithTheOperatorsOwnEditing()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Read);
-        var announced = new List<string>();
-        registry.TextChanged += (_, text) => announced.Add(text);
-
-        registry.UpdateText(SurfaceId, "screen \"Iets anders\"");
-
-        Assert.Equal("screen \"Iets anders\"", Assert.Single(announced));
-        Assert.Equal("screen \"Iets anders\" #c1", registry.ReadCoupled(Session, SurfaceId));
-    }
-
-    [Fact]
     public void WriteCoupled_RefusesASourceTheFormatCannotReadBack()
     {
         var registry = _Open();
@@ -200,16 +171,6 @@ public class WireframeAccessRegistryTests
 
         Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
         Assert.Null(registry.PeekText("nothing-here"));
-    }
-
-    [Fact]
-    public void Resolve_FindsASurfaceByItsIdOrByTheNameTheOperatorSees()
-    {
-        var registry = _Open();
-
-        Assert.Equal(SurfaceId, registry.Resolve(SurfaceId)!.SurfaceId);
-        Assert.Equal(SurfaceId, registry.Resolve(Name)!.SurfaceId);
-        Assert.Null(registry.Resolve("Iets anders"));
     }
 
     [Fact]

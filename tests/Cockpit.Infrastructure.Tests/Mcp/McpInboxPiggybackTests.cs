@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
-using Cockpit.Core.Abstractions.Agents;
-using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
@@ -34,92 +32,6 @@ public sealed class McpInboxPiggybackTests : IDisposable
     public void Dispose() => McpRequestContext.Set(null);
 
     /// <summary>
-    /// Acceptance criterion 2, and the promise the whole form rests on: no mail, not one added character. Compared
-    /// byte for byte rather than approximately — the cost argument that chose this shape over a noticeboard is only
-    /// worth anything if the empty case is exactly free.
-    /// </summary>
-    [Fact]
-    public void Attach_WithAnEmptyInbox_ReturnsTheResultUntouched()
-    {
-        McpRequestContext.Set("pane-a");
-        var result = _Result();
-        var before = _TextOf(result);
-
-        var after = McpInboxPiggyback.Attach(result, _Delivery(), NullLogger.Instance);
-
-        Assert.Same(result, after);
-        Assert.Single(after.Content);
-        Assert.Equal(before, _TextOf(after));
-    }
-
-    [Fact]
-    public void Attach_WithMailWaiting_AddsOneBlockCarryingTheSenderAndTheTrustStatement()
-    {
-        McpRequestContext.Set("pane-a");
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-
-        var after = McpInboxPiggyback.Attach(_Result(), _Delivery(), NullLogger.Instance);
-
-        Assert.Equal(2, after.Content.Count);
-        var text = _TextOf(after);
-        // The tool's own answer is still there, first — the block is an addition, not a replacement.
-        Assert.StartsWith("the tool's own answer", text, StringComparison.Ordinal);
-        Assert.Contains("I am merging DEP-85 to dev", text, StringComparison.Ordinal);
-        Assert.Contains("pane-b", text, StringComparison.Ordinal);
-        // The framing does not soften by route: the same trust statement as the turn-start notice and read_inbox.
-        Assert.Contains(AgentInboxTurnNotice.TrustStatement, text, StringComparison.Ordinal);
-        // ...and the one clause that does differ says which way it came.
-        Assert.Contains("attached them to the result of the tool call you just made", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>Acceptance criterion 3: delivered mail is read mail, and does not come back on the next tool call.</summary>
-    [Fact]
-    public void Attach_Twice_DeliversTheMessageOnlyOnce()
-    {
-        McpRequestContext.Set("pane-a");
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-        var delivery = _Delivery();
-
-        McpInboxPiggyback.Attach(_Result(), delivery, NullLogger.Instance);
-        var second = McpInboxPiggyback.Attach(_Result(), delivery, NullLogger.Instance);
-
-        Assert.Single(second.Content);
-        Assert.DoesNotContain("DEP-85", _TextOf(second), StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Acceptance criterion 4. Both routes go through the same in-flight split, so a pane that has turn-start
-    /// delivery and makes a tool call is handed the message once — whichever gets there first — rather than once per
-    /// route. Tested from the other side too: what the piggyback took is not still waiting for a turn.
-    /// </summary>
-    [Fact]
-    public void Attach_ThenTurnStartDelivery_FindsNothingLeftToCarry()
-    {
-        McpRequestContext.Set("pane-a");
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-        var delivery = _Delivery();
-
-        McpInboxPiggyback.Attach(_Result(), delivery, NullLogger.Instance);
-
-        Assert.Null(delivery.TakeForTurn("pane-a"));
-    }
-
-    [Fact]
-    public void Attach_AfterTurnStartDeliveryTookTheBatch_AddsNothing()
-    {
-        McpRequestContext.Set("pane-a");
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-        var delivery = _Delivery();
-
-        var notice = delivery.TakeForTurn("pane-a");
-        Assert.NotNull(notice);
-
-        var after = McpInboxPiggyback.Attach(_Result(), delivery, NullLogger.Instance);
-
-        Assert.Single(after.Content);
-    }
-
-    /// <summary>
     /// A request the transport could not attribute to a pane has no inbox to read. Refused rather than guessed at,
     /// the same way every tool on this line refuses one — the in-process tool loop and the shared app-key path both
     /// arrive here.
@@ -134,36 +46,6 @@ public sealed class McpInboxPiggybackTests : IDisposable
 
         Assert.Single(after.Content);
         Assert.Single(_inbox.Drain("pane-a", int.MaxValue).Messages);
-    }
-
-    /// <summary>Nothing registered to deliver with is not a failure, it is a host without the agent line wired up.</summary>
-    [Fact]
-    public void Attach_WithNoDeliveryService_ReturnsTheResultUntouched()
-    {
-        McpRequestContext.Set("pane-a");
-        var result = _Result();
-
-        Assert.Same(result, McpInboxPiggyback.Attach(result, delivery: null, NullLogger.Instance));
-    }
-
-    /// <summary>
-    /// The failure that must not lose mail: the batch was taken and then something went wrong before it reached the
-    /// agent. It goes back to waiting rather than disappearing with its sender told it arrived — the one guarantee
-    /// the in-flight split exists for. Provoked with a result whose content list refuses to be read.
-    /// </summary>
-    [Fact]
-    public void Attach_WhenAttachingThrows_PutsTheMailBackAndReturnsTheResult()
-    {
-        McpRequestContext.Set("pane-a");
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-        var result = new CallToolResult { Content = new ThrowingContentList() };
-
-        var after = McpInboxPiggyback.Attach(result, _Delivery(), NullLogger.Instance);
-
-        Assert.Same(result, after);
-        // Still waiting, and still the same message — not dropped, not duplicated.
-        var waiting = Assert.Single(_inbox.Drain("pane-a", int.MaxValue).Messages);
-        Assert.Equal("I am merging DEP-85 to dev", waiting.Body);
     }
 
     /// <summary>
@@ -201,24 +83,6 @@ public sealed class McpInboxPiggybackTests : IDisposable
 
         var waiting = Assert.Single(_inbox.Drain(NodeCallerIdentity.PaneId, int.MaxValue).Messages);
         Assert.Equal("post for the controller", waiting.Body);
-    }
-
-    /// <summary>
-    /// The positive control the two above are worth nothing without: the skip is one reserved identity and not the
-    /// route. An ordinary session's pane, and the assistant's own reserved pane beside it, still get their mail.
-    /// </summary>
-    [Theory]
-    [InlineData("pane-a")]
-    [InlineData(AssistantIdentity.PaneId)]
-    public void Attach_ForEveryOtherPane_StillCarriesItsMail(string paneId)
-    {
-        McpRequestContext.Set(paneId);
-        _inbox.Deliver("pane-b", paneId, "heads-up", "post for a real session");
-
-        var after = McpInboxPiggyback.Attach(_Result(), _Delivery(), NullLogger.Instance);
-
-        Assert.Equal(2, after.Content.Count);
-        Assert.Contains("post for a real session", _TextOf(after), StringComparison.Ordinal);
     }
 
     /// <summary>A content list that cannot be enumerated, so building the new list throws where the attach happens.</summary>

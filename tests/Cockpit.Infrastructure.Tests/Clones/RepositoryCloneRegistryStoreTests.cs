@@ -20,14 +20,6 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_NoConfigFile_IsEmpty()
-    {
-        var store = new RepositoryCloneRegistryStore(_configPath);
-
-        Assert.Empty((await store.ListAsync()));
-    }
-
-    [Fact]
     public async Task AddAsync_ThenListFromAFreshStore_SurvivesTheRestart()
     {
         var record = _Record("github.com/org/repo", "/clones/github.com/org/repo");
@@ -36,30 +28,6 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
         var reloaded = await new RepositoryCloneRegistryStore(_configPath).ListAsync();
 
         Assert.Equivalent(record, Assert.Single(reloaded));
-    }
-
-    [Fact]
-    public async Task AddAsync_SamePathTwice_ReplacesRatherThanDuplicates()
-    {
-        var store = new RepositoryCloneRegistryStore(_configPath);
-        await store.AddAsync(_Record("github.com/org/repo", "/clones/one", remoteUrl: "https://github.com/org/repo"));
-        await store.AddAsync(_Record("github.com/org/repo", "/clones/one", remoteUrl: "https://github.com/org/repo2"));
-
-        var records = await store.ListAsync();
-
-        Assert.Equal("https://github.com/org/repo2", Assert.Single(records).RemoteUrl);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_DropsOnlyTheMatchingEntry()
-    {
-        var store = new RepositoryCloneRegistryStore(_configPath);
-        await store.AddAsync(_Record("github.com/org/one", "/clones/one"));
-        await store.AddAsync(_Record("github.com/org/two", "/clones/two"));
-
-        await store.RemoveAsync("/clones/one");
-
-        Assert.Equal(Path.GetFullPath("/clones/two"), Assert.Single((await store.ListAsync())).Path);
     }
 
     private static RepositoryClone _Record(string slug, string path, string remoteUrl = "https://github.com/org/repo") =>

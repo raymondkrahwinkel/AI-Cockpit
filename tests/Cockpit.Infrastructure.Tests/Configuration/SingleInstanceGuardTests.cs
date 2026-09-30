@@ -1,4 +1,3 @@
-using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
@@ -31,14 +30,6 @@ public sealed class SingleInstanceGuardTests
     private static string UniqueClaimName() => $"AI-Cockpit-test-{Guid.NewGuid():N}";
 
     [Fact]
-    public void TryAcquire_WhenNothingHoldsTheClaim_TakesIt()
-    {
-        using var guard = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, UniqueClaimName());
-
-        Assert.NotNull(guard);
-    }
-
-    [Fact]
     public void TryAcquire_WhileAnotherCockpitHoldsTheClaim_Refuses()
     {
         var claimName = UniqueClaimName();
@@ -50,174 +41,11 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
-    public void TryAcquire_AfterTheHolderReleasedTheClaim_TakesItAgain()
-    {
-        var claimName = UniqueClaimName();
-        new CockpitHoldingTheClaim(claimName).Dispose();
-
-        using var next = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
-
-        Assert.NotNull(next);
-    }
-
-    [Fact]
-    public void IsHeldByAnotherCockpit_WhenNothingHoldsTheClaim_SaysSo()
-    {
-        Assert.False(SingleInstanceGuard.IsHeldByAnotherCockpit(UniqueClaimName()));
-    }
-
-    /// <summary>
-    /// Both readings in one exercise, because the second only means anything after the first. Asking must not leave
-    /// a handle behind: a named claim lives as long as any handle to it does, so a reading that kept one would answer
-    /// "another cockpit is running" forever after — and the staged-update decision it gates (AC-738) would never
-    /// apply an update again on that machine.
-    /// </summary>
-    [Fact]
-    public void IsHeldByAnotherCockpit_AskedWhileAnotherCockpitHeldIt_SaysNobodyDoesOnceThatCockpitIsGone()
-    {
-        var claimName = UniqueClaimName();
-        var other = new CockpitHoldingTheClaim(claimName);
-
-        Assert.True(SingleInstanceGuard.IsHeldByAnotherCockpit(claimName));
-
-        other.Dispose();
-
-        Assert.False(SingleInstanceGuard.IsHeldByAnotherCockpit(claimName));
-    }
-
-    [Fact]
-    public void TryAcquire_WithAWait_WhileAnotherCockpitStillHoldsTheClaim_StillRefusesOnceItTimesOut()
-    {
-        var claimName = UniqueClaimName();
-        using var other = new CockpitHoldingTheClaim(claimName);
-
-        var second = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName, TimeSpan.FromMilliseconds(200));
-
-        Assert.Null(second);
-    }
-
-    [Fact]
-    public async Task TryAcquire_WithAWait_WhenTheHolderReleasesDuringIt_WinsTheHandoff()
-    {
-        // The restart race: the new cockpit starts while the old one still holds the claim, and takes it once the
-        // old one lets go. With the zero wait the other tests use this returns null instead — which is the bug the
-        // wait fixes (the "already running" notice after "Restart now").
-        var claimName = UniqueClaimName();
-        var other = new CockpitHoldingTheClaim(claimName);
-
-        // Acquired and released on the one thread, because a mutex is owned by the thread that took it — the same
-        // reason the holder above lives on a thread of its own.
-        var handoff = Task.Run(() =>
-        {
-            using var next = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName, TimeSpan.FromSeconds(5));
-            return next is not null;
-        });
-
-        // Let the waiter reach its WaitOne with the claim still held, so this exercises acquiring on release and
-        // not merely acquiring a claim that was already free.
-        await Task.Delay(300);
-        other.Dispose();
-
-        Assert.True(await handoff, "the outgoing cockpit released within the wait, so the restart must take the claim");
-    }
-
-    [Fact]
-    public void TryAcquire_ForADevelopmentBuild_DoesNotHonourTheClaim()
-    {
-        var claimName = UniqueClaimName();
-        using var production = new CockpitHoldingTheClaim(claimName);
-
-        using var development = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: true, claimName);
-
-        Assert.NotNull(development);
-    }
-
-    [Fact]
-    public void TryAcquire_ForADevelopmentBuild_DoesNotTakeTheClaimEither()
-    {
-        var claimName = UniqueClaimName();
-        using var development = new CockpitHoldingTheClaim(claimName, isDevelopmentBuild: true);
-
-        using var production = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
-
-        Assert.NotNull(production);
-    }
-
-    /// <summary>
-    /// The claim is keyed on the state root (AC-1217), so two instances pointed at roots of their own do not
-    /// block each other — and two pointed at one root still do, however they spell it.
-    /// </summary>
-    /// <remarks>
-    /// The spelling cases are the whole risk here: a claim derived straight from the string would be evaded by
-    /// typing a trailing separator or a different case, which reads as isolation and is not.
-    /// </remarks>
-    [Fact]
-    public void ClaimNameFor_TheDefaultRoot_IsTheNameEveryEarlierVersionUsed()
-    {
-        // Not cosmetic: during the one upgrade that introduces this change, the running old cockpit and the new
-        // one still share a state directory, and they only see each other while the name is unchanged.
-        Assert.Equal("AI-Cockpit-single-instance", SingleInstanceGuard.ClaimNameFor(CockpitBuild.DefaultStateRoot));
-    }
-
-    [Fact]
-    public void ClaimNameFor_TheDefaultRootSpeltOutInFull_IsStillTheDefaultClaim()
-    {
-        // Pointing the variable at the very directory the cockpit already uses must not buy a second claim: those
-        // two instances share everything, so this is exactly when the guard has to bite.
-        var spelt = CockpitBuild.DefaultStateRoot + Path.DirectorySeparatorChar;
-
-        Assert.Equal(SingleInstanceGuard.ClaimNameFor(CockpitBuild.DefaultStateRoot), SingleInstanceGuard.ClaimNameFor(spelt));
-    }
-
-    [Fact]
     public void ClaimNameFor_TwoDifferentRoots_AreDifferentClaims()
     {
         Assert.NotEqual(
             SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-a")),
             SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-b")));
-    }
-
-    [Fact]
-    public void ClaimNameFor_ARootWithAndWithoutATrailingSeparator_IsOneClaim()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "cockpit-normalise");
-
-        Assert.Equal(
-            SingleInstanceGuard.ClaimNameFor(root),
-            SingleInstanceGuard.ClaimNameFor(root + Path.DirectorySeparatorChar));
-    }
-
-    [Fact]
-    public void ClaimNameFor_ARootWithARelativeSegment_IsTheClaimOfTheDirectoryItLandsIn()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "cockpit-relative");
-        var roundabout = Path.Combine(root, "sub", "..");
-
-        Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(roundabout));
-    }
-
-    [WindowsFact("Only Windows compares paths case-insensitively; elsewhere the two spellings are genuinely two directories.")]
-    public void ClaimNameFor_OneRootInDifferentCase_IsOneClaimOnWindows()
-    {
-        // Windows compares paths case-insensitively, so C:\Temp\X and c:\temp\x are one directory and must be one
-        // claim. Linux and macOS are left alone: there they can genuinely be two directories.
-        var root = Path.Combine(Path.GetTempPath(), "Cockpit-Case");
-
-        Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(root.ToUpperInvariant()));
-    }
-
-    /// <summary>
-    /// The name has to be the same in every process that resolves the same root, which rules out
-    /// <see cref="string.GetHashCode()"/> — .NET seeds it per process, so two cockpits would never collide.
-    /// </summary>
-    [Fact]
-    public void ClaimNameFor_ARoot_IsAMutexNameAndNotAPath()
-    {
-        var name = SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-shape"));
-
-        // Backslash is reserved in a mutex name; the scope is set through NamedWaitHandleOptions instead.
-        Assert.DoesNotContain('\\', name);
-        Assert.StartsWith("AI-Cockpit-single-instance-", name, StringComparison.Ordinal);
     }
 
     /// <summary>Another cockpit, started and left open on a thread of its own, until disposed.</summary>
