@@ -1,6 +1,10 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Cockpit.App;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -12,6 +16,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.TestSupport;
@@ -37,19 +42,23 @@ public sealed class JourneyHost : IAsyncDisposable
     private readonly ILoggerFactory _loggerFactory;
     private MainWindow? _window;
 
-    private JourneyHost(string? stateRoot, Func<ILoggerFactory, EchoDriver, CockpitBackend> build)
+    private JourneyHost(string? stateRoot, Func<ILoggerFactory, EchoDriverFactory, CockpitBackend> build)
     {
         _ownsStateRoot = stateRoot is null;
         StateRoot = stateRoot ?? Path.Combine(Path.GetTempPath(), $"journey-{Guid.NewGuid():N}");
         Directory.CreateDirectory(StateRoot);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, StateRoot);
         _loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CollectingLoggerProvider(_log)));
-        Backend = build(_loggerFactory, Driver);
+        Drivers = new EchoDriverFactory(Driver);
+        Backend = build(_loggerFactory, Drivers);
     }
 
     public string StateRoot { get; }
 
+    // The first session's driver; `Drivers` holds every one made, one per session.
     public EchoDriver Driver { get; } = new();
+
+    public EchoDriverFactory Drivers { get; }
 
     public CockpitBackend Backend { get; }
 
@@ -70,12 +79,12 @@ public sealed class JourneyHost : IAsyncDisposable
         }
     }
 
-    public static JourneyHost Api() => new(null, (loggerFactory, driver) => CockpitBackend.Build(
-        loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver))));
+    public static JourneyHost Api() => new(null, (loggerFactory, drivers) => CockpitBackend.Build(
+        loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(drivers)));
 
     // As `Program.Main` builds it, up to the window. `beforeBuild` gets the state root first, for what an operator's
     // machine would already hold there (an installed plugin); a `stateRoot` of an earlier host is a restart onto it.
-    public static JourneyHost Desktop(Action<string>? beforeBuild = null, string? stateRoot = null) => new(stateRoot, (loggerFactory, driver) =>
+    public static JourneyHost Desktop(Action<string>? beforeBuild = null, string? stateRoot = null) => new(stateRoot, (loggerFactory, drivers) =>
     {
         beforeBuild?.Invoke(CockpitBuild.StateRoot);
         var backend = CockpitBackend.Build(
@@ -83,15 +92,15 @@ public sealed class JourneyHost : IAsyncDisposable
             services =>
             {
                 Program.AddDesktop(services, loggerFactory);
-                services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver));
+                services.AddSingleton<ISessionDriverFactory>(drivers);
             },
             PluginStartup.Load);
         Program.Services = backend.Services;
         return backend;
     });
 
-    // `Program.Main`'s Start, then App's steps in App's order: the main window over the cockpit, the plugins' phase 2
-    // with their UI parts, the planners, the restore of the saved desks and panes.
+    // `Program.Main`'s Start, then App's steps in App's order: the main window over the cockpit, the assistant's host
+    // and chip, the plugins' phase 2 with their UI parts, the planners, the restore of the saved desks and panes.
     public async Task StartDesktopAsync()
     {
         Backend.Start();
@@ -107,6 +116,7 @@ public sealed class JourneyHost : IAsyncDisposable
             }
 
             _window.Show();
+            app.StartAssistant(Cockpit);
             app.InitializePlugins();
             Backend.StartPlanners();
             await CockpitApp.RestoreCockpitAsync(Cockpit, Task.CompletedTask);
@@ -155,6 +165,35 @@ public sealed class JourneyHost : IAsyncDisposable
         });
 
         return HeadlessAvalonia.Run(() => Cockpit.Sessions.Except(before).OfType<SessionViewModel>().Single());
+    }
+
+    // An MCP client on one of the cockpit's own endpoints as the session `paneId`, which that endpoint was handed to
+    // at launch. A real provider reports that hand-over when it mounts its servers; the echo provider mounts nothing.
+    public async Task<McpClient> ConnectAsPaneAsync(string paneId, string serverName, string url)
+    {
+        Services.GetRequiredService<SessionMcpMounts>().Grant(paneId, [serverName]);
+        var token = Services.GetRequiredService<SessionMcpKeyring>().TokenFor(paneId);
+        return await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Name = serverName,
+            Endpoint = new Uri(url),
+            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" },
+        }));
+    }
+
+    public static async Task<JsonNode> CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
+    {
+        var result = await client.CallToolAsync(tool, arguments);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        try
+        {
+            return JsonNode.Parse(text) ?? new JsonObject();
+        }
+        catch (JsonException)
+        {
+            // A tool that failed answers in prose; that prose is the reason, so it is what the journey reports.
+            throw new InvalidOperationException($"{tool} answered: {text}");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -223,7 +262,7 @@ public sealed class JourneyHost : IAsyncDisposable
         {
             lock (lines)
             {
-                lines.Add(formatter(state, exception));
+                lines.Add(exception is null ? formatter(state, exception) : $"{formatter(state, exception)}\n{exception}");
             }
         }
     }

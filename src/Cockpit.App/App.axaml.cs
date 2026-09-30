@@ -342,43 +342,7 @@ public partial class App : Application
         // simply not be listening when its key fires.
         Program.Services.GetRequiredService<VoicePushToTalkCoordinator>();
 
-        // Resolve the assistant hotkey to start listening, and refresh it after Options saves so changes apply
-        // immediately (AC-543). This does not start an assistant instance.
-        var assistantPushToTalk = Program.Services.GetRequiredService<AssistantPushToTalkCoordinator>();
-
-        // Load assistant availability at startup so the first F10 does not use the stale off-by-default state.
-        // Availability checks start no instance; the first hold or click still does that.
-        var assistantHost = Program.Services.GetRequiredService<AssistantSessionHost>();
-        // AC-1343: fire-and-forget — reads only; the stale-read window before this resolves is accepted above.
-        _ = assistantHost.ApplySettingsAsync();
-
-        // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
-        // cannot take it as a constructor argument. Options → Assistant needs it for the one thing only a living
-        // assistant can do — restart onto a permission mode it was not launched with.
-        cockpitViewModel.AssistantHost = assistantHost;
-
-        // The chip, and what feeds it. Started here rather than in its constructor because it subscribes to the
-        // open-mic coordinator, which is resolved further down — and because the view model it hands over has to
-        // exist before the sidebar binds to it.
-        var assistantIndicator = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>();
-        assistantIndicator.Start();
-        assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
-
-        // The broker reads the consent-bypass snapshot synchronously; refresh its singleton after Options saves so
-        // disabled sources stop bypassing on the next request, not the next restart (AC-575).
-        var consentBypass = Program.Services.GetRequiredService<AssistantConsentBypassPolicy>();
-        // AC-1343: fire-and-forget — reads only, with its own try/catch (AssistantConsentBypassPolicy.cs:31).
-        cockpitViewModel.AssistantOptions.Saved += (_, _) => _ = consentBypass.ApplySettingsAsync();
-
-        assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
-        cockpitViewModel.AssistantIndicator = assistantIndicator.Indicator;
-        cockpitViewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(CockpitViewModel.SidebarCollapsed))
-            {
-                assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
-            }
-        };
+        StartAssistant(cockpitViewModel);
 
         // Held on the view model as well as resolved: every session panel is handed the capture its composer
         // button runs from here, the same way the open-mic coordinator is exposed for the sidebar toggle.
@@ -528,6 +492,49 @@ public partial class App : Application
             _ = managedCliUpdateChecker.CheckNowAsync();
         };
         _pluginUpdateTimer.Start();
+    }
+
+    // The assistant's standing parts: its hotkey, its host on the cockpit and the chip. AC-1422: internal so the
+    // journeys start the assistant the way the cockpit does.
+    internal void StartAssistant(CockpitViewModel cockpitViewModel)
+    {
+        // Resolve the assistant hotkey to start listening, and refresh it after Options saves so changes apply
+        // immediately (AC-543). This does not start an assistant instance.
+        var assistantPushToTalk = Program.Services.GetRequiredService<AssistantPushToTalkCoordinator>();
+
+        // Load assistant availability at startup so the first F10 does not use the stale off-by-default state.
+        // Availability checks start no instance; the first hold or click still does that.
+        var assistantHost = Program.Services.GetRequiredService<AssistantSessionHost>();
+        // AC-1343: fire-and-forget — reads only; the stale-read window before this resolves is accepted above.
+        _ = assistantHost.ApplySettingsAsync();
+
+        // Handed over rather than injected: the host is built *from* the cockpit view model, so the view model
+        // cannot take it as a constructor argument. Options → Assistant needs it for the one thing only a living
+        // assistant can do — restart onto a permission mode it was not launched with.
+        cockpitViewModel.AssistantHost = assistantHost;
+
+        // The chip, and what feeds it. Started here rather than in its constructor because it subscribes to the
+        // open-mic coordinator, which is resolved further down — and because the view model it hands over has to
+        // exist before the sidebar binds to it.
+        var assistantIndicator = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>();
+        assistantIndicator.Start();
+        assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
+
+        // The broker reads the consent-bypass snapshot synchronously; refresh its singleton after Options saves so
+        // disabled sources stop bypassing on the next request, not the next restart (AC-575).
+        var consentBypass = Program.Services.GetRequiredService<AssistantConsentBypassPolicy>();
+        // AC-1343: fire-and-forget — reads only, with its own try/catch (AssistantConsentBypassPolicy.cs:31).
+        cockpitViewModel.AssistantOptions.Saved += (_, _) => _ = consentBypass.ApplySettingsAsync();
+
+        assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
+        cockpitViewModel.AssistantIndicator = assistantIndicator.Indicator;
+        cockpitViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.SidebarCollapsed))
+            {
+                assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
+            }
+        };
     }
 
     // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopBackendHost per plugin carrying the

@@ -27,12 +27,15 @@ public sealed class EchoDriver : ISessionDriver
 
     public string? WorkingDirectory { get; private set; }
 
+    public string? PermissionMode { get; private set; }
+
     public IAsyncEnumerable<SessionEvent> Events => _EchoAsync();
 
     public Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
         WorkingDirectory = workingDirectory;
+        PermissionMode = permissionMode;
         return Task.CompletedTask;
     }
 
@@ -71,7 +74,29 @@ public sealed class EchoDriver : ISessionDriver
     }
 }
 
-public sealed class EchoDriverFactory(EchoDriver driver) : ISessionDriverFactory
+// A driver of its own for every session, the first made up front so a journey can wait on it before it exists.
+public sealed class EchoDriverFactory(EchoDriver first) : ISessionDriverFactory
 {
-    public ISessionDriver Create(SessionProfile? profile) => driver;
+    private readonly List<EchoDriver> _made = [];
+
+    public IReadOnlyList<EchoDriver> Made
+    {
+        get
+        {
+            lock (_made)
+            {
+                return [.. _made];
+            }
+        }
+    }
+
+    public ISessionDriver Create(SessionProfile? profile)
+    {
+        lock (_made)
+        {
+            var driver = _made.Count == 0 ? first : new EchoDriver();
+            _made.Add(driver);
+            return driver;
+        }
+    }
 }

@@ -2,7 +2,6 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Workspaces;
@@ -52,9 +51,9 @@ public sealed class NodeConnectJourney
         await using var client = await McpClient.CreateAsync(NodeCertificatePin.TransportFor(
             new McpServerConfig { Name = "node", Transport = McpTransport.Http, Url = nodeUrl, PinnedCertificateFingerprint = services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint },
             new HttpClientTransportOptions { Endpoint = new Uri(nodeUrl), AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {BootstrapKey}" } }));
-        var started = await _CallAsync(client, "start_node_agent", new() { ["profile"] = Profile, ["prompt"] = "hello" });
+        var started = await JourneyHost.CallAsync(client, "start_node_agent", new() { ["profile"] = Profile, ["prompt"] = "hello" });
         await cockpit.Driver.Answered.WaitAsync(TimeSpan.FromSeconds(30));
-        var transcript = await _CallAsync(client, "read_node_transcript", new() { ["paneId"] = started["paneId"]?.GetValue<string>() });
+        var transcript = await JourneyHost.CallAsync(client, "read_node_transcript", new() { ["paneId"] = started["paneId"]?.GetValue<string>() });
 
         Assert.True(started["ok"]?.GetValue<bool>());
         Assert.Contains(
@@ -113,11 +112,5 @@ public sealed class NodeConnectJourney
         await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });
         await services.GetRequiredService<ISessionProfileStore>().SaveAsync([new SessionProfile(Profile, new ClaudeConfig("/fake/.claude")) { DefaultKind = ProfileSessionKind.Sdk }]);
         await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = 0 });
-    }
-
-    private static async Task<JsonNode> _CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
-    {
-        var result = await client.CallToolAsync(tool, arguments);
-        return JsonNode.Parse(string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text))) ?? new JsonObject();
     }
 }
