@@ -26,7 +26,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host) 
         var options = BuildClientOptions(config, logger);
         var credential = new ApiKeyCredential(config.ApiKey);
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
-        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout);
+        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger);
     }
 
     // AC-1344/AC-1345: split out so a test can assert the configured (or default) TimeoutSeconds lands on

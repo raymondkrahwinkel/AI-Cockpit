@@ -55,6 +55,7 @@
          linked in rather than duplicated: four near-identical copies is how they drift apart. Still compiled
          into this plugin's own dll, so it ships and versions on its own exactly as before. -->
     <Compile Include="..\_shared\OpenAiCompatPluginSessionDriver.cs" Link="OpenAiCompatPluginSessionDriver.cs" />
+    <Compile Include="..\_shared\ChatTurnLoop.cs" Link="ChatTurnLoop.cs" />
   </ItemGroup>
 
   <ItemGroup>

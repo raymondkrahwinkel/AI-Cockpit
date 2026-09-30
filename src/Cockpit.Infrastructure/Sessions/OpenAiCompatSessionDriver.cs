@@ -1,6 +1,5 @@
 using System.ClientModel;
 using System.Globalization;
-using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -11,6 +10,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.OpenAiCompat;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -102,7 +102,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // HermesToolCallChatClient (middle) → model client (inner). The Hermes shim turns local-model text
         // tool-calls into structured FunctionCallContent before UseFunctionInvocation sees them; already-structured calls pass through.
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
-            .UseFunctionInvocation()
+            .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
             .Use(inner => new HermesToolCallChatClient(inner))
             .Build();
         // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
@@ -177,7 +177,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
         // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
         // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
-        var systemPrompt = _CombineSystemPrompt(_SystemPromptFrom(config), launchOptions);
+        var systemPrompt = ChatTurnLoop.WithCompletionConvention(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), toolsOffered: _turnTools.Count > 0);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
@@ -296,25 +296,22 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         }
     }
 
-    // Streams one model turn under `tools` (null = no tools). A turn with no text and no tool call surfaces as
-    // "no response" rather than a silent success, and only text-bearing turns are added to history so a blank
-    // assistant message never rides along later (AC-132); exceptions propagate for the caller to classify.
+    // Streams one model turn under `tools` (null = no tools) through the shared turn loop, which keeps the turn's
+    // tool calls and results in history (AC-1431). A turn with no text and no tool call surfaces as "no response"
+    // rather than a silent success (AC-132); exceptions propagate for the caller to classify.
     private async Task _StreamTurnAsync(IReadOnlyList<AITool>? tools, CancellationToken cancellationToken)
     {
+        var agent = _agent ?? throw new InvalidOperationException($"{nameof(_StreamTurnAsync)} called before {nameof(StartAsync)}.");
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
-        var assistant = new StringBuilder();
+        var outcome = await ChatTurnLoop.RunAsync(
+            agent,
+            _history,
+            options,
+            delta => _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta }),
+            _logger,
+            cancellationToken).ConfigureAwait(false);
 
-        await foreach (var update in _agent!.GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
-        {
-            var delta = update.Text;
-            if (!string.IsNullOrEmpty(delta))
-            {
-                assistant.Append(delta);
-                _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
-            }
-        }
-
-        var reply = assistant.ToString();
+        var reply = outcome.Text;
         var hasText = !string.IsNullOrWhiteSpace(reply);
 
         if (!hasText && !_turnHadToolActivity)
@@ -337,11 +334,6 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             });
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
             return;
-        }
-
-        if (hasText)
-        {
-            _history.Add(new ChatMessage(ChatRole.Assistant, reply));
         }
 
         _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false });

@@ -75,6 +75,62 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         Assert.Equal(["set_status", "read_file"], captured!.Tools!.Select(tool => tool.Name));
     }
 
+    [Fact]
+    public async Task SendUserMessage_AfterADroppedConnection_RetriesWithoutRerunningTheTool_AndTheNextTurnSeesTheToolResult()
+    {
+        var sent = new List<List<ChatMessage>>();
+        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"]);
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent.Add([.. messages])), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
+        await _StartWithToolsetAsync(driver, toolset);
+
+        await driver.SendUserMessageAsync("set my status");
+        var first = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+        await driver.SendUserMessageAsync("and now?");
+        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+
+        // AC-1431 criterion 3: the transport failure is retried into a successful turn, without running the tool twice.
+        Assert.False(Assert.Single(first.OfType<PluginTurnCompleted>()).IsError);
+        Assert.Single(toolset.Calls);
+
+        // Criterion 1: the second turn carries the first turn's call and its result, the call first.
+        var history = sent[^1];
+        var call = history.FindIndex(message => message.Role == ChatRole.Assistant && message.Contents.OfType<FunctionCallContent>().Any(content => content.CallId == "call_set_status"));
+        var result = history.FindIndex(message => message.Role == ChatRole.Tool && message.Contents.OfType<FunctionResultContent>().Any(content => content.CallId == "call_set_status"));
+        Assert.InRange(call, 0, result - 1);
+        Assert.Equal(["system", "user", "assistant", "tool", "assistant", "user"], history.Select(message => message.Role.Value));
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheModelStopsOnAnAnnouncement_GetsAtMostTwoContinuationRounds()
+    {
+        var sent = new List<List<ChatMessage>>();
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent.Add([.. messages])), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _Stream("Now I'll inspect the diff."));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
+        await _StartWithToolsetAsync(driver, new FakeToolset(["set_status"], reachable: ["set_status"]));
+
+        await driver.SendUserMessageAsync("work until the PR is open");
+        var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+
+        // AC-1431 criterion 2: an announcement without a tool call or the end-of-turn marker is nudged on within the
+        // same turn, and a model that never finishes gets exactly two nudges: the tool round, its answer, then two more.
+        Assert.Equal(4, sent.Count);
+        Assert.Equal(2, sent[^1].Count(message => message.Role == ChatRole.User && message.Text == ChatTurnLoop.ContinuationNudge));
+        Assert.Contains(ChatTurnLoop.CompletionMarker, sent[0][0].Text);
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _DropConnection(string partial)
+    {
+        yield return new ChatResponseUpdate(ChatRole.Assistant, partial);
+        await Task.CompletedTask;
+        throw new IOException("Unable to read data from the transport connection.");
+    }
+
     private static Task _StartWithToolsetAsync(OpenAiCompatPluginSessionDriver driver, IPluginToolset toolset) =>
         driver.StartAsync(null, null, null, null, null, null, toolset, CancellationToken.None);
 
