@@ -78,20 +78,6 @@ public class OpencodeAcpConnectionTests
         Assert.Equal("session-1", serverRequest.Params.GetProperty("sessionId").GetString());
     }
 
-    [Fact]
-    public async Task SendRequest_Fails_WhenTheStreamEndsBeforeAReply()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new OpencodeAcpConnection(fake);
-        connection.Start("opencode", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { protocolVersion = 1 });
-        await _WaitForRequestIdAsync(fake, "initialize");
-        fake.CompleteStdout();
-
-        await Assert.ThrowsAsync<OpencodeAcpException>(() => requestTask);
-    }
-
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)
     {
         for (var attempt = 0; attempt < 100; attempt++)

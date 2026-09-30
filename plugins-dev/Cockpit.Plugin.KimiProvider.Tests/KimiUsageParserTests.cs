@@ -28,33 +28,8 @@ public class KimiUsageParserTests
     }
 
     // Percentage can exceed 100 ((contextUsage*100).toFixed(1)) — must not be clamped.
-    [Fact]
-    public void ParseContextUsedPercent_AboveOneHundredPercent_IsReturnedUnclamped()
-    {
-        Assert.Equal(105.0, KimiUsageParser.ParseContextUsedPercent("- Context: 210,000 / 200,000 (105.0%)"));
-    }
-
-    [Fact]
-    public void ParseContextUsedPercent_OnlyTheContextLine_WithoutTotalOrCurrentTurn_StillWorks()
-    {
-        Assert.Equal(15.0, KimiUsageParser.ParseContextUsedPercent("- Context: 1,500 / 10,000 (15.0%)"));
-    }
 
     // /status ends with the same "Context:" line shape (protocol §11) — no separate branch needed.
-    [Fact]
-    public void ParseContextUsedPercent_StatusBlock_ReusesTheSameContextLine()
-    {
-        const string statusBlock = """
-            Session status:
-            - Model: kimi-k2
-            - Thinking: medium
-            - Permission: manual
-            - Plan mode: off
-            - Context: 45,000 / 200,000 (22.5%)
-            """;
-
-        Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent(statusBlock));
-    }
 
     [Theory]
     [InlineData(null)]

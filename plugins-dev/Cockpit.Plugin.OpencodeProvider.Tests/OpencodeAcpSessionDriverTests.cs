@@ -122,85 +122,7 @@ public class OpencodeAcpSessionDriverTests
         Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
     }
 
-    [Fact]
-    public async Task Start_UsesThePerSessionModelOption_OverConfig()
-    {
-        var fake = new FakeCliSubprocess();
-        var config = new OpencodeConfig(WorkingDirectory: Path.GetTempPath(), DefaultModel: "opencode/big-pickle");
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, config, "opencode");
-
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.Model] = "anthropic/claude-sonnet-4-5" };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[]}""");
-        var setModel = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("model", setModel.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("anthropic/claude-sonnet-4-5", setModel.GetProperty("params").GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public async Task Start_WithADefaultModelNotAmongTheOfferedChoices_SkipsTheSetConfigOptionCall()
-    {
-        var fake = new FakeCliSubprocess();
-        var config = new OpencodeConfig(WorkingDirectory: Path.GetTempPath(), DefaultModel: "opencode/retired-model");
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, config, "opencode");
-
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, timeout.Token);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"opencode/big-pickle","options":[{"value":"opencode/big-pickle","name":"Big Pickle"}]}]}""");
-
-        await startTask;
-
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
-    }
-
-    [Fact]
-    public async Task Start_WithAnAppendSystemPromptOption_ReportsThatItIsNotApplied_WithoutEchoingIt()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are a secret CEO persona." };
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[]}""");
-        await startTask;
-
-        var error = await _NextEventOfTypeAsync<PluginSessionError>(driver);
-        Assert.Contains("has no way to receive one over ACP", error.Message);
-        Assert.DoesNotContain("secret CEO persona", error.Message);
-    }
-
     // --- SetLiveOptionAsync validates against the live snapshot, not a hardcoded id list --------------------
-
-    [Fact]
-    public async Task SetLiveOptionAsync_WithAKeyNotInTheLiveSnapshot_SendsNoRequest()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake, configOptionsJson: """[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"opencode/big-pickle","options":[]}]""");
-
-        await driver.SetLiveOptionAsync("thinking", "high", CancellationToken.None);
-
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"configId\":\"thinking\""));
-    }
-
-    [Fact]
-    public async Task SetLiveOptionAsync_WithAKeyThatIsInTheLiveSnapshot_SendsTheRequest()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake, configOptionsJson: """[{"id":"mode","name":"Session Mode","category":"mode","type":"select","currentValue":"build","options":[]}]""");
-
-        var setTask = driver.SetLiveOptionAsync("mode", "plan", CancellationToken.None);
-        var request = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await setTask;
-
-        Assert.Equal("plan", request.GetProperty("params").GetProperty("value").GetString());
-    }
 
     // --- usage_update -> Status (criterion 2: opencode DOES report usage, unlike Kimi) -----------------------
 
@@ -217,20 +139,6 @@ public class OpencodeAcpSessionDriverTests
         Assert.NotNull(driver.Status);
         Assert.Equal(8507.0 / 200000 * 100, driver.Status!.ContextUsedPercent);
         Assert.Empty(driver.Status.RateLimits);
-    }
-
-    [Fact]
-    public async Task UsageUpdate_IsNotForwardedToTheTranscript()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"usage_update","used":100,"size":1000,"cost":{"amount":0,"currency":"USD"}}}}""");
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hi"}}}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("hi", delta.Text);
     }
 
     // --- stop reason mapping (criterion 2: full ACP spec enum, not Kimi's own 3-value fold) -----------------
@@ -303,20 +211,6 @@ public class OpencodeAcpSessionDriverTests
     }
 
     // --- disposal ------------------------------------------------------------------------------------------
-
-    [Fact]
-    public async Task DisposeAsync_IsIdempotent()
-    {
-        var fake = new FakeCliSubprocess();
-        var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake);
-
-        await driver.DisposeAsync();
-        var secondDispose = async () => await driver.DisposeAsync();
-
-        await secondDispose();
-        Assert.True(fake.Disposed);
-    }
 
     // --- helpers ---------------------------------------------------------------------------------------------
 

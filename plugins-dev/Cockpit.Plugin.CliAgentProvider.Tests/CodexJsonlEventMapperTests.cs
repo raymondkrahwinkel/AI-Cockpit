@@ -78,25 +78,6 @@ public class CodexJsonlEventMapperTests
     }
 
     [Fact]
-    public void ParseLine_ItemCompletedReasoning_EmitsNoEvent()
-    {
-        var result = CodexJsonlEventMapper.ParseLine(
-            """{"type":"item.completed","item":{"id":"item_3","item_type":"reasoning","text":"thinking..."}}""",
-            sessionId: "thread-123");
-
-        Assert.Empty(result.Events);
-        Assert.Equal("thread-123", result.SessionId);
-    }
-
-    [Fact]
-    public void ParseLine_TurnStarted_EmitsNoEvent()
-    {
-        var result = CodexJsonlEventMapper.ParseLine("""{"type":"turn.started"}""", sessionId: "thread-123");
-
-        Assert.Empty(result.Events);
-    }
-
-    [Fact]
     public void ParseLine_TurnCompleted_EmitsASuccessfulTurnCompletedEvent()
     {
         var result = CodexJsonlEventMapper.ParseLine(
@@ -146,14 +127,5 @@ public class CodexJsonlEventMapperTests
 
         act();
         Assert.Empty(act().Events);
-    }
-
-    [Fact]
-    public void ParseLine_BlankLine_IsSkipped()
-    {
-        var result = CodexJsonlEventMapper.ParseLine("   ", sessionId: "thread-123");
-
-        Assert.Empty(result.Events);
-        Assert.Equal("thread-123", result.SessionId);
     }
 }

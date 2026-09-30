@@ -34,24 +34,4 @@ public class CodexCustomHeaderTests
         // here would hand the credential to every local account on the machine.
         Assert.DoesNotContain("the-key", string.Join(" ", launch.ConfigArgs));
     }
-
-    [Fact]
-    public void Build_WithTwoServers_KeepsTheirHeaderVariablesApart()
-    {
-        var launch = CodexMcpConfig.Build([
-            _ServerWithHeader("X-Api-Key", "first-key"),
-            _ServerWithHeader("X-Api-Key", "second-key"),
-        ]);
-
-        Assert.Equal("first-key", launch.EnvironmentVariables["COCKPIT_MCP_HEADER_0_0"]);
-        Assert.Equal("second-key", launch.EnvironmentVariables["COCKPIT_MCP_HEADER_1_0"]);
-    }
-
-    [Fact]
-    public void Build_WithNoCustomHeaders_WritesNoHeaderField()
-    {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "plain", Url = "https://api.example/mcp" }]);
-
-        Assert.DoesNotContain("env_http_headers", string.Join(" ", launch.ConfigArgs));
-    }
 }

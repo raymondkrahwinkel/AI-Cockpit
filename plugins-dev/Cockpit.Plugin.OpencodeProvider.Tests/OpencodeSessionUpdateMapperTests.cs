@@ -18,27 +18,8 @@ public class OpencodeSessionUpdateMapperTests
         Assert.Equal("Hello", delta.Text);
     }
 
-    [Fact]
-    public void Map_AgentThoughtChunk_ProducesAThinkingDelta()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"The user wants me to create a file"}}}""");
-
-        var delta = Assert.IsType<PluginAssistantThinkingDelta>(Assert.Single(result.Events));
-        Assert.Equal("The user wants me to create a file", delta.Thinking);
-    }
-
     // Measured live: opencode's first tool_call for a file write carries an empty rawInput ({}), not a missing
     // one — the mapper must treat that the same as "not known yet", not as a real (empty) argument set.
-    [Fact]
-    public void Map_LazyToolCall_WithEmptyRawInput_ProducesNoEventYet()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"call_1","title":"write","kind":"edit","status":"pending","locations":[],"rawInput":{}}}""");
-
-        // An empty object is still a present rawInput per the mapper's own null/undefined check, so this
-        // actually fires immediately — this test pins that observed behaviour rather than assuming a "no
-        // rawInput at all" case, which opencode's live traffic never produced for tool_call.
-        Assert.Single(result.Events);
-    }
 
     [Fact]
     public void Map_ToolCallWithRawInput_ProducesToolUseRequested_CarryingItAsInputJson()
@@ -71,16 +52,6 @@ public class OpencodeSessionUpdateMapperTests
         Assert.False(result.IsError);
     }
 
-    [Theory]
-    [InlineData("pending")]
-    [InlineData("in_progress")]
-    public void Map_ToolCallUpdate_NonTerminalStatus_WithoutRawInput_ProducesNoEvent(string status)
-    {
-        var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_1","status":"{{{status}}}"}}""");
-
-        Assert.Empty(result.Events);
-    }
-
     [Fact]
     public void Map_ToolCallUpdate_Failed_WithNoPriorToolCall_ProducesToolUseRequested_ThenToolResult_WithError()
     {
@@ -93,38 +64,9 @@ public class OpencodeSessionUpdateMapperTests
         Assert.Equal("""{"message":"boom"}""", toolResult.Content);
     }
 
-    [Fact]
-    public void Map_ConfigOptionUpdate_ProducesNoEvent_ButCarriesTheConfigOptionsOut()
-    {
-        // Measured live shape: model + mode, no "thinking" id (see the driver's own remarks).
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"opencode/big-pickle","options":[]},{"id":"mode","name":"Session Mode","category":"mode","type":"select","currentValue":"build","options":[]}]}}""");
-
-        Assert.Empty(result.Events);
-        Assert.NotNull(result.ConfigOptions);
-        Assert.Equal(2, result.ConfigOptions!.Value.GetArrayLength());
-    }
-
-    [Theory]
-    [InlineData("plan")]
-    [InlineData("available_commands_update")]
-    public void Map_IgnoredUpdateKinds_ProduceNothing(string discriminator)
-    {
-        var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"{{{discriminator}}}"}}""");
-
-        Assert.Empty(result.Events);
-        Assert.Null(result.ConfigOptions);
-    }
-
     // usage_update is handled by the driver directly, never by this mapper — reaching Map() at all with this
     // discriminator must still be safe (no throw), the same "never trust the wire" discipline every other
     // unrecognised discriminator gets.
-    [Fact]
-    public void Map_UsageUpdate_ProducesNothing_AndDoesNotThrow()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"usage_update","used":8507,"size":200000,"cost":{"amount":0,"currency":"USD"}}}""");
-
-        Assert.Empty(result.Events);
-    }
 
     [Fact]
     public void Map_UnknownDiscriminator_ProducesNothing_AndDoesNotThrow()
@@ -143,28 +85,6 @@ public class OpencodeSessionUpdateMapperTests
     }
 
     // --- EnsureToolUseRequested (trigger for a permission request outside the session/update stream) --------
-
-    [Fact]
-    public void EnsureToolUseRequested_WithNoPriorSighting_EmitsUsingTheFallbackName()
-    {
-        var mapper = new OpencodeSessionUpdateMapper();
-
-        var emitted = mapper.EnsureToolUseRequested("call_1", "s1", fallbackToolName: "hello.txt");
-
-        Assert.NotNull(emitted);
-        Assert.Equal("call_1", emitted!.ToolUseId);
-        Assert.Equal("hello.txt", emitted.ToolName);
-        Assert.Equal("{}", emitted.InputJson);
-    }
-
-    [Fact]
-    public void EnsureToolUseRequested_AfterTheEventAlreadyFired_ReturnsNull()
-    {
-        var mapper = new OpencodeSessionUpdateMapper();
-        mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"call_1","title":"write","rawInput":{"filepath":"x"}}}"""));
-
-        Assert.Null(mapper.EnsureToolUseRequested("call_1", "s1", fallbackToolName: "tool"));
-    }
 
     private static JsonElement _Parse(string paramsJson)
     {

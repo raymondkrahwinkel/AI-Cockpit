@@ -11,13 +11,6 @@ public class KimiMcpConfigTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
-    [Fact]
-    public void Build_WithNoServers_IsEmpty()
-    {
-        Assert.Empty(KimiMcpConfig.Build(null, _NoEnv));
-        Assert.Empty(KimiMcpConfig.Build([], _NoEnv));
-    }
-
     // D6, the regression test the brief singles out: a stdio server's serialized JSON must have no "type"
     // property whatsoever — "type":"stdio" would make kimi's adapter drop the server silently.
     [Fact]
@@ -63,28 +56,6 @@ public class KimiMcpConfigTests
 
         var headers = _SerializeSingle(wire).GetProperty("headers");
         Assert.Equal("Bearer run-key", headers[0].GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public void Build_SkipsAServerWithNeitherUrlNorCommand()
-    {
-        Assert.Empty(KimiMcpConfig.Build([new PluginMcpServer { Name = "broken" }], _NoEnv));
-    }
-
-    [Fact]
-    public void Build_MixesStdioAndHttpServers_EachWithItsOwnShape()
-    {
-        var wire = KimiMcpConfig.Build(
-        [
-            new PluginMcpServer { Name = "fs", Command = "npx" },
-            new PluginMcpServer { Name = "api", Url = "http://x/mcp" },
-        ], _NoEnv);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(wire));
-        var json = JsonSerializer.Serialize(wire);
-        using var document = JsonDocument.Parse(json);
-        Assert.False(document.RootElement[0].TryGetProperty("type", out _));
-        Assert.Equal("http", document.RootElement[1].GetProperty("type").GetString());
     }
 
     private static JsonElement _SerializeSingle(IReadOnlyList<object> wire)

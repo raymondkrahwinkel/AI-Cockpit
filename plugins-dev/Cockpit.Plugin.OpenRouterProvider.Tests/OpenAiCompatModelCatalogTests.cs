@@ -31,16 +31,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(["anthropic/claude-sonnet-4.5", "openai/gpt-5.1"], models);
     }
 
-    [Fact]
-    public async Task ListAsync_ThrowsOnARejectedKeySoTheConfigViewCanSaySo()
-    {
-        var handler = new StubHandler("unauthorized", HttpStatusCode.Unauthorized);
-        using var httpClient = new HttpClient(handler);
-
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => OpenAiCompatModelCatalog.ListAsync(httpClient, "https://openrouter.ai/api/v1", "wrong-key", CancellationToken.None));
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

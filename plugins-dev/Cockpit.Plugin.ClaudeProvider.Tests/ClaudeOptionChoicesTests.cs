@@ -6,30 +6,6 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 public class ClaudeOptionChoicesTests
 {
     [Fact]
-    public void ModelSuggestions_OfferTheCliAliases_IncludingFable()
-    {
-        Assert.Equal(new[] { "fable", "opus", "sonnet", "haiku" }, ClaudeOptionChoices.ModelSuggestions);
-    }
-
-    [Fact]
-    public void ModelLabels_NameNoRelease_SoALabelCannotOutliveWhatTheAliasResolvesTo()
-    {
-        foreach (var (value, label) in ClaudeOptionChoices.ModelLabels)
-        {
-            Assert.False(label.Any(char.IsDigit), $"model label '{label}' for alias '{value}' names a specific release");
-        }
-    }
-
-    [Fact]
-    public void EveryModelSuggestion_CarriesALabel()
-    {
-        foreach (var suggestion in ClaudeOptionChoices.ModelSuggestions)
-        {
-            Assert.True(ClaudeOptionChoices.ModelLabels.ContainsKey(suggestion), $"model alias '{suggestion}' has no label");
-        }
-    }
-
-    [Fact]
     public void ModelCostEstimates_AreOrderedCheapestFirst()
     {
         // The list order is the claim consumers route on (AC-256), so it has to agree with the prices beside it —

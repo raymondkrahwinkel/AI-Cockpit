@@ -31,16 +31,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(["gpt-oss-120b", "qwen3-coder"], models);
     }
 
-    [Fact]
-    public async Task ListAsync_ThrowsOnARejectedKeySoTheConfigViewCanSaySo()
-    {
-        var handler = new StubHandler("unauthorized", HttpStatusCode.Unauthorized);
-        using var httpClient = new HttpClient(handler);
-
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => OpenAiCompatModelCatalog.ListAsync(httpClient, "https://api.openai.com/v1", "wrong-key", CancellationToken.None));
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

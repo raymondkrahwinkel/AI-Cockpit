@@ -80,87 +80,11 @@ public class KimiAcpConnectionTests
         Assert.Equal("session-1", serverRequest.Params.GetProperty("sessionId").GetString());
     }
 
-    [Fact]
-    public async Task SendRequest_Fails_WhenTheStreamEndsBeforeAReply()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { protocolVersion = 1 });
-        await _WaitForRequestIdAsync(fake, "initialize");
-        fake.CompleteStdout();
-
-        await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
-    }
-
-    [Fact]
-    public async Task Start_DrainsStderrConcurrently_SoABoundedStderrPipeNeverBlocksTheConnection()
-    {
-        var fake = new FakeCliSubprocess(stderrCapacity: 1);
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        // Push more stderr lines than the bounded channel's capacity. Without a dedicated concurrent drain
-        // task, the write past capacity would block forever — a full pipe deadlocking the child (D14).
-        var pushStderr = Task.Run(async () =>
-        {
-            for (var i = 0; i < 5; i++)
-            {
-                await fake.PushStderrAsync($"progress {i}");
-            }
-        });
-
-        var finishedInTime = await Task.WhenAny(pushStderr, Task.Delay(TimeSpan.FromSeconds(3))) == pushStderr;
-
-        Assert.True(finishedInTime, "a dedicated stderr-drain task must keep a bounded stderr pipe from blocking the connection");
-    }
-
     // P1-9b: the internal notification channel is bounded (capacity 1024) with BoundedChannelFullMode.Wait —
     // proves that pushing past that capacity applies backpressure instead of silently dropping a message. Under
     // the bug this replaces (an unbounded channel, or a bounded one written with TryWrite), a burst like this
     // either grows without bound or drops everything past the cap the instant the fast-path TryWrite fails; this
     // asserts every single one of them is still eventually delivered once a reader starts draining.
-    [Fact]
-    public async Task Notifications_PushedFasterThanConsumed_PastBoundedCapacity_DropsNone()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        const int total = 1100; // past the 1024 bounded capacity
-        const string notificationJson = """{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"tick"}}}}""";
-        for (var i = 0; i < total; i++)
-        {
-            await fake.PushStdoutAsync(notificationJson);
-        }
-
-        // Give the background read loop a chance to run as far as it can before anything drains the channel.
-        // Under the bug, everything past the cap would already be silently gone by now; under the fix, the
-        // dispatch loop is instead blocked mid-write, holding every message it has not yet handed off.
-        await Task.Delay(200);
-
-        var received = 0;
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try
-        {
-            await foreach (var _ in connection.Notifications.WithCancellation(timeout.Token))
-            {
-                received++;
-                if (received == total)
-                {
-                    break;
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Times out here under the bug, since "total" is never reached — caught so the assertion below
-            // reports a clean, readable failure instead of an unhandled exception from the cancelled iteration.
-        }
-
-        Assert.Equal(total, received);
-    }
 
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)
     {

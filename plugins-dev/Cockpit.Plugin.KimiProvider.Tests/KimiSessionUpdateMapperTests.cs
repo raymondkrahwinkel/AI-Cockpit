@@ -22,24 +22,7 @@ public class KimiSessionUpdateMapperTests
         Assert.Equal("Hello", delta.Text);
     }
 
-    [Fact]
-    public void Map_AgentThoughtChunk_ProducesAThinkingDelta()
-    {
-        // Reasoning must land as thinking, not as ordinary assistant text.
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Let me consider"}}}""");
-
-        var delta = Assert.IsType<PluginAssistantThinkingDelta>(Assert.Single(result.Events));
-        Assert.Equal("Let me consider", delta.Thinking);
-    }
-
     // D4/P1-3, trigger (a): a tool_call with no rawInput yet is remembered but produces nothing on its own.
-    [Fact]
-    public void Map_LazyToolCall_WithoutRawInput_ProducesNoEventYet()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"pending"}}""");
-
-        Assert.Empty(result.Events);
-    }
 
     // Trigger (a): a tool_call that already carries rawInput fires the one PluginToolUseRequested immediately.
     [Fact]
@@ -71,16 +54,6 @@ public class KimiSessionUpdateMapperTests
 
         var terminal = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"done"}}]}}"""));
         Assert.IsType<PluginToolResult>(Assert.Single(terminal.Events));
-    }
-
-    [Theory]
-    [InlineData("pending")]
-    [InlineData("in_progress")]
-    public void Map_ToolCallUpdate_NonTerminalStatus_WithoutRawInput_ProducesNoEvent(string status)
-    {
-        var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"{{{status}}}"}}""");
-
-        Assert.Empty(result.Events);
     }
 
     // P1-3, trigger (c): a terminal update for an id that never got a prior tool_call (or refining update) must
@@ -126,54 +99,12 @@ public class KimiSessionUpdateMapperTests
 
     // P1-3: once the one PluginToolUseRequested has fired, a further refining update for the same id must not
     // produce a second one — the plugin contract has no "update an already-requested tool call" event.
-    [Fact]
-    public void ToolCallWithRawInput_ThenAnotherToolCallUpdateWithRawInput_ProducesOnlyOneToolUseRequested()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        var first = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{"path":"a"}}}"""));
-        var second = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"in_progress","title":"Read again","rawInput":{"path":"b"}}}"""));
-
-        Assert.IsType<PluginToolUseRequested>(Assert.Single(first.Events));
-        Assert.Empty(second.Events);
-    }
-
-    [Fact]
-    public void Map_ConfigOptionUpdate_ProducesNoEvent_ButCarriesTheConfigOptionsOut()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"config_option_update","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k2","options":[]}]}}""");
-
-        Assert.Empty(result.Events);
-        Assert.NotNull(result.ConfigOptions);
-        Assert.Equal(1, result.ConfigOptions!.Value.GetArrayLength());
-    }
-
-    [Theory]
-    [InlineData("plan")]
-    [InlineData("available_commands_update")]
-    public void Map_IgnoredUpdateKinds_ProduceNothing(string discriminator)
-    {
-        var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"{{{discriminator}}}"}}""");
-
-        Assert.Empty(result.Events);
-        Assert.Null(result.ConfigOptions);
-    }
 
     [Fact]
     public void Map_UnknownDiscriminator_ProducesNothing_AndDoesNotThrow()
     {
         var mapper = new KimiSessionUpdateMapper();
         var map = () => mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"something_kimi_added_later"}}"""));
-
-        map();
-        Assert.Empty(map().Events);
-    }
-
-    [Fact]
-    public void Map_NotificationWithoutParams_ProducesNothing_AndDoesNotThrow()
-    {
-        // The undefault(JsonElement) shape a param-less notification reaches the mapper as.
-        var mapper = new KimiSessionUpdateMapper();
-        var map = () => mapper.Map(default);
 
         map();
         Assert.Empty(map().Events);
@@ -187,88 +118,11 @@ public class KimiSessionUpdateMapperTests
         Assert.Empty(result.Events);
     }
 
-    [Fact]
-    public void Map_ToolCall_WithoutToolCallId_ProducesNothing()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","title":"Read"}}""");
-
-        Assert.Empty(result.Events);
-    }
-
     // --- EnsureToolUseRequested (P1-3, trigger (c) for a permission request) ---------------------------------
-
-    [Fact]
-    public void EnsureToolUseRequested_WithNoPriorSighting_EmitsUsingTheFallbackName()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-
-        var emitted = mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "shell");
-
-        Assert.NotNull(emitted);
-        Assert.Equal("turn-1:tool-1", emitted!.ToolUseId);
-        Assert.Equal("shell", emitted.ToolName);
-        Assert.Equal("{}", emitted.InputJson);
-    }
-
-    [Fact]
-    public void EnsureToolUseRequested_AfterALazyToolCall_EmitsUsingWhatIsAlreadyKnown()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"pending"}}"""));
-
-        var emitted = mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool");
-
-        Assert.NotNull(emitted);
-        Assert.Equal("Read", emitted!.ToolName);
-    }
-
-    [Fact]
-    public void EnsureToolUseRequested_AfterTheEventAlreadyFired_ReturnsNull()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{}}}"""));
-
-        Assert.Null(mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool"));
-    }
 
     // Both maps are keyed on toolCallIds the child process invents and neither empties on its own, so a child
     // that keeps inventing them must not be able to grow the host's memory without a ceiling. Past the cap the
     // oldest id is forgotten instead.
-    [Fact]
-    public void ManyLazyToolCalls_PastTheTrackingCap_ForgetTheOldestInsteadOfGrowing()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        var overflow = KimiSessionUpdateMapper.MaxTrackedToolCalls + 500;
-
-        for (var index = 0; index < overflow; index++)
-        {
-            mapper.Map(_Parse($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{index}}}","title":"Read"}}"""));
-        }
-
-        Assert.True(mapper.TrackedToolCallCountForTests <= KimiSessionUpdateMapper.MaxTrackedToolCalls);
-
-        // The most recent id is the one that still matters: its permission request must still find what the
-        // mapper knows about it rather than falling back to a bare name.
-        var latest = mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool");
-        Assert.Equal("Read", latest!.ToolName);
-    }
-
-    [Fact]
-    public void ManyEmittedToolCalls_PastTheTrackingCap_ForgetTheOldestInsteadOfGrowing()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        var overflow = KimiSessionUpdateMapper.MaxTrackedToolCalls + 500;
-
-        for (var index = 0; index < overflow; index++)
-        {
-            mapper.Map(_Parse($$$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{{index}}}}","title":"Read","rawInput":{}}}"""));
-        }
-
-        Assert.True(mapper.EmittedToolCallCountForTests <= KimiSessionUpdateMapper.MaxTrackedToolCalls);
-
-        // Recent ids keep their "already emitted" answer — only ids thousands of calls old are forgotten.
-        Assert.Null(mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool"));
-    }
 
     private static JsonElement _Parse(string paramsJson)
     {

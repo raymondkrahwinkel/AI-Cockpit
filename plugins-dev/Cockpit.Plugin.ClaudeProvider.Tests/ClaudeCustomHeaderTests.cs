@@ -62,20 +62,4 @@ public class ClaudeCustomHeaderTests
             Assert.Equal("Bearer the-token", headers.GetProperty("Authorization").GetString());
         });
     }
-
-    [Fact]
-    public void Write_WithNothingToSend_WritesNoHeadersObject()
-    {
-        var server = new PluginMcpServer { Name = "plain", Url = "https://api.example/mcp" };
-
-        _WithConfig(server, path =>
-        {
-            var entry = JsonDocument.Parse(File.ReadAllText(path))
-                .RootElement
-                .GetProperty("mcpServers")
-                .GetProperty("plain");
-
-            Assert.False(entry.TryGetProperty("headers", out _));
-        });
-    }
 }

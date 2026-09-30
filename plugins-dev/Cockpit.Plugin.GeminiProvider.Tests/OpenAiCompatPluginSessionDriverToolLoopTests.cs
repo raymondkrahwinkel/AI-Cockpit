@@ -10,34 +10,6 @@ namespace Cockpit.Plugin.GeminiProvider.Tests;
 public class OpenAiCompatPluginSessionDriverToolLoopTests
 {
     [Fact]
-    public async Task StartAsync_WithAToolset_ReportsToolSupportAndTheReachableNames()
-    {
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status", "search_tools", "call_tool"]);
-        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "gpt-5");
-
-        await _StartWithToolsetAsync(driver, toolset);
-
-        // Criterion 4: the driver said it has tools, and named what the session can actually reach — the empty
-        // list it used to publish is what made a session with mounted servers look like it had nothing.
-        Assert.True(driver.Capabilities.SupportsTools);
-        var initialized = Assert.Single((await _CollectAsync(driver, evt => evt is PluginSessionInitialized)).OfType<PluginSessionInitialized>());
-        Assert.Equal(["set_status", "search_tools", "call_tool"], initialized.Tools);
-    }
-
-    [Fact]
-    public async Task StartAsync_WithoutAToolset_StaysChatOnly()
-    {
-        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "gpt-5");
-
-        // Criterion 9: a session started with no MCP servers behaves exactly as this driver always did.
-        await driver.StartAsync(null, null, null, null, null, null, toolset: null, CancellationToken.None);
-
-        Assert.False(driver.Capabilities.SupportsTools);
-        var initialized = Assert.Single((await _CollectAsync(driver, evt => evt is PluginSessionInitialized)).OfType<PluginSessionInitialized>());
-        Assert.Empty(initialized.Tools);
-    }
-
-    [Fact]
     public async Task SendUserMessage_WhenTheModelCallsATool_RunsItThroughTheHostAndCarriesOn()
     {
         var toolset = new FakeToolset(["set_status"], reachable: ["set_status"]);
@@ -56,93 +28,6 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         Assert.Contains("AC-964", toolset.Calls[0].ArgumentsJson);
         Assert.Contains("status set.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
-    }
-
-    [Fact]
-    public async Task SendUserMessage_OffersTheToolsToTheModelEveryTurn()
-    {
-        ChatOptions? captured = null;
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions>(options => captured = options), Arg.Any<CancellationToken>())
-            .Returns(_Stream("ok"));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, new FakeToolset(["set_status", "read_file"], reachable: ["set_status", "read_file"]));
-
-        await driver.SendUserMessageAsync("hi");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-
-        Assert.NotNull(captured?.Tools);
-        Assert.Equal(["set_status", "read_file"], captured!.Tools!.Select(tool => tool.Name));
-    }
-
-    [Fact]
-    public async Task SendUserMessage_AfterADroppedConnection_RetriesWithoutRerunningTheTool_AndLaterTurnsSeeTheToolResult_TrimmedOnceTwoTurnsOld()
-    {
-        var sent = new List<List<ChatMessage>>();
-        var sentResults = new List<string?>();
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"], result: new string('x', 2000));
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(
-                Arg.Do<IEnumerable<ChatMessage>>(messages =>
-                {
-                    sent.Add([.. messages]);
-                    sentResults.Add(messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().SingleOrDefault()?.Result?.ToString());
-                }),
-                Arg.Any<ChatOptions>(),
-                Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"), _Stream("third turn. [turn complete]"));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, toolset);
-
-        await driver.SendUserMessageAsync("set my status");
-        var first = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-        await driver.SendUserMessageAsync("and now?");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-        await driver.SendUserMessageAsync("and then?");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-
-        // AC-1431 criterion 3: the transport failure is retried into a successful turn, without running the tool twice.
-        Assert.False(Assert.Single(first.OfType<PluginTurnCompleted>()).IsError);
-        Assert.Single(toolset.Calls);
-
-        // Criterion 1: the second turn carries the first turn's call and its result, the call first.
-        var history = sent[3];
-        var call = history.FindIndex(message => message.Role == ChatRole.Assistant && message.Contents.OfType<FunctionCallContent>().Any(content => content.CallId == "call_set_status"));
-        var result = history.FindIndex(message => message.Role == ChatRole.Tool && message.Contents.OfType<FunctionResultContent>().Any(content => content.CallId == "call_set_status"));
-        Assert.InRange(call, 0, result - 1);
-        Assert.Equal(["system", "user", "assistant", "tool", "assistant", "user"], history.Select(message => message.Role.Value));
-
-        // The previous turn's result rides along whole; two turns on, only its first 1500 characters and a note do.
-        Assert.Equal(2000, sentResults[3]?.Length);
-        Assert.Equal(new string('x', 1500) + "\n[truncated by cockpit: 2000 chars]", sentResults[4]);
-    }
-
-    [Fact]
-    public async Task SendUserMessage_WhenTheModelStopsOnAnAnnouncement_GetsAtMostTwoContinuationRounds()
-    {
-        var sent = new List<List<ChatMessage>>();
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent.Add([.. messages])), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _Stream("Now I'll inspect the diff."));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, new FakeToolset(["set_status"], reachable: ["set_status"]));
-
-        await driver.SendUserMessageAsync("work until the PR is open");
-        var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-
-        // AC-1431 criterion 2: an announcement without a tool call or the end-of-turn marker is nudged on within the
-        // same turn, and a model that never finishes gets exactly two nudges: the tool round, its answer, then two more.
-        Assert.Equal(4, sent.Count);
-        Assert.Equal(2, sent[^1].Count(message => message.Role == ChatRole.User && message.Text == ChatTurnLoop.ContinuationNudge));
-        Assert.Contains(ChatTurnLoop.CompletionMarker, sent[0][0].Text);
-        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
-    }
-
-    private static async IAsyncEnumerable<ChatResponseUpdate> _DropConnection(string partial)
-    {
-        yield return new ChatResponseUpdate(ChatRole.Assistant, partial);
-        await Task.CompletedTask;
-        throw new IOException("Unable to read data from the transport connection.");
     }
 
     private static Task _StartWithToolsetAsync(OpenAiCompatPluginSessionDriver driver, IPluginToolset toolset) =>

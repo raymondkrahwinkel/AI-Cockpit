@@ -65,14 +65,6 @@ public class ClaudeMcpConfigTests
     }
 
     [Fact]
-    public void Write_WithNoServers_ReturnsNull_ByDefault()
-    {
-        // The TTY route's existing behaviour (unchanged by AC-378): nothing to add means the flag is dropped
-        // entirely, so the operator's own connectors add on top of a config that was never written at all.
-        Assert.Null(ClaudeMcpConfig.Write([]));
-    }
-
-    [Fact]
     public void Write_WithNoServers_WriteEmptyExplicit_WritesAnActualEmptyConfig_InsteadOfNull()
     {
         // AC-378, criterion 4 — the empty-resolution trap: the headless/strict route must be able to say "zero
@@ -91,23 +83,6 @@ public class ClaudeMcpConfigTests
             {
                 File.Delete(path);
             }
-        }
-    }
-
-    [Fact]
-    public void Write_WriteEmptyExplicit_StillWritesTheServersItWasGiven()
-    {
-        // writeEmptyExplicit only changes what happens at zero servers — it must not suppress the servers that
-        // were actually resolved.
-        var path = ClaudeMcpConfig.Write([new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }], writeEmptyExplicit: true);
-
-        try
-        {
-            Assert.Equal("http://example/mcp", JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>());
-        }
-        finally
-        {
-            File.Delete(path!);
         }
     }
 

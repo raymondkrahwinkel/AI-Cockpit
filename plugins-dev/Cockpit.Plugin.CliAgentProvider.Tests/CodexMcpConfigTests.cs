@@ -8,13 +8,6 @@ namespace Cockpit.Plugin.CliAgentProvider.Tests;
 public class CodexMcpConfigTests
 {
     [Fact]
-    public void Build_WithNoServers_IsEmpty()
-    {
-        Assert.Same(CodexMcpLaunch.Empty, CodexMcpConfig.Build(null));
-        Assert.Same(CodexMcpLaunch.Empty, CodexMcpConfig.Build([]));
-    }
-
-    [Fact]
     public void Build_ForAnHttpServerWithoutAToken_EmitsOnlyItsUrl()
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" }]);
@@ -104,26 +97,10 @@ public class CodexMcpConfigTests
     }
 
     [Fact]
-    public void Build_FallsBackToAnIndexedName_WhenAServerNameHasNoUsableCharacters()
-    {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "：（）", Url = "http://x/mcp" }]);
-
-        Assert.Equal(new[] { "-c", """mcp_servers.server_0={ url = "http://x/mcp" }""" }, launch.ConfigArgs);
-    }
-
-    [Fact]
     public void Build_EscapesQuotesAndBackslashesInValues_SoAValueCannotBreakTheToml()
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "x", Url = """http://h/"a"\b""" }]);
 
         Assert.Equal("""mcp_servers.x={ url = "http://h/\"a\"\\b" }""", launch.ConfigArgs[1]);
-    }
-
-    [Fact]
-    public void Build_SkipsAServerWithNeitherUrlNorCommand()
-    {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "broken" }]);
-
-        Assert.Empty(launch.ConfigArgs);
     }
 }

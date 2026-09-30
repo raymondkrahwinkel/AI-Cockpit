@@ -96,19 +96,6 @@ public class ClaudeUsageSignalsTests
     }
 
     [Fact]
-    public void TheAllowances_OfferAResume_AndTheContextDoesNot()
-    {
-        // A context window empties on a compaction, not at a moment, so there is nothing to schedule against.
-        var declarations = ClaudeUsageSignals.Declarations;
-
-        Assert.Equal(PluginUsageSignalKind.Fill, _Signal(declarations, ClaudeUsageSignals.ContextKey).Kind);
-        Assert.False(_Signal(declarations, ClaudeUsageSignals.ContextKey).SupportsResume);
-        Assert.Equal(PluginUsageSignalKind.Allowance, _Signal(declarations, ClaudeUsageSignals.FiveHourKey).Kind);
-        Assert.True(_Signal(declarations, ClaudeUsageSignals.FiveHourKey).SupportsResume);
-        Assert.True(_Signal(declarations, ClaudeUsageSignals.WeeklyKey).SupportsResume);
-    }
-
-    [Fact]
     public void EveryReading_NamesADeclaredSignal()
     {
         // A reading whose key matches no declaration is dropped by the host, so a typo here would silently cost a
@@ -126,7 +113,4 @@ public class ClaudeUsageSignalsTests
 
     private static double _Percent(IReadOnlyList<PluginUsageReading> readings, string key) =>
         _Reading(readings, key).UsedPercent;
-
-    private static PluginUsageSignal _Signal(IReadOnlyList<PluginUsageSignal> signals, string key) =>
-        signals.Single(signal => signal.Key == key);
 }

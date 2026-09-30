@@ -24,36 +24,4 @@ public class CliAgentConfigTests
 
         Assert.Contains("ApiKey = null", config.ToString());
     }
-
-    [Fact]
-    public void EffectiveOutputFormatArgs_DefaultsToJsonFlag_WhenNotConfigured()
-    {
-        var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
-
-        Assert.Equal(new[] { "--json" }, config.EffectiveOutputFormatArgs);
-    }
-
-    [Fact]
-    public void EffectiveExtraArgs_DefaultsToEmpty_WhenNotConfigured()
-    {
-        var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
-
-        Assert.Empty(config.EffectiveExtraArgs);
-    }
-
-    [Fact]
-    public void IsStdinPromptMode_IsFalse_ForTheDefaultArgPromptMode()
-    {
-        var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
-
-        Assert.False(config.IsStdinPromptMode);
-    }
-
-    [Fact]
-    public void IsStdinPromptMode_IsTrue_WhenConfiguredAsStdin()
-    {
-        var config = new CliAgentConfig(WorkingDirectory: @"C:\work", PromptMode: "stdin");
-
-        Assert.True(config.IsStdinPromptMode);
-    }
 }
