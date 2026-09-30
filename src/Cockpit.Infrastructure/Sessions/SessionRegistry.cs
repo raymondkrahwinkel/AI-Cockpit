@@ -78,6 +78,8 @@ public sealed class SessionRegistry : ISessionRegistry, ISingletonService
         {
             _assistant = handle;
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void UnregisterAssistant()
@@ -86,5 +88,7 @@ public sealed class SessionRegistry : ISessionRegistry, ISingletonService
         {
             _assistant = null;
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 }

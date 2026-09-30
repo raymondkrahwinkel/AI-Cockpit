@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -194,6 +195,21 @@ public interface ISessionHandle
     /// chains more than one of them.
     /// </summary>
     Task<SessionWakeState> ReadWakeStateAsync();
+
+    /// <summary>
+    /// Raised when a transcript row is added or changed, carrying the sequence number the upsert was stamped with (AC-1386).
+    /// Never raised by a handle whose session keeps no host-owned transcript, such as a TTY pane or a plain terminal.
+    /// </summary>
+    event Action<TranscriptRowUpsert>? RowUpserted
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
 }
 
 // AC-1324: one open Allow/Deny question on a session, as its own handle reports it — the same shape

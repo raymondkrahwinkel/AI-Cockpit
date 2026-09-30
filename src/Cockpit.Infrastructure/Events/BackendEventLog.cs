@@ -18,13 +18,15 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
     private readonly HashSet<Channel<BackendEvent>> _readers = [];
     private long _evictedThrough;
 
-    public long Append(string kind, string? paneId, object data)
+    // ponytail: a given seq was drawn before the gate, so a live reader can see it after a higher one. Resuming past
+    // that higher one then skips it; drawing the seq inside the gate (the log stamping the upsert) closes that.
+    public long Append(string kind, string? paneId, object data, long? seq = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         var json = JsonSerializer.SerializeToElement(data);
         lock (_gate)
         {
-            var evt = new BackendEvent(SessionEventSequence.Next(), kind, paneId, json);
+            var evt = new BackendEvent(seq ?? SessionEventSequence.Next(), kind, paneId, json);
             _buffer.Enqueue(evt);
             if (_buffer.Count > Capacity)
             {

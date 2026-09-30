@@ -1,6 +1,8 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -110,6 +112,26 @@ internal sealed class SessionPanelHandle(
     public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(() => pane.InjectAndSubmit(text));
 
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(() => pane.InjectText(text));
+
+    // AC-1386: an SDK session's own rows, raised where its host raises them; a TTY pane has no host-owned transcript.
+    public event Action<TranscriptRowUpsert>? RowUpserted
+    {
+        add
+        {
+            if (pane is IAssistantSession sdk)
+            {
+                sdk.RowUpserted += value;
+            }
+        }
+
+        remove
+        {
+            if (pane is IAssistantSession sdk)
+            {
+                sdk.RowUpserted -= value;
+            }
+        }
+    }
 
     private bool _IsLive() => isLive?.Invoke() ?? true;
 

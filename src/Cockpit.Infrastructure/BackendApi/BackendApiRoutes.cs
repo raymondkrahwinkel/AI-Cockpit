@@ -22,6 +22,7 @@ internal static class BackendApiRoutes
         api.AddEndpointFilter(_DoorAsync);
         EventsEndpoint.Map(api, services);
         FilesEndpoint.Map(api, services);
+        SessionsEndpoints.Map(api, services);
 
         api.MapGet("/whoami", () =>
         {

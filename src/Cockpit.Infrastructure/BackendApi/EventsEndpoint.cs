@@ -62,7 +62,8 @@ internal static class EventsEndpoint
                     }
 
                     var evt = events.Current;
-                    if (evt.PaneId is { } paneId)
+                    // The assistant is every operate key's, as its routes are; any other pane only within the key's scope.
+                    if (evt.PaneId is { } paneId && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal))
                     {
                         var session = sessions.Find(paneId);
                         if (session is null || !caller.AllowsSession(session.ActiveProfileLabel ?? string.Empty, session.ProjectId, pairing))

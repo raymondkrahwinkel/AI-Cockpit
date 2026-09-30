@@ -24,7 +24,7 @@ public interface ISessionRegistry
     ISessionHandle? Assistant { get; }
 
     /// <summary>
-    /// Raised after a pane is registered or removed, on the thread that changed the registry.
+    /// Raised after a pane, the assistant's included, is registered or removed, on the thread that changed the registry.
     /// </summary>
     event EventHandler? Changed;
 }
