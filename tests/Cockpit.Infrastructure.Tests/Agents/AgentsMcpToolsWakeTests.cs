@@ -113,6 +113,29 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
         Assert.Empty(_inbox.Drain("stranger", int.MaxValue).Messages);
     }
 
+    /// <summary>
+    /// The override, in the direction that matters most: a session that says no stays no, whatever the operator's
+    /// setting does afterwards. "Has not said" and "said no" are different states, and collapsing them would let a
+    /// setting change quietly overrule a session that had opted out on purpose.
+    /// </summary>
+    [Fact]
+    public async Task SetWakeOptIn_False_SurvivesTheOperatorTurningWakesOnAgain()
+    {
+        _DeskWith("me");
+        McpRequestContext.Set("me");
+        _coordinator.SetDefaultWakeConsent(true);
+
+        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: false));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.True(json["yourOwnAnswer"]!.GetValue<bool>());
+        Assert.False(_coordinator.HasWakeConsent("me"));
+
+        _coordinator.SetDefaultWakeConsent(true);
+        Assert.False(_coordinator.HasWakeConsent("me"));
+        Assert.True(_coordinator.HasOwnWakeConsent("me"));
+    }
+
     [Fact]
     public async Task SetWakeOptIn_WithNoVerifiedPane_Refuses()
     {

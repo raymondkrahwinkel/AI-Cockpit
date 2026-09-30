@@ -1,3 +1,4 @@
+using Cockpit.Core.Shell;
 using Cockpit.Infrastructure.Shell;
 
 namespace Cockpit.Infrastructure.Tests.Shell;
@@ -13,6 +14,16 @@ public class ShellAccessSettingsStoreTests : IDisposable
         var store = new ShellAccessSettingsStore(_path);
 
         Assert.False((await store.LoadAsync()).Enabled);
+    }
+
+    [Fact]
+    public async Task Save_ThenLoad_RoundTripsTheSwitch()
+    {
+        var store = new ShellAccessSettingsStore(_path);
+
+        await store.SaveAsync(new ShellAccessSettings { Enabled = true });
+
+        Assert.True((await new ShellAccessSettingsStore(_path).LoadAsync()).Enabled);
     }
 
     public void Dispose()

@@ -132,6 +132,33 @@ public sealed class AgentsMcpToolsTests : IDisposable
         () => Task.FromCanceled<WorkspaceAgentSnapshot?>(new CancellationToken(canceled: true)),
     };
 
+    /// <summary>
+    /// A pane's name and statusline are that agent's own text — it writes the statusline and proposes the name through
+    /// <c>cockpit-session__set_status</c>, where neither is bounded because the audience there is the operator's header.
+    /// Repeated into a <em>sibling's</em> tool result they are the same hazard as a message body: unbounded, one agent's
+    /// enormous statusline is that much of the context of every neighbour that asks who is on the desk, and an escape
+    /// sequence in it repaints their tool output. So the roster gets the treatment the body gets.
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_BoundsAndStripsTheNameAndStatuslineOfEveryPaneItRepeats()
+    {
+        var enormous = new string('s', 10_000);
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-2", "Noisy" + Escape + "[31m", null, enormous, true),
+        ]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        McpRequestContext.Set("pane-1");
+
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
+
+        var noisy = json!["agents"]!.AsArray().First(a => a!["paneId"]!.GetValue<string>() == "pane-2")!;
+        Assert.Equal("Noisy[31m", noisy["name"]!.GetValue<string>());
+        var statusline = noisy["statusline"]!.GetValue<string>();
+        Assert.Equal(AgentsMcpTools.MaxRosterTextLength + 1, statusline.Length);
+        Assert.EndsWith("…", statusline, StringComparison.Ordinal);
+    }
+
     // ---- notify / read_inbox: the line itself (AC-392) ----
 
     /// <summary>
@@ -239,6 +266,38 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.DoesNotContain(Cr.ToString(), message.Body, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The flag has to mean something: a message that needed nothing removed must not claim it was altered, or a sender
+    /// has no way to tell the one case apart from the other.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithNothingToStrip_ReportsSanitizedFalse()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "who owns the parser?"));
+
+        Assert.False(json["sanitized"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// What the trail holds is the cleaned text, not the raw argument: an operator reading the JSONL file with <c>cat</c>
+    /// or a tail is looking at a terminal, and a trail that faithfully preserved every escape sequence an agent sent
+    /// would be a way to write to that terminal through the audit log.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WritesTheStrippedTextToTheTrail_NotTheRawArgument()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        await _Tools().NotifyAsync("pane-b", "heads-up", $"before{Escape}[2Jafter");
+
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal("before[2Jafter", entry.Body);
+    }
+
     // ---- the closing-recipient race, and the batched read ----
 
     // ---- claim / release / list_claims: who is working on what (AC-393) ----
@@ -317,6 +376,26 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
         Assert.False(json["ok"]!.GetValue<bool>());
         _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
+    }
+
+    /// <summary>
+    /// A claim is displayed to every neighbour that lists the desk, so an escape sequence in one would repaint their
+    /// tool output. Stripped rather than refused, and the stripped form is what is stored — so the neighbour that
+    /// claims the same thing without the escape sequence meets it rather than claiming it twice.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WithTerminalControlSequencesInTheResource_StoresAndMatchesTheStrippedForm()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/" + Escape + "[31mworktree-a");
+
+        var listed = _Json(await _Tools().ListClaimsAsync())["claims"]!.AsArray();
+        McpRequestContext.Set("pane-b");
+        var collision = _Json(await _Tools().ClaimAsync("/repo/[31mworktree-a"));
+
+        Assert.Equal("/repo/[31mworktree-a", Assert.Single(listed)!["resource"]!.GetValue<string>());
+        Assert.False(collision["ok"]!.GetValue<bool>());
     }
 
 
