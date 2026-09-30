@@ -414,10 +414,11 @@ public class OpenAiCompatSessionDriverTests
     public async Task LocalToolCall_SurfacesToolUseAndResult_ThroughTheFunctionInvocationLoop()
     {
         // The model asks to call "echo" on its first streamed response, then (after the tool result is fed
-        // back) answers with plain text — the exact shape UseFunctionInvocation drives for a local model.
+        // back) answers with plain text — the exact shape UseFunctionInvocation drives for a local model. It closes
+        // with the end-of-turn marker, so the continuation net (AC-1431) leaves the turn as it is.
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done [turn complete]"));
         var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
         var driver = _CreateDriver(chatClient, echo);
 
@@ -445,7 +446,7 @@ public class OpenAiCompatSessionDriverTests
         // local model exactly as it does for Claude.
         Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
         Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
-        Assert.Equal("done", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal("done [turn complete]", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
     }
 
     [Fact]
