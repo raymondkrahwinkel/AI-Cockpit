@@ -392,10 +392,68 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
     // The attended mirror: an operator-driven pane gets no unrequested addition to its prompt.
 
+    [Fact]
+    public async Task ARealTurnPushedDownTheStdoutPump_ReachesTheDriversStatusFeed()
+    {
+        // AC-530: the seam the host polls is IPluginSessionDriver.Status, a member whose interface default is null —
+        // so the arithmetic being right proves nothing until the driver actually overrides and feeds it. This drives
+        // the verbatim CLI 2.1.220 capture through the real stdout pump and reads the property the host reads.
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        Assert.Null(driver.Status);
+
+        foreach (var line in ClaudeSdkUsageTests.RealTurnLines)
+        {
+            await fake.PushStdoutAsync(line);
+        }
+
+        // The fake refuses both polls, so nothing here feeds Status; the assertion below is about the rate-limit
+        // line the stream carried on its own.
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.True(status.HasAny);
+        var window = Assert.Single(status.RateLimits);
+        Assert.Equal("wk", window.Label);
+        Assert.Equal(98d, window.UsedPercent, precision: 10);
+    }
+
     // The whole round-trip through the real pump, and specifically the *ordering*: the host reads Status once per
     // turn, off the back of TurnCompleted, so the figures must be in before it goes out. Asserting after that
     // event would pass just as well with the poll landing a turn late. The subtypes are named because they are
     // the wire contract — a typo leaves the pill silently blank.
+    [Fact]
+    public async Task AtTheTurnBoundary_BothFiguresAreInBeforeTheTurnEventGoesOut()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        // The start poll is the fake's to refuse; this turn's is the test's to answer.
+        fake.AutoRefuseUsagePolls = false;
+        var writtenAfterStart = fake.WrittenLines.Count;
+
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s","is_error":false}""");
+
+        var usageId = await _AwaitControlRequestAsync(fake, "get_usage", writtenAfterStart);
+        await fake.PushStdoutAsync(_ControlSuccess(usageId, """
+        {"rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"},"seven_day":{"utilization":1,"resets_at":"2026-08-15T09:00:00.978430+00:00"}}}
+        """));
+
+        var contextId = await _AwaitControlRequestAsync(fake, "get_context_usage", writtenAfterStart);
+        await fake.PushStdoutAsync(_ControlSuccess(contextId, """{"totalTokens":28981,"maxTokens":1000000,"percentage":3}"""));
+
+        // Read at the very moment the header would look, not a poll later.
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.Equal(3d, status.ContextUsedPercent);
+        Assert.Equal(["5h", "wk"], status.RateLimits.Select(window => window.Label));
+        Assert.Equal(7d, status.RateLimits[0].UsedPercent, precision: 10);
+    }
 
     // AC-660: a resumed conversation already has real figures the CLI can report before any turn runs — measured
     // against the reported bug (3 of 4 open panes showing no pill at all, the one difference being that the
