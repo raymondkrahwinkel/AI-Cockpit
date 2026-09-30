@@ -12,7 +12,7 @@ public sealed class UsageTrendUi : ICockpitPluginUi
     {
         // "widgets." prefix kept on purpose: persisted with every placed instance, an API surface of its own.
         // No settings form: v1 always shows all three metrics (CreateConfigView left null).
-        host.AddWidget(new WidgetRegistration("widgets.usage-trend", "Usage Trend", context => new UsageTrendWidget(context, host.Channel))
+        host.AddWidget(new WidgetRegistration("widgets.usage-trend", "Usage Trend", context => new UsageTrendWidget(context, host))
         {
             IconKind = MaterialIconKind.ChartTimelineVariant,
             Description = "Context, 5h and weekly usage over time, per profile.",

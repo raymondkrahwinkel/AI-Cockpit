@@ -11,7 +11,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.GetMcpServerAuthStateAsync"/>/<see cref="DesktopPluginHost.SignInMcpServerAsync"/> falling back
+/// <see cref="DesktopBackendHost.GetMcpServerAuthStateAsync"/>/<see cref="DesktopBackendHost.SignInMcpServerAsync"/> falling back
 /// to an <see cref="IPluginMcpProvider"/>'s own project-agnostic <see cref="IPluginMcpProvider.GetMcpServers()"/>
 /// when the shared <see cref="IMcpServerStore"/> has no entry under the name (AC-504): a plugin whose servers are
 /// delivered to sessions per-project (Depot, one server per connection) no longer pushes them into that registry,
@@ -99,21 +99,19 @@ public class CockpitHostPluginOAuthFallbackTests
         Assert.Equal(PluginMcpAuthState.Unknown, state);
     }
 
-    private static DesktopPluginHost _BuildHost(IMcpServerStore store, IMcpOAuthCoordinator coordinator, IPluginMcpProvider provider)
+    private static DesktopBackendHost _BuildHost(IMcpServerStore store, IMcpOAuthCoordinator coordinator, IPluginMcpProvider provider)
     {
         var services = new ServiceCollection()
             .AddSingleton(store)
             .AddSingleton(coordinator)
             .AddSingleton(provider)
             .BuildServiceProvider();
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "depot",
             "Depot",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
     }

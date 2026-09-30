@@ -11,7 +11,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-// DesktopPluginHost.ShowToast (AC-1074): an error toast also lands in the log. A toast is gone in seconds, and a channel
+// DesktopBackendHost.ShowToast (AC-1074): an error toast also lands in the log. A toast is gone in seconds, and a channel
 // plugin reporting "nothing will ever come in" is exactly what someone reads back an hour later.
 public class CockpitHostShowToastTests
 {
@@ -55,25 +55,23 @@ public class CockpitHostShowToastTests
         toasts.Received(1).Show("no message will reach the assistant", Arg.Any<ToastSeverity>(), null, null);
     }
 
-    private static DesktopPluginHost _BuildHost(ILogger<DesktopPluginHost> logger, IToastService? toasts = null)
+    private static DesktopBackendHost _BuildHost(ILogger<DesktopBackendHost> logger, IToastService? toasts = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(toasts ?? Substitute.For<IToastService>());
         services.AddSingleton(logger);
 
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "slack",
             "Slack",
             services.BuildServiceProvider(),
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
     }
 
-    private sealed class _RecordingLogger : ILogger<DesktopPluginHost>
+    private sealed class _RecordingLogger : ILogger<DesktopBackendHost>
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];
 

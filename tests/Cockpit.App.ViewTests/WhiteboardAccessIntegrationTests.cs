@@ -12,7 +12,6 @@ using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Abstractions.Workspaces;
 using ModelContextProtocol.Protocol;
 
 namespace Cockpit.App.ViewTests;
@@ -109,12 +108,12 @@ public class WhiteboardAccessIntegrationTests
         var registry = new WhiteboardAccessRegistry();
         var host = new RecordingHost(registry);
         plugin.Initialize(host);
-        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub, host.Surfaces);
 
         // AC-850/AC-896: the whiteboard is no longer a workspace type — the "Whiteboards" toolbar action opens the
         // list dialog, whose header's "New whiteboard" button opens the board as a window bound to the active
         // session, through W-2/AC-843's snelstart.
-        var whiteboardAction = Assert.Single(host.ToolbarActions, action => action.Title == "Whiteboards");
+        var whiteboardAction = Assert.Single(host.Surfaces.ToolbarActions, action => action.Title == "Whiteboards");
         await whiteboardAction.OnInvoke();
         Assert.Contains("whiteboard.list", host.DialogKeys);
         var listContent = host.LastDialogContent!;
@@ -162,8 +161,6 @@ public class WhiteboardAccessIntegrationTests
 
         public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
 
-        public List<ToolbarAction> ToolbarActions { get; } = [];
-
         public List<string> DialogKeys { get; } = [];
 
         public Control? LastDialogContent { get; private set; }
@@ -190,31 +187,12 @@ public class WhiteboardAccessIntegrationTests
 
         public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
             Task.FromResult(new ConsentDecision(ConsentOutcome.Approved));
+        // What CockpitUiHost reaches: the toolbar actions land here and its dialogs are answered by _OnDialog.
+        private RecordingUiSurfaces? _surfaces;
 
-        public void AddSettings(Func<Control> createView)
-        {
-        }
+        public RecordingUiSurfaces Surfaces => _surfaces ??= new RecordingUiSurfaces { OnDialog = _OnDialog, ActivePaneId = null };
 
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public void AddWorkspaceType(WorkspaceTypeRegistration registration)
-        {
-        }
-
-        public void AddToolbarAction(ToolbarAction action) => ToolbarActions.Add(action);
-
-        public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+        private Task _OnDialog(string title, Func<Control> createContent, string singleInstanceKey)
         {
             DialogKeys.Add(singleInstanceKey);
             LastDialogContent = createContent();

@@ -70,8 +70,7 @@ public class ProviderDispatchFacadeTests
             providerId,
             providerId,
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false),
-            _ => Substitute.For<IPluginProviderConfigView>())
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false))
         {
             IsLoggedIn = isLoggedIn,
         });

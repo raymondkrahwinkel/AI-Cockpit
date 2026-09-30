@@ -11,10 +11,10 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.GetMcpServerAuthStateAsync"/> and <see cref="DesktopPluginHost.SignInMcpServerAsync"/> (AC-243):
+/// <see cref="DesktopBackendHost.GetMcpServerAuthStateAsync"/> and <see cref="DesktopBackendHost.SignInMcpServerAsync"/> (AC-243):
 /// the plugin-facing read/act surface over the shared <see cref="IMcpOAuthCoordinator"/>, added because a plugin
 /// that contributes an OAuth <see cref="McpServerContribution"/> (AC-500) had no way to learn or drive its own
-/// sign-in standing — <see cref="DesktopPluginHost.AddMcpServer"/> is fire-and-forget with no read path back. Both members
+/// sign-in standing — <see cref="DesktopBackendHost.AddMcpServer"/> is fire-and-forget with no read path back. Both members
 /// look the contribution up by name in the shared <see cref="IMcpServerStore"/> first, so a name with no OAuth entry
 /// — never contributed, contributed as a static token, removed, or simply misspelled — answers "nothing to report"
 /// rather than acting on a server that is not this plugin's.
@@ -190,7 +190,7 @@ public class CockpitHostMcpAuthTests
         Assert.Equal("mcp-sign-in", failure!.Phase);
     }
 
-    private static DesktopPluginHost _BuildHost(List<McpServerConfig> servers, IMcpOAuthCoordinator? coordinator, PluginDiagnostics? diagnostics = null)
+    private static DesktopBackendHost _BuildHost(List<McpServerConfig> servers, IMcpOAuthCoordinator? coordinator, PluginDiagnostics? diagnostics = null)
     {
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(servers);
@@ -202,14 +202,12 @@ public class CockpitHostMcpAuthTests
         }
 
         var services = collection.BuildServiceProvider();
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "depot",
             "Depot",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             diagnostics ?? new PluginDiagnostics());
     }

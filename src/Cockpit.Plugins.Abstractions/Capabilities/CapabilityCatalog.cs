@@ -2,8 +2,8 @@ namespace Cockpit.Plugins.Abstractions.Capabilities;
 
 /// <summary>
 /// The fixed list of what a plugin can ask the host for: every public contribution point on
-/// <see cref="ICockpitHost"/>, <see cref="ICockpitActions"/> and <see cref="IPluginStorage"/>, grouped into
-/// the units a manifest declares and an operator grants.
+/// <see cref="ICockpitHost"/>, <see cref="ICockpitActions"/>, <see cref="IPluginStorage"/> and the UI host
+/// (<c>ICockpitUiHost</c>), grouped into the units a manifest declares and an operator grants.
 /// </summary>
 /// <remarks>
 /// Host-only by construction (AC-474): the catalogue describes the host's own surface, so only the host can
@@ -21,7 +21,7 @@ public static class CapabilityCatalog
             "Adds the plugin's settings page behind the gear, and opens the cockpit's Options window.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddSettings", "ICockpitHost.ShowSettingsAsync", "ICockpitHost.HasSettings", "ICockpitHost.OnSettingsSaved"],
+            ["ICockpitUiHost.AddSettings", "ICockpitUiHost.ShowSettingsAsync", "ICockpitUiHost.HasSettings", "ICockpitUiHost.OnSettingsSaved"],
             []),
 
         new(
@@ -30,7 +30,7 @@ public static class CapabilityCatalog
             "Adds the plugin's own launcher button or section, optionally with a live counter, to the left menu.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddSideMenuButton", "ICockpitHost.AddSideMenuSection", "ICockpitHost.AddSideMenuButtonWithBadge"],
+            ["ICockpitUiHost.AddSideMenuButton", "ICockpitUiHost.AddSideMenuSection", "ICockpitUiHost.AddSideMenuButtonWithBadge"],
             []),
 
         new(
@@ -39,7 +39,7 @@ public static class CapabilityCatalog
             "Adds invocable commands to the cockpit's toolbar and binds keyboard shortcuts to them.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddToolbarAction", "ICockpitHost.AddShortcut"],
+            ["ICockpitUiHost.AddToolbarAction", "ICockpitUiHost.AddShortcut"],
             []),
 
         new(
@@ -48,7 +48,7 @@ public static class CapabilityCatalog
             "Adds the plugin's own widgets to the dashboard, panels to the right-hand dock rail, and mini-tools to the companion window, and reads what is registered there.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddWidget", "ICockpitHost.Widgets", "ICockpitHost.AddDockPanel", "ICockpitHost.AddCompanionTool", "ICockpitHost.CompanionTools"],
+            ["ICockpitUiHost.AddWidget", "ICockpitUiHost.AddDockPanel", "ICockpitUiHost.AddCompanionTool"],
             []),
 
         new(
@@ -57,7 +57,7 @@ public static class CapabilityCatalog
             "Adds the plugin's own header items, banners, actions and conversation picker around a running session.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddSessionHeaderItem", "ICockpitHost.AddSessionBanner", "ICockpitHost.AddSessionHeaderAction", "ICockpitHost.AddConversationPicker"],
+            ["ICockpitUiHost.AddSessionHeaderItem", "ICockpitUiHost.AddSessionBanner", "ICockpitUiHost.AddSessionHeaderAction", "ICockpitUiHost.AddConversationPicker"],
             []),
 
         new(
@@ -75,7 +75,7 @@ public static class CapabilityCatalog
             "Puts the plugin's own window, toast or confirmation in front of the operator, in the cockpit's own chrome.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.ShowDialogAsync", "ICockpitHost.ShowToast", "ICockpitActions.ConfirmAsync"],
+            ["ICockpitUiHost.ShowDialogAsync", "ICockpitHost.ShowToast", "ICockpitUiHost.ConfirmAsync"],
             []),
 
         new(
@@ -84,7 +84,7 @@ public static class CapabilityCatalog
             "Renders markdown and help hints through the cockpit's own controls instead of bundling a second renderer.",
             CapabilityRisk.Ambient,
             "0.7.0",
-            ["ICockpitHost.CreateMarkdownView", "ICockpitHost.CreateHelpHint", "ICockpitHost.OpenHelp", "ICockpitHost.HasHelp"],
+            ["ICockpitUiHost.CreateMarkdownView", "ICockpitUiHost.CreateHelpHint", "ICockpitUiHost.OpenHelp", "ICockpitUiHost.HasHelp"],
             []),
 
         new(
@@ -120,7 +120,7 @@ public static class CapabilityCatalog
             "Registers a workspace type the operator can open, reads the types other plugins registered, and embeds sessions in its workspaces.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddWorkspaceType", "ICockpitHost.WorkspaceTypes", "ICockpitHost.OpenWorkspaceAsync", "ICockpitHost.EmbedSession"],
+            ["ICockpitUiHost.AddWorkspaceType", "ICockpitUiHost.OpenWorkspaceAsync", "ICockpitHost.EmbedSession", "ICockpitUiHost.CreateEmbeddedSessionView"],
             []),
 
         new(
@@ -147,7 +147,7 @@ public static class CapabilityCatalog
             "Replaces what the operator has on the system clipboard, which every other application on the machine can read.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitActions.SetClipboardTextAsync"],
+            ["ICockpitUiHost.SetClipboardTextAsync"],
             []),
 
         new(
@@ -174,7 +174,7 @@ public static class CapabilityCatalog
             "Reads which sessions are open, what they are doing, and which pane an MCP call arrived from.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId"],
+            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
             [new("paneId", "The session pane the plugin may observe.")]),
 
         new(
@@ -183,7 +183,7 @@ public static class CapabilityCatalog
             "Sets the statusline and the name of a session — what it says it is doing, and what it is called.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.SetSessionStatusline", "ICockpitHost.SetSessionStatuslineAsync", "ICockpitHost.SetSessionName", "ICockpitHost.SetSessionNameAsync", "ICockpitHost.SuggestSessionName", "ICockpitActions.SetActiveSessionStatusAsync"],
+            ["ICockpitHost.SetSessionStatusline", "ICockpitHost.SetSessionStatuslineAsync", "ICockpitHost.SetSessionName", "ICockpitHost.SetSessionNameAsync", "ICockpitHost.SuggestSessionName"],
             [new("paneId", "The session pane the plugin may rename.")]),
 
         new(
@@ -192,7 +192,7 @@ public static class CapabilityCatalog
             "Opens the New-session dialog with a prompt and a project filled in. The operator still confirms it.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.ShowNewSessionDialogAsync"],
+            ["ICockpitUiHost.ShowNewSessionDialogAsync"],
             []),
 
         new(
@@ -348,7 +348,7 @@ public static class CapabilityCatalog
             "Sends text into a session's input — the operator's own keyboard, aimed at an agent that is already running.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.InsertIntoSessionAsync", "ICockpitHost.BindToSession", "ICockpitActions.InjectIntoActiveSessionAsync", "ICockpitActions.HasActiveSession"],
+            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.InsertIntoSessionAsync", "ICockpitHost.BindToSession"],
             [new("paneId", "The session pane the plugin may type into.")]),
 
         new(
@@ -357,7 +357,7 @@ public static class CapabilityCatalog
             "Runs the agent behind a session kind, so every prompt, response and credential of those sessions passes through the plugin.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.AddSessionProvider", "ICockpitHost.AddTtyProvider"],
+            ["ICockpitHost.AddSessionProvider", "ICockpitHost.AddTtyProvider", "ICockpitUiHost.AddProviderConfigView"],
             []),
 
         new(

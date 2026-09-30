@@ -154,7 +154,7 @@ internal sealed class AutopilotRunContext
 
         try
         {
-            var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_host.Sessions, plan.WorkingDirectory);
+            var repositoryDirectory = AutopilotWorkingDirectory.Resolve(null, plan.WorkingDirectory);
 
             // Whether the run isolates each step in a worktree (AC-174). Only a folder the host positively reports
             // is NOT a git repository runs without isolation; Unknown (older host, failed probe) stays isolated,

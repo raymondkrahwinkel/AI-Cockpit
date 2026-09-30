@@ -1127,8 +1127,7 @@ public class AssistantAgentGatewayTests
             providerId,
             displayName,
             _ => throw new NotSupportedException("Nothing here starts a session."),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { DeclaredOptions = declaredOptions },
-            _ => throw new NotSupportedException("Nothing here opens the profile editor."));
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { DeclaredOptions = declaredOptions });
 
     private static CockpitViewModel _CockpitWithoutSessionMachinery()
     {

@@ -7,46 +7,17 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// `ICockpitActions` a plugin uses to act on the cockpit: inject text into the selected session, put text
-// on the clipboard, and confirm a destructive action. Clipboard is resolved lazily so no window is required.
+// `ICockpitActions` a plugin uses to act on the cockpit (start a session, delegate), and the window's clipboard and
+// confirmation dialog for a UI part. The clipboard is resolved lazily so no window is required.
 public sealed class PluginActions(
     CockpitViewModel cockpit,
     Func<IClipboard?> clipboardFactory,
     ISessionDialogService dialogService,
     ISessionProfileStore profileStore,
-    PluginBackendActions backend) : ICockpitActions
+    PluginBackendActions backend) : ICockpitActions, IPluginWindowActions
 {
-    public bool HasActiveSession => cockpit.SelectedSession is not null;
-
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") =>
         dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
-
-    public Task InjectIntoActiveSessionAsync(string text)
-    {
-        cockpit.SelectedSession?.InjectText(text);
-        return Task.CompletedTask;
-    }
-
-    // AC-577: always marshals to the UI thread (no fast path) since this mutates a bound property directly;
-    // PluginActions must never be constructed in a process without a dispatcher loop.
-    public Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) =>
-        UiThreadCall.DispatchAsync(() =>
-        {
-            if (cockpit.SelectedSession is { } session)
-            {
-                if (statusline is not null)
-                {
-                    session.Statusline = statusline;
-                }
-
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    // A flow naming the session it started is a name somebody chose, same as a rename — so a ticket
-                    // linked to that session later offers its name rather than taking it (#AC-310).
-                    session.SetNameDirectly(name);
-                }
-            }
-        });
 
     // #67, #69, AC-1392: delegation needs no window, so it is the backend's, whose rules and tasks view it shares.
     public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>

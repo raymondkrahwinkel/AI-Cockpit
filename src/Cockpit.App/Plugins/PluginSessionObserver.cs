@@ -11,7 +11,7 @@ namespace Cockpit.App.Plugins;
 // The live `ICockpitSessionObserver` backing `ICockpitHost.Sessions`: tracks the cockpit's selected
 // session and relays output. One shared instance serves all plugins, mirroring the shared `ICockpitActions`;
 // all events are marshalled to the UI thread.
-internal sealed class PluginSessionObserver : ICockpitSessionObserver
+internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginActiveSession
 {
     private readonly CockpitViewModel _cockpit;
 

@@ -95,14 +95,18 @@ public class PluginUiPartTests
         var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         channels.For("diagram").Handle("echo", (payload, _) => Task.FromResult(payload));
         var host = Substitute.For<ICockpitHost>();
-        host.Sessions.ActivePaneId.Returns("pane-7");
+        var active = Substitute.For<IPluginActiveSession>();
+        active.ActivePaneId.Returns("pane-7");
         var views = new ViewRequests();
-        var services = new ServiceCollection()
-            .AddSingleton(channels)
-            .AddSingleton<IEmbeddedSessionHost>(views)
-            .BuildServiceProvider();
+        var uiHost = TestUiHost.Create(
+            services => services.AddSingleton<IEmbeddedSessionHost>(views),
+            host: host,
+            hub: channels,
+            activeSession: active,
+            pluginId: "diagram",
+            pluginName: "Diagram");
 
-        var result = await read(new CockpitUiHost("diagram", host, services), views.PaneIds);
+        var result = await read(uiHost, views.PaneIds);
 
         Assert.Equal((member, expected), (member, result));
     }

@@ -20,9 +20,7 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
-using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
-using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -31,7 +29,6 @@ using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Tracking;
-using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -92,60 +89,8 @@ public class PluginBackendHost(
     // The one hop the assistant's gateway needs: none here, the desktop's goes through its UI thread (AC-1379).
     protected virtual IAssistantSessionHost AssistantHostFor(IAssistantSessionHost host) => host;
 
-    public virtual bool HasSettings => false;
-
-    public virtual Task ShowSettingsAsync() => Task.CompletedTask;
-
-    public virtual void OnSettingsSaved(Action callback) => _NoWindow(nameof(OnSettingsSaved));
-
-    public virtual void AddSideMenuButton(string title, Action onInvoke) => _NoWindow(nameof(AddSideMenuButton));
-
-    public virtual SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
-    {
-        _NoWindow(nameof(AddSideMenuButtonWithBadge));
-        return new SideMenuButtonBadge();
-    }
-
-    public virtual void AddShortcut(PluginShortcut shortcut) => _NoWindow(nameof(AddShortcut));
-
-    public virtual void AddSessionHeaderAction(PluginSessionAction action) => _NoWindow(nameof(AddSessionHeaderAction));
-
     public virtual void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         _NoWindow(nameof(AddSupervisedActivityProvider));
-
-    public virtual void AddToolbarAction(ToolbarAction action) => _NoWindow(nameof(AddToolbarAction));
-
-    public virtual void AddWidget(WidgetRegistration registration) => _NoWindow(nameof(AddWidget));
-
-    public virtual IReadOnlyList<WidgetRegistration> Widgets => [];
-
-    public virtual void AddDockPanel(DockPanelRegistration registration) => _NoWindow(nameof(AddDockPanel));
-
-    public virtual void AddCompanionTool(CompanionToolRegistration registration) => _NoWindow(nameof(AddCompanionTool));
-
-    public virtual IReadOnlyList<CompanionToolRegistration> CompanionTools => [];
-
-    public virtual void AddWorkspaceType(WorkspaceTypeRegistration registration) => _NoWindow(nameof(AddWorkspaceType));
-
-    public virtual IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
-
-    public virtual Task OpenWorkspaceAsync(string workspaceTypeId)
-    {
-        _NoWindow(nameof(OpenWorkspaceAsync));
-        return Task.CompletedTask;
-    }
-
-    // Exactly one callback, as the contract promises: with no dialog to show, nothing started.
-    public virtual Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null)
-    {
-        _NoWindow(nameof(ShowNewSessionDialogAsync));
-        onCancelled?.Invoke();
-        return Task.CompletedTask;
-    }
-
-    public virtual void OpenHelp(string article, string? section = null) => _NoWindow(nameof(OpenHelp));
-
-    public virtual bool HasHelp(string article, string? section = null) => false;
 
     // A toast with nobody to read it still says something, so it goes to the log at its own severity.
     public virtual void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
@@ -193,9 +138,6 @@ public class PluginBackendHost(
         // The plugin's identity is stamped here, not taken from the request — a plugin cannot ask under another's name.
         services.GetRequiredService<IConsentBroker>()
             .RequestConsentAsync(request with { Source = request.Source with { PluginId = pluginId } }, cancellationToken);
-
-    public void AddConversationPicker(ConversationPickerRegistration picker) =>
-        services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 
     public void AddProjectField(ProjectFieldRegistration registration)
     {
@@ -304,19 +246,18 @@ public class PluginBackendHost(
             .Select(resource => new ProjectMemoryRow(resource.Reference, resource.Label, resource.ReachesSessions))];
     }
 
-    // No pane named falls back to the selected one, which only a desktop has. Which project a pane belongs to is one
+    // No pane named means no project: the backend has no selected session. Which project a pane belongs to is one
     // question with one answer (AC-320); a host without that resolver asks the pane's own handle.
     private async Task<string?> _ProjectOfAsync(string? paneId, CancellationToken cancellationToken)
     {
-        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
-        if (string.IsNullOrEmpty(pane))
+        if (string.IsNullOrEmpty(paneId))
         {
             return null;
         }
 
         var projectId = services.GetService<ISessionProjectResolver>() is { } resolver
-            ? await resolver.ProjectIdOfAsync(pane, cancellationToken)
-            : services.GetService<ISessionRegistry>()?.Find(pane)?.ProjectId;
+            ? await resolver.ProjectIdOfAsync(paneId, cancellationToken)
+            : services.GetService<ISessionRegistry>()?.Find(paneId)?.ProjectId;
         return string.IsNullOrEmpty(projectId) ? null : projectId;
     }
 

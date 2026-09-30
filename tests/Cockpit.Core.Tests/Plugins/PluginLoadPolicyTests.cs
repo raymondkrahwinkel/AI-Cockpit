@@ -18,6 +18,25 @@ public class PluginLoadPolicyTests
         Assert.Equal(PluginLoadDecision.AbstractionsMajorMismatch, PluginLoadPolicy.Decide(Manifest(abstractionsVersion: 2), HostMajor, saved, "abc"));
     }
 
+    // AC-1402: contract 3 is the first the plugin SDK ships without Avalonia. A plugin built for 2 is refused, with the
+    // reason the manager shows; the same plugin built for 3 loads.
+    [Theory]
+    [InlineData(2, PluginLoadDecision.AbstractionsMajorMismatch, "Built for plugin contract version 2, this cockpit provides 3")]
+    [InlineData(3, PluginLoadDecision.Load, null)]
+    public void APluginBuiltForAnotherContract_IsRefusedWithItsReason_AndOneBuiltForThisContractLoads(
+        int builtFor, PluginLoadDecision expectedDecision, string? expectedReason)
+    {
+        var saved = new PluginRegistration(Enabled: true, PinnedSha256: "abc");
+
+        var decision = PluginLoadPolicy.Decide(Manifest(builtFor), Cockpit.Plugins.Abstractions.AbstractionsContract.Version, saved, "abc");
+        var reason = PluginCompatibility.IncompatibilityReason(
+            new PluginStoreVersion("1.0.0", "x-1.0.0.zip", builtFor, null, null, null),
+            Cockpit.Plugins.Abstractions.AbstractionsContract.Version,
+            new Version(0, 46, 0));
+
+        Assert.Equal((expectedDecision, expectedReason), (decision, reason));
+    }
+
     [Fact]
     public void Decide_NeverSeen_NeedsConsent()
     {

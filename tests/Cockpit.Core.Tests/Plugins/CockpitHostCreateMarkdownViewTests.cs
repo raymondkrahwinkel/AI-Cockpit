@@ -1,36 +1,17 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
-using Avalonia.Media;
-using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Views;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
-using NSubstitute;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="ICockpitHost.CreateMarkdownView"/> (AC-296): the seam a plugin uses to render an issue description or
-/// comment through the cockpit's own markdown look instead of showing raw "##"/"**" syntax. Two things are asserted:
-/// the interface's own default falls back to the pre-seam plain-text behaviour (so an older host or test fake keeps
-/// compiling and rendering unchanged), and the real host renders through <see cref="MarkdownView"/> rather than a
-/// second parser.
+/// <see cref="ICockpitUiHost.CreateMarkdownView"/> (AC-296): the seam a plugin uses to render an issue description or
+/// comment through the cockpit's own markdown look instead of showing raw "##"/"**" syntax. The real host renders
+/// through <see cref="MarkdownView"/> rather than a second parser.
 /// </summary>
 public class CockpitHostCreateMarkdownViewTests
 {
-    [Fact]
-    public void DefaultImplementation_ReturnsTheRawTextInAWrappingSelectableTextBlock()
-    {
-        ICockpitHost host = Substitute.ForPartsOf<HostWithoutMarkdownRendering>();
-
-        var view = host.CreateMarkdownView("## Not rendered\n\nJust the raw text.");
-
-        var text = Assert.IsType<SelectableTextBlock>(view);
-        Assert.Equal("## Not rendered\n\nJust the raw text.", text.Text);
-        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
-    }
-
     [Fact]
     public void HostImplementation_RendersMarkdownInsteadOfLeavingTheRawSyntaxInTheOutput()
     {
@@ -110,42 +91,5 @@ public class CockpitHostCreateMarkdownViewTests
         }
     }
 
-    // Typed as the contract a plugin actually holds, so the call goes through ICockpitHost's defaulted parameters —
-    // the same way a plugin invokes it.
-    private static ICockpitHost _BuildHost() =>
-        new DesktopPluginHost(
-            "test-plugin",
-            "Test Plugin",
-            Substitute.For<IServiceProvider>(),
-            Substitute.For<IPluginContributionSink>(),
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
-
-    /// <summary>An older host: implements only what the contract required before <c>CreateMarkdownView</c> existed.</summary>
-    public abstract class HostWithoutMarkdownRendering : ICockpitHost
-    {
-        public IServiceProvider Services => Substitute.For<IServiceProvider>();
-
-        public ICockpitActions Actions => Substitute.For<ICockpitActions>();
-
-        public IPluginStorage Storage => Substitute.For<IPluginStorage>();
-
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            Task.CompletedTask;
-    }
+    private static ICockpitUiHost _BuildHost() => TestUiHost.Create();
 }

@@ -5,6 +5,10 @@ searchable and work offline. They are not a copy: the app embeds these very file
 is a fix in both places. The `{#…}` after each heading is what gives the in-app reader a stable address for a
 section — GitHub shows it as text.
 
+> **Plugin contract 3 (host 0.46.0)** — Avalonia left `Cockpit.Plugins.Abstractions`: the window half moved to
+> `Cockpit.Plugins.Abstractions.UI`. Set `"abstractionsVersion": 3` and follow
+> [the migration steps](API-REFERENCE.md#migrating-2-to-3); a contract-2 plugin is refused by the host until you do.
+>
 > **Plugin contract 2 (host 0.26.0)** — `IPluginSettingsView.Save()` is gone: a settings view now validates and
 > hands the host the write (`TryStage`), so the cockpit's Options screen can take a plugin's change back on
 > Cancel. Set `"abstractionsVersion": 2` and follow

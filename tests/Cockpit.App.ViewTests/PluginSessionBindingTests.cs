@@ -20,7 +20,7 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session already
+/// <see cref="DesktopBackendHost.BindToSession"/> (AC-832): the seam that ties a plugin surface to a session already
 /// running. Checked on the ownership rule — sending reaches that session, and closing either side leaves the other.
 /// </summary>
 [Collection("avalonia")]
@@ -130,14 +130,12 @@ public class PluginSessionBindingTests
             .AddSingleton<ISessionRegistry>(registry)
             .AddSingleton<ISessionLauncher>(new SessionLauncherAdapter(cockpit))
             .BuildServiceProvider();
-        var host = new DesktopPluginHost(
+        var host = new DesktopBackendHost(
             "diagram",
             "Diagram",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             new PluginSessionObserver(cockpit),
             new PluginDiagnostics());
 

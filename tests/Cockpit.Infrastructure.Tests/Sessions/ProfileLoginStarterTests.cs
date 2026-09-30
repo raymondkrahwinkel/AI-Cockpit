@@ -33,8 +33,7 @@ public class ProfileLoginStarterTests
             providerId,
             providerId,
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false),
-            _ => Substitute.For<IPluginProviderConfigView>())
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false))
         {
             StartLogin = startLogin,
         });

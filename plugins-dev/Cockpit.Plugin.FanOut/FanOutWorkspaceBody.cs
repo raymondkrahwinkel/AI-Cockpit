@@ -43,7 +43,7 @@ internal sealed class FanOutWorkspaceBody : UserControl
         _workingDirectory = new TextBox
         {
             PlaceholderText = "Repository to work in — each arm gets its own worktree of it",
-            Text = _context.Sessions.ActiveSessionWorkingDirectory ?? string.Empty,
+            Text = _host.ActiveSessionWorkingDirectory ?? string.Empty,
         };
 
         _addVariant = new Button { Content = "Add arm" };
@@ -189,7 +189,7 @@ internal sealed class FanOutWorkspaceBody : UserControl
         for (var index = 0; index < requests.Count; index++)
         {
             var placement = layout.Tiles[index];
-            var tile = _Tile(run.Variants[index], _context.EmbedSession(requests[index]).View);
+            var tile = _Tile(run.Variants[index], _host.CreateEmbeddedSessionView(_context.EmbedSession(requests[index]).PaneId) ?? new Border());
 
             Grid.SetColumn(tile, placement.Column);
             Grid.SetRow(tile, placement.Row);

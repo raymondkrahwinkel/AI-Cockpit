@@ -14,7 +14,7 @@ namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// AC-499, the same fallback-scoping story <see cref="CockpitHostCallMcpToolFallbackScopingTests"/> covers for
-/// <see cref="DesktopPluginHost.CallMcpToolAsync"/>, here for <see cref="DesktopPluginHost.ProbeMcpToolAsync"/>: the caller-
+/// <see cref="DesktopBackendHost.CallMcpToolAsync"/>, here for <see cref="DesktopBackendHost.ProbeMcpToolAsync"/>: the caller-
 /// scoped candidate list it hands <see cref="IMcpToolProbe.ProbeAsync"/> carries only this plugin's own
 /// <see cref="IPluginMcpProvider"/> contribution, never another plugin's. <see cref="McpToolProbe.ProbeAsync"/>
 /// took no project id and consulted only the shared registry before AC-499 — so a plugin whose servers never land
@@ -65,7 +65,7 @@ public class CockpitHostProbeMcpToolFallbackScopingTests
         Assert.DoesNotContain("Other: Server", fallbackNames);
     }
 
-    private static DesktopPluginHost _BuildHost(IMcpToolProbe probe, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
+    private static DesktopBackendHost _BuildHost(IMcpToolProbe probe, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
     {
         var collection = new ServiceCollection().AddSingleton(probe);
         foreach (var provider in providers)
@@ -74,17 +74,14 @@ public class CockpitHostProbeMcpToolFallbackScopingTests
         }
 
         var services = collection.BuildServiceProvider();
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "own",
             "Own Plugin",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics(),
-            declaredSecretKeys: null,
             ownPluginType: ownPluginType);
     }
 

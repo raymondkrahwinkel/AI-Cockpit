@@ -223,7 +223,7 @@ internal static class Screenshotter
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
-                new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry()),
+                new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry(), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
             Height = 1220,
         },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the
@@ -1259,7 +1259,8 @@ internal static class Screenshotter
             profile,
             isLoggedIn: true,
             providers: SessionProviderCatalog.AllProviders(new _FakeCodexProviderRegistry()),
-            pluginProviderRegistry: new _FakeCodexProviderRegistry());
+            pluginProviderRegistry: new _FakeCodexProviderRegistry(),
+            pluginConfigViews: _ConfigViews(_FakeCodexProviderRegistry.ProviderId, _ => new _CodexPlaceholderConfigView()));
         profiles.Profiles.Clear();
         profiles.Profiles.Add(editable);
         profiles.SelectedProfile = editable;
@@ -2743,6 +2744,14 @@ internal static class Screenshotter
         }
     }
 
+    // What a provider's UI part registers in the running app: the config view its editor builds.
+    private static Plugins.PluginProviderConfigViews _ConfigViews(string providerId, Func<string?, Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView> createView)
+    {
+        var views = new Plugins.PluginProviderConfigViews();
+        views.Register(providerId, createView);
+        return views;
+    }
+
     // Without it the assistant-profile scene renders a form for a provider that resolved to nothing: the label falls
     // back to Ollama, the session-defaults block has no options to show, and the environment-variables block is hidden
     // because `SupportsEnvVars` is a capability read off a registration.
@@ -2752,8 +2761,7 @@ internal static class Screenshotter
             ClaudePluginProfile.ProviderId,
             "Claude",
             _ => throw new NotSupportedException("A screenshot starts no session."),
-            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
-            _ => new _PlaceholderConfigView())
+            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true })
         {
             Options =
             [
@@ -2792,8 +2800,7 @@ internal static class Screenshotter
             ProviderId,
             "Codex (CLI)",
             _ => throw new NotSupportedException("A screenshot starts no session."),
-            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
-            _ => new _CodexPlaceholderConfigView())
+            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true })
         {
             Options =
             [

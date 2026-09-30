@@ -1,27 +1,10 @@
 namespace Cockpit.Plugins.Abstractions;
 
 /// <summary>
-/// Actions a plugin can perform on the cockpit itself: put text on the clipboard, or inject it into the active session's input.
+/// Actions a plugin can perform on the cockpit itself: start a session or delegate work to a profile.
 /// </summary>
 public interface ICockpitActions
 {
-    Task SetClipboardTextAsync(string text);
-
-    /// <summary>
-    /// Injects text into the currently selected session — appended to the input box for an SDK session, written to the pty for a TTY session. No-op when <see cref="HasActiveSession"/> is false.
-    /// </summary>
-    Task InjectIntoActiveSessionAsync(string text);
-
-    bool HasActiveSession { get; }
-
-    /// <summary>
-    /// Asks the operator to confirm a destructive action (e.g. deleting a saved item) with the cockpit's own
-    /// confirmation dialog. Returns true only when they confirm; Cancel/close/Esc return false. Default returns
-    /// true (proceed) so a plugin built against this SDK still works on an older host without the dialog — only
-    /// the app's own host shows the real confirmation.
-    /// </summary>
-    Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => Task.FromResult(true);
-
     /// <summary>
     /// Opens a new session on the profile named <paramref name="profileLabel"/>, with <paramref name="prompt"/> as
     /// its first input. Returns the name the session got; throws when no profile carries that label.
@@ -45,17 +28,6 @@ public interface ICockpitActions
     /// </remarks>
     Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
         throw new NotSupportedException("This host cannot start sessions.");
-
-    /// <summary>
-    /// Sets the statusline shown under the active (selected) session's name, and optionally renames it (#AC-13).
-    /// No-op when there is no active session.
-    /// </summary>
-    /// <remarks>
-    /// A <see langword="null"/> <paramref name="statusline"/> leaves it, an empty string clears it; a blank
-    /// <paramref name="name"/> leaves the title. Default no-op so a plugin built against this SDK still works on
-    /// an older host.
-    /// </remarks>
-    Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) => Task.CompletedTask;
 
     /// <summary>
     /// Hands work to another profile as a background task and waits for what it produces (#67, #69). The task

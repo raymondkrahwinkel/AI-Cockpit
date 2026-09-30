@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
@@ -247,7 +248,8 @@ public class AssistantProfileDialogTests
             slotStore ?? _SlotStore(slot ?? new AssistantProfileSlot(null, "No assistant profile has been set up yet.")),
             sessionProfiles,
             assistant,
-            pluginProviderRegistry: _Registry());
+            pluginProviderRegistry: _Registry(),
+            pluginConfigViews: _ConfigViews());
     }
 
     /// <summary>
@@ -262,8 +264,7 @@ public class AssistantProfileDialogTests
             ClaudePluginProfile.ProviderId,
             "Claude",
             _ => throw new NotSupportedException("No session is started in these tests."),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            _ => new _ConfigView())
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true))
         {
             Options =
             [
@@ -277,6 +278,13 @@ public class AssistantProfileDialogTests
         registry.Resolve(ClaudePluginProfile.ProviderId).Returns(registration);
         registry.Registrations.Returns([registration]);
         return registry;
+    }
+
+    private static PluginProviderConfigViews _ConfigViews()
+    {
+        var views = new PluginProviderConfigViews();
+        views.Register(ClaudePluginProfile.ProviderId, _ => new _ConfigView());
+        return views;
     }
 
     /// <summary>The plugin's config panel, reduced to what the editor asks of it: a control to embed and config JSON that validates.</summary>

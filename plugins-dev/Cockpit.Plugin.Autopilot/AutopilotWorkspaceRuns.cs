@@ -172,7 +172,7 @@ internal sealed class AutopilotWorkspaceRuns
         }
 
         var epic = new AutopilotRun(source.Tracker, source.EpicId, string.Empty, string.Empty, new Dictionary<string, string>());
-        var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_host.Sessions, plan.WorkingDirectory);
+        var repositoryDirectory = AutopilotWorkingDirectory.Resolve(null, plan.WorkingDirectory);
         var collectionBranch = AutopilotCollectionBranch.For(_settings.EpicDirectToMain(), source.EpicId);
 
         Func<string, CancellationToken, Task> commentEpic = (text, cancellationToken) => provider.PostCommentAsync(source.EpicId, text, cancellationToken);

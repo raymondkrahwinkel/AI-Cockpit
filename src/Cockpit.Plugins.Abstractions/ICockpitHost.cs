@@ -1,18 +1,12 @@
-using Avalonia.Controls;
-using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Channels;
-using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
-using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
-using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
-using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugins.Abstractions;
 
@@ -45,85 +39,6 @@ public interface ICockpitHost
     IPluginCache Cache => InMemoryPluginCache.Shared;
 
     /// <summary>
-    /// Registers the plugin's settings view, opened from the gear next to the plugin in the plugin manager. Call at most once.
-    /// </summary>
-    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
-    void AddSettings(Func<Control> createView)
-    {
-    }
-
-    /// <summary>
-    /// Same as <see cref="AddSettings(Func{Control})"/>, but declares which Options sidebar group the plugin's
-    /// settings row lands in (AC-1030), e.g. "Assistant Plugins" for a chat-channel plugin.
-    /// </summary>
-    /// <remarks>
-    /// Default forwards to the category-less overload, so an already-compiled plugin still loads and lands in
-    /// the default PLUGINS group. Group order is fixed by the host, not by call order — see
-    /// <c>OptionsDialog._BuildPluginCategories</c>.
-    /// </remarks>
-    void AddSettings(Func<Control> createView, string category) => AddSettings(createView);
-
-    /// <summary>
-    /// Adds a launcher button to the left menu; clicking runs <paramref name="onInvoke"/> — typically opening a dialog via <see cref="ShowDialogAsync"/>.
-    /// </summary>
-    void AddSideMenuButton(string title, Action onInvoke);
-
-    /// <summary>
-    /// Adds an inline accordion section to the left menu, under the session list — for small, always-visible content.
-    /// </summary>
-    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
-    void AddSideMenuSection(string title, Func<Control> createView)
-    {
-    }
-
-    /// <summary>
-    /// Adds a launcher button to the left menu like <see cref="AddSideMenuButton"/>, but carrying a live
-    /// counter/badge next to the title (AC-516) that the plugin updates through the returned
-    /// <see cref="SideMenuButtonBadge"/> without calling this again.
-    /// </summary>
-    /// <remarks>
-    /// See <see cref="SideMenuButtonBadge"/> for what null/zero/two-counter values mean and how they render.
-    /// Default returns a badge no one renders, so existing implementations keep compiling untouched.
-    /// </remarks>
-    SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke) => new();
-
-    /// <summary>
-    /// Adds a small control to <em>every session's header bar</em>, built once per session and handed that
-    /// session's own <see cref="IPluginSessionContext"/>. Keep it compact — the header is a strip, so this is
-    /// the place for an indicator with a tooltip, not a panel.
-    /// </summary>
-    /// <param name="createView">
-    /// Builds the control for one session; invoked once per session panel, on the UI thread.
-    /// </param>
-    void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)
-    {
-    }
-
-    /// <summary>
-    /// Adds a session-bound banner shown under the transcript, above the composer (AC-802) — for PR/CI status and
-    /// similar per-session info a header item has no room for. Default no-op so existing implementations keep
-    /// compiling untouched; the plugin's own view controls whether anything shows.
-    /// </summary>
-    /// <param name="createView">
-    /// Builds the control for one session; invoked once per session panel, on the UI thread.
-    /// </param>
-    void AddSessionBanner(Func<IPluginSessionContext, Control> createView)
-    {
-    }
-
-    /// <summary>
-    /// Adds an action to the menu in <em>every session's header</em>. Handed the session it was invoked from, so
-    /// it acts on that pane rather than on whichever one happens to be selected.
-    /// </summary>
-    /// <remarks>
-    /// Prefer this to <see cref="AddSessionHeaderItem"/> for anything the operator <em>does</em>; keep header
-    /// items for what a session has to <em>say</em>. Default no-op so existing hosts keep compiling untouched.
-    /// </remarks>
-    void AddSessionHeaderAction(PluginSessionAction action)
-    {
-    }
-
-    /// <summary>
     /// Registers a source of long-running, agent-started background activities shown in the app status bar
     /// (AC-82), with a Kill button the operator controls — never the agent. The plugin supplies the list and the
     /// stop callback.
@@ -132,28 +47,6 @@ public interface ICockpitHost
     /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
     /// </remarks>
     void AddSupervisedActivityProvider(ISupervisedActivitySource source)
-    {
-    }
-
-    /// <summary>
-    /// Adds a button to the Sessions toolbar (AC-91) — a global, cockpit-wide quick action next to the workspace
-    /// gear. Keep it to an icon with a tooltip; the host collapses several into an overflow menu.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
-    /// </remarks>
-    void AddToolbarAction(ToolbarAction action)
-    {
-    }
-
-    /// <summary>
-    /// Registers a way to pick an earlier conversation to resume — see <see cref="ConversationPickerRegistration"/>.
-    /// The New-session dialog then shows a search button that runs yours, instead of the operator typing an id.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host wires it up.
-    /// </remarks>
-    void AddConversationPicker(ConversationPickerRegistration picker)
     {
     }
 
@@ -288,68 +181,6 @@ public interface ICockpitHost
     /// The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.
     /// </summary>
     IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
-
-    /// <summary>
-    /// Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh. Use the <paramref name="singleInstanceKey"/> overload for a window there should only ever be one of.
-    /// </summary>
-    // ponytail: no-op default so a windowless backend host needs no Avalonia; removed from ICockpitHost in F2.14 (AC-1369 flip)
-    Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        Task.CompletedTask;
-
-    /// <summary>
-    /// The same, for a window there should only ever be one of: asked for again while it is open, the cockpit
-    /// brings that window forward and builds nothing. Two calls share a window when they pass the same
-    /// <paramref name="singleInstanceKey"/>, scoped to your plugin.
-    /// </summary>
-    /// <remarks>
-    /// Key what is genuinely one thing ("issues"), and key per subject what is not (e.g.
-    /// <c>$"track.{session.PaneId}"</c> for a picker tied to one session). A separate overload rather than a
-    /// fifth parameter, for binary compatibility (AC-40); calling it raises the manifest's minHostVersion.
-    /// </remarks>
-    Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
-        ShowDialogAsync(title, createContent, width, height);
-
-    /// <summary>
-    /// Renders <paramref name="markdown"/> the way the cockpit's own transcript does (AC-296), instead of a
-    /// plugin showing raw <c>##</c>/<c>**</c> syntax or bundling a second parser.
-    /// </summary>
-    /// <remarks>
-    /// A factory, not a stateful presenter: call it again and swap the result into your own
-    /// <see cref="ContentControl.Content"/> when the content changes. Default returns the raw text in a wrapping
-    /// <see cref="SelectableTextBlock"/> so existing implementations keep compiling and rendering unchanged.
-    /// </remarks>
-    Control CreateMarkdownView(string markdown) =>
-        new SelectableTextBlock { Text = markdown, TextWrapping = TextWrapping.Wrap };
-
-    /// <summary>
-    /// Opens this plugin's own settings — the view it registered with <see cref="AddSettings"/> — in the same
-    /// dialog the plugin manager's gear opens, saved the same way. Does nothing when the plugin registered none.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host opens it.
-    /// </remarks>
-    Task ShowSettingsAsync() => Task.CompletedTask;
-
-    /// <summary>
-    /// Whether this plugin registered a settings view (<see cref="AddSettings"/>) — what a plugin checks before
-    /// offering a "Configure…" button that would otherwise do nothing. A plugin that always calls
-    /// <see cref="AddSettings"/> in <see cref="ICockpitPlugin.Initialize"/> already knows the answer and has no
-    /// reason to ask.
-    /// </summary>
-    bool HasSettings => false;
-
-    /// <summary>
-    /// Registers <paramref name="callback"/> to run (on the UI thread) after this plugin's own settings are
-    /// saved from the plugin manager's gear (#52). Subscribe here if a contribution cached settings at
-    /// construction, so a change takes effect without an app restart.
-    /// </summary>
-    /// <remarks>
-    /// A contribution that reads <see cref="IPluginStorage"/>-backed settings fresh on every access already
-    /// reflects a save without this. Default no-op so existing implementations keep compiling untouched.
-    /// </remarks>
-    void OnSettingsSaved(Action callback)
-    {
-    }
 
     /// <summary>
     /// Registers a new session provider (#45) — the plugin equivalent of the built-in Claude-CLI/Ollama/LM-Studio
@@ -640,30 +471,6 @@ public interface ICockpitHost
         Task.CompletedTask;
 
     /// <summary>
-    /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>,
-    /// and starts the session the operator confirms. The operator keeps full control: they see and can change
-    /// every field before anything starts, and cancelling starts nothing.
-    /// </summary>
-    /// <remarks>
-    /// Exactly one of <paramref name="onStarted"/> / <paramref name="onCancelled"/> runs. Unlike
-    /// <see cref="ICockpitActions.StartSessionAsync"/>, which launches a named profile headlessly, this always
-    /// shows the dialog. Default no-op (and no callback) so existing implementations keep compiling untouched.
-    /// </remarks>
-    /// <param name="prefill">
-    /// The fields to seed the dialog with, or <see langword="null"/> to open it on its own defaults.
-    /// </param>
-    /// <param name="onStarted">
-    /// Invoked with the started session's pane id when the operator confirms; not called if they cancel.
-    /// </param>
-    /// <param name="onCancelled">
-    /// Invoked when the operator cancels or no session could be started; not called once a session starts.
-    /// </param>
-    Task ShowNewSessionDialogAsync(
-        NewSessionPrefill? prefill = null,
-        Action<string>? onStarted = null,
-        Action? onCancelled = null) => Task.CompletedTask;
-
-    /// <summary>
     /// Adds an in-process MCP server to the cockpit (#AC-12): the host mounts <paramref name="tools"/> — an
     /// already-built class whose <c>[McpServerTool]</c> methods are the tools — on a loopback address under
     /// <paramref name="serverName"/>. Idempotent per name.
@@ -750,79 +557,6 @@ public interface ICockpitHost
     /// </remarks>
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) =>
         Task.FromResult(ConsentDecision.Denied);
-
-    /// <summary>
-    /// Registers a dashboard widget type (see <see cref="WidgetRegistration"/>): it becomes available in a
-    /// Dashboard workspace's "Add widget" gallery, and each placed instance is built by the registration's own
-    /// view factory.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
-    /// </remarks>
-    void AddWidget(WidgetRegistration registration)
-    {
-    }
-
-    /// <summary>
-    /// Registers a panel for the right-hand dock rail (see <see cref="DockPanelRegistration"/>) — the rail's tab
-    /// strip lists it, and opening it builds the registration's own view.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
-    /// </remarks>
-    void AddDockPanel(DockPanelRegistration registration)
-    {
-    }
-
-    /// <summary>
-    /// The widget types every plugin has contributed — what a Dashboard workspace's "Add widget" gallery reads.
-    /// Default empty.
-    /// </summary>
-    IReadOnlyList<WidgetRegistration> Widgets => [];
-
-    /// <summary>
-    /// Registers a companion-window mini-tool (see <see cref="CompanionToolRegistration"/>): it becomes available
-    /// in the cockpit's pop-out companion window, and is built by the registration's own view factory.
-    /// </summary>
-    /// <remarks>
-    /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
-    /// </remarks>
-    void AddCompanionTool(CompanionToolRegistration registration)
-    {
-    }
-
-    /// <summary>
-    /// The companion tools every plugin has contributed — what the companion window reads. Default empty.
-    /// </summary>
-    IReadOnlyList<CompanionToolRegistration> CompanionTools => [];
-
-    /// <summary>
-    /// Registers a full-surface workspace type (see <see cref="WorkspaceTypeRegistration"/>) — the plugin owns
-    /// the whole workspace body, where <see cref="AddWidget"/> owns only one grid cell. It becomes an entry in
-    /// the tab strip's "+" menu.
-    /// </summary>
-    /// <remarks>
-    /// The host draws the tab and the frame; what the body shows is the plugin's business. Default no-op so
-    /// existing implementations keep compiling untouched.
-    /// </remarks>
-    void AddWorkspaceType(WorkspaceTypeRegistration registration)
-    {
-    }
-
-    /// <summary>
-    /// The workspace types every plugin has contributed — what the tab strip's "+" menu reads. Default empty.
-    /// </summary>
-    IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
-
-    /// <summary>
-    /// Brings the workspace of type <paramref name="workspaceTypeId"/> to the front, opening one when none is
-    /// present, and makes it the active workspace — the programmatic half of picking that type from the "+" menu.
-    /// </summary>
-    /// <remarks>
-    /// An existing workspace of the type is activated in place rather than duplicated. Default no-op so existing
-    /// implementations keep compiling untouched — only the app's own host opens a workspace.
-    /// </remarks>
-    Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
     /// <summary>
     /// Adds a field to the project editor (AC-317) — "which YouTrack project is this project" — so a project
@@ -957,17 +691,6 @@ public interface ICockpitHost
     IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
 
     /// <summary>
-    /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds
-    /// <see cref="PluginShortcut.DefaultGesture"/> and runs <see cref="PluginShortcut.OnInvoke"/> when it is
-    /// pressed, shown alongside the built-in shortcuts in Options. Only fires when the operator is not typing
-    /// into a text field or the terminal. Default no-op so existing <see cref="ICockpitHost"/> implementations
-    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host wires it up.
-    /// </summary>
-    void AddShortcut(PluginShortcut shortcut)
-    {
-    }
-
-    /// <summary>
     /// Registers a managed-CLI install recipe (#AC-20): the host can then download the provider's CLI, verify it,
     /// keep it up to date, and hand its path back through <see cref="ResolveManagedCliPath"/>.
     /// </summary>
@@ -1087,28 +810,4 @@ public interface ICockpitHost
     /// </summary>
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
-    /// <summary>
-    /// The app's own "open the help about this" affordance (AC-1033), pointing at one article and — when
-    /// <paramref name="section"/> is given — one of its sections. Pass <paramref name="label"/> for a worded
-    /// link instead of a bare mark, and see Help ▸ Extending Cockpit ▸ Shipping documentation for how the
-    /// article name is resolved and why the returned control hides itself when its target does not exist.
-    /// </summary>
-    Control CreateHelpHint(string article, string? section = null, string? label = null) =>
-        new Panel { IsVisible = false };
-
-    /// <summary>
-    /// Opens the help window on <paramref name="article"/>, or on one of its sections — the jump
-    /// <see cref="CreateHelpHint"/> performs, for a control the plugin drew itself (AC-1033). A target that
-    /// resolves to nothing fails visibly in the window rather than opening the overview.
-    /// </summary>
-    void OpenHelp(string article, string? section = null)
-    {
-    }
-
-    /// <summary>
-    /// Whether <paramref name="article"/> — and <paramref name="section"/>, when given — is there to be opened
-    /// (AC-1033). For deciding whether to word an error message with a link at all; <see cref="CreateHelpHint"/>
-    /// asks this itself.
-    /// </summary>
-    bool HasHelp(string article, string? section = null) => false;
 }

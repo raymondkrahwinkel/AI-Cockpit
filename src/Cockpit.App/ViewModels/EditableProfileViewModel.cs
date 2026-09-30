@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -155,6 +156,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     private IPluginProviderConfigView? _pluginConfigView;
 
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IPluginProviderConfigViews? _pluginConfigViews;
 
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question
     // `Cockpit.App.ViewModels.SessionKindDefaults` answers for the New-session dialog — reused here rather than a
@@ -435,7 +437,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         if (CanChooseProvider)
         {
             PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
-                ? _TryCreateConfigView(_pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView, null)
+                ? _TryCreateConfigView(_pluginConfigViews?.Find(providerId), null)
                 : null;
 
             // A freshly added profile has no stored defaults yet — every option starts unset.
@@ -520,8 +522,10 @@ public partial class EditableProfileViewModel : ViewModelBase
         IReadOnlyList<string>? availableMcpServerNames = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IProfileLoginStarter? loginStarter = null)
+        IProfileLoginStarter? loginStarter = null,
+        IPluginProviderConfigViews? pluginConfigViews = null)
     {
+        _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
         _loginStarter = loginStarter;
@@ -595,7 +599,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             _selectedProvider = Providers.FirstOrDefault(option => option.Value == SessionProvider.Plugin && option.PluginProviderId == pluginConfig.ProviderId)
                 ?? new SessionProviderOption($"Plugin ({pluginConfig.ProviderId})", SessionProvider.Plugin, pluginConfig.ProviderId);
-            _pluginConfigView = _TryCreateConfigView(pluginProviderRegistry?.Resolve(pluginConfig.ProviderId)?.CreateConfigView, pluginConfig.ConfigJson);
+            _pluginConfigView = _TryCreateConfigView(pluginConfigViews?.Find(pluginConfig.ProviderId), pluginConfig.ConfigJson);
 
             // The provider plugin is not resolvable (removed/disabled/failed to load) — keep the raw config
             // so ToProfile can hand it back unchanged instead of collapsing to null (#45 review finding 1).

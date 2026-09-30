@@ -1,17 +1,15 @@
-using Cockpit.Plugins.Abstractions.Sessions;
-
 namespace Cockpit.Plugin.Autopilot;
 
 // The directory an Autopilot run works in (AC-174): the operator's chosen folder at approval, else the active
-// session's working directory, else the cockpit's own launch directory. Whether it is isolated per step depends
+// session's working directory (known to the UI part only), else the cockpit's own launch directory. Whether it is isolated per step depends
 // on whether it is a git repository — that decision is made downstream, this only resolves where it is.
 internal static class AutopilotWorkingDirectory
 {
-    public static string Resolve(ICockpitSessionObserver sessions, string? chosen)
+    public static string Resolve(string? activeSessionDirectory, string? chosen)
     {
         var directory = !string.IsNullOrWhiteSpace(chosen)
             ? chosen
-            : sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
+            : activeSessionDirectory is { Length: > 0 } active
                 ? active
                 : Directory.GetCurrentDirectory();
 

@@ -3,7 +3,8 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <summary>
 /// What a plugin hands the host via <see cref="ICockpitHost.AddSessionProvider"/> (#45) to register a new
 /// session provider: its stable id and display label, a factory minting its driver from the profile's
-/// opaque config JSON, the capabilities it supports, and a factory for its "add/edit profile" config view.
+/// opaque config JSON, and the capabilities it supports. Its "add/edit profile" config view is registered by the
+/// plugin's UI part.
 /// </summary>
 /// <param name="ProviderId">
 /// Stable id for this provider, namespaced by the plugin (e.g. <c>"gemini-provider.gemini"</c>) so two
@@ -19,9 +20,6 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <param name="Capabilities">
 /// What this provider's driver supports, so the session UI renders the right controls.
 /// </param>
-/// <param name="CreateConfigView">
-/// Builds the "add/edit profile" config view; the argument is the existing config JSON (edit) or <see langword="null"/> (add).
-/// </param>
 /// <param name="DefaultBaseUrl">
 /// Pre-filled default base URL for this provider's config view, when it has one.
 /// </param>
@@ -30,7 +28,6 @@ public sealed record SessionProviderRegistration(
     string DisplayName,
     Func<IServiceProvider, IPluginSessionDriverFactory> CreateDriverFactory,
     PluginSessionCapabilities Capabilities,
-    Func<string?, IPluginProviderConfigView> CreateConfigView,
     string DefaultBaseUrl = "")
 {
     /// <summary>
@@ -54,7 +51,7 @@ public sealed record SessionProviderRegistration(
     /// profile under this provider — Codex fills its Model choices from the app-server's <c>model/list</c> here.
     /// </summary>
     /// <remarks>
-    /// The argument is the profile's opaque config JSON (whatever <see cref="CreateConfigView"/> round-trips); the
+    /// The argument is the profile's opaque config JSON (whatever the provider's config view round-trips); the
     /// result replaces the declared options for that dialog. The dialog renders the declared <see cref="Options"/>
     /// first and calls this in the background, so opening is never blocked; on <see langword="null"/>, a timeout,
     /// or any failure it keeps the declared options.

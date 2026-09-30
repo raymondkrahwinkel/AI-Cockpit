@@ -274,8 +274,7 @@ public class SessionHeaderStatusAndKindChipTests
         ProviderId: providerId,
         DisplayName: displayName,
         CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these header tests."),
-        Capabilities: new PluginSessionCapabilities(false, false),
-        CreateConfigView: _ => throw new NotSupportedException("Not exercised by these header tests."));
+        Capabilities: new PluginSessionCapabilities(false, false));
 
     private static async Task<SessionViewModel> _StartedVmAsync(
         IReadOnlySet<string>? enabledMcpServerNames = null, SessionProfile? profile = null, IPluginProviderRegistry? registry = null)

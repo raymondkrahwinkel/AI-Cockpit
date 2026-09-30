@@ -17,7 +17,6 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
@@ -456,7 +455,7 @@ public class DiagramCollabWindowTests
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
-        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub, host.Surfaces);
         return (plugin, host);
     }
 
@@ -485,7 +484,6 @@ public class DiagramCollabWindowTests
 
     private sealed class RecordingHost : ICockpitHost
     {
-        private readonly List<ToolbarAction> _toolbarActions = [];
 
         public RecordingHost()
         {
@@ -522,7 +520,7 @@ public class DiagramCollabWindowTests
         // "couple to this session" and hits Enter on the prefilled name.
         public void InvokeQuickStart()
         {
-            _toolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+            Surfaces.ToolbarActions[0].OnInvoke().GetAwaiter().GetResult();
 
             // UserControl.Content only materialises into the visual tree once templated — shown, here, the same
             // way a document window's content already has to be for its own button lookups to find anything.
@@ -542,33 +540,14 @@ public class DiagramCollabWindowTests
             Registry.SessionEnded(paneId);
             Sessions.Close(paneId);
         }
+        // What CockpitUiHost reaches: the toolbar actions land here and its dialogs are answered by _OnDialog.
+        private RecordingUiSurfaces? _surfaces;
 
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public void AddWorkspaceType(WorkspaceTypeRegistration registration)
-        {
-        }
-
-        public void AddToolbarAction(ToolbarAction action) => _toolbarActions.Add(action);
-
-        public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
+        public RecordingUiSurfaces Surfaces => _surfaces ??= new RecordingUiSurfaces { OnDialog = _OnDialog, ActivePaneId = "pane-a" };
 
         // Overridden rather than left to the default forwarder precisely because the key is what this ticket is
         // about — the real host (PluginDialogHost) keys on it too.
-        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+        private Task _OnDialog(string title, Func<Control> createContent, string singleInstanceKey)
         {
             var content = createContent();
             if (singleInstanceKey == "diagram.quickstart")

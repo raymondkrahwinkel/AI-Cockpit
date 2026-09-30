@@ -10,10 +10,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <!-- AC-1402: exempt from the "/// only on interface methods" sweep like Cockpit.Plugins.Abstractions (see its csproj):
+         the /// on the window types moved here is the IntelliSense a plugin author sees in the NuGet package. -->
     <!-- Moves in step with Cockpit.Plugins.Abstractions: the same version, whose major is the contract. The
          AssemblyVersion stays fixed like the SDK's, so a plugin built against a later minor still binds to the
          host's copy. -->
-    <Version>1.73.0</Version>
+    <Version>3.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

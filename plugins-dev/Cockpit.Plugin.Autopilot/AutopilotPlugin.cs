@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -47,10 +48,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // persisted user/override templates into the one list the settings UI and the plan-flow picker read from.
         var templates = new AutopilotTemplateStore(host.Storage);
 
-        // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so
-        // the CEO-profile picker can list profiles/models, and the template store for the Templates section.
-        host.AddSettings(() => new AutopilotSettingsControl(settings, host, templates));
-
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, pane-scoped so
         // only the bound CEO session may set the plan. Internal-only (AC-204): the run's own agents scope to it
         // by name, but a normal operator must never see or tick it in the New-session/profile MCP selection.
@@ -92,12 +89,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             if (!string.IsNullOrWhiteSpace(run.IssueId) && string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase)
                 && host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase)) is { } provider)
             {
-                // The repository the merge check runs git in (AC-346 review): not known yet here, so this uses the
-                // same fallback AutopilotWorkingDirectory.Resolve uses. If neither resolves, AutopilotEpicRunner
+                // The repository the merge check runs git in (AC-346 review): not known yet here, and the backend has
+                // no active session, so this is the cockpit's launch directory. If that is not a repository, AutopilotEpicRunner
                 // turns the unknown merge status into a paused chain with a comment, not a silent restart.
-                var repositoryDirectory = host.Sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
-                    ? active
-                    : Directory.GetCurrentDirectory();
+                var repositoryDirectory = Directory.GetCurrentDirectory();
 
                 // AC-1337: the same collection branch the run itself will fork its worktree from and publish
                 // against — this epic's derived branch unless the operator opted back into v1 (direct to main).
@@ -151,25 +146,25 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             // the caller is told it is busy rather than a new run silently replacing the running one.
             if (!planController.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
             {
-                await host.OpenWorkspaceAsync("workspace.autopilot.plan");
+                _Publish(host, AutopilotChannel.OpenPlan);
                 return new Dictionary<string, string> { ["status"] = "busy", ["issue"] = run.IssueId };
             }
 
-            await host.OpenWorkspaceAsync("workspace.autopilot.plan");
+            _Publish(host, AutopilotChannel.OpenPlan);
             return new Dictionary<string, string> { ["status"] = "planning", ["issue"] = run.IssueId };
         });
 
         Parts = new AutopilotParts(host, settings, planController, manager, queue, history, templates);
 
-        // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
-        // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
-        // a profile set. A triggered run still opens straight into planning via the "plan" intent above.
-        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
     }
 
     public void Dispose()
     {
     }
+
+    // The backend has no window: what it wants shown goes to the UI part as an event on the plugin's own channel.
+    private static void _Publish(ICockpitHost host, string name) =>
+        host.Channel.Publish(name, JsonSerializer.SerializeToElement(true));
 
     // A planning round needs a CEO profile: without one the host falls back to whatever the first configured
     // profile is, which may be a local/plugin model that cannot plan. Tell the operator and offer settings
@@ -185,7 +180,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             "Set a CEO profile in the Autopilot settings before planning.",
             PluginToastSeverity.Warning,
             "Open settings",
-            () => _ = host.ShowSettingsAsync());
+            () => _Publish(host, AutopilotChannel.OpenSettings));
         return false;
     }
 
@@ -194,7 +189,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     // host stamps the caller, so a mismatch gets the toast only. Writing is once per issue and best-effort.
     private static async Task _RefuseAsync(ICockpitHost host, PluginIntent intent, AutopilotRun run, string reason, HashSet<string> commented)
     {
-        host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _ = host.ShowSettingsAsync());
+        host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _Publish(host, AutopilotChannel.OpenSettings));
 
         if (string.IsNullOrWhiteSpace(run.IssueId) || !string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase))
         {

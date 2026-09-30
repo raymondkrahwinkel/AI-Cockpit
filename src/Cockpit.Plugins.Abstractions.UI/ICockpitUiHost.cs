@@ -194,6 +194,12 @@ public interface ICockpitUiHost
     event EventHandler? ActiveSessionChanged;
 
     /// <summary>
+    /// Raised when <see cref="ActiveSessionUsage"/> moves — this window selected another session, or the selected
+    /// session's context or rate-limit figures updated.
+    /// </summary>
+    event EventHandler? ActiveSessionUsageChanged;
+
+    /// <summary>
     /// Puts <paramref name="text"/> on this machine's clipboard.
     /// </summary>
     Task SetClipboardTextAsync(string text);

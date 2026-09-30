@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.Plugins;
 
 // AC-1398: a backend part embeds a session in a workspace by that workspace's id, down the same route the workspace's
 // own EmbedSession takes, so the host still ties the session to that workspace and ends it when the workspace closes.
-public class DesktopPluginHostEmbedSessionTests
+public class DesktopBackendHostEmbedSessionTests
 {
     [Fact]
     public void EmbedSession_EmbedsInTheNamedWorkspaceThroughTheShell()
@@ -20,14 +20,12 @@ public class DesktopPluginHostEmbedSessionTests
         var shell = new Shell(session);
         var services = Substitute.For<IServiceProvider>();
         services.GetService(typeof(IEmbeddedSessionHost)).Returns(shell);
-        ICockpitHost host = new DesktopPluginHost(
+        ICockpitHost host = new DesktopBackendHost(
             "autopilot",
             "Autopilot",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
 

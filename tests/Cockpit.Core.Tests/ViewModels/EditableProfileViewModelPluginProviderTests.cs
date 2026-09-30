@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
@@ -20,11 +21,11 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret"}""");
-        registry.Register(_Registration("gemini-provider.gemini", "Gemini (OpenAI-compatible)", configView));
+        registry.Register(_Registration("gemini-provider.gemini", "Gemini (OpenAI-compatible)"));
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
         var providers = SessionProviderCatalog.AllProviders(registry);
 
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry, pluginConfigViews: _Views("gemini-provider.gemini", configView));
 
         Assert.True(editable.IsPluginProvider);
         Assert.False(editable.IsClaudeProvider);
@@ -38,10 +39,10 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret","Model":"gemini-2.5-flash"}""");
-        registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
+        registry.Register(_Registration("gemini-provider.gemini", "Gemini"));
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
         var providers = SessionProviderCatalog.AllProviders(registry);
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry, pluginConfigViews: _Views("gemini-provider.gemini", configView));
 
         var saved = editable.ToProfile();
 
@@ -96,10 +97,10 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView(json: null, isValid: false);
-        registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
+        registry.Register(_Registration("gemini-provider.gemini", "Gemini"));
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
         var providers = SessionProviderCatalog.AllProviders(registry);
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry, pluginConfigViews: _Views("gemini-provider.gemini", configView));
 
         Assert.False(editable.IsValid);
     }
@@ -109,10 +110,10 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView(json: null);
-        registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
+        registry.Register(_Registration("gemini-provider.gemini", "Gemini"));
         var providers = SessionProviderCatalog.AllProviders(registry);
         var editable = new EditableProfileViewModel(
-            new SessionProfile("new profile", new ClaudeConfig(string.Empty)), isLoggedIn: false, canChooseProvider: true, providers: providers, pluginProviderRegistry: registry);
+            new SessionProfile("new profile", new ClaudeConfig(string.Empty)), isLoggedIn: false, canChooseProvider: true, providers: providers, pluginProviderRegistry: registry, pluginConfigViews: _Views("gemini-provider.gemini", configView));
 
         editable.SelectedProvider = providers.Single(option => option.PluginProviderId == "gemini-provider.gemini");
 
@@ -130,7 +131,7 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret"}""");
-        registry.Register(_Registration("openai-provider.openai", "OpenAI", configView));
+        registry.Register(_Registration("openai-provider.openai", "OpenAI"));
         var providers = SessionProviderCatalog.AllProviders(registry);
         var loginStarter = Substitute.For<IProfileLoginStarter>();
         loginStarter.CanStartLogin(Arg.Any<SessionProfile>()).Returns(true);
@@ -139,7 +140,7 @@ public class EditableProfileViewModelPluginProviderTests
             isLoggedIn: false,
             canChooseProvider: true,
             providers: providers,
-            pluginProviderRegistry: registry,
+            pluginProviderRegistry: registry, pluginConfigViews: _Views("openai-provider.openai", configView),
             loginStarter: loginStarter);
         // Mimics what a Button bound to LoginCommand does on Avalonia/WPF: re-query CanExecute synchronously
         // the moment CanExecuteChanged fires.
@@ -161,8 +162,7 @@ public class EditableProfileViewModelPluginProviderTests
             ProviderId: "claude",
             DisplayName: "Claude",
             CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
-            Capabilities: new PluginSessionCapabilities(true, true),
-            CreateConfigView: _ => new FakePluginProviderConfigView("{}"))
+            Capabilities: new PluginSessionCapabilities(true, true))
         {
             Options =
             [
@@ -182,7 +182,7 @@ public class EditableProfileViewModelPluginProviderTests
                 OptionDefaults = new Dictionary<string, string> { ["permission-mode"] = "plan" },
             });
 
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: providers, pluginProviderRegistry: registry);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: providers, pluginProviderRegistry: registry, pluginConfigViews: _Views("claude", new FakePluginProviderConfigView("{}")));
 
         // Fase 4: a plugin profile's per-profile defaults are rendered generically from the plugin's declared options.
         // The saved default (plan) pre-fills the permission-mode editor and reads its friendly label; the un-stored
@@ -214,8 +214,7 @@ public class EditableProfileViewModelPluginProviderTests
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
             CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
-            Capabilities: new PluginSessionCapabilities(true, true),
-            CreateConfigView: _ => new FakePluginProviderConfigView("""{"sandboxMode":"workspace-write"}"""))
+            Capabilities: new PluginSessionCapabilities(true, true))
         {
             Options = [new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write", "danger-full-access"], "read-only")],
         });
@@ -224,7 +223,7 @@ public class EditableProfileViewModelPluginProviderTests
             new PluginProviderConfig("cli-agent-provider.codex", """{"sandboxMode":"workspace-write"}"""),
             Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty));
 
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: SessionProviderCatalog.AllProviders(registry), pluginProviderRegistry: registry);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: SessionProviderCatalog.AllProviders(registry), pluginProviderRegistry: registry, pluginConfigViews: _Views("cli-agent-provider.codex", new FakePluginProviderConfigView("""{"sandboxMode":"workspace-write"}""")));
 
         editable.Label = "codex (renamed)";
         var saved = editable.ToProfile();
@@ -233,12 +232,18 @@ public class EditableProfileViewModelPluginProviderTests
         Assert.Null(editable.PluginOptionDefaults.Single(option => option.Key == "sandbox").Value);
     }
 
-    private static SessionProviderRegistration _Registration(string providerId, string displayName, IPluginProviderConfigView configView) => new(
+    private static SessionProviderRegistration _Registration(string providerId, string displayName) => new(
         ProviderId: providerId,
         DisplayName: displayName,
         CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
-        Capabilities: new PluginSessionCapabilities(false, false),
-        CreateConfigView: _ => configView);
+        Capabilities: new PluginSessionCapabilities(false, false));
+
+    private static PluginProviderConfigViews _Views(string providerId, IPluginProviderConfigView configView)
+    {
+        var views = new PluginProviderConfigViews();
+        views.Register(providerId, _ => configView);
+        return views;
+    }
 
     /// <summary>A minimal <see cref="IPluginProviderConfigView"/> test double — <see cref="View"/> is a plain
     /// <see cref="Panel"/> rather than anything touching Avalonia platform services (Cursor/ToolTip), which

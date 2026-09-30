@@ -11,5 +11,5 @@ namespace Cockpit.Plugins.Abstractions;
 /// </remarks>
 public static class AbstractionsContract
 {
-    public const int Version = 2;
+    public const int Version = 3;
 }

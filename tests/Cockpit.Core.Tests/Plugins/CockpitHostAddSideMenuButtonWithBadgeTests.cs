@@ -1,18 +1,17 @@
 using Avalonia.Controls;
-using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.AddSideMenuButtonWithBadge"/> (AC-516): a badge-carrying side-menu launcher forwards to
+/// <see cref="CockpitUiHost.AddSideMenuButtonWithBadge"/> (AC-516): a badge-carrying side-menu launcher forwards to
 /// the contribution sink's badge-carrying overload, tagged with the plugin id like every other menu contribution —
-/// and, unlike <see cref="DesktopPluginHost.AddSideMenuButton"/>, hands the plugin back a live handle it keeps to update
+/// and, unlike <see cref="CockpitUiHost.AddSideMenuButton"/>, hands the plugin back a live handle it keeps to update
 /// the counter later.
 /// </summary>
 public class CockpitHostAddSideMenuButtonWithBadgeTests
@@ -21,7 +20,7 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
     public void AddSideMenuButtonWithBadge_ForwardsToTheContributionSink_TaggedWithThePluginId_CarryingTheBadge()
     {
         var sink = Substitute.For<IPluginContributionSink>();
-        ICockpitHost host = _BuildHost(sink);
+        ICockpitUiHost host = _BuildHost(sink);
         Action onInvoke = () => { };
 
         var badge = host.AddSideMenuButtonWithBadge("Open PR's", onInvoke);
@@ -35,7 +34,7 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
     public void TheReturnedBadge_CanBeUpdatedAfterRegistration_WithoutReregistering()
     {
         var sink = Substitute.For<IPluginContributionSink>();
-        ICockpitHost host = _BuildHost(sink);
+        ICockpitUiHost host = _BuildHost(sink);
 
         var badge = host.AddSideMenuButtonWithBadge("Open PR's", () => { });
         badge.Primary = 3;
@@ -51,7 +50,7 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
     public void AddSideMenuButton_StillCallsThePlain3ArgSinkMember_NeverTheBadgeOne()
     {
         var sink = Substitute.For<IPluginContributionSink>();
-        ICockpitHost host = _BuildHost(sink);
+        ICockpitUiHost host = _BuildHost(sink);
         Action onInvoke = () => { };
 
         host.AddSideMenuButton("Workflows", onInvoke);
@@ -68,7 +67,7 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
     public void ASinkThatOnlyImplementsThePlain3ArgMember_StillReceivesTheCall_ViaTheDefaultForward()
     {
         var sink = new _PreAc516Sink();
-        ICockpitHost host = _BuildHost(sink);
+        ICockpitUiHost host = _BuildHost(sink);
         Action onInvoke = () => { };
 
         var badge = host.AddSideMenuButtonWithBadge("Open PR's", onInvoke);
@@ -80,17 +79,8 @@ public class CockpitHostAddSideMenuButtonWithBadgeTests
         Assert.NotNull(badge); // the plugin still gets a real handle back, even though this sink never renders it
     }
 
-    private static DesktopPluginHost _BuildHost(IPluginContributionSink sink) =>
-        new(
-            "github-pull-requests",
-            "GitHub Pull Requests",
-            new ServiceCollection().BuildServiceProvider(),
-            sink,
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
+    private static ICockpitUiHost _BuildHost(IPluginContributionSink sink) =>
+        TestUiHost.Create(sink: sink, pluginId: "github-pull-requests", pluginName: "GitHub Pull Requests");
 
     // Deliberately implements only the members IPluginContributionSink actually mandates (everything else on the
     // interface is default-implemented) — the minimal shape a pre-AC-516 fake sink would have had.
