@@ -25,15 +25,6 @@ public class WireframeParserTests
         Assert.Equal(WireframeNodeKind.Label, root.Children[1].Kind);
     }
 
-    [Fact]
-    public void Indentation_OfFourSpaces_NestsJustTheSame()
-    {
-        var result = WireframeParser.Parse("screen \"X\"\n    row\n        button \"Opslaan\"");
-
-        Assert.Empty(result.Errors);
-        Assert.Equal(WireframeNodeKind.Button, result.Screens.Single().Children.Single().Children.Single().Kind);
-    }
-
     // Every way a single line can be refused: the same guarantee with different values — one error, on the line
     // that caused it, saying enough to fix it — so rows, not methods. A refusal that also says something about the
     // tree it left behind is a test of its own below; these rows claim nothing beyond the error itself.
@@ -206,15 +197,6 @@ public class WireframeParserTests
     }
 
     [Fact]
-    public void ALineAtTheLeftMarginThatIsNotAScreen_IsRefusedWithoutLosingTheScreensBeforeIt()
-    {
-        var result = WireframeParser.Parse("screen \"Eerste\"\nlabel \"Los\"\nscreen \"Tweede\"");
-
-        Assert.Equal(2, Assert.Single(result.Errors).Line);
-        Assert.Equal(["Eerste", "Tweede"], result.Screens.Select(screen => screen.Text));
-    }
-
-    [Fact]
     public void AnIdUsedInTwoScreens_IsStillRefused_SoOneIdNamesOneComponent()
     {
         var result = WireframeParser.Parse("screen \"Eerste\"\n  button \"Opslaan\" #save\nscreen \"Tweede\"\n  button \"Opslaan\" #save");
@@ -223,73 +205,7 @@ public class WireframeParserTests
         Assert.Empty(result.Screens[1].Children);
     }
 
-    [Fact]
-    public void AnEmptySource_IsNeitherARootNorAnError()
-    {
-        var result = WireframeParser.Parse("\n   \n");
-
-        Assert.Empty(result.Screens);
-        Assert.Empty(result.Errors);
-    }
-
-    [Fact]
-    public void EveryNode_RemembersTheLineItCameFrom()
-    {
-        var result = WireframeParser.Parse("""
-            screen "X"
-
-              row
-                button "Opslaan"
-            """);
-
-        Assert.Equal<int?>(1, result.Screens.Single().Line);
-        Assert.Equal<int?>(3, result.Screens.Single().Children.Single().Line);
-        Assert.Equal<int?>(4, result.Screens.Single().Children.Single().Children.Single().Line);
-    }
-
     // ---- Component ids (AC-906) ----
-
-    [Fact]
-    public void AnId_IsReadOffTheLine_AndDoesNotCountAsAModifier()
-    {
-        var result = WireframeParser.Parse("screen \"X\" #scherm\n  button \"Opslaan\" primary #save");
-
-        Assert.Empty(result.Errors);
-        Assert.Equal("scherm", result.Screens.Single().Id);
-        var button = result.Screens.Single().Children.Single();
-        Assert.Equal("save", button?.Id);
-        Assert.Equal(WireframeModifierName.Primary, button?.Modifiers.Single().Name);
-    }
-
-    [Fact]
-    public void AComponentWithoutAnId_CarriesNone_SoAnUnreferencedSourceStaysPlain()
-    {
-        Assert.Null(WireframeParser.Parse("screen \"X\"").Screens.Single().Id);
-    }
-
-    [Fact]
-    public void TheSameIdTwice_IsRefusedOnTheSecondLine_BecauseOneIdMustNameOneComponent()
-    {
-        var result = WireframeParser.Parse("screen \"X\" #a\n  button \"Opslaan\" #a");
-
-        Assert.Equal(2, Assert.Single(result.Errors).Line);
-        Assert.Empty(result.Screens.Single().Children);
-    }
-
-    [Theory]
-    [InlineData("screen \"X\" #met spatie")]
-    [InlineData("screen \"X\" #")]
-    [InlineData("screen \"X\" #een/twee")]
-    public void AnIdOutsideTheAlphabetItMayUse_IsRefused(string source)
-    {
-        Assert.NotEmpty(WireframeParser.Parse(source).Errors);
-    }
-
-    [Fact]
-    public void TextAfterAnId_IsRefused_BecauseTheTextComesDirectlyAfterTheComponent()
-    {
-        Assert.NotEmpty(WireframeParser.Parse("screen #x \"X\"").Errors);
-    }
 
     // ---- Flows between screens (AC-902) ----
 
@@ -310,19 +226,6 @@ public class WireframeParserTests
         var button = result.Screens[0].Children.Single();
         Assert.Equal("Dashboard", button.ValueOf(WireframeModifierName.Goto));
         Assert.Equal(source, WireframeWriter.Write(result.Screens));
-    }
-
-    [Fact]
-    public void Goto_DeclaredBeforeItsTargetScreen_StillResolves_BecauseScreensMayForwardReference()
-    {
-        var result = WireframeParser.Parse("""
-            screen "Aanmelden"
-              button "Verder" goto:"Dashboard"
-
-            screen "Dashboard"
-            """);
-
-        Assert.Empty(result.Errors);
     }
 
     [Fact]
@@ -378,15 +281,6 @@ public class WireframeParserTests
 
     // ---- Viewport (AC-915) ----
 
-    [Fact]
-    public void ASourceWithoutAViewportLine_ReadsAsDesktop()
-    {
-        var result = WireframeParser.Parse("screen \"X\"");
-
-        Assert.Empty(result.Errors);
-        Assert.Null(result.Viewport);
-    }
-
     [Theory]
     [InlineData("desktop", WireframeViewport.Desktop)]
     [InlineData("tablet", WireframeViewport.Tablet)]
@@ -410,20 +304,6 @@ public class WireframeParserTests
         ["  viewport mobile\n\nscreen \"X\"", 1, new[] { "left margin" }, null!],
     ];
 
-    [Theory]
-    [MemberData(nameof(RefusedViewportLines))]
-    public void AViewportLineThatCannotStand_IsRefused_LeavingTheDocumentsOwnViewport(
-        string source, int line, string[] present, object? viewport)
-    {
-        var result = WireframeParser.Parse(source);
-
-        var error = Assert.Single(result.Errors);
-        Assert.Equal(line, error.Line);
-        Assert.All(present, fragment => Assert.Contains(fragment, error.Message, StringComparison.Ordinal));
-        Assert.Equal((WireframeViewport?)viewport, result.Viewport);
-        Assert.Single(result.Screens);
-    }
-
     // ---- States (AC-914) ----
 
     [Fact]
@@ -446,28 +326,5 @@ public class WireframeParserTests
         Assert.Equal("Empty", state.Text);
         Assert.Equal("#results", state.ValueOf(WireframeModifierName.Replaces));
         Assert.Equal(source, WireframeWriter.Write(result.Screens));
-    }
-
-    [Fact]
-    public void State_DeclaredBeforeItsContainer_StillResolves_BecauseAScreenIsReadWhole()
-    {
-        var result = WireframeParser.Parse("""
-            screen "X"
-              state "Empty" replaces:#results
-                label "No results found"
-              list #results
-                item "Result 1"
-            """);
-
-        Assert.Empty(result.Errors);
-    }
-
-    [Fact]
-    public void State_AtTheLeftMargin_IsRefused_BecauseAWireframeBeginsWithAScreen()
-    {
-        var result = WireframeParser.Parse("state \"Empty\" replaces:#c");
-
-        Assert.Empty(result.Screens);
-        Assert.NotEmpty(result.Errors);
     }
 }

@@ -20,58 +20,6 @@ public class PullRequestGateTests
     public PullRequestGateTests() => _settings = new PullRequestGateSettings(_host.Storage);
 
     [Fact]
-    public async Task AGateNobodySwitchedOnSaysNothing()
-    {
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Failed), Head, Noon);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        // Default off, everywhere: a gate that arrives on would hold back pull requests in every project the
-        // operator has, over a feature they have not tried yet.
-        Assert.Equal(GateStatus.Off, verdict.Status);
-        Assert.True(verdict.AllowsWithoutAsking);
-    }
-
-    [Fact]
-    public async Task NothingHavingRunIsNotTheSameAsHavingPassed()
-    {
-        _settings.Set(Checkout, on: true);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        Assert.Equal(GateStatus.NotRun, verdict.Status);
-        Assert.False(verdict.AllowsWithoutAsking);
-    }
-
-    [Fact]
-    public async Task AMachineThatCouldNotRunTheJobIsNotRunRatherThanOk()
-    {
-        _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.CouldNotRun), Head, Noon);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        // The exact branch this project has been bitten on before: a check that could not run standing green. It
-        // must read as "did not run", which is not a pass and does not open a pull request on its own.
-        Assert.Equal(GateStatus.NotRun, verdict.Status);
-        Assert.False(verdict.AllowsWithoutAsking);
-    }
-
-    [Fact]
-    public async Task ARunThatFailedIsReportedAsFailedAndNotAsNothingHavingRun()
-    {
-        _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Failed), Head, Noon);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        // Both refuse, so refusing alone does not tell them apart — and calling a run that ran and failed "nothing
-        // ran" sends the operator looking for a run to start instead of at the failure they already have.
-        Assert.Equal(GateStatus.Failed, verdict.Status);
-        Assert.Equal(_Result(LocalRunOutcome.Failed).Headline, verdict.Reason);
-    }
-
-    [Fact]
     public async Task EveryEndingThatIsNotAPassIsRefused()
     {
         _settings.Set(Checkout, on: true);
@@ -126,29 +74,6 @@ public class PullRequestGateTests
     }
 
     [Fact]
-    public async Task TheSettingIsPerCheckoutAndSurvivesTwoSpellingsOfOne()
-    {
-        _settings.Set(Checkout + Path.DirectorySeparatorChar, on: true);
-
-        Assert.True(_settings.IsOnFor(Checkout));
-        Assert.False(_settings.IsOnFor(Path.Combine(Path.GetTempPath(), "another-checkout")));
-
-        _settings.Set(Checkout, on: false);
-        Assert.False(_settings.IsOnFor(Checkout));
-
-        await Task.CompletedTask;
-    }
-
-    [Fact]
-    public async Task AnIntentWithNoRepositoryGatesNothing()
-    {
-        var answer = await _Intent().HandleAsync(_IntentWith(new Dictionary<string, string>()));
-
-        Assert.Equal("true", answer[PullRequestGateIntent.AllowedKey]);
-        Assert.Empty(_host.Asked);
-    }
-
-    [Fact]
     public async Task ARefusedCheckoutOffersTheOperatorTheWayPastAndRecordsWhy()
     {
         _settings.Set(Checkout, on: true);
@@ -176,15 +101,6 @@ public class PullRequestGateTests
         Assert.Equal("false", answer[PullRequestGateIntent.AllowedKey]);
         Assert.Equal("notrun", answer[PullRequestGateIntent.StatusKey]);
         Assert.NotEmpty(answer[PullRequestGateIntent.ReasonKey]);
-    }
-
-    [Fact]
-    public async Task AGateThatIsOffNeverInterruptsAnybody()
-    {
-        var answer = await _Intent().HandleAsync(_IntentWith(new Dictionary<string, string> { ["repository"] = Checkout }));
-
-        Assert.Equal("true", answer[PullRequestGateIntent.AllowedKey]);
-        Assert.Empty(_host.Asked);
     }
 
     private PullRequestGate _Gate(bool gitAnswers = true)

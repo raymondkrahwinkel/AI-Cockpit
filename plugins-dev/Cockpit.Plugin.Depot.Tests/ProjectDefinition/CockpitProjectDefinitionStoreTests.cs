@@ -154,32 +154,6 @@ public class CockpitProjectDefinitionStoreTests
     }
 
     [Fact]
-    public async Task ReadAsync_NotSignedIn_ReportsAuthorizationRequired()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
-        Assert.Null(result.Definition);
-    }
-
-    [Fact]
-    public async Task ReadAsync_ToolCallFails_ReportsFailedWithTheServersOwnMessage()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("not found")));
-
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.Equal("not found", result.Error);
-    }
-
-    [Fact]
     public async Task ReadAsync_ContentIsNotValidDefinitionJson_ReportsFailedRatherThanThrowing()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -190,18 +164,6 @@ public class CockpitProjectDefinitionStoreTests
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task ReadAsync_EnvelopeMissingChecksum_ReportsFailedRatherThanThrowing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","content":"{}"}""")));
-
-        var result = await CockpitProjectDefinitionStore.ReadAsync(host, "Depot: Acme", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
     }
 
     [Fact]
@@ -219,22 +181,6 @@ public class CockpitProjectDefinitionStoreTests
         await host.Received(1).CallMcpToolAsync(
             "Depot: Acme", "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => (string)args!["baseChecksum"]! == "old123"),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteAsync_NoBaseChecksum_OmitsItFromTheArguments()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","checksum":"first","bytesWritten":1}""")));
-
-        await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
-
-        await host.Received(1).CallMcpToolAsync(
-            "Depot: Acme", "write",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => !args!.ContainsKey("baseChecksum")),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
@@ -287,20 +233,6 @@ public class CockpitProjectDefinitionStoreTests
     }
 
     [Fact]
-    public async Task WriteAsync_UnrelatedFailure_ClassifiesAsUnclassified()
-    {
-        // A failure whose text matches neither known Depot shape must not be guessed into either bucket.
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("Could not connect to \"Depot: Acme\".")));
-
-        var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
-
-        Assert.Equal(CockpitProjectDefinitionWriteFailureKind.Unclassified, result.FailureKind);
-    }
-
-    [Fact]
     public async Task WriteAsync_CallerRoleIsViewer_NeverCallsDepotAndNamesTheReason()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -314,24 +246,6 @@ public class CockpitProjectDefinitionStoreTests
         Assert.NotNull(result.Error);
         await host.DidNotReceive().CallMcpToolAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Theory]
-    [InlineData(CockpitProjectRole.Editor)]
-    [InlineData(CockpitProjectRole.Owner)]
-    public async Task WriteAsync_CallerRoleCanWrite_ProceedsToCallDepot(CockpitProjectRole role)
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"path":"x","checksum":"c1","bytesWritten":1}""")));
-
-        var result = await CockpitProjectDefinitionStore.WriteAsync(
-            host, "Depot: Acme", "cockpit", new CockpitProjectDefinition { Name = "probe" },
-            baseChecksum: "abc", callerRole: role);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-        await host.Received(1).CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

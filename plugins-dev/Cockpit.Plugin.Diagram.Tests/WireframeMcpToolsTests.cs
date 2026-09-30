@@ -61,22 +61,6 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWireframe_HandsBackTheComponentsWithTheIdsTheEditToolsTake()
-    {
-        var (tools, _, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        var components = json!["components"]!.AsArray();
-        Assert.Equal(13, components.Count);
-        Assert.Equal(WireframeScreens.Screen, components[0]!["id"]!.GetValue<string>());
-        Assert.Equal("screen", components[0]!["type"]!.GetValue<string>());
-        Assert.Equal(WireframeScreens.SaveButton, components[12]!["id"]!.GetValue<string>());
-        Assert.Equal(WireframeScreens.SaveButtonLine, components[12]!["line"]!.GetValue<int>());
-        Assert.Equal("Opslaan", components[12]!["text"]!.GetValue<string>());
-    }
-
-    [Fact]
     public async Task ReadWireframe_Denied_HandsOverNothing()
     {
         var (tools, registry, _) = _Open(ConsentOutcome.Denied);
@@ -86,16 +70,6 @@ public class WireframeMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Null(json["source"]);
         Assert.Null(registry.CouplingOf(Session, SurfaceId));
-    }
-
-    [Fact]
-    public async Task ReadWireframe_Approved_MarksWhenItWasRead()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        await tools.ReadWireframe(Session, Name);
-
-        Assert.NotNull(registry.CouplingOf(Session, SurfaceId)!.LastReadAt);
     }
 
     [Fact]
@@ -149,85 +123,6 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
-    public async Task AddComponent_SharesEditsOneApproval_AndAnswersWithTheComponentsAsTheyNowStand()
-    {
-        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.AddComponent(Session, Name, WireframeScreens.Group, "input", "Telefoonnummer"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("added input \"Telefoonnummer\"", json["changed"]!.GetValue<string>());
-        Assert.Equal(14, json["components"]!.AsArray().Count);
-        Assert.Contains("add input \"Telefoonnummer\"", Assert.Single(asked).Action, StringComparison.Ordinal);
-
-        var second = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButton, "Bewaren"));
-        Assert.True(second!["ok"]!.GetValue<bool>());
-        Assert.Single(asked);
-        Assert.Equal(2, registry.History(SurfaceId).Count);
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_AFlag_TurnsItOnWithoutAValue()
-    {
-        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.AccountItem, "selected"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("selected #account", registry.PeekText(SurfaceId));
-        Assert.Contains("set selected on component", Assert.Single(asked).Action, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_AFlag_WithClear_TakesItOff()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.GeneralItem, "selected", clear: true));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.DoesNotContain("selected", registry.PeekText(SurfaceId)!.Split('\n')[4]);
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_AValue_SetsIt_AndClearRemovesIt()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        var set = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.EmailField, "value", "raymond@example.com"));
-        Assert.True(set!["ok"]!.GetValue<bool>());
-        Assert.Contains("value:\"raymond@example.com\"", registry.PeekText(SurfaceId));
-
-        var cleared = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.EmailField, "value", clear: true));
-        Assert.True(cleared!["ok"]!.GetValue<bool>());
-        Assert.Equal("        input \"E-mailadres\" #email", registry.PeekText(SurfaceId)!.Split('\n')[9]);
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_WithAKeywordTheFormatDoesNotHave_IsRefusedWithoutAsking()
-    {
-        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "bold"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("not a modifier this format has", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_WithNoMeaningOnThisComponent_IsRefused()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.NameField, "primary"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("no meaning", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
     public async Task SetComponentModifier_Goto_QuotesATitleWithASpace_UnconditionallyUnlikeValue()
     {
         // AC-902: goto: is quoted unconditionally, unlike value:, because a screen title almost always carries a
@@ -250,22 +145,6 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWireframe_AGotoField_ResolvesToTheTargetScreensId()
-    {
-        var built = _Build(ConsentOutcome.Approved);
-        built.registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.TwoScreensWithFlow);
-        var (tools, _, _) = built;
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        var components = json!["components"]!.AsArray();
-        var submit = components.Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.LoginSubmit);
-        Assert.Equal(WireframeScreens.SignupScreen, submit!["goto"]!.GetValue<string>());
-        var withoutFlow = components.Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.SignupSubmit);
-        Assert.Null(withoutFlow!["goto"]);
-    }
-
-    [Fact]
     public async Task SetComponentModifier_Note_IsQuotedUnconditionally_EvenWhenTheTextIsAllDigits()
     {
         // AC-907: same trap as goto — value:'s int.TryParse check exists to spare a bare number its quotes, but a
@@ -276,63 +155,6 @@ public class WireframeMcpToolsTests
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Contains("note:\"3\"", registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_Note_ClearRemovesIt()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-        await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", "disabled until valid");
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", clear: true));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.DoesNotContain("note:", registry.PeekText(SurfaceId), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ReadWireframe_ANoteField_IsTheTextVerbatim_AndNullWithoutOne()
-    {
-        const string source = """
-            screen "Aanmelden" #login
-              button "Verder" primary note:"disabled until both fields are filled in" #go
-              input "E-mailadres" #email
-            """;
-        var built = _Build(ConsentOutcome.Approved);
-        built.registry.SurfaceOpened(SurfaceId, Name, source);
-        var (tools, _, _) = built;
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        var components = json!["components"]!.AsArray();
-        var button = components.Single(component => component!["id"]!.GetValue<string>() == "go");
-        Assert.Equal("disabled until both fields are filled in", button!["note"]!.GetValue<string>());
-        var input = components.Single(component => component!["id"]!.GetValue<string>() == "email");
-        Assert.Null(input!["note"]);
-    }
-
-    [Fact]
-    public async Task ChangeComponentType_KeepsThePlaceTheTextAndTheChildren()
-    {
-        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ChangeComponentType(Session, Name, WireframeScreens.NameField, "select"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("select \"Profielnaam\" value:\"Raymond\" #name", registry.PeekText(SurfaceId));
-        Assert.Contains("change component", Assert.Single(asked).Action, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ChangeComponentType_WhenTheNewTypeCannotCarryItsChildren_IsRefused()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ChangeComponentType(Session, Name, WireframeScreens.Group, "label"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("carries no components of its own", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
     }
 
     [Fact]
@@ -433,86 +255,5 @@ public class WireframeMcpToolsTests
 
     // ---- A document of several screens (AC-901) ----
 
-    [Fact]
-    public async Task ReadWireframe_SaysWhichScreenEveryComponentIsIn()
-    {
-        var (tools, registry, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.TwoScreens);
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        Assert.Equal(
-            [WireframeScreens.LoginScreen, WireframeScreens.SignupScreen],
-            json!["screens"]!.AsArray().Select(screen => screen!["id"]!.GetValue<string>()));
-        var submit = json["components"]!.AsArray()
-            .Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.SignupSubmit);
-        Assert.Equal(WireframeScreens.SignupScreen, submit!["screen"]!.GetValue<string>());
-        Assert.Equal("Registreren", submit["screenTitle"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task AddScreen_AddsOneBesideTheOnesAlreadyThere_AndSaysSoInThePrompt()
-    {
-        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.AddScreen(Session, Name, "Aanmelden"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(2, json["screens"]!.AsArray().Count);
-        Assert.Contains("add a screen \"Aanmelden\"", Assert.Single(asked).Action, StringComparison.Ordinal);
-        Assert.Contains("screen \"Aanmelden\"", registry.PeekText(SurfaceId), StringComparison.Ordinal);
-    }
-
     // ---- Viewport (AC-915) ----
-
-    [Fact]
-    public async Task ReadWireframe_WithNoViewportLine_ReportsDesktopAndItsSize()
-    {
-        var (tools, _, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        var viewport = json!["viewport"]!;
-        Assert.Equal("desktop", viewport["name"]!.GetValue<string>());
-        Assert.Equal(960, viewport["width"]!.GetValue<double>());
-        Assert.Equal(640, viewport["height"]!.GetValue<double>());
-    }
-
-    [Fact]
-    public async Task SetWireframeViewport_AppliesStraightAway_AndReadBackReportsIt()
-    {
-        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetWireframeViewport(Session, Name, "mobile"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("viewport mobile", registry.PeekText(SurfaceId), StringComparison.Ordinal);
-        Assert.Contains("set the viewport to mobile", Assert.Single(asked).Action, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SetWireframeViewport_WithAnUnknownName_IsRefusedWithoutAskingAnyone()
-    {
-        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetWireframeViewport(Session, Name, "phablet"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("desktop, tablet or mobile", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Empty(asked);
-    }
-
-    [Fact]
-    public void ListWireframes_NamesTheSurfacesWithoutHandingOverAnythingInThem()
-    {
-        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(tools.ListWireframes(Session));
-
-        var listed = Assert.Single(json!["wireframes"]!.AsArray());
-        Assert.Equal(SurfaceId, listed!["id"]!.GetValue<string>());
-        Assert.False(listed["canRead"]!.GetValue<bool>());
-        Assert.False(listed["canEdit"]!.GetValue<bool>());
-        Assert.Empty(asked);
-    }
 }

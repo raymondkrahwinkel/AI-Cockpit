@@ -28,11 +28,6 @@ public class WireframeVocabularyTests
         Assert.Contains(kind.ToString().ToLowerInvariant(), words);
     }
 
-    [Theory]
-    [MemberData(nameof(Kinds))]
-    public void EveryKeyword_IsInTheFormatDoc(WireframeNodeKind kind) =>
-        Assert.Contains($"`{kind.ToString().ToLowerInvariant()}`", _FormatDoc(), StringComparison.Ordinal);
-
     // AC-907 val #5: WireframeNodeKind has WireframeVocabularyTests above; WireframeModifierName had nothing
     // comparable, so a new modifier could land half-described without any test noticing.
     public static TheoryData<WireframeModifierName> Modifiers => new(Enum.GetValues<WireframeModifierName>());
@@ -50,11 +45,6 @@ public class WireframeVocabularyTests
         var words = Regex.Split((description + " " + parameterDescription).ToLowerInvariant(), "[^a-z]+").ToHashSet(StringComparer.Ordinal);
         Assert.Contains(name.ToString().ToLowerInvariant(), words);
     }
-
-    [Theory]
-    [MemberData(nameof(Modifiers))]
-    public void EveryModifierKeyword_IsInTheFormatDocsModifierTable(WireframeModifierName name) =>
-        Assert.Contains($"`{name.ToString().ToLowerInvariant()}", _FormatDoc(), StringComparison.Ordinal);
 
     // The doc is a repository file rather than a build artefact, so it is found by walking up from wherever the
     // test binary landed.

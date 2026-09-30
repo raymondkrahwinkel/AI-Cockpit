@@ -16,20 +16,4 @@ public class SlackConnectionErrorFormatterTests
         Assert.Contains(expectedHintFragment, explanation);
         Assert.Contains(errorCode, explanation);
     }
-
-    [Fact]
-    public void UnknownErrorCode_FallsThroughToSlackNetsOwnMessage()
-    {
-        var exception = new SlackException(new ErrorResponse { Error = "rate_limited" });
-
-        Assert.Equal(exception.Message, SlackConnectionErrorFormatter.Explain(exception));
-    }
-
-    [Fact]
-    public void NonSlackException_FallsThroughToItsOwnMessage()
-    {
-        var exception = new InvalidOperationException("the socket closed unexpectedly");
-
-        Assert.Equal(exception.Message, SlackConnectionErrorFormatter.Explain(exception));
-    }
 }

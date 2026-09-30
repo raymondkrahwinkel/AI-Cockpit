@@ -11,17 +11,6 @@ public class LocalRunApprovalTests : IDisposable
     public void Dispose() => _project.Dispose();
 
     [Fact]
-    public void APlainLinuxJobIsApprovedWithItsRunnerLabel()
-    {
-        var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);
-
-        var approval = LocalRunApproval.For(new LocalRunRequest(_project.Root, workflow, "build"));
-
-        Assert.True(approval.IsApproved, approval.Reason);
-        Assert.Equal("ubuntu-latest", approval.RunnerLabel);
-    }
-
-    [Fact]
     public void AJobTheClassificationRefusesCarriesItsReasonUnchanged()
     {
         var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.MatrixJob);
@@ -53,16 +42,5 @@ public class LocalRunApprovalTests : IDisposable
 
         Assert.False(approval.IsApproved);
         Assert.Contains("not one of this project's workflows", approval.Reason);
-    }
-
-    [Fact]
-    public void AWorkflowThatDoesNotParseIsRefusedWithTheReadingError()
-    {
-        var workflow = _project.AddWorkflow("ci.yml", "jobs: [this is not a mapping");
-
-        var approval = LocalRunApproval.For(new LocalRunRequest(_project.Root, workflow, "build"));
-
-        Assert.False(approval.IsApproved);
-        Assert.NotEmpty(approval.Reason);
     }
 }

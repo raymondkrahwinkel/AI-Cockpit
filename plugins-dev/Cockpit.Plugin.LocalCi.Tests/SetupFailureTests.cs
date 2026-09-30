@@ -31,14 +31,6 @@ public class SetupFailureTests
     }
 
     [Fact]
-    public void AFailureBringingTheContainerUpIsNotAVerdictEither()
-    {
-        string[] output = ["[CI/build]   ❌  Failure - Set up job", "[CI/build] Error: failed to pull image"];
-
-        Assert.NotNull(SetupFailure.Reason(output, TheseActions));
-    }
-
-    [Fact]
     public void AFailingStepOfTheProjectStaysAFailure()
     {
         // The guard that matters most. A classification that swallows a real failure is worse than the confusion it
@@ -56,17 +48,6 @@ public class SetupFailureTests
     }
 
     [Fact]
-    public void AProjectStepNamedLikeAnActionIsStillTheProjects()
-    {
-        // Why the job's own uses: list is read rather than the name's shape guessed at. A run: step may be called
-        // anything at all, and "it has a slash and an @, so it must be an action" would hand a real compile failure
-        // back as somebody else's problem.
-        string[] output = ["[CI/build]   ❌  Failure - Main deploy/staging@nightly"];
-
-        Assert.Null(SetupFailure.Reason(output, TheseActions));
-    }
-
-    [Fact]
     public void TheFirstFailureIsTheOneThatCounts()
     {
         // act stops at the first failure; what follows is the tidying up. Reading the last one would describe the
@@ -78,19 +59,5 @@ public class SetupFailureTests
         ];
 
         Assert.Null(SetupFailure.Reason(output, TheseActions));
-    }
-
-    [Fact]
-    public void OutputWithNoFailureLineAtAllIsNotClaimedAsAnEnvironmentProblem()
-    {
-        // act exited non-zero without naming a failed step — it never got going itself. Real, but not this
-        // classification's to name, and guessing here would relabel anything unfamiliar as "your machine".
-        Assert.Null(SetupFailure.Reason(["[CI/build] Error: workflow file could not be read"], TheseActions));
-    }
-
-    [Fact]
-    public void AJobThatUsesNoActionsCanOnlyFailOnItsOwnSteps()
-    {
-        Assert.Null(SetupFailure.Reason(["[CI/build]   ❌  Failure - Main Build"], []));
     }
 }

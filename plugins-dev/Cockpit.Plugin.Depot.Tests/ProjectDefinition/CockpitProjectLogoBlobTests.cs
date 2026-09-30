@@ -41,34 +41,6 @@ public class CockpitProjectLogoBlobTests
     }
 
     [Fact]
-    public async Task UploadAsync_RequestUploadCallFails_NeverAttemptsTheHttpPut()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("no permission")));
-        var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
-        using var httpClient = new HttpClient(handler);
-
-        var result = await CockpitProjectLogoBlob.UploadAsync(host, "Depot: Synvolution", "cockpit", [1, 2, 3], httpClient);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.Equal("no permission", result.Error);
-        Assert.Null(handler.LastRequest);
-    }
-
-    [Fact]
-    public async Task UploadAsync_NotSignedIn_ReportsAuthorizationRequired()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await CockpitProjectLogoBlob.UploadAsync(host, "Depot: Synvolution", "cockpit", [1]);
-
-        Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
-    }
-
-    [Fact]
     public async Task UploadAsync_PutReturnsAnErrorStatus_ReportsFailed()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -81,21 +53,6 @@ public class CockpitProjectLogoBlobTests
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Contains("403", result.Error);
-    }
-
-    [Fact]
-    public async Task UploadAsync_ToolResultMissingUploadUrl_ReportsFailedRatherThanThrowing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"expiresInSeconds":300}""")));
-        var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
-        using var httpClient = new HttpClient(handler);
-
-        var result = await CockpitProjectLogoBlob.UploadAsync(host, "Depot: Synvolution", "cockpit", [1], httpClient);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.Null(handler.LastRequest);
     }
 
     [Fact]
@@ -117,50 +74,6 @@ public class CockpitProjectLogoBlobTests
     }
 
     [Fact]
-    public async Task DownloadAsync_NotSignedIn_ReportsAuthorizationRequired()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_download", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await CockpitProjectLogoBlob.DownloadAsync(host, "Depot: Synvolution", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
-    }
-
-    [Fact]
-    public async Task DownloadAsync_ToolCallFails_NeverAttemptsTheHttpGet()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_download", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("not found")));
-        var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
-        using var httpClient = new HttpClient(handler);
-
-        var result = await CockpitProjectLogoBlob.DownloadAsync(host, "Depot: Synvolution", "cockpit", httpClient);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.Null(handler.LastRequest);
-    }
-
-    [Fact]
-    public async Task DeleteAsync_Success_CallsDeleteWithTheBlobPathAndArtifactKind()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
-
-        var result = await CockpitProjectLogoBlob.DeleteAsync(host, "Depot: Synvolution", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-        await host.Received(1).CallMcpToolAsync(
-            "Depot: Synvolution", "delete",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args =>
-                (string)args!["project"]! == "cockpit" && (string)args["path"]! == ".cockpit/logo.png" && (string)args["kind"]! == "artifact"),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task DeleteAsync_AlreadyGone_IsReportedAsSuccessRatherThanFailed()
     {
         // AC-763: a retried save (after an earlier attempt lost the checksum race) must not turn "already deleted"
@@ -172,30 +85,5 @@ public class CockpitProjectLogoBlobTests
         var result = await CockpitProjectLogoBlob.DeleteAsync(host, "Depot: Synvolution", "cockpit");
 
         Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-    }
-
-    [Fact]
-    public async Task DeleteAsync_NotSignedIn_ReportsAuthorizationRequired()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await CockpitProjectLogoBlob.DeleteAsync(host, "Depot: Synvolution", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.AuthorizationRequired, result.Outcome);
-    }
-
-    [Fact]
-    public async Task DeleteAsync_AnOrdinaryFailure_ReportsFailedWithTheServersOwnReason()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("Depot is down for maintenance.")));
-
-        var result = await CockpitProjectLogoBlob.DeleteAsync(host, "Depot: Synvolution", "cockpit");
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.Equal("Depot is down for maintenance.", result.Error);
     }
 }

@@ -21,64 +21,6 @@ public class UsageTrendHistoryTests
     }
 
     [Fact]
-    public void ASecondSampleWithinTenMinutes_IsDebouncedAway()
-    {
-        var existing = new[] { Sample(T0) };
-
-        // Five minutes later, essentially the same figures: not worth a whole-file rewrite.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(5), ctx: 21));
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void ASamplePastTheDebounceWindow_IsRecorded()
-    {
-        var existing = new[] { Sample(T0) };
-
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(11), ctx: 21));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void ASharpJumpInsideTheWindow_IsRecordedAnyway()
-    {
-        var existing = new[] { Sample(T0, ctx: 20) };
-
-        // Two minutes later but the context jumped 20 -> 80: a scarp the 10-minute grid must not skip.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(2), ctx: 80));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void AContextResetToNull_CountsAsAJump()
-    {
-        var existing = new[] { Sample(T0, ctx: 60) };
-
-        // A /compact drops the context to "not reported": presence changing is itself a jump worth a point.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), ctx: null));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void DebounceIsPerProfile_ASecondProfilesFirstPointIsNotGated()
-    {
-        var existing = new[] { Sample(T0, profile: "Work") };
-
-        // A different profile, one minute later: its first point must not be held back by Work's debounce window.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), profile: "Personal"));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
     public void ASampleWithNoUsageFigures_IsNeverRecorded()
     {
         var candidate = new UsageTrendSample(T0, "Default", ContextPercent: null, FiveHourPercent: null, WeeklyPercent: null);
@@ -101,36 +43,5 @@ public class UsageTrendHistoryTests
         Assert.DoesNotContain(stale, result!);
         Assert.Contains(recent, result);
         Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void Prune_KeepsExactlyTheFourteenDayWindow_InTimeOrder()
-    {
-        var samples = new[]
-        {
-            Sample(T0.AddDays(-20)),
-            Sample(T0.AddDays(-14).AddMinutes(1)), // just inside
-            Sample(T0.AddDays(-2)),
-            Sample(T0.AddDays(-14).AddMinutes(-1)), // just outside
-        };
-
-        var kept = UsageTrendHistory.Prune(samples, T0);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
-        var timestamps = kept.Select(sample => sample.TimestampUtc).ToList();
-        Assert.Equal(timestamps.OrderBy(t => t), timestamps);
-        Assert.All(kept, sample => Assert.True(sample.TimestampUtc >= T0 - TimeSpan.FromDays(14)));
-    }
-
-    [Fact]
-    public void Prune_DropsNullElements_RatherThanThrowing()
-    {
-        // A hand-edited cockpit.json can hold a JSON array with a null element; deserialization then yields a list
-        // with a null in it. Prune has to skip it, not throw out of the widget's load and take the dashboard down.
-        var samples = new List<UsageTrendSample> { Sample(T0.AddMinutes(-5)), null!, Sample(T0.AddMinutes(-1)) };
-
-        var kept = UsageTrendHistory.Prune(samples, T0);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
     }
 }

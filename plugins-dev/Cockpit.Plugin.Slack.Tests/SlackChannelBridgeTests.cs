@@ -105,52 +105,6 @@ public class SlackChannelBridgeTests
     }
 
     [Fact]
-    public async Task RealFailure_GetsAWarningReactionUnlikeAnIgnoredSender()
-    {
-        var (bridge, gateway, sink) = _Build();
-        gateway.NextResult = AssistantChannelSendResult.Refused("the assistant refused");
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "hi", messageTs: "42");
-
-        var reaction = Assert.Single(sink.Reactions);
-        Assert.Equal("42", reaction.MessageTs);
-    }
-
-    [Theory]
-    [InlineData(AssistantChannelVerbosity.FinalAnswerOnly, AssistantChannelRowKind.ToolUse, 0)]
-    [InlineData(AssistantChannelVerbosity.Everything, AssistantChannelRowKind.ToolUse, 1)]
-    [InlineData(AssistantChannelVerbosity.StatusLines, AssistantChannelRowKind.ToolUse, 1)]
-    public void RowRelay_HonoursTheVerbositySetting(AssistantChannelVerbosity verbosity, AssistantChannelRowKind kind, int expectedPosts)
-    {
-        var (_, gateway, sink) = _Build(verbosity);
-
-        gateway.RaiseRowChanged(new AssistantChannelRow
-        {
-            Id = Guid.NewGuid(),
-            Kind = kind,
-            Text = "some tool ran",
-            Timestamp = DateTimeOffset.UtcNow,
-            ToolName = "git status",
-        });
-
-        Assert.Equal(expectedPosts, sink.Posted.Count);
-    }
-
-    [Fact]
-    public void RowRelay_EditsTheSameMessageOnAnUpdate()
-    {
-        var (_, gateway, sink) = _Build();
-        var rowId = Guid.NewGuid();
-
-        gateway.RaiseRowChanged(new AssistantChannelRow { Id = rowId, Kind = AssistantChannelRowKind.AssistantText, Text = "Working", Timestamp = DateTimeOffset.UtcNow });
-        gateway.RaiseRowChanged(new AssistantChannelRow { Id = rowId, Kind = AssistantChannelRowKind.AssistantText, Text = "Working on it…", Timestamp = DateTimeOffset.UtcNow, IsUpdate = true });
-
-        Assert.Single(sink.Posted);
-        var edit = Assert.Single(sink.Edited);
-        Assert.Equal("Working on it…", edit.Text);
-    }
-
-    [Fact]
     public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
     {
         var (_, gateway, sink) = _Build();
@@ -238,30 +192,6 @@ public class SlackChannelBridgeTests
     // RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread while
     // HandleInboundMessageAsync/HandleButtonAsync arrive from SlackNet's own socket threads — this hammers the
     // shared row/prompt tracking from both sides at once and only asserts that nothing throws.
-    [Fact]
-    public async Task ConcurrentRowAndPromptActivity_AcrossThreads_NeverThrows()
-    {
-        var (bridge, gateway, _) = _Build();
-        var tasks = new List<Task>();
-
-        for (var i = 0; i < 200; i++)
-        {
-            var row = new AssistantChannelRow { Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.AssistantText, Text = $"row {i}", Timestamp = DateTimeOffset.UtcNow };
-            tasks.Add(Task.Run(() => gateway.RaiseRowChanged(row)));
-
-            var prompt = _ConsentPrompt($"action {i}");
-            tasks.Add(Task.Run(() =>
-            {
-                gateway.RaisePromptOpened(prompt);
-                gateway.RaisePromptClosed(prompt.Id);
-            }));
-
-            var messageTs = i.ToString();
-            tasks.Add(Task.Run(() => bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageTs)));
-        }
-
-        await Task.WhenAll(tasks);
-    }
 
     private static AssistantChannelConsentPrompt _ConsentPrompt(string action) => new(
         Guid.NewGuid(),

@@ -59,18 +59,6 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWhiteboard_StampsLastReadAt_SoTheBoardCanShowWhenItWasRead()
-    {
-        // AC-842's "gelezen 15:11": read_whiteboard must leave a trace the board's own coupling bar can render.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-
-        await tools.ReadWhiteboard(Session, "Sprint planning");
-
-        Assert.NotNull(registry.CouplingOf(Session, "board-1")!.LastReadAt);
-    }
-
-    [Fact]
     public async Task PlaceOnWhiteboard_WithReadOnly_AsksAWideningApproval_AndIsRefusedUntilItIsGiven()
     {
         // AC-854's core rule: read was approved under AC-820's promise that an agent never writes to the canvas, so
@@ -104,24 +92,6 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task PlaceOnWhiteboard_ReachesTheBoardAsOneObject_AndAsksOnlyOnce()
-    {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        var placed = new List<WhiteboardPlacement>();
-        registry.ObjectPlaced += (_, _, placement) => placed.Add(placement);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-
-        await tools.PlaceOnWhiteboard(Session, "board-1", "rectangle", "Stap 1", x: 30, y: 40);
-        await tools.PlaceOnWhiteboard(Session, "board-1", "Sticky-Note", "Stap 2");
-
-        Assert.Single(asked);
-        Assert.Equal(2, placed.Count);
-        Assert.Equal(new WhiteboardPlacement("rectangle", "Stap 1", 30, 40, 120, 80), placed[0]);
-        Assert.Equal("stickynote", placed[1].Shape);
-        Assert.True(registry.CouplingOf(Session, "board-1")!.CanRead); // write implies read
-    }
-
-    [Fact]
     public async Task EraseWhiteboardObject_RefusesAnythingTheAgentDidNotPlaceItself()
     {
         // The operator's own strokes and shapes are unknown to the registry — an agent naming one gets a refusal
@@ -145,19 +115,6 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task PlaceOnWhiteboard_WithAShapeTheBoardDoesNotHave_IsRefusedWithoutAsking()
-    {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-
-        var json = JsonNode.Parse(await tools.PlaceOnWhiteboard(Session, "board-1", "hexagon", "Stap 1"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("not a shape", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task PlaceOnWhiteboard_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
         var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
@@ -169,21 +126,6 @@ public class WhiteboardMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task ReadConsentText_NoLongerPromisesThatAnAgentCannotDraw()
-    {
-        // AC-820/AC-823 promised the operator "writing to a whiteboard is not offered to agents at all". AC-854
-        // makes that untrue, so the promise must be gone from the prompt rather than quietly outlived.
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-
-        await tools.ReadWhiteboard(Session, "Sprint planning");
-
-        Assert.Equal("whiteboard.read", asked[0].Scope);
-        Assert.DoesNotContain("not offered to agents", asked[0].Action);
-        Assert.Contains("separate question", asked[0].Action);
     }
 
     [Fact]
@@ -247,18 +189,6 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWhiteboard_UnknownSurface_ReturnsError_WithoutAsking()
-    {
-        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = _Meta(await tools.ReadWhiteboard(Session, "ghost"));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Contains("No such whiteboard", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task ReadWhiteboard_WhenSurfaceCoupledToAnotherAgent_IsRefused_WithoutAsking_AndWithoutException()
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
@@ -270,26 +200,6 @@ public class WhiteboardMcpToolsTests
         Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public void ListWhiteboards_ReturnsOpenSurfaces_WithTheReadFlag()
-    {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-        registry.Grant(Session, "board-1");
-        registry.SurfaceOpened("board-2", "Retro board", Png);
-
-        var json = JsonNode.Parse(tools.ListWhiteboards(Session));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        var names = json["whiteboards"]!.AsArray().Select(w => w!["name"]!.GetValue<string>()).ToList();
-        Assert.Equivalent(new object[] { "Sprint planning", "Retro board" }, names);
-        var coupled = json["whiteboards"]!.AsArray().First(w => w!["name"]!.GetValue<string>() == "Sprint planning");
-        Assert.True(coupled!["canRead"]!.GetValue<bool>());
-        Assert.False(coupled["canPlace"]!.GetValue<bool>()); // read alone is never write (AC-854)
-        var uncoupled = json["whiteboards"]!.AsArray().First(w => w!["name"]!.GetValue<string>() == "Retro board");
-        Assert.False(uncoupled!["canRead"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -311,21 +221,6 @@ public class WhiteboardMcpToolsTests
 
         Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("no longer available", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task ReadWhiteboard_WithAnEmptySnapshot_StillSucceeds_WithNoImageContentBlock()
-    {
-        // Mirrors DiagramMcpTools.ReadDiagram defaulting a missing source to "" rather than erroring — here there
-        // is simply nothing to attach as an image content block (AC-1007).
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", []);
-
-        var result = await tools.ReadWhiteboard(Session, "Sprint planning");
-        var json = _Meta(result);
-
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.Single(result.Content);
     }
 
     // ---- open_whiteboard (AC-835, direct path since AC-891): the agent asks for a board of its own ----

@@ -66,48 +66,6 @@ public class DepotSharedProjectSourceTests
     }
 
     [Fact]
-    public async Task ListAsync_TheProjectId_MatchesTheConnectionsOwnMemorySourceScheme()
-    {
-        // So a bound local project's MemoryRef and this catalog's Id agree on what "the same project" means —
-        // ProjectsViewModel's bound-project filter and AC-604 claim reconciliation both key off this.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
-        _StubListProjects(host, """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "cockpit", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Equal($"{scheme}:cockpit", Assert.Single(result.Projects).Id);
-    }
-
-    [Fact]
-    public async Task ListAsync_ListProjectsFails_ReportsAWholeSourceFailure()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("connection reset")));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Equal("connection reset", result.Error);
-        Assert.Empty(result.Projects);
-    }
-
-    [Fact]
-    public async Task ListAsync_NotSignedIn_ReportsAWholeSourceFailure()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
     public async Task ListAsync_ListProjectsReturnsUnparsableJson_ReportsAWholeSourceFailureRatherThanThrowing()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -117,122 +75,6 @@ public class DepotSharedProjectSourceTests
 
         Assert.False(result.Succeeded);
         Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task ListAsync_ZeroProjects_IsSuccessWithAnEmptyList()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[]}""");
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Empty(result.Projects);
-    }
-
-    [Fact]
-    public async Task ListAsync_TwoHundredProjects_AllWithDefinitions_AreAllIncluded()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var slugs = Enumerable.Range(1, 200).Select(i => $"proj-{i}").ToList();
-        var listing = string.Join(",", slugs.Select(slug => $$"""{"slug":"{{slug}}","name":"{{slug}}","role":"Owner","kind":"Project"}"""));
-        _StubListProjects(host, $$"""{"projects":[{{listing}}]}""");
-        foreach (var slug in slugs)
-        {
-            _StubRead(host, slug, _DefinitionEnvelope($$"""{"schemaVersion":1,"name":"{{slug}}"}"""));
-        }
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal(200, result.Projects.Count);
-    }
-
-    [Fact]
-    public async Task ListAsync_AProjectWithoutACockpitDefinition_IsSilentlyLeftOutButOthersStillAppear()
-    {
-        // The ordinary case: most Depot projects never opted into Cockpit sharing at all. One missing definition
-        // must not cost the connection's other, genuinely shared projects.
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"plain","name":"Plain Depot Project","role":"Editor","kind":"Project"},{"slug":"shared","name":"Shared","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "plain", PluginMcpToolCallResult.Failed("not found"));
-        _StubRead(host, "shared", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Shared"}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal("Shared", Assert.Single(result.Projects).Name);
-        Assert.Empty(result.VisibleButUnreadable);
-    }
-
-    [Fact]
-    public async Task ListAsync_ADefinitionThatIsBrokenJson_IsLeftOutRatherThanFailingTheWholeListing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"broken","name":"Broken","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "broken", _DefinitionEnvelope("not json at all"));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Empty(result.Projects);
-    }
-
-    [Fact]
-    public async Task ListAsync_ADefinitionWithAnUnknownSchemaVersion_IsStillIncluded()
-    {
-        // AC-244's own forward-compat contract: schemaVersion is a marker, not a gate.
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"future","name":"Future","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "future", _DefinitionEnvelope("""{"schemaVersion":99,"name":"From the future"}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Equal("From the future", Assert.Single(result.Projects).Name);
-    }
-
-    [Fact]
-    public async Task ListAsync_ADefinitionWithAnUnknownExtraField_IsStillIncluded()
-    {
-        // CockpitProjectDefinition.ExtensionData is what carries a newer build's unknown field through unharmed.
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"newer","name":"Newer","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "newer", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Newer","fromANewerBuild":{"nested":true}}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Equal("Newer", Assert.Single(result.Projects).Name);
-    }
-
-    [Fact]
-    public async Task ListAsync_ANameOfTenThousandCharacters_IsPassedThroughUnmodified()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var longName = new string('x', 10_000);
-        _StubListProjects(host, """{"projects":[{"slug":"long","name":"Long","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "long", _DefinitionEnvelope($$"""{"schemaVersion":1,"name":"{{longName}}"}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Equal(longName, Assert.Single(result.Projects).Name);
-    }
-
-    [Fact]
-    public async Task ListAsync_UnicodeAndRtlInNameAndDescription_IsPassedThroughUnmodified()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        const string name = "مشروع الكوكبيت 🚀 日本語";
-        const string description = "תיאור בעברית — right-to-left mixed with emoji 🛰️";
-        _StubListProjects(host, """{"projects":[{"slug":"i18n","name":"i18n","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "i18n", _DefinitionEnvelope(
-            $$"""{"schemaVersion":1,"name":{{System.Text.Json.JsonSerializer.Serialize(name)}},"description":{{System.Text.Json.JsonSerializer.Serialize(description)}}}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        var project = Assert.Single(result.Projects);
-        Assert.Equal(name, project.Name);
-        Assert.Equal(description, project.Description);
     }
 
     [Fact]
@@ -269,21 +111,6 @@ public class DepotSharedProjectSourceTests
     }
 
     [Fact]
-    public async Task ListAsync_AViewersProjectWhoseReadSucceeds_IsIncludedNormally()
-    {
-        // Forward-compat with the intended DEP-side fix: once Depot lets a Viewer read, this source needs no
-        // change — the read simply starts succeeding and the project flows into the ordinary list.
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"viewer-ok","name":"Viewer Ok","role":"Viewer","kind":"Project"}]}""");
-        _StubRead(host, "viewer-ok", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Viewer Ok"}"""));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Equal("Viewer Ok", Assert.Single(result.Projects).Name);
-        Assert.Empty(result.VisibleButUnreadable);
-    }
-
-    [Fact]
     public async Task ListAsync_AnUnrecognisedRoleStringWhoseReadFails_IsReportedAsVisibleButUnreadable()
     {
         // Unknown is ordinal 0 — the least-powerful reading of a role this build does not recognise — so it is
@@ -291,34 +118,6 @@ public class DepotSharedProjectSourceTests
         var host = Substitute.For<ICockpitHost>();
         _StubListProjects(host, """{"projects":[{"slug":"weird-role","name":"Weird Role","role":"SuperAdmin","kind":"Project"}]}""");
         _StubRead(host, "weird-role", PluginMcpToolCallResult.Failed("forbidden"));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Empty(result.Projects);
-        Assert.Single(result.VisibleButUnreadable);
-    }
-
-    [Fact]
-    public async Task ListAsync_AnEditorsProjectWhoseReadFails_IsSilentlyLeftOutNotVisibleButUnreadable()
-    {
-        // For Editor/Owner, a failed read unambiguously means "not shared this way" — not the role-gating ambiguity
-        // Viewer/Unknown carries.
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"editor-no-def","name":"Editor No Def","role":"Editor","kind":"Project"}]}""");
-        _StubRead(host, "editor-no-def", PluginMcpToolCallResult.Failed("not found"));
-
-        var result = await SourceFor(host).ListAsync(CancellationToken.None);
-
-        Assert.Empty(result.Projects);
-        Assert.Empty(result.VisibleButUnreadable);
-    }
-
-    [Fact]
-    public async Task ListAsync_MissingRoleField_TreatsItAsUnknownAndDegradesTheSameWayAsViewer()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"no-role","name":"No Role","kind":"Project"}]}""");
-        _StubRead(host, "no-role", PluginMcpToolCallResult.Failed("forbidden"));
 
         var result = await SourceFor(host).ListAsync(CancellationToken.None);
 

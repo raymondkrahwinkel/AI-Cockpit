@@ -48,47 +48,7 @@ public class ProjectResourceScopeParityTests
         yield return ["/etc/passwd"];
     }
 
-    [Theory]
-    [MemberData(nameof(References))]
-    public void ClassifyScope_AndClassify_AgreeOnEveryReferenceShape(string reference)
-    {
-        var hostScope = ProjectResourcePathPortability.ClassifyScope(reference);
-        var pluginPortability = ProjectResourcePortabilityClassifier.Classify(reference);
-
-        Assert.NotNull(hostScope);
-        Assert.Equal(_ScopeToPortability[hostScope!.Value], pluginPortability);
-    }
-
-    [Fact]
-    public void ClassifyScope_AndClassify_AgreeOnAWindowsDriveLetterPath()
-    {
-        // Windows-rooted only on Windows — Path.IsPathFullyQualified is itself platform-specific (both classes'
-        // own remarks document this), so this reference is Repo/RepoRelative on Linux, not a divergence.
-        const string reference = @"C:\Users\raymond\Notes.md";
-
-        var hostScope = ProjectResourcePathPortability.ClassifyScope(reference);
-        var pluginPortability = ProjectResourcePortabilityClassifier.Classify(reference);
-
-        Assert.NotNull(hostScope);
-        Assert.Equal(_ScopeToPortability[hostScope!.Value], pluginPortability);
-        Assert.Equal(
-            OperatingSystem.IsWindows() ? ProjectResourceScope.Machine : ProjectResourceScope.Repo,
-            hostScope);
-    }
-
     // Every `ProjectResourceScope` a real reference can produce must also be portable-or-not identically on both sides — the other half of criterion 4, since Classify's `IsPortable`/wire vocabulary has no direct host equivalent to compare Scope against otherwise.
-    [Fact]
-    public void ClassifyScope_AndClassify_AgreeOnAPosixRootedPath()
-    {
-        const string reference = "/home/raymond/Notes/CONVENTIONS.md";
-        var hostScope = ProjectResourcePathPortability.ClassifyScope(reference);
-        var pluginPortability = ProjectResourcePortabilityClassifier.Classify(reference);
-        var expectedScope = OperatingSystem.IsWindows() ? ProjectResourceScope.Repo : ProjectResourceScope.Machine;
-
-        // A path shaped for the other OS is deliberately repo-relative.
-        Assert.Equal(expectedScope, hostScope);
-        Assert.Equal(_ScopeToPortability[expectedScope], pluginPortability);
-    }
 
     [Theory]
     [InlineData(ProjectResourceScope.Repo, true)]

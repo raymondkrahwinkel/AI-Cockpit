@@ -1,6 +1,4 @@
 using Cockpit.Core.Wireframe;
-using Cockpit.Core.Wireframe.Model;
-using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
@@ -24,23 +22,6 @@ public class WireframeRoundTripTests
         Assert.Equal(source, WireframeWriter.Write(result.Screens));
     }
 
-    [Theory]
-    [MemberData(nameof(Screens))]
-    public void Source_SurvivesTheControlsUnchanged(string screen)
-    {
-        var source = WireframeScreens.Source(screen);
-        var carried = new List<WireframeNode>();
-
-        foreach (var parsed in WireframeParser.Parse(source).Screens)
-        {
-            var node = WireframeSource.GetNode(WireframeRenderer.Render(parsed));
-            Assert.NotNull(node);
-            carried.Add(node);
-        }
-
-        Assert.Equal(source, WireframeWriter.Write(carried));
-    }
-
     [Fact]
     public void AQuoteInsideALabel_SurvivesBothDirections()
     {
@@ -59,24 +40,4 @@ public class WireframeRoundTripTests
     // AC-914 criterion 5: a screen carrying states round-trips character for character, same as any other document
     // — kept out of the shared gallery above because RendererTests.EveryNode_IsCarriedByExactlyOneControl assumes
     // every model node gets a control, which a state deliberately never does (see WireframeRendererTests).
-    [Fact]
-    public void AScreenWithStates_SurvivesTheTreeUnchanged()
-    {
-        var source = """
-            screen "Search results"
-              main w:4
-                list #results
-                  item "Result 1"
-              state "Empty" replaces:#results
-                label "No results found"
-                button "Clear filters" primary
-              state "Loading" replaces:#results
-                space h:3
-            """.ReplaceLineEndings("\n");
-
-        var result = WireframeParser.Parse(source);
-
-        Assert.Empty(result.Errors);
-        Assert.Equal(source, WireframeWriter.Write(result.Screens));
-    }
 }

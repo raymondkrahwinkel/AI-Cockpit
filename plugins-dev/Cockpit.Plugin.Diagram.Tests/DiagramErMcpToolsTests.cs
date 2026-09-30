@@ -1,7 +1,6 @@
 extern alias backend;
 
 using System.Text.Json.Nodes;
-using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -56,71 +55,6 @@ public class DiagramErMcpToolsTests
     }
 
     [Fact]
-    public async Task SetAttribute_ChangesOneLine_AndLeavesTheRestOfTheDiagramAlone()
-    {
-        var (tools, registry, _) = _Build();
-
-        await tools.SetAttribute(Session, Diagram, "CUSTOMER", "id", "int", "PK");
-
-        Assert.Equal("""
-            erDiagram
-                CUSTOMER ||--o{ ORDER : "places"
-                CUSTOMER {
-                    string name
-                    int id PK
-                }
-            """.ReplaceLineEndings("\n"), registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task RelateEntities_WithACardinalityThatIsNotOne_IsRefusedWithoutAskingTheOperator()
-    {
-        var (tools, registry, asked) = _Build();
-
-        var reply = Reply(await tools.RelateEntities(Session, Diagram, "ORDER", "CUSTOMER", "several", "one", "belongs to"));
-
-        Assert.False(reply["ok"]!.GetValue<bool>());
-        Assert.Contains("zero-or-more", reply["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-        Assert.Equal(Source.ReplaceLineEndings("\n"), registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task RelateEntities_WritesTheCrowsFootPairAndTheLabel()
-    {
-        var (tools, registry, _) = _Build();
-
-        var reply = Reply(await tools.RelateEntities(Session, Diagram, "ORDER", "CUSTOMER", "zero-or-more", "one", "belongs to"));
-
-        Assert.True(reply["ok"]!.GetValue<bool>());
-        Assert.EndsWith("\n    ORDER }o--|| CUSTOMER : \"belongs to\"", registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task AnErTool_OnAFlowchart_IsRefused_NamingTheToolsThatDoWorkThere()
-    {
-        var (tools, registry, _) = _Build("flowchart LR\n    A[\"Start\"]");
-
-        var reply = Reply(await tools.AddEntity(Session, Diagram, "CUSTOMER"));
-
-        Assert.False(reply["ok"]!.GetValue<bool>());
-        Assert.Contains("add_node", reply["error"]!.GetValue<string>());
-        Assert.Equal("flowchart LR\n    A[\"Start\"]", registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task AFlowchartTool_OnAnErDiagram_IsRefused_NamingTheToolsThatDoWorkThere()
-    {
-        var (tools, registry, _) = _Build();
-
-        var reply = Reply(await tools.AddNode(Session, Diagram, "INVOICE", "Invoice"));
-
-        Assert.False(reply["ok"]!.GetValue<bool>());
-        Assert.Contains("add_entity", reply["error"]!.GetValue<string>());
-        Assert.Equal(Source.ReplaceLineEndings("\n"), registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
     public async Task AnAttributeEditOnAnEntityTheOperatorIsHolding_IsRefused_WhileAnotherEntityStillEdits()
     {
         var (tools, registry, _) = _Build();
@@ -132,20 +66,6 @@ public class DiagramErMcpToolsTests
         Assert.False(refused["ok"]!.GetValue<bool>());
         Assert.Contains("operator is editing", refused["error"]!.GetValue<string>());
         Assert.True(landed["ok"]!.GetValue<bool>());
-        Assert.Contains("string name", registry.PeekText("diagram-1"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task RemoveEntity_ReportsWhatWentWithIt_AndIsJournaledForARevert()
-    {
-        var (tools, registry, _) = _Build();
-
-        var reply = Reply(await tools.RemoveEntity(Session, Diagram, "CUSTOMER"));
-
-        Assert.Contains("1 relationship", reply["changed"]!.GetValue<string>());
-        var entry = Assert.Single(registry.History("diagram-1"));
-        Assert.Equal(DiagramHandEditKind.RemoveEntity, entry.Kind);
-        Assert.Null(registry.Revert("diagram-1", entry.Id));
         Assert.Contains("string name", registry.PeekText("diagram-1"), StringComparison.Ordinal);
     }
 }

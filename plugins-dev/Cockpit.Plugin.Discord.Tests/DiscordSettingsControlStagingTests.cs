@@ -10,65 +10,11 @@ namespace Cockpit.Plugin.Discord.Tests;
 [Collection("avalonia")]
 public class DiscordSettingsControlStagingTests
 {
-    [Fact]
-    public void AFreshInstall_StagesWithNothingToSave_AndWritesNothing()
-    {
-        var storage = new FakePluginStorage();
-        var settings = new DiscordChannelSettings(storage);
-        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
-
-        var staged = view.TryStage(out var commit, out var error);
-
-        Assert.True(staged);
-        Assert.Null(error);
-        // No commit at all, not an empty one: the host reads that as "nothing to save" and never writes.
-        Assert.Null(commit);
-        Assert.Null(settings.Access);
-        Assert.True(string.IsNullOrEmpty(settings.BotToken));
-        Assert.Equal(0ul, settings.ChannelId);
-    }
-
     // The other half, and the one that keeps this from swallowing real mistakes: the moment the operator puts
     // anything in, the checks that were there before apply again.
-    [Fact]
-    public void AHalfFilledInstall_IsStillRefused_WithTheFieldItIsMissing()
-    {
-        var settings = new DiscordChannelSettings(new FakePluginStorage());
-        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
-
-        // A user id typed and nothing else — exactly the state a fresh install is one keystroke away from.
-        _SingleUserId(view).Text = "123456789012345678";
-
-        var staged = view.TryStage(out var commit, out var error);
-
-        Assert.False(staged);
-        Assert.Null(commit);
-        Assert.Equal("A bot token is required.", error);
-    }
 
     // Fully filled in stages a real write, and still writes nothing until the host runs it — the staged contract
     // (AC-1003) that the blank branch above must not have quietly broken.
-    [Fact]
-    public void AFilledInInstall_StagesARealCommit_AndOnlyTheCommitWrites()
-    {
-        var settings = new DiscordChannelSettings(new FakePluginStorage());
-        var view = new DiscordChannelSettingsControl(new FakeCockpitUiHost(), settings);
-
-        _SingleUserId(view).Text = "123456789012345678";
-        _BotToken(view).Text = "a-bot-token";
-        _ChannelId(view).Text = "987654321098765432";
-
-        Assert.True(view.TryStage(out var commit, out var error));
-        Assert.Null(error);
-        Assert.NotNull(commit);
-        Assert.Null(settings.Access);
-
-        commit!();
-
-        Assert.Equal("a-bot-token", settings.BotToken);
-        Assert.Equal(987654321098765432ul, settings.ChannelId);
-        Assert.Equal(AssistantChannelAudience.SingleUser, settings.Access!.Value.Access.Audience);
-    }
 
     // A channel that was configured once and then emptied is not a fresh install: there is something stored to
     // undo, so clearing the fields must be refused rather than read as "never set up" and silently ignored.

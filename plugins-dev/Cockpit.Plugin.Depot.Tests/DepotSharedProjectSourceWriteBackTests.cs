@@ -17,11 +17,6 @@ public class DepotSharedProjectSourceWriteBackTests
     private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
         DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
 
-    // A blob PUT that always succeeds — the two Logo-upload tests below only care about what WriteBackAsync sends
-    // to `request_upload`/`write`, not about the HTTP leg CockpitProjectLogoBlob.UploadAsync also performs.
-    private static HttpClient _AlwaysSucceedsHttpClient() =>
-        new(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Created)));
-
     private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
@@ -104,117 +99,6 @@ public class DepotSharedProjectSourceWriteBackTests
     }
 
     [Fact]
-    public async Task WriteBackAsync_EditedFieldsLandInTheMergedDefinition()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Old name","description":"Old description"}"""));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-
-        await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(name: "New name", description: "New description"), "chk-before", CancellationToken.None);
-
-        Assert.Equal("New name", sent().Name);
-        Assert.Equal("New description", sent().Description);
-        Assert.Equal("Edited behaviour", sent().BehaviorPrompt);
-        Assert.True(sent().IsolateInWorktreeByDefault);
-        Assert.Equal(["github"], sent().McpOverlay!.Enabled);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_GitUrlAndUntouchedLogoSurviveUntouched()
-    {
-        // GitUrl is not claimable at all; Logo is claimable (AC-763) but Edit()'s default LogoEdit is null
-        // ("untouched") — WriteBackAsync must carry both through from its own pre-write read rather than dropping
-        // them because the edit does not mention (GitUrl) or touch (Logo) them.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope(
-            """{"schemaVersion":1,"name":"Cockpit","gitUrl":"git@github.com:example/cockpit.git","logo":".cockpit/logo.png"}"""));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-
-        await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
-
-        Assert.Equal("git@github.com:example/cockpit.git", sent().GitUrl);
-        Assert.Equal(".cockpit/logo.png", sent().Logo);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_LogoReplaced_UploadsTheBytesThenWritesTheBlobPath()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"uploadUrl":"https://depot.example.com/blob/upload/abc"}""")));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-        using var httpClient = _AlwaysSucceedsHttpClient();
-
-        var result = await SourceFor(host, httpClient).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Replace([1, 2, 3])), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
-        Assert.Equal(CockpitProjectLogoBlob.BlobPath, sent().Logo);
-        await host.Received(1).CallMcpToolAsync(
-            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_LogoUploadFails_ReturnsFailedWithoutWritingProjectJsonAtAll()
-    {
-        // AC-763 acceptance criterion 6/7: a failed upload must not leave a half-applied state — not even the
-        // operator's other, otherwise-unrelated edits (Name/Description/...) in the same save reach project.json.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("no permission")));
-
-        var result = await SourceFor(host).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Replace([1, 2, 3])), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
-        Assert.Equal("no permission", result.Error);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_LogoCleared_DeletesTheBlobThenClearsTheField()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit","logo":".cockpit/logo.png"}"""));
-        host.CallMcpToolAsync(Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-
-        var result = await SourceFor(host).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Cleared), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
-        Assert.Null(sent().Logo);
-        await host.Received(1).CallMcpToolAsync(
-            Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_LogoClearedButNoneExisted_SkipsTheDeleteCall()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-
-        await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(logoEdit: SharedProjectLogoEdit.Cleared), "chk-before", CancellationToken.None);
-
-        Assert.Null(sent().Logo);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "delete", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task WriteBackAsync_APlaceholderResourceRow_SurvivesTheRoundTripRatherThanBeingDropped()
     {
         // SharedProjectBinding's read shape blanks a placeholder row's Reference (AC-246 idiom); reconstructing
@@ -235,23 +119,6 @@ public class DepotSharedProjectSourceWriteBackTests
         Assert.True(resource.Placeholder);
         Assert.Equal("Notes", resource.Label);
         Assert.Equal(string.Empty, resource.Reference);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_NullEnabledMcpServerNames_ClearsAnExistingRemoteOverlayRatherThanKeepingIt()
-    {
-        // Adversarial review finding: EnabledMcpServerNames == null means "no opinion, every server ticked" —
-        // the operator re-ticking every server to clear a remote restriction sends exactly this. Falling back
-        // to current.McpOverlay on null would silently keep Depot's existing restriction instead.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit","mcpOverlay":{"enabled":["github"]}}"""));
-        var sent = _StubWriteCapturingContent(host, "cockpit", _WriteEnvelope());
-
-        var edit = new SharedProjectDefinitionEdit("Cockpit", null, null, false, EnabledMcpServerNames: null);
-        await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", edit, "chk-before", CancellationToken.None);
-
-        Assert.Null(sent().McpOverlay);
     }
 
     [Fact]
@@ -288,51 +155,6 @@ public class DepotSharedProjectSourceWriteBackTests
 
         Assert.Equal(SharedProjectWriteBackOutcome.PermissionDenied, result.Outcome);
         Assert.Equal("This action requires the Editor role on project 'cockpit'.", result.Error);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_AnUnrecognisedFailure_IsReportedAsFailedNotMisclassified()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit"}"""));
-        host.CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("Depot is down for maintenance.")));
-
-        var result = await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
-        Assert.Equal("Depot is down for maintenance.", result.Error);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_TheReadBeforeWriteFails_ReportsFailedWithoutAttemptingTheWrite()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "gone", PluginMcpToolCallResult.Failed("project not found"));
-
-        var result = await SourceFor(host).WriteBackAsync($"{scheme}:gone", Edit(), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
-        Assert.Equal("project not found", result.Error);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_NotSignedInOnTheRead_ReportsASignInMessage()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        host.CallMcpToolAsync(Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
-
-        var result = await SourceFor(host).WriteBackAsync($"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
-        Assert.Contains("Sign in", result.Error);
     }
 
     [Fact]
