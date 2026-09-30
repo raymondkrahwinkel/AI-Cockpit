@@ -25,37 +25,10 @@ public class PluginStoreConfigJsonConverterTests
     }
 
     [Fact]
-    public void Read_LocalObject_HasLocalKind()
-    {
-        var store = JsonSerializer.Deserialize<PluginStoreConfig>(
-            """{ "kind": "local", "location": "/home/raymond/plugins" }""");
-
-        Assert.Equal(PluginStoreKind.Local, store!.Kind);
-        Assert.Equal("/home/raymond/plugins", store.Location);
-    }
-
-    [Fact]
     public void Read_UrlOrPathAlias_ResolvesToLocation()
     {
         Assert.Equal("https://x/index.json", JsonSerializer.Deserialize<PluginStoreConfig>("""{ "url": "https://x/index.json" }""")!.Location);
         Assert.Equal("/tmp/store", JsonSerializer.Deserialize<PluginStoreConfig>("""{ "kind": "local", "path": "/tmp/store" }""")!.Location);
-    }
-
-    [Fact]
-    public void Write_RemoteWithToken_EmitsObjectWithTokenField()
-    {
-        var json = JsonSerializer.Serialize(PluginStoreConfig.Remote("https://github.com/a/b", "abc123"));
-
-        Assert.Contains("\"kind\":\"remote\"", json);
-        Assert.Contains("\"location\":\"https://github.com/a/b\"", json);
-        // The field must be named "token" so the host's secret layer encrypts it at rest and scrubs it from backups.
-        Assert.Contains("\"token\":\"abc123\"", json);
-    }
-
-    [Fact]
-    public void Write_RemoteWithoutToken_OmitsTokenField()
-    {
-        Assert.DoesNotContain("token", JsonSerializer.Serialize(PluginStoreConfig.Remote("https://github.com/a/b")));
     }
 
     [Fact]

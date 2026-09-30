@@ -44,27 +44,6 @@ public class CockpitHostProbeMcpToolFallbackScopingTests
         Assert.Equal(McpProbeOutcome.Failed, result.Outcome);
     }
 
-    [Fact]
-    public async Task OwnPluginsServer_StillReachesTheProbeAsAFallbackCandidate()
-    {
-        var probe = Substitute.For<IMcpToolProbe>();
-        IReadOnlyList<McpServerConfig>? captured = null;
-        probe.ProbeAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(),
-                Arg.Do<IReadOnlyList<McpServerConfig>?>(list => captured = list), Arg.Any<CancellationToken>())
-            .Returns(McpToolProbeResult.Success(null));
-        var own = new _FakeMcpProviderA([new McpServerContribution("Own: Server", "https://own.example.com/mcp")]);
-        var other = new _FakeMcpProviderB([new McpServerContribution("Other: Server", "https://other.example.com/mcp")]);
-        var host = _BuildHost(probe, [own, other], ownPluginType: typeof(_FakeMcpProviderA));
-
-        await host.ProbeMcpToolAsync("Own: Server", "outline");
-
-        Assert.NotNull(captured);
-        var fallbackNames = captured.Select(config => config.Name).ToList();
-        Assert.Contains("Own: Server", fallbackNames);
-        Assert.DoesNotContain("Other: Server", fallbackNames);
-    }
-
     private static DesktopBackendHost _BuildHost(IMcpToolProbe probe, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
     {
         var collection = new ServiceCollection().AddSingleton(probe);

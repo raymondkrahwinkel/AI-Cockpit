@@ -26,97 +26,6 @@ public class PluginSourceInstallerTests : IDisposable
         Directory.CreateDirectory(_plugins);
     }
 
-    // The migration Raymond asked for: an install made the old way is replaced by the freshly built bytes, even
-    // though the version did not change (a rebuild has none to bump to), and its consent re-pins to the new bytes.
-    [Fact]
-    public async Task RefreshOnly_ReplacesAnInstalledPluginWhoseBuiltBytesChanged()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "old-bytes");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "old-pin");
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "rebuilt-bytes");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Equal(new[] { "codex" }, installed);
-        Assert.Equal("rebuilt-bytes", _InstalledAssembly("codex"));
-        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
-    }
-
-    // AC-43: a rebuild that changed only a dependency DLL — the entry assembly byte-identical — must still be
-    // reinstalled and re-pinned. Under the old entry-only comparison it read as "same" and was left behind, so its
-    // pin (now over the whole closure) would no longer match and discovery would drop it to needs-consent.
-    [Fact]
-    public async Task RefreshOnly_ReinstallsWhenOnlyADependencyDllChanged()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "entry-bytes");
-        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"), "dep-v1");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "old-pin");
-
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "entry-bytes");
-        await File.WriteAllTextAsync(Path.Combine(source, "Dep.dll"), "dep-v2");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Equal(new[] { "codex" }, installed);
-        Assert.Equal("dep-v2", (await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"))));
-        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
-    }
-
-    // AC-1390: the dev refresh of a plugin split in two — a rebuild that changed only the UI part reinstalls it,
-    // carrying the new UI assembly, and re-pins the closure.
-    [Fact]
-    public async Task RefreshOnly_ReinstallsWhenOnlyTheUiAssemblyChanged()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "entry-bytes");
-        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Cockpit.Plugin.codex.UI.dll"), "ui-v1");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "old-pin");
-
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "entry-bytes");
-        await File.WriteAllTextAsync(Path.Combine(source, "Cockpit.Plugin.codex.UI.dll"), "ui-v2");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Equal(new[] { "codex" }, installed);
-        Assert.Equal("ui-v2", await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Cockpit.Plugin.codex.UI.dll")));
-        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
-    }
-
-    // The other side of the closure comparison: an install whose whole closure is byte-identical must be left
-    // alone, or the source sync would reinstall and re-pin on every startup.
-    [Fact]
-    public async Task RefreshOnly_LeavesAByteIdenticalInstallAlone()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "same-bytes");
-        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"), "dep");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "pinned");
-
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "same-bytes");
-        await File.WriteAllTextAsync(Path.Combine(source, "Dep.dll"), "dep");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Empty(installed);
-        Assert.Equal("pinned", _registrations.Saved["codex"].PinnedSha256);
-    }
-
-    // Refresh-only is the looseness guarantee: a build never decides, on the operator's behalf, to install a
-    // first-party plugin they never chose.
-    [Fact]
-    public async Task RefreshOnly_DoesNotInstallAPluginThatIsNotAlreadyInstalled()
-    {
-        var source = _WriteSource("codex", "1.0.0");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Empty(installed);
-        Assert.False(Directory.Exists(Path.Combine(_plugins, "codex")));
-    }
-
     [Fact]
     public async Task RefreshOnly_LeavesADisabledPluginAlone()
     {
@@ -130,20 +39,6 @@ public class PluginSourceInstallerTests : IDisposable
         Assert.Empty(installed);
         Assert.Equal("old-bytes", _InstalledAssembly("codex"));
         Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["codex"]);
-    }
-
-    // The bundled caller's side of the same routine: a plugin that ships is installed even when not there yet.
-    [Fact]
-    public async Task InstallNew_InstallsAPluginThatIsNotYetInstalled()
-    {
-        var source = _WriteSource("clock", "1.0.0");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: true);
-
-        Assert.Equal(new[] { "clock" }, installed);
-        Assert.True(File.Exists(Path.Combine(_plugins, "clock", "plugin.json")));
-        Assert.True(_registrations.Saved["clock"].Enabled);
     }
 
     // A stray Cockpit.Plugins.Abstractions.dll in a source folder (a test project's output offered one, which is

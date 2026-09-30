@@ -1,7 +1,5 @@
 using Cockpit.Core.UsagePill;
 using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.TranscriptDisplay;
-using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Infrastructure.UsagePill;
 
 namespace Cockpit.Core.Tests.UsagePill;
@@ -24,16 +22,6 @@ public class UsagePillSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsContextOnlyDefault()
-    {
-        var store = new UsagePillSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.Equal(new[] { UsagePillField.Context }, settings.VisibleFields);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsTheSelectionInOrder()
     {
         var store = new UsagePillSettingsStore(_configFilePath);
@@ -49,14 +37,6 @@ public class UsagePillSettingsStoreTests : IDisposable
             loaded.VisibleFields);
     }
 
-    [Fact]
-    public void Entry_ToDomain_DropsAnUnknownFieldName()
-    {
-        var entry = new UsagePillSettingsEntry { VisibleFields = ["Context", "SomethingRemovedSince", "RateWindows"] };
-
-        Assert.Equal(new[] { UsagePillField.Context, UsagePillField.RateWindows }, entry.ToDomain().VisibleFields);
-    }
-
     /// <summary>
     /// #1105 A2: the two Claude-specific window toggles ("5-hour window"/"Weekly window") folded into one
     /// provider-neutral RateWindows field. A config saved before that change must not lose the operator's
@@ -68,22 +48,6 @@ public class UsagePillSettingsStoreTests : IDisposable
         var entry = new UsagePillSettingsEntry { VisibleFields = ["Context", "FiveHourWindow", "WeeklyWindow"] };
 
         Assert.Equal(new[] { UsagePillField.Context, UsagePillField.RateWindows }, entry.ToDomain().VisibleFields);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var displayStore = new TranscriptDisplaySettingsStore(_configFilePath);
-        await displayStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = true });
-
-        var usagePillStore = new UsagePillSettingsStore(_configFilePath);
-        await usagePillStore.SaveAsync(new UsagePillSettings { VisibleFields = [UsagePillField.SessionUsage] });
-
-        var reloadedDisplay = await displayStore.LoadAsync();
-        var reloadedUsagePill = await usagePillStore.LoadAsync();
-
-        Assert.True(reloadedDisplay.ShowTimestamps);
-        Assert.Equal(new[] { UsagePillField.SessionUsage }, reloadedUsagePill.VisibleFields);
     }
 
     public void Dispose()

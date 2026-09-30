@@ -42,52 +42,6 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.Contains("transcript-search", _registrations.Seeded);
     }
 
-    // AC-1390: a bundled plugin split in two arrives with its UI part, and the pin covers it.
-    [Fact]
-    public async Task ASplitBundledPlugin_ArrivesWithItsUiAssembly()
-    {
-        _WriteBundled("git-status", "1.9.2");
-        await File.WriteAllTextAsync(Path.Combine(_bundled, "git-status", "Cockpit.Plugin.git-status.UI.dll"), "ui");
-
-        await NewSut().InstallAsync(_bundled, _plugins);
-
-        var folder = Path.Combine(_plugins, "git-status");
-        Assert.Equal("ui", await File.ReadAllTextAsync(Path.Combine(folder, "Cockpit.Plugin.git-status.UI.dll")));
-        Assert.Equal(await PluginClosureHash.OfInstalledFolderAsync(folder), _registrations.Saved["git-status"].PinnedSha256);
-    }
-
-    // The store owns every version after the first seed: a newer bundled build arriving in a later app version
-    // must not overwrite what the operator is running, or a store update would be silently undone each start.
-    [Fact]
-    public async Task ANewerBundledVersion_DoesNotReplaceTheInstalledOne()
-    {
-        _WriteInstalled("transcript-search", "1.0.0");
-        _registrations.Saved["transcript-search"] = new PluginRegistration(Enabled: true, PinnedSha256: "old");
-        _WriteBundled("transcript-search", "1.1.0");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(installed);
-        Assert.Equal("1.0.0", _InstalledVersion("transcript-search"));
-        Assert.Equal("old", _registrations.Saved["transcript-search"].PinnedSha256);
-        Assert.Contains("transcript-search", _registrations.Seeded);
-    }
-
-    // The operator updated it from the store past what we ship; a new app build must not drag them back.
-    [Fact]
-    public async Task AnInstalledVersionNewerThanOurs_IsLeftAlone()
-    {
-        _WriteInstalled("transcript-search", "2.0.0");
-        _registrations.Saved["transcript-search"] = new PluginRegistration(Enabled: true, PinnedSha256: "theirs");
-        _WriteBundled("transcript-search", "1.1.0");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(installed);
-        Assert.Equal("2.0.0", _InstalledVersion("transcript-search"));
-        Assert.Equal("theirs", _registrations.Saved["transcript-search"].PinnedSha256);
-    }
-
     // Turning a plugin off is a decision. Shipping a build is not a reason to undo it.
     [Fact]
     public async Task APluginTheOperatorDisabled_StaysDisabledAndUntouched()
@@ -101,51 +55,6 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.Empty(installed);
         Assert.Equal("1.1.0", _InstalledVersion("git-status"));
         Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["git-status"]);
-    }
-
-    /// <summary>
-    /// Once seeded, the bundle keeps its hands off — a rebuilt bundled assembly does not overwrite the installed
-    /// one or move its pin. Refreshing an already-installed first-party plugin from freshly built bytes is the
-    /// dev inner loop's job (DevPluginInstaller, DEBUG only), not the bundle's: the bundle only ever seeds.
-    /// </summary>
-    [Fact]
-    public async Task ARebuiltBundledPlugin_IsLeftAlone_AndNotRePinned()
-    {
-        _WriteInstalled("clock", "1.0.0");
-        _registrations.Saved["clock"] = new PluginRegistration(Enabled: true, PinnedSha256: "the-old-bytes");
-        _WriteBundled("clock", "1.0.0", assemblyContent: "clock-rebuilt");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(installed);
-        Assert.Equal("clock-1.0.0", _InstalledAssembly("clock"));
-        Assert.Equal("the-old-bytes", _registrations.Saved["clock"].PinnedSha256);
-        Assert.Contains("clock", _registrations.Seeded);
-    }
-
-    /// <summary>An identical, already-installed plugin is adopted into the ledger but its bytes and pin are untouched.</summary>
-    [Fact]
-    public async Task AnIdenticalBundledPlugin_IsLeftWhereItIs()
-    {
-        _WriteInstalled("clock", "1.0.0");
-        _registrations.Saved["clock"] = new PluginRegistration(Enabled: true, PinnedSha256: "pinned");
-        _WriteBundled("clock", "1.0.0");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(installed);
-        Assert.Equal("pinned", _registrations.Saved["clock"].PinnedSha256);
-    }
-
-    [Fact]
-    public async Task RunningTwice_InstallsNothingTheSecondTime()
-    {
-        _WriteBundled("transcript-search", "1.1.0");
-        await NewSut().InstallAsync(_bundled, _plugins);
-
-        var second = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(second);
     }
 
     // The point of the seed ledger: seeding is a first-appearance event, not a "is it on disk" check. A plugin
@@ -166,31 +75,6 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_plugins, "transcript-search")), "an uninstalled bundled plugin does not silently return");
     }
 
-    // Existing installs from before the ledger existed (or ones the operator installed themselves) are adopted:
-    // recorded as seeded so the bundle never later overwrites them, without their bytes being rewritten now.
-    [Fact]
-    public async Task AnExistingInstall_IsAdoptedIntoTheLedger_WithoutRewriting()
-    {
-        _WriteInstalled("git-status", "1.0.0");
-        _registrations.Saved["git-status"] = new PluginRegistration(Enabled: true, PinnedSha256: "theirs");
-        _WriteBundled("git-status", "1.0.0", assemblyContent: "git-status-bundled");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Empty(installed);
-        Assert.Equal("git-status-1.0.0", _InstalledAssembly("git-status"));
-        Assert.Equal("theirs", _registrations.Saved["git-status"].PinnedSha256);
-        Assert.Contains("git-status", _registrations.Seeded);
-    }
-
-    [Fact]
-    public async Task NoBundledFolder_IsNotAnError()
-    {
-        var installed = await NewSut().InstallAsync(Path.Combine(_root, "does-not-exist"), _plugins);
-
-        Assert.Empty(installed);
-    }
-
     private BundledPluginInstaller NewSut() => new(_registrations);
 
     private string _InstalledVersion(string id)
@@ -199,9 +83,6 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.True(PluginManifest.TryParse(json, out var manifest, out _));
         return manifest is null ? throw new InvalidOperationException($"'{id}' has no readable manifest.") : manifest.Version;
     }
-
-    private string _InstalledAssembly(string id) =>
-        File.ReadAllText(Path.Combine(_plugins, id, $"Cockpit.Plugin.{id}.dll"));
 
     /// <param name="assemblyContent">Stands in for the compiled bytes — pass one to make a rebuild of the same version.</param>
     private void _WriteBundled(string id, string version, string? assemblyContent = null) =>

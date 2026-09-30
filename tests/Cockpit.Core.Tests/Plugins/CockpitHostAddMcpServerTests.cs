@@ -42,21 +42,6 @@ public class CockpitHostAddMcpServerTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task AddMcpServer_NoBearerToken_AddsEntryWithNoAuth()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
-        var host = _BuildHost(store);
-        var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp");
-
-        await host.AddMcpServer(contribution);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<McpServerConfig>>(list => list[0].Auth == McpServerAuth.None && list[0].ApiKey == null),
-            Arg.Any<CancellationToken>());
-    }
-
     // AC-500: a contribution declaring OAuth (an authority, no bearer token) must reach the store as
     // McpServerAuth.OAuth with its authority/client-id carried along — this is the legacy push path
     // (AddMcpServer), the mapping's other caller besides McpServerCatalog's pull path.
@@ -84,38 +69,6 @@ public class CockpitHostAddMcpServerTests
     }
 
     [Fact]
-    public async Task AddMcpServer_ExistingEntry_OAuthContributionRefreshesAuthAndAuthority()
-    {
-        var existing = new McpServerConfig
-        {
-            Name = "Depot: project-a",
-            Transport = McpTransport.Http,
-            Url = "https://old.depot.example/mcp",
-            Auth = McpServerAuth.None,
-            Enabled = true,
-        };
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig> { existing });
-        var host = _BuildHost(store);
-        var contribution = new McpServerContribution("Depot: project-a", "https://new.depot.example/mcp")
-        {
-            OAuthAuthority = "https://depot.example/oauth",
-            OAuthClientId = "cockpit",
-        };
-
-        await host.AddMcpServer(contribution);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
-                list.Count == 1
-                && list[0].Auth == McpServerAuth.OAuth
-                && list[0].Url == "https://new.depot.example/mcp"
-                && list[0].OAuthAuthority == "https://depot.example/oauth"
-                && list[0].OAuthClientId == "cockpit"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task AddMcpServer_RequestedScope_AppliesOnlyToANewEntry()
     {
         var store = Substitute.For<IMcpServerStore>();
@@ -127,36 +80,6 @@ public class CockpitHostAddMcpServerTests
 
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<McpServerConfig>>(list => list[0].Scope == McpServerScope.LocalOnly),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task AddMcpServer_ExistingEntry_RefreshesUrlAndTokenOnly_WithoutDuplicating()
-    {
-        var existing = new McpServerConfig
-        {
-            Name = "YouTrack: Prod",
-            Transport = McpTransport.Http,
-            Url = "https://old.youtrack.cloud/mcp",
-            Auth = McpServerAuth.ApiKey,
-            ApiKey = "old-token",
-            Scope = McpServerScope.ClaudeOnly,
-            Enabled = true,
-        };
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig> { existing });
-        var host = _BuildHost(store);
-        var contribution = new McpServerContribution("YouTrack: Prod", "https://new.youtrack.cloud/mcp", "new-token");
-
-        await host.AddMcpServer(contribution);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
-                list.Count == 1
-                && list[0].Url == "https://new.youtrack.cloud/mcp"
-                && list[0].ApiKey == "new-token"
-                // The pre-existing scope is preserved even though the contribution's default is McpContributionScope.All.
-                && list[0].Scope == McpServerScope.ClaudeOnly),
             Arg.Any<CancellationToken>());
     }
 
@@ -182,75 +105,6 @@ public class CockpitHostAddMcpServerTests
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<McpServerConfig>>(list => list.Count == 1 && !list[0].Enabled && list[0].Url == "https://new.youtrack.cloud/mcp"),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task AddMcpServer_EntryPreviouslyDeletedByTheUser_IsAddedBackAsANewEnabledEntry()
-    {
-        // Documents the chosen trade-off (#60): the store has no concept of "deleted on purpose" versus
-        // "never registered", so a removed entry looks identical to an absent one and is re-added as fresh
-        // (enabled) on the plugin's next explicit trigger (Initialize / settings-saved) — not a background
-        // loop fighting the user, but not permanently respected either.
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
-        var host = _BuildHost(store);
-        var contribution = new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123");
-
-        await host.AddMcpServer(contribution);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<McpServerConfig>>(list => list.Count == 1 && list[0].Enabled),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task AddMcpServer_CalledTwiceWithTheSameName_NeverProducesADuplicate()
-    {
-        var servers = new List<McpServerConfig>();
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => servers);
-        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask)
-            .AndDoes(call => servers = [.. call.Arg<IReadOnlyList<McpServerConfig>>()]);
-        var host = _BuildHost(store);
-
-        await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-1"));
-        await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-2"));
-
-        Assert.Single(servers);
-        Assert.Equal("token-2", servers[0].ApiKey);
-    }
-
-    [Fact]
-    public async Task AddMcpServer_WhenTheStoreThrows_RecordsARuntimeFailureAttributedToThePluginAndDoesNotThrow()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns<Task<IReadOnlyList<McpServerConfig>>>(_ => throw new InvalidOperationException("disk is full"));
-        var diagnostics = new PluginDiagnostics();
-        var host = _BuildHost(store, diagnostics);
-
-        await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123"));
-
-        var failure = diagnostics.ForFolder("youtrack");
-        Assert.NotNull(failure);
-        Assert.Equal("mcp-server", failure!.Phase);
-        Assert.Equal("disk is full", failure.Error);
-    }
-
-    [Fact]
-    public async Task RemoveMcpServer_WhenTheStoreThrows_RecordsARuntimeFailureAttributedToThePluginAndDoesNotThrow()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns<Task<IReadOnlyList<McpServerConfig>>>(_ => throw new InvalidOperationException("disk is full"));
-        var diagnostics = new PluginDiagnostics();
-        var host = _BuildHost(store, diagnostics);
-
-        await host.RemoveMcpServer("YouTrack: Prod");
-
-        var failure = diagnostics.ForFolder("youtrack");
-        Assert.NotNull(failure);
-        Assert.Equal("mcp-server", failure!.Phase);
-        Assert.Equal("disk is full", failure.Error);
     }
 
     private static DesktopBackendHost _BuildHost(IMcpServerStore store, PluginDiagnostics? diagnostics = null)

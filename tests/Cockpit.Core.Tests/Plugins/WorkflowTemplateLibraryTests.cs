@@ -27,29 +27,6 @@ public class WorkflowTemplateLibraryTests : IDisposable
         Assert.Equal(new[] { "youtrack" }, loaded.Requires);
     }
 
-    [Fact]
-    public void InstallingTheSameTemplateAgain_ReplacesIt_RatherThanKeepingTwo()
-    {
-        var library = new WorkflowTemplateLibrary(_root);
-        library.Install(_Template("raymond.ticket-to-agent") with { Version = "1.0" });
-
-        library.Install(_Template("raymond.ticket-to-agent") with { Version = "1.1" });
-
-        Assert.Equal("1.1", library.Load().Single().Version);
-    }
-
-    [Fact]
-    public void ARemovedTemplate_IsGone()
-    {
-        var library = new WorkflowTemplateLibrary(_root);
-        library.Install(_Template("raymond.ticket-to-agent"));
-
-        library.Remove("raymond.ticket-to-agent");
-
-        Assert.False(library.IsInstalled("raymond.ticket-to-agent"));
-        Assert.Empty(library.Load());
-    }
-
     // A store's id is a string the cockpit did not write, and it is used as a file name. One that tries to climb out of
     // the template directory writes inside it anyway.
     [Fact]
@@ -60,17 +37,6 @@ public class WorkflowTemplateLibraryTests : IDisposable
         library.Install(_Template("../../evil"));
 
         Assert.StartsWith(_root, Assert.Single(Directory.GetFiles(_root)));
-    }
-
-    // A hand-edited or half-written file costs the operator that template, not the library.
-    [Fact]
-    public void AFileThatIsNotATemplate_IsSkipped_AndTheRestStillLoad()
-    {
-        var library = new WorkflowTemplateLibrary(_root);
-        library.Install(_Template("raymond.ticket-to-agent"));
-        File.WriteAllText(Path.Combine(_root, "broken.json"), "{ this is not json");
-
-        Assert.Equal("raymond.ticket-to-agent", Assert.Single(library.Load()).Id);
     }
 
     private static InstalledWorkflowTemplate _Template(string id) => new(

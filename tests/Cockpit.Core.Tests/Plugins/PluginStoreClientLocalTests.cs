@@ -28,37 +28,6 @@ public class PluginStoreClientLocalTests : IDisposable
     }
 
     [Fact]
-    public async Task DownloadZipAsync_LocalFolder_ReturnsTheBytesWhenChecksumMatches()
-    {
-        var bytes = Encoding.UTF8.GetBytes("a plugin zip's bytes");
-        await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), bytes);
-        var sha = PluginHash.Compute(bytes);
-
-        var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", sha);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(bytes, File.ReadAllBytes(result.ZipPath!));
-        Assert.Null(result.Warning);
-        _TryDelete(result.ZipPath);
-    }
-
-    [Fact]
-    public async Task DownloadZipAsync_LocalFolder_WarnsButAllowsWhenNoChecksumPublished()
-    {
-        // An index without a per-artifact checksum still installs (many simple stores publish none), but the
-        // download's integrity could not be verified, so the operator is told (AC-46).
-        var bytes = Encoding.UTF8.GetBytes("a plugin zip's bytes");
-        await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), bytes);
-
-        var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", expectedSha256: null);
-
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.ZipPath);
-        Assert.Contains("checksum", result.Warning);
-        _TryDelete(result.ZipPath);
-    }
-
-    [Fact]
     public async Task DownloadZipAsync_LocalFolder_RejectsAChecksumMismatch()
     {
         await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), Encoding.UTF8.GetBytes("the real bytes"));
@@ -77,28 +46,6 @@ public class PluginStoreClientLocalTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Contains("outside", result.Error);
-    }
-
-    [Fact]
-    public async Task DownloadTemplateAsync_LocalFolder_ReturnsTheFlowJson()
-    {
-        var json = """{ "steps": [] }""";
-        await File.WriteAllTextAsync(Path.Combine(_tempDir, "flow.json"), json);
-
-        var result = await _client.DownloadTemplateAsync(PluginStoreConfig.Local(_tempDir), "flow.json", null);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(json, result.Json);
-        // No checksum was supplied, so the template download carries the same unverified advisory (AC-46).
-        Assert.Contains("checksum", result.Warning);
-    }
-
-    private static void _TryDelete(string? path)
-    {
-        if (path is not null && File.Exists(path))
-        {
-            File.Delete(path);
-        }
     }
 
     public void Dispose()

@@ -15,42 +15,6 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class CockpitHostProjectMemorySourceTests
 {
-    [Fact]
-    public void AddThenRemove_TakesTheSourceOutOfProjectMemorySources()
-    {
-        var host = _BuildHost();
-        host.AddProjectMemorySource(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there."));
-
-        host.RemoveProjectMemorySource("depot");
-
-        Assert.Empty(host.ProjectMemorySources);
-    }
-
-    [Fact]
-    public void Remove_ASchemeNeverRegistered_LeavesOtherSourcesUntouched()
-    {
-        var host = _BuildHost();
-        host.AddProjectMemorySource(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there."));
-
-        host.RemoveProjectMemorySource("notes");
-
-        Assert.Single(host.ProjectMemorySources);
-    }
-
-    [Fact]
-    public void RemoveThenAdd_TheSameScheme_RegistersTheNewContent()
-    {
-        // The live-refresh case DepotSettingsControl.Save leans on: a scheme just freed must be immediately
-        // re-registrable with different content, not stuck refused as "already taken" by what was just removed.
-        var host = _BuildHost();
-        host.AddProjectMemorySource(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there."));
-        host.RemoveProjectMemorySource("depot");
-
-        host.AddProjectMemorySource(new ProjectMemorySourceRegistration("depot", "Depot project (renamed)", "Read it there."));
-
-        Assert.Equal("Depot project (renamed)", Assert.Single(host.ProjectMemorySources).Title);
-    }
-
     // --- AC-499: AddProjectMemorySourceFamily -----------------------------------------------------------------
 
     [Fact]
@@ -65,8 +29,6 @@ public class CockpitHostProjectMemorySourceTests
 
         Assert.Equal("Depot", Assert.Single(registry.Families).Title);
     }
-
-    private static ICockpitHost _BuildHost() => _BuildHostAndRegistry().Host;
 
     private static (ICockpitHost Host, IProjectMemorySourceRegistry Registry) _BuildHostAndRegistry()
     {

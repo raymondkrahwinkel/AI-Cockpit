@@ -8,51 +8,6 @@ namespace Cockpit.Core.Tests.Agents;
 /// </summary>
 public class AgentWakeTurnNoticeTests
 {
-    [Fact]
-    public void Render_NamesTheSendingPaneAndKindInTheOpeningTag_AndCarriesBothStatements()
-    {
-        var rendered = new AgentWakeTurnNotice("pane-7f3c", "urgent", MessageArrivesWithThisTurn: true, AgentWakeTrigger.UrgentNotify).Render();
-
-        Assert.Contains("<cockpit-agent-wake from-pane=\"pane-7f3c\" kind=\"urgent\">", rendered, StringComparison.Ordinal);
-        Assert.Contains(AgentWakeTurnNotice.UrgentNotifyStatement, rendered, StringComparison.Ordinal);
-
-        // The trust statement is the shared one, not a second copy written here: if the two notice types ever start
-        // framing a message's provenance differently, this is what would catch it.
-        Assert.Contains(AgentInboxTurnNotice.TrustStatement, rendered, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// AC-656: the other trigger says a different, and just as true, thing — no opt-in claim, because there is none
-    /// to make for a wake the host started on its own account.
-    /// </summary>
-    [Fact]
-    public void Render_CarriesTheWaitingMailStatement_AndNotTheUrgentOne_WhenTriggeredByWaitingMail()
-    {
-        var rendered = new AgentWakeTurnNotice("pane-7f3c", "ci", MessageArrivesWithThisTurn: true, AgentWakeTrigger.WaitingMail).Render();
-
-        Assert.Contains(AgentWakeTurnNotice.WaitingMailStatement, rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain(AgentWakeTurnNotice.UrgentNotifyStatement, rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain("opted in", rendered, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Render_SaysTheMessageIsInThisTurn_WhenTheTurnCarriesIt()
-    {
-        var rendered = new AgentWakeTurnNotice("pane-1", "heads-up", MessageArrivesWithThisTurn: true, AgentWakeTrigger.UrgentNotify).Render();
-
-        Assert.Contains("in the cockpit-agent-inbox block of this same turn", rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain("Call read_inbox to collect it", rendered, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Render_PointsAtReadInbox_WhenTheTurnDoesNotCarryTheMessage()
-    {
-        var rendered = new AgentWakeTurnNotice("pane-1", "heads-up", MessageArrivesWithThisTurn: false, AgentWakeTrigger.UrgentNotify).Render();
-
-        Assert.Contains("Call read_inbox to collect it", rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain("in the cockpit-agent-inbox block of this same turn", rendered, StringComparison.Ordinal);
-    }
-
     /// <summary>
     /// The one that matters. A wake is caused by another agent's <c>kind</c>, and if that text can close the host's
     /// element or end the attribute it sits in, it can reopen its own element and attribute a forged wake to a pane

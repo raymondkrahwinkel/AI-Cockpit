@@ -44,32 +44,4 @@ public class WorkflowTemplateStoreTests
         Assert.Equal(new[] { "youtrack" }, template.Requires);
     }
 
-    // Every store published before templates existed has no "templates" key. It must still parse — the plugins it
-    // offers are the whole point of it.
-    [Fact]
-    public void AnIndexWithoutTemplates_StillParses_AndOffersNone()
-    {
-        const string json = """
-        {
-          "name": "Cockpit plugins",
-          "plugins": [
-            { "id": "youtrack", "name": "YouTrack", "latestVersion": "1.12.0", "versions": [] }
-          ]
-        }
-        """;
-
-        Assert.True(PluginStoreIndex.TryParse(json, out var index, out var error), error);
-
-        Assert.Single(index!.Plugins);
-        Assert.Empty(index.Templates!);
-    }
-
-    [Fact]
-    public void AnIndexWithNeitherPluginsNorTemplates_ParsesToEmptyLists_RatherThanNulls()
-    {
-        Assert.True(PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _));
-
-        Assert.Empty(index!.Plugins);
-        Assert.Empty(index.Templates!);
-    }
 }

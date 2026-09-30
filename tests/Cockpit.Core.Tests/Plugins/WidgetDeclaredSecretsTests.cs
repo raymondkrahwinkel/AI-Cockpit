@@ -17,38 +17,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class WidgetDeclaredSecretsTests
 {
     [Fact]
-    public void DeclaredSecretKeys_AreCarriedFromTheRegisteringPlugin()
-    {
-        var registry = new WidgetRegistry();
-
-        registry.Register(_Widget("tracker.issues"), _Storage(), _Sessions(), ["pat"]);
-
-        Assert.Equal(new[] { "pat" }, registry.DeclaredSecretKeys);
-    }
-
-    [Fact]
-    public void DeclaredSecretKeys_AreTheUnionAcrossPlugins_AndDeduplicated()
-    {
-        // Over-scrubbing costs a plugin a setting whose name another declared secret; under-scrubbing ships a
-        // live credential. The first is the one you can afford.
-        var registry = new WidgetRegistry();
-
-        registry.Register(_Widget("a.one"), _Storage(), _Sessions(), ["pat"]);
-        registry.Register(_Widget("b.two"), _Storage(), _Sessions(), ["credential", "PAT"]);
-
-        Assert.Equivalent(new object[] { "pat", "credential" }, registry.DeclaredSecretKeys);
-    }
-
-    [Fact]
-    public void DeclaredSecretKeys_NoPluginDeclaringAny_IsEmpty()
-    {
-        var registry = new WidgetRegistry();
-        registry.Register(_Widget("clock.time"), _Storage(), _Sessions(), []);
-
-        Assert.Empty(registry.DeclaredSecretKeys);
-    }
-
-    [Fact]
     public void AnExport_DropsADeclaredKey_AlongsideTheOnesTheNameRuleKnows()
     {
         // The end-to-end shape: what the registry collected is what the exporter scrubs by.

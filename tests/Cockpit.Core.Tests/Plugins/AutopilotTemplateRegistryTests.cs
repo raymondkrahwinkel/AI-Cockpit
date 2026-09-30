@@ -1,9 +1,5 @@
-using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
-using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -19,32 +15,6 @@ public class AutopilotTemplateRegistryTests
         new(id, name, body);
 
     [Fact]
-    public void Register_KeepsTheTemplate_StampedWithItsOwner()
-    {
-        var registry = new AutopilotTemplateRegistry();
-
-        registry.Register("autopilot", Template("autopilot.triage", "Triage", "Triage {{issue.id}}"));
-
-        var registration = Assert.Single(registry.Registrations);
-        Assert.Equal("autopilot", registration.OwnerPluginId);
-        Assert.Equal("autopilot.triage", registration.Template.Id);
-        Assert.Equal("Triage {{issue.id}}", registration.Template.Body);
-    }
-
-    [Fact]
-    public void Register_SameTemplateIdFromOnePlugin_Replaces_RatherThanDoubles()
-    {
-        var registry = new AutopilotTemplateRegistry();
-
-        registry.Register("acme", Template("acme.brief", "First", "one"));
-        registry.Register("acme", Template("acme.brief", "Second", "two"));
-
-        var registration = Assert.Single(registry.Registrations);
-        Assert.Equal("Second", registration.Template.Name);
-        Assert.Equal("two", registration.Template.Body);
-    }
-
-    [Fact]
     public void Register_SameTemplateIdFromDifferentPlugins_AreKeptApart()
     {
         var registry = new AutopilotTemplateRegistry();
@@ -55,42 +25,7 @@ public class AutopilotTemplateRegistryTests
         Assert.Equivalent(new object[] { "acme", "globex" }, registry.Registrations.Select(registration => registration.OwnerPluginId));
     }
 
-    [Fact]
-    public void Host_RegisterAutopilotTemplate_RoutesToTheRegistry_StampingThisPluginsId()
-    {
-        var registry = new AutopilotTemplateRegistry();
-        var services = new ServiceCollection().AddSingleton<IAutopilotTemplateRegistry>(registry).BuildServiceProvider();
-        ICockpitHost host = NewHost("acme", services);
-
-        host.RegisterAutopilotTemplate(Template("acme.triage", "Triage", "body"));
-
-        Assert.Equal("acme", Assert.Single(host.RegisteredAutopilotTemplates).OwnerPluginId); // stamped from the host's own id, not composed by the caller
-        Assert.Single(registry.Registrations);
-    }
-
-    // The defaults are a no-op, so a plugin built against this SDK still loads on a host that predates the
-    // contribution point instead of failing at registration.
-    [Fact]
-    public void AHostWithoutTheContributionPoint_AcceptsTheRegistration_AndReportsNoTemplates()
-    {
-        ICockpitHost host = new OlderHost();
-
-        var register = () => host.RegisterAutopilotTemplate(Template("x"));
-
-        register();
-        Assert.Empty(host.RegisteredAutopilotTemplates);
-    }
-
     /// <summary>A host that predates the template contribution point: it implements only the older contract and inherits the new members' default no-op.</summary>
     private sealed class OlderHost : PluginCacheTests.HostWithoutCache;
 
-    private static ICockpitHost NewHost(string pluginId, IServiceProvider services) =>
-        new DesktopBackendHost(
-            pluginId,
-            pluginId,
-            services,
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
 }

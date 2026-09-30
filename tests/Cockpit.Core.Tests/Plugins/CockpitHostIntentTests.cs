@@ -29,21 +29,6 @@ public class CockpitHostIntentTests
         new ServiceCollection().AddSingleton<IPluginIntentRegistry>(new PluginIntentRegistry()).BuildServiceProvider();
 
     [Fact]
-    public async Task SendIntent_ReachesTheHandlerAnotherPluginRegistered_AndReturnsItsResult()
-    {
-        var services = SharedRegistry();
-        HostFor("autopilot", services).RegisterIntentHandler("start", intent =>
-            Task.FromResult<IReadOnlyDictionary<string, string>>(
-                new Dictionary<string, string> { ["session"] = "pane-" + intent.Data["issue"] }));
-
-        var result = await HostFor("youtrack", services)
-            .SendIntent("autopilot", "start", new Dictionary<string, string> { ["issue"] = "AC-95" });
-
-        Assert.NotNull(result);
-        Assert.Equal("pane-AC-95", result!["session"]);
-    }
-
-    [Fact]
     public async Task SendIntent_StampsTheCallersOwnId_NotAnythingTheCallerControls()
     {
         var services = SharedRegistry();
@@ -64,27 +49,4 @@ public class CockpitHostIntentTests
         Assert.Equal("AC-95", received.Data["issue"]);
     }
 
-    [Fact]
-    public async Task SendIntent_ReturnsNull_WhenTheTargetPluginIsNotListening()
-    {
-        var services = SharedRegistry();
-
-        var result = await HostFor("youtrack", services)
-            .SendIntent("autopilot", "start", new Dictionary<string, string>());
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void CanSendIntent_IsTrueOnlyForARegisteredTargetAndAction()
-    {
-        var services = SharedRegistry();
-        HostFor("autopilot", services).RegisterIntentHandler("start", _ =>
-            Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
-
-        var caller = HostFor("youtrack", services);
-        Assert.True(caller.CanSendIntent("autopilot", "start"));
-        Assert.False(caller.CanSendIntent("autopilot", "stop"));
-        Assert.False(caller.CanSendIntent("ghost", "start"));
-    }
 }

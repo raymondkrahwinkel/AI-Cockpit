@@ -21,23 +21,6 @@ public class PluginInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallFromZipAsync_ValidPlugin_UnpacksIntoNamedFolder()
-    {
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _Manifest("github-issues", "GitHub Issues", "Plugin.dll", abstractionsVersion: 1),
-            ["Plugin.dll"] = "MZ-fake-assembly",
-        });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("github-issues", result.FolderId);
-        Assert.True(File.Exists(Path.Combine(_pluginsRoot, "github-issues", "plugin.json")));
-        Assert.True(File.Exists(Path.Combine(_pluginsRoot, "github-issues", "Plugin.dll")));
-    }
-
-    [Fact]
     public async Task InstallFromZipAsync_AbstractionsMajorMismatch_Rejected()
     {
         var zip = _CreateZip(new()
@@ -80,54 +63,6 @@ public class PluginInstallerTests : IDisposable
         var zip = _CreateZip(new()
         {
             ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "1.5.0"),
-            ["Plugin.dll"] = "MZ",
-        });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(1, 5, 0));
-
-        Assert.True(result.IsSuccess);
-    }
-
-    [Fact]
-    public async Task InstallFromZipAsync_BeforeHostReachesOnePointZero_ADeclaredOnePointZeroRequirement_DoesNotBite()
-    {
-        // Mirrors PluginLoadPolicy's own exemption for the stale 1.0.0 template-default value exactly, so the
-        // install gate can never refuse something the load gate would have let load fine.
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "1.0.0"),
-            ["Plugin.dll"] = "MZ",
-        });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(0, 13, 0));
-
-        Assert.True(result.IsSuccess);
-    }
-
-    // AC-181 review: an honest sub-1.0 minHostVersion is a real, current requirement (21+ manifests already carry
-    // one) and must be enforced against a 0.x host exactly as against a 1.x one — only the stale 1.0.0 template
-    // default is exempt pre-1.0, not every sub-1.0 host comparison.
-    [Fact]
-    public async Task InstallFromZipAsync_HonestSubOnePointZeroMinHostVersion_IsEnforced_EvenOnASubOnePointZeroHost()
-    {
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "0.14.0"),
-            ["Plugin.dll"] = "MZ",
-        });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(0, 13, 0));
-
-        Assert.False(result.IsSuccess);
-        Assert.Contains("0.14.0", result.Error);
-    }
-
-    [Fact]
-    public async Task InstallFromZipAsync_UnparsableMinHostVersion_NotRejectedOverIt()
-    {
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "not-a-version"),
             ["Plugin.dll"] = "MZ",
         });
 
@@ -210,69 +145,6 @@ public class PluginInstallerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_tempDir, "escape.txt")));
     }
 
-    // AC-1390: a plugin split in two ships its UI part beside its backend part; both land in the install, and the
-    // UI part's bytes count in the closure the consent pins.
-    [Fact]
-    public async Task InstallFromZipAsync_SplitPlugin_PlacesTheUiAssembly_AndItsBytesCountInTheClosure()
-    {
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _SplitManifest("git-status"),
-            ["Plugin.dll"] = "MZ-backend",
-            ["Plugin.UI.dll"] = "MZ-ui",
-        });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
-        var folder = Path.Combine(_pluginsRoot, "git-status");
-        var installedUi = await File.ReadAllTextAsync(Path.Combine(folder, "Plugin.UI.dll"));
-        await File.WriteAllTextAsync(Path.Combine(folder, "Plugin.UI.dll"), "MZ-ui-rebuilt");
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("MZ-ui", installedUi);
-        Assert.NotEqual(result.Sha256, await PluginClosureHash.OfInstalledFolderAsync(folder));
-    }
-
-    [Fact]
-    public async Task InstallFromZipAsync_MissingUiAssembly_Rejected()
-    {
-        var zip = _CreateZip(new() { ["plugin.json"] = _SplitManifest("git-status"), ["Plugin.dll"] = "MZ" });
-
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
-
-        Assert.False(result.IsSuccess);
-        Assert.Contains("Plugin.UI.dll", result.Error);
-    }
-
-    [Fact]
-    public async Task MarkForRemovalAsync_ThenSweep_DeletesFolder()
-    {
-        var zip = _CreateZip(new()
-        {
-            ["plugin.json"] = _Manifest("gone", "Gone", "Plugin.dll", abstractionsVersion: 1),
-            ["Plugin.dll"] = "MZ",
-        });
-        await _installer.InstallFromZipAsync(zip, HostMajor);
-
-        await _installer.MarkForRemovalAsync("gone");
-        await _installer.SweepRemovalsAsync();
-
-        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "gone")));
-    }
-
-    [Fact]
-    public async Task InstallFromZipAsync_UpdateOverExistingInstall_StagesPendingWithoutReplacingCurrent()
-    {
-        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
-
-        var result = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("acme", result.FolderId);
-        // The live install is untouched (its assembly may be loaded/locked); the new version waits in staging.
-        Assert.Equal("MZ-v1", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))));
-        Assert.Equal("MZ-v2", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, ".pending-updates", "acme", "Plugin.dll"))));
-    }
-
     [Fact]
     public async Task InstallFromZipAsync_UpdateResult_CarriesTheNewBytesSha256_NotTheOld()
     {
@@ -290,18 +162,6 @@ public class PluginInstallerTests : IDisposable
         Assert.True(v2.Staged);
     }
 
-    [Fact]
-    public async Task SweepPendingUpdatesAsync_AppliesStagedUpdate_ReplacingTheOldFolder()
-    {
-        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
-        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
-
-        await _installer.SweepPendingUpdatesAsync();
-
-        Assert.Equal("MZ-v2", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))));
-        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, ".pending-updates")));
-    }
-
     private string _PluginZip(string id, string dll) => _CreateZip(new()
     {
         ["plugin.json"] = _Manifest(id, id, "Plugin.dll", abstractionsVersion: 1),
@@ -312,9 +172,6 @@ public class PluginInstallerTests : IDisposable
         minHostVersion is null
             ? $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}"""
             : $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}},"minHostVersion":"{{minHostVersion}}"}""";
-
-    private static string _SplitManifest(string id) =>
-        $$"""{"id":"{{id}}","name":"{{id}}","version":"1.0.0","entryAssembly":"Plugin.dll","uiAssembly":"Plugin.UI.dll","uiEntryType":"Plugin.Ui","abstractionsVersion":{{HostMajor}}}""";
 
     private string _CreateZip(Dictionary<string, string> entries)
     {

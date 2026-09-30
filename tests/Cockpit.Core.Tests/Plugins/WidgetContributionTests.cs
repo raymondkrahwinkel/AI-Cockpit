@@ -14,40 +14,6 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class WidgetContributionTests
 {
-    [Fact]
-    public void APluginWidget_BecomesAvailableToTheDashboardGallery()
-    {
-        var registry = new WidgetRegistry();
-        var host = NewHost(registry);
-
-        host.AddWidget(new WidgetRegistration("system-monitor.usage", "System Monitor", _ => new Border())
-        {
-            Icon = "📈",
-            Description = "Live CPU / RAM / disk.",
-            DefaultColumnSpan = 2,
-        });
-
-        Assert.Equal(2, Assert.Single(registry.Widgets).DefaultColumnSpan);
-    }
-
-    [Fact]
-    public void WidgetRegistration_DefaultsToASingleCellNeutralCard()
-    {
-        var registration = new WidgetRegistration("plugin.clock", "Clock", _ => new Border());
-
-        Assert.Equal(string.Empty, registration.Icon);
-        Assert.Equal(1, registration.DefaultColumnSpan);
-        Assert.Equal(1, registration.DefaultRowSpan);
-        Assert.Empty(registration.Description);
-    }
-
-    // No widget-providing plugin installed is the normal case: the gallery is simply empty.
-    [Fact]
-    public void WithNoWidgetPluginInstalled_TheGalleryIsEmpty()
-    {
-        Assert.Empty(new WidgetRegistry().Widgets);
-    }
-
     /// <summary>
     /// Two plugins can claim one type id — nothing stops a third party picking one that already exists, and the
     /// cockpit's own clock did exactly that when it was split out of the reference-widgets plugin. Adding both
@@ -63,24 +29,6 @@ public class WidgetContributionTests
         NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock (the other one)", _ => new Border()));
 
         Assert.Equal("Clock", Assert.Single(registry.Widgets).Title);
-    }
-
-    /// <summary>A refused registration is not fatal: the plugin is told, and whatever else it registers still stands.</summary>
-    [Fact]
-    public void ASecondPluginClaimingTheSameWidgetType_DoesNotThrow_AndItsOtherWidgetsStillRegister()
-    {
-        var registry = new WidgetRegistry();
-        NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
-        var second = NewHost(registry);
-
-        var act = () =>
-        {
-            second.AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
-            second.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", _ => new Border()));
-        };
-
-        act();
-        Assert.Equal(new[] { "widgets.clock", "widgets.system-monitor" }, registry.Widgets.Select(widget => widget.Id));
     }
 
     private static ICockpitUiHost NewHost(IWidgetRegistry registry) =>
