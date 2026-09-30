@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AC-1422: the journeys, the CI gate. A handful of the operator's routes end to end, on the real composition
+       with only the provider faked. Their own process like the view tests: the desktop journeys need a headless
+       Avalonia, whose dispatcher is global and belongs to one thread. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The view tests' own headless platform, so both run the app on the same one. -->
+    <Compile Include="..\Cockpit.App.ViewTests\HeadlessAvalonia.cs" Link="HeadlessAvalonia.cs" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
+  </ItemGroup>
+
+  <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->
+  <Import Project="..\..\src\BundledPlugins.targets" />
+
+</Project>

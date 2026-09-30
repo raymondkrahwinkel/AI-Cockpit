@@ -92,6 +92,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
+    <!-- AC-1422: the journeys run Program's own desktop composition, not a copy of it. -->
+    <InternalsVisibleTo Include="Cockpit.Journeys" />
     <!-- AC-1220: so the harness judges Avalonia's cut-off with RenderClockRecovery instead of a copy of its message. -->
     <InternalsVisibleTo Include="Cockpit.MeasurementHarness" />
   </ItemGroup>

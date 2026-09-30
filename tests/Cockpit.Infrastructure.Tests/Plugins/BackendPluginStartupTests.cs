@@ -19,12 +19,6 @@ public sealed class BackendPluginStartupTests : IDisposable
 {
     public const string Alone = "Backend plugin startup: the process-wide state root";
 
-    private static readonly string[] Bundled =
-    [
-        "autopilot", "claude-provider", "clock", "example-companion-tool", "example-workspace", "fan-out", "git-status",
-        "transcript-search", "usage-trend",
-    ];
-
     private readonly string? _previousStateRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
     private readonly string _stateRoot = Path.Combine(Path.GetTempPath(), $"backend-plugins-{Guid.NewGuid():N}");
 
@@ -50,28 +44,6 @@ public sealed class BackendPluginStartupTests : IDisposable
         {
             // A plugin's own file may still be held there; a temp folder the OS clears is fine.
         }
-    }
-
-    // Acceptance 1: all nine load and initialise with no failure, and a provider, a workflow step and an MCP endpoint
-    // land where the backend keeps them — with no App in the process.
-    [Fact]
-    public async Task TheBackendWithoutApp_LoadsTheNineBundledPlugins_AndTheirRegistrationsLand()
-    {
-        var mounts = new RecordingEndpointHost();
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.AddSingleton<ICockpitMcpEndpointHost>(mounts), PluginStartup.Load);
-        await using var services = backend.Services;
-
-        backend.InitializePlugins();
-
-        // Why a plugin is missing first, by name: a failure or an approval it waits for, before the list itself.
-        var diagnostics = services.GetRequiredService<PluginDiagnostics>();
-        Assert.Empty(diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
-        Assert.Empty(diagnostics.PendingApprovals.Select(pending => pending.ToString()));
-        Assert.Equal(Bundled, services.GetRequiredService<PluginManager>().Loaded.Select(plugin => plugin.FolderId).Order());
-        Assert.NotNull(services.GetRequiredService<IPluginProviderRegistry>().Resolve("claude"));
-        Assert.Contains("git.branch", services.GetRequiredService<IWorkflowStepRegistry>().Steps.Select(step => step.TypeId));
-        Assert.Contains("cockpit-autopilot-merge-gate", mounts.Names);
-        Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "Cockpit.App");
     }
 
     // The counter-proof: without the plugin step nothing is loaded, and the same registries stay empty.
@@ -104,6 +76,9 @@ public sealed class BackendPluginStartupTests : IDisposable
 
         Assert.IsType<InvalidOperationException>(early);
         Assert.NotNull(services.GetRequiredService<CiWatcher>().Watching);
+
+        // And the nine loaded with no App in the process; the journeys' J1 loads them beside it (AC-1422).
+        Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "Cockpit.App");
     }
 
     private sealed class RecordingEndpointHost : ICockpitMcpEndpointHost

@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: every change to the cockpit is now checked against a set of everyday routes, run end to end: the cockpit starting with all its bundled plugins and turning away one built for an older plugin contract,
+  and a session started through a connect key or the backend API answering, visible only to keys that may see it.
 - added: the backend API can list, read, start, prompt and stop sessions and answer their permission prompts
   (`/api/v1/sessions`), and read and prompt the assistant (`/api/v1/assistant`), with the same limits a connect
   key has on the node tools: a session outside the key's scope is not found, and a start outside it is refused

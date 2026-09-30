@@ -116,6 +116,38 @@ jobs:
           path: TestResults
           if-no-files-found: warn
 
+  # AC-1422: the journeys, the gate. No `needs: changes` and no `if:`: a gate a path filter can skip is no gate.
+  # Beside `build` rather than in it, so it adds nothing to the pipeline's wall time.
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+
+      - name: Restore
+        run: dotnet restore tests/Cockpit.Journeys/Cockpit.Journeys.csproj
+
+      - name: Build
+        run: dotnet build tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-restore -warnaserror
+
+      - name: Journeys
+        run: dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
+
+      - name: Upload test results
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-results
+          path: TestResults
+          if-no-files-found: warn
+
   # The plugins live outside the solution (plugins-dev/), so the solution build above never sees them — and a
   # contract change in Cockpit.Plugins.Abstractions breaks them silently until someone rebuilds one by hand.
   plugins:
