@@ -16,6 +16,10 @@ public sealed class LocalCiUi : ICockpitPluginUi
     {
         host.AddSettings(() => new LocalCiSettingsControl(host));
 
+        // Docker Desktop may well have been started while the settings page was open; a save is the cheapest honest
+        // moment to stop trusting a stale answer. The callback is synchronous, so it blocks on the in-process channel.
+        host.OnSettingsSaved(() => host.Channel.InvokeAsync(LocalCiChannel.InvalidateRuntime, JsonSerializer.SerializeToElement(new { })).GetAwaiter().GetResult());
+
         // Built once per session panel, which is the only place a session's own context arrives — so it is both
         // where the last run is shown and where the pane-to-checkout answer the MCP tools need is learned (see
         // Sessions/SessionCheckouts on the backend part).

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.ExampleWorkspace;
@@ -12,7 +13,7 @@ namespace Cockpit.Plugin.ExampleWorkspace;
 // full surface with a live session inside it.
 internal sealed class ExampleWorkspaceBody : UserControl
 {
-    public ExampleWorkspaceBody(IWorkspaceContext context)
+    public ExampleWorkspaceBody(ICockpitUiHost host, IWorkspaceContext context)
     {
         // One embed, on the UI thread, as the body is built — the same shape a widget builds its view in. The host
         // starts the session and hands back the view to place; the plugin never manages the session's lifetime.
@@ -47,7 +48,7 @@ internal sealed class ExampleWorkspaceBody : UserControl
             Children =
             {
                 header,
-                new ContentControl { Content = embedded.View, Margin = new Thickness(12) },
+                new ContentControl { Content = host.CreateEmbeddedSessionView(embedded.PaneId), Margin = new Thickness(12) },
             },
         };
     }

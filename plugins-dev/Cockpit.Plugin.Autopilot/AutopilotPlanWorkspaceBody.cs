@@ -754,7 +754,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             "Set a CEO profile in the Autopilot settings before planning.",
             PluginToastSeverity.Warning,
             "Open settings",
-            () => _ = _host.ShowSettingsAsync());
+            () => _ = _uiHost.ShowSettingsAsync());
         return false;
     }
 
@@ -843,7 +843,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
                 McpServers = PlanningCeoMcpServers(_TrackerReadServers(_plan.Plan?.Source)),
-                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context.Sessions, _plan.Plan?.WorkingDirectory),
+                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_uiHost.ActiveSessionWorkingDirectory, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan
                     ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty))
                     : null,
@@ -852,7 +852,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 InitialUserMessage = kickoff.Message,
             }) ?? throw new InvalidOperationException("This host cannot embed sessions.");
             // One planning pop-out per plugin: reopening while it's up should refocus it, not stack a second one.
-            await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), "plan", width: 980, height: 660);
+            await _uiHost.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), "plan", width: 980, height: 660);
         }
         catch (Exception)
         {
@@ -999,7 +999,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         Select(0);
 
         // One "Start a run" dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-        await _host.ShowDialogAsync("Start a run", () =>
+        await _uiHost.ShowDialogAsync("Start a run", () =>
         {
             // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
             // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.

@@ -22,7 +22,7 @@ public class PluginCacheTests
     [Fact]
     public void AHostThatPredatesTheCache_StillLoads_AndOffersOneThatWorks()
     {
-        ICockpitHost host = Substitute.ForPartsOf<CockpitHostCreateMarkdownViewTests.HostWithoutMarkdownRendering>();
+        ICockpitHost host = Substitute.ForPartsOf<HostWithoutCache>();
 
         host.Cache.Set("older-sdk-runs", new[] { "first", "second" });
 
@@ -119,15 +119,23 @@ public class PluginCacheTests
     // Typed as the contract a plugin holds, so every assertion goes through `ICockpitHost.Cache` rather than
     // through the store the host happens to have been given.
     private static ICockpitHost _BuildHost(IPluginCache cache) =>
-        new DesktopPluginHost(
+        new DesktopBackendHost(
             "workflows",
             "Workflows",
             Substitute.For<IServiceProvider>(),
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics(),
             cache: cache);
+
+    /// <summary>An older host: implements only what the contract required before the cache existed.</summary>
+    public abstract class HostWithoutCache : ICockpitHost
+    {
+        public IServiceProvider Services => Substitute.For<IServiceProvider>();
+
+        public ICockpitActions Actions => Substitute.For<ICockpitActions>();
+
+        public IPluginStorage Storage => Substitute.For<IPluginStorage>();
+    }
 }

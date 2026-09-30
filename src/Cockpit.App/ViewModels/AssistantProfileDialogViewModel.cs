@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -22,6 +23,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly IAssistantSessionHost? _assistant;
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IPluginProviderConfigViews? _pluginConfigViews;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
@@ -65,7 +67,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // The plugin option rows, MCP rows and variable are staged directly rather than resolved: a headless render has no
     // plugin registry and no MCP catalog, so a scene built from the real path would show the empty half of every block
     // and prove nothing about the parts this dialog exists for.
-    public AssistantProfileDialogViewModel(IAssistantSessionHost? assistant = null, IPluginProviderRegistry? pluginProviderRegistry = null)
+    public AssistantProfileDialogViewModel(IAssistantSessionHost? assistant = null, IPluginProviderRegistry? pluginProviderRegistry = null, IPluginProviderConfigViews? pluginConfigViews = null)
     {
         _assistant = assistant;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -84,7 +86,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             isLoggedIn: true,
             canChooseProvider: false,
             _providers,
-            pluginProviderRegistry);
+            pluginProviderRegistry,
+            pluginConfigViews: pluginConfigViews);
 
         // The session-default rows are not staged here: the editor builds them from the provider's own declaration,
         // so a registry that resolves already produces them and adding a set by hand rendered every one of them
@@ -111,8 +114,10 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         IPluginProviderRegistry? pluginProviderRegistry = null,
         IMcpServerCatalog? mcpServerCatalog = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
-        ITtySessionProviderResolver? ttyProviderResolver = null)
+        ITtySessionProviderResolver? ttyProviderResolver = null,
+        IPluginProviderConfigViews? pluginConfigViews = null)
     {
+        _pluginConfigViews = pluginConfigViews;
         _slotStore = slotStore;
         _sessionProfileStore = sessionProfileStore;
         _assistant = assistant;
@@ -237,5 +242,6 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _pluginProviderRegistry,
         _availableMcpServerNames,
         _tokenEstimator,
-        _ttyProviderResolver);
+        _ttyProviderResolver,
+        pluginConfigViews: _pluginConfigViews);
 }

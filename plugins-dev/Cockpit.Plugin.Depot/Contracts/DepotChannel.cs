@@ -12,6 +12,9 @@ internal static class DepotChannel
     // storage, then reclaiming any orphaned MCP-registry entry. Answers a DepotSaveConnectionsAnswer.
     public const string SaveConnections = "save-connections";
 
+    // Event, payload ignored: the backend part asks the UI part to open this plugin's settings.
+    public const string OpenSettings = "open-settings";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 

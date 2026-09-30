@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Profiles;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -29,6 +30,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
     private readonly AutopilotSettings _settings;
     private readonly ICockpitHost _host;
+    private readonly ICockpitUiHost _uiHost;
     private readonly AutopilotTemplateStore _templates;
     private readonly ComboBox _ceoProfile;
     private readonly AutoCompleteBox _ceoModel;
@@ -55,10 +57,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private IReadOnlyList<PluginProfileInfo> _profiles = [];
     private bool _profilesLoaded;
 
-    public AutopilotSettingsControl(AutopilotSettings settings, ICockpitHost host, AutopilotTemplateStore templates)
+    public AutopilotSettingsControl(AutopilotSettings settings, ICockpitHost host, ICockpitUiHost uiHost, AutopilotTemplateStore templates)
     {
         _settings = settings;
         _host = host;
+        _uiHost = uiHost;
         _templates = templates;
 
         _ceoProfile = new ComboBox
@@ -150,10 +153,10 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         safety.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
         safety.Children.Add(_Row("Max rework attempts per step", _maxAttempts));
         safety.Children.Add(_Row("Runs at once (rest queue up)", _maxConcurrent));
-        var autonomyRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Row("Autonomy (permission mode)", _autonomy), host.CreateHelpHint("settings", "autonomy-mode") } };
+        var autonomyRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Row("Autonomy (permission mode)", _autonomy), uiHost.CreateHelpHint("settings", "autonomy-mode") } };
         safety.Children.Add(autonomyRow);
         safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
-        var executableStageHeading = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Header("Executable stage per tracker"), host.CreateHelpHint("settings", "executable-stage") } };
+        var executableStageHeading = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Header("Executable stage per tracker"), uiHost.CreateHelpHint("settings", "executable-stage") } };
         safety.Children.Add(executableStageHeading);
         foreach (var (trackerId, box) in _executableStages)
         {
@@ -348,7 +351,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         };
 
         // No key: this is per template, and two templates can share a name — a key would collapse them into one window.
-        _ = _host.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
+        _ = _uiHost.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
         {
             // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
             // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.

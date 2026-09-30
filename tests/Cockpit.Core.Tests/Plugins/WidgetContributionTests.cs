@@ -1,16 +1,13 @@
 using Avalonia.Controls;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// The widget contribution point: a plugin contributes a dashboard widget type (<c>ICockpitHost.AddWidget</c>),
+/// The widget contribution point: a plugin contributes a dashboard widget type (<c>ICockpitUiHost.AddWidget</c>),
 /// and a Dashboard workspace's "Add widget" gallery reads them back through the host — the same shape as the
 /// conversation-picker and workflow contribution points. The core hosts the grid and the pane chrome; what a
 /// widget shows is the plugin's business.
@@ -30,7 +27,6 @@ public class WidgetContributionTests
             DefaultColumnSpan = 2,
         });
 
-        Assert.Equal("system-monitor.usage", Assert.Single(host.Widgets).Id);
         Assert.Equal(2, Assert.Single(registry.Widgets).DefaultColumnSpan);
     }
 
@@ -87,20 +83,6 @@ public class WidgetContributionTests
         Assert.Equal(new[] { "widgets.clock", "widgets.system-monitor" }, registry.Widgets.Select(widget => widget.Id));
     }
 
-    private static ICockpitHost NewHost(IWidgetRegistry registry)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(registry);
-
-        return new DesktopPluginHost(
-            "test-plugin",
-            "Test Plugin",
-            services.BuildServiceProvider(),
-            Substitute.For<IPluginContributionSink>(),
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
-    }
+    private static ICockpitUiHost NewHost(IWidgetRegistry registry) =>
+        TestUiHost.Create(services => services.AddSingleton(registry));
 }

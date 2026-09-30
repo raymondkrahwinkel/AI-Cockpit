@@ -11,9 +11,9 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.ProbeMcpToolAsync"/> (AC-503): the plugin-facing surface over the Core-level
+/// <see cref="DesktopBackendHost.ProbeMcpToolAsync"/> (AC-503): the plugin-facing surface over the Core-level
 /// <see cref="IMcpToolProbe"/>, mirroring the same isolation seam <see cref="CockpitHostMcpAuthTests"/> already
-/// covers for <see cref="DesktopPluginHost.GetMcpServerAuthStateAsync"/>/<see cref="DesktopPluginHost.SignInMcpServerAsync"/> —
+/// covers for <see cref="DesktopBackendHost.GetMcpServerAuthStateAsync"/>/<see cref="DesktopBackendHost.SignInMcpServerAsync"/> —
 /// same fixture shape, same <c>diagnostics.Record</c> catch-and-report pattern on an unexpected exception.
 /// <para>
 /// What this class does <em>not</em> re-test: whether a sign-in check happens before a tool call, and whether that
@@ -182,7 +182,7 @@ public class CockpitHostProbeMcpToolTests
         Assert.Contains(fakeTokenLikeMessage, failure!.Error, StringComparison.Ordinal);
     }
 
-    private static DesktopPluginHost _BuildHost(IMcpToolProbe? probe, PluginDiagnostics? diagnostics = null)
+    private static DesktopBackendHost _BuildHost(IMcpToolProbe? probe, PluginDiagnostics? diagnostics = null)
     {
         var collection = new ServiceCollection();
         if (probe is not null)
@@ -191,14 +191,12 @@ public class CockpitHostProbeMcpToolTests
         }
 
         var services = collection.BuildServiceProvider();
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "depot",
             "Depot",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             diagnostics ?? new PluginDiagnostics());
     }

@@ -271,7 +271,6 @@ public class AutopilotCeoCheckpointTests
     private static IEmbeddedSession _Session(string paneId)
     {
         var session = Substitute.For<IEmbeddedSession>();
-        session.View.Returns(_ => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view."));
         session.PaneId.Returns(paneId);
         session.CloseAsync().Returns(Task.CompletedTask);
         session.Completion.Returns(new TaskCompletionSource<string?>().Task);

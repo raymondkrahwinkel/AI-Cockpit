@@ -82,17 +82,15 @@ public class AutopilotTemplateRegistryTests
     }
 
     /// <summary>A host that predates the template contribution point: it implements only the older contract and inherits the new members' default no-op.</summary>
-    private sealed class OlderHost : SessionHeaderItemTests.HostWithoutHeaderItems;
+    private sealed class OlderHost : PluginCacheTests.HostWithoutCache;
 
     private static ICockpitHost NewHost(string pluginId, IServiceProvider services) =>
-        new DesktopPluginHost(
+        new DesktopBackendHost(
             pluginId,
             pluginId,
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
 }

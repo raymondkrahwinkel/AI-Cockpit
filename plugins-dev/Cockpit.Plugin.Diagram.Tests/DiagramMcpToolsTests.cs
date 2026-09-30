@@ -25,7 +25,7 @@ public class DiagramMcpToolsTests
     {
         var registry = new DiagramAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
@@ -180,7 +180,7 @@ public class DiagramMcpToolsTests
     public async Task EditDiagram_WhenWideningIsDenied_LeavesTheReadAccessItAlreadyHad()
     {
         var registry = new DiagramAccessRegistry();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
         host.RequestConsentAsync(Arg.Any<ConsentRequest>())
@@ -409,7 +409,7 @@ public class DiagramMcpToolsTests
     {
         var registry = new DiagramAccessRegistry();
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ =>
@@ -511,7 +511,7 @@ public class DiagramMcpToolsTests
     {
         // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
         var registry = new DiagramAccessRegistry();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()) { SkipDiagramConsent = true };
         var tools = new DiagramMcpTools(host, registry, settings, TestChannel.Desktop(host, diagrams: registry));

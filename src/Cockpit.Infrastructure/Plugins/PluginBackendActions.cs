@@ -7,9 +7,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// AC-1392: `ICockpitActions` for a backend. Delegation and starting a session need no window; there is no selected
-// session, clipboard or operator to confirm with (D6), so those answer "nothing" — and a confirmation is refused,
-// never assumed. The desktop's PluginActions has them, and hands delegation back to this.
+// AC-1392: `ICockpitActions` for a backend. Delegation and starting a session need no window, so they are all it
+// offers. The desktop's PluginActions hands delegation back to this.
 public sealed class PluginBackendActions(
     ISessionProfileStore profileStore,
     IDelegationService delegation,
@@ -17,14 +16,6 @@ public sealed class PluginBackendActions(
 {
     private static readonly TimeSpan DefaultPatience = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan Beat = TimeSpan.FromMilliseconds(500);
-
-    public bool HasActiveSession => false;
-
-    public Task SetClipboardTextAsync(string text) => Task.CompletedTask;
-
-    public Task InjectIntoActiveSessionAsync(string text) => Task.CompletedTask;
-
-    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => Task.FromResult(false);
 
     // #67, #69: hands work to another profile as a background task via the cockpit's own delegation service,
     // so it is refused by the same rules and shows up in the delegated-tasks view like any agent's delegation.

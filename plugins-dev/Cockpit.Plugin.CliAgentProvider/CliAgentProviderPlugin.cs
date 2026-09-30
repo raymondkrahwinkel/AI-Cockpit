@@ -62,10 +62,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
                     new(CodexAppServerSessionDriver.EffortOptionKey, "Effort"),
                     new(CodexAppServerSessionDriver.ApprovalOptionKey, "Approval", [.. CodexAppServerSessionDriver.ApprovalChoices.Select(choice => new PluginSessionOptionValue(choice, choice))]),
                 ],
-            },
-            // AC-1393: the UI part's InitializeUi (CliAgentProviderUi) replaces this with the real config view via
-            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
-            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."))
+            })
         {
             Options = [sdkSandbox, sdkModelFallback, sdkEffortFallback, sdkApproval],
             // #1105: the SDK route reports these at each turn boundary (plus a start-of-session prefetch, C) —

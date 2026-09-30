@@ -505,7 +505,8 @@ public partial class App : Application
             Program.Services.GetService<IMcpServerCatalog>(),
             Program.Services.GetService<IMcpToolTokenEstimator>(),
             Program.Services.GetService<ITtySessionProviderResolver>(),
-            Program.Services.GetService<IProfileLoginStarter>());
+            Program.Services.GetService<IProfileLoginStarter>(),
+            Program.Services.GetService<IPluginProviderConfigViews>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -529,7 +530,7 @@ public partial class App : Application
         _pluginUpdateTimer.Start();
     }
 
-    // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopPluginHost per plugin carrying the
+    // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopBackendHost per plugin carrying the
     // built service provider, the cockpit as the contribution sink, the shared actions and its own storage slice;
     // then the UI parts.
     private void _InitializePlugins()
@@ -599,24 +600,18 @@ public partial class App : Application
                 $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
         }
 
-        // AC-1389: one host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards to it,
-        // and built on demand for a plugin that is only a UI part.
+        // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards
+        // what a backend can do too to it, and built on demand for a plugin that is only a UI part.
         var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
         ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType) =>
-            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopPluginHost(
+            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopBackendHost(
             discovered.FolderId,
             discovered.Manifest.Name,
             Program.Services,
-            cockpit,
             actions,
             PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
-            dialogHost,
             sessionObserver,
             diagnostics,
-            // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
-            // handing them to the host lets a dashboard export drop them too, which is the third place a
-            // declared secret has to be honoured.
-            discovered.Manifest.SecretKeys,
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
             // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
             pluginType,
@@ -628,7 +623,19 @@ public partial class App : Application
         // registrations (a provider it adds a config view to) being there.
         Program.Services.GetRequiredService<PluginUiManager>().InitializeUi(
             PluginUiManager.ActivateUi,
-            (discovered, ui) => new CockpitUiHost(discovered.FolderId, HostFor(discovered, ui.GetType()), Program.Services));
+            (discovered, ui) => new CockpitUiHost(
+                discovered.FolderId,
+                discovered.Manifest.Name,
+                HostFor(discovered, ui.GetType()),
+                Program.Services,
+                cockpit,
+                dialogHost,
+                actions,
+                sessionObserver,
+                // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
+                // handing them to the widget registry lets a dashboard export drop them too, which is the third place
+                // a declared secret has to be honoured.
+                discovered.Manifest.SecretKeys ?? []));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.

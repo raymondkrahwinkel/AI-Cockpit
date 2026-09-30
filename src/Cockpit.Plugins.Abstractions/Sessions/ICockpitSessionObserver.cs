@@ -2,25 +2,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
 /// The read/observe surface over the cockpit's sessions, complementing the write-only
-/// <see cref="ICockpitActions"/> — it lets a plugin see what the active session is working on and what
+/// <see cref="ICockpitActions"/> — it lets a plugin see which sessions are open and what
 /// sessions produce, so a contribution can react to a session instead of only pushing into it. Obtained via
 /// <see cref="ICockpitHost.Sessions"/>; events are raised on the UI thread.
 /// </summary>
 public interface ICockpitSessionObserver
 {
-    /// <summary>
-    /// Working directory of the currently selected session, or <see langword="null"/> when there is no
-    /// selection or the directory is not yet known (e.g. an SDK session before its init event arrives).
-    /// </summary>
-    string? ActiveSessionWorkingDirectory { get; }
-
-    /// <summary>
-    /// <see cref="IPluginSessionContext.PaneId"/> of the currently selected session, or <see langword="null"/>
-    /// when nothing is selected — how a contribution outside a session (a dialog, say) names the session an
-    /// action applies to, so the matching header item can pick it up. Null on a host that predates this member.
-    /// </summary>
-    string? ActivePaneId => null;
-
     /// <summary>
     /// Every open session — pane id and the operator-visible name shown on its header — so a contribution can
     /// name a specific session rather than only ever "the active one" (AC-833). Empty on a host that predates
@@ -32,36 +19,6 @@ public interface ICockpitSessionObserver
     /// naming it.
     /// </remarks>
     IReadOnlyList<OpenCockpitSession> OpenSessions => [];
-
-    /// <summary>
-    /// The selected session's current usage — how full its context window is, the windows it reports, and its
-    /// profile label (AC-54) — or <see langword="null"/> when nothing is selected or on a host that predates
-    /// this member. The plugin-facing mirror of the header's usage pill.
-    /// </summary>
-    /// <remarks>
-    /// A widget reads it (and re-reads it on <see cref="ActiveSessionUsageChanged"/>) to chart usage over time
-    /// without the host knowing what the widget shows. A snapshot with all-null figures
-    /// (<see cref="SessionUsageSnapshot.HasAny"/> false) means the session has not reported usage yet — a
-    /// silence to skip, not a zero to record.
-    /// </remarks>
-    SessionUsageSnapshot? ActiveSessionUsage => null;
-
-    /// <summary>
-    /// Raised when the selected session changes, or when the selected session's working directory first
-    /// becomes known — the cue to re-read <see cref="ActiveSessionWorkingDirectory"/> and re-scope.
-    /// </summary>
-    event EventHandler? ActiveSessionChanged;
-
-    /// <summary>
-    /// Raised when <see cref="ActiveSessionUsage"/> moves — the selection changed, or the selected session's
-    /// context/rate-limit figures updated — so a usage widget re-reads and samples. A no-op add/remove on a host
-    /// that predates this member, so a subscribing plugin keeps compiling and simply never hears from it.
-    /// </summary>
-    event EventHandler? ActiveSessionUsageChanged
-    {
-        add { }
-        remove { }
-    }
 
     /// <summary>
     /// Raised for each chunk of text a session produces (assistant text and tool output), carrying the
@@ -180,14 +137,6 @@ public sealed class NullCockpitSessionObserver : ICockpitSessionObserver
 
     private NullCockpitSessionObserver()
     {
-    }
-
-    public string? ActiveSessionWorkingDirectory => null;
-
-    public event EventHandler? ActiveSessionChanged
-    {
-        add { }
-        remove { }
     }
 
     public event EventHandler<SessionOutputText>? OutputProduced

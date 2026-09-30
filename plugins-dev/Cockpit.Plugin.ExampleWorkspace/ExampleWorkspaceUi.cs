@@ -12,7 +12,7 @@ public sealed class ExampleWorkspaceUi : ICockpitPluginUi
     {
         // The type id is persisted with every workspace of this type, so it is an API surface — changing it would
         // orphan desks people have already created. The plugin owns the whole body; the host draws only the tab.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.example", "Example", context => new ExampleWorkspaceBody(context))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.example", "Example", context => new ExampleWorkspaceBody(host, context))
         {
             IconKind = MaterialIconKind.ViewGridPlusOutline,
             Description = "A workspace a plugin draws end to end, with a live session embedded in it.",

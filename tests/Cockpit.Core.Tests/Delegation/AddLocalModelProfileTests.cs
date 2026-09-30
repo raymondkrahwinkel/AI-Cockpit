@@ -155,8 +155,7 @@ public class AddLocalModelProfileTests
             ProviderId: "sample-agent",
             DisplayName: "Sample Agent",
             CreateDriverFactory: _ => Substitute.For<IPluginSessionDriverFactory>(),
-            Capabilities: new PluginSessionCapabilities(true, true),
-            CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>()));
+            Capabilities: new PluginSessionCapabilities(true, true)));
 
         var service = new DelegationService(
             new InMemoryProfileStore(),

@@ -17,7 +17,6 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
@@ -29,12 +28,12 @@ namespace Cockpit.App.ViewTests;
 public class DiagramCollabWindowTests
 {
     [Fact]
-    public void OpeningTwoDiagramsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.Run(() =>
+    public Task OpeningTwoDiagramsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
 
-        host.InvokeQuickStart();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
+        await host.InvokeQuickStartAsync();
 
         // Two documents, two windows, two distinct keys — SurfaceWindows folds on the key, so equal keys here
         // would mean the second diagram silently replaced the first.
@@ -58,10 +57,10 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void ClosingTheWindow_LetsItsSessionKeepRunning() => HeadlessAvalonia.Run(() =>
+    public Task ClosingTheWindow_LetsItsSessionKeepRunning() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
 
         var window = _Show(host.Windows[0].Content);
         window.Close();
@@ -77,11 +76,11 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void ClosingOneDiagramWindow_LeavesTheOtherOpenAndStillEditable() => HeadlessAvalonia.Run(() =>
+    public Task ClosingOneDiagramWindow_LeavesTheOtherOpenAndStillEditable() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
+        await host.InvokeQuickStartAsync();
 
         // PluginDialogHost owns a new surface to whichever window is active, so the second diagram opens owned by
         // the first whenever the operator was looking at it — and Avalonia closes an owner's owned windows with it.
@@ -108,10 +107,10 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void WhenTheBoundSessionEnds_TheCouplingGoesAndTheWindowStaysWithAnExplanation() => HeadlessAvalonia.Run(() =>
+    public Task WhenTheBoundSessionEnds_TheCouplingGoesAndTheWindowStaysWithAnExplanation() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
         var content = host.Windows[0].Content;
         var window = _Show(content);
 
@@ -131,12 +130,12 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void ClickingANodeOnTheSurface_HoldsItAndLetsTheOperatorRemoveIt_WithoutOpeningTheSource() => HeadlessAvalonia.Run(() =>
+    public Task ClickingANodeOnTheSurface_HoldsItAndLetsTheOperatorRemoveIt_WithoutOpeningTheSource() => HeadlessAvalonia.RunAsync(async () =>
     {
         // AC-841: hand-editing happens on the render itself. One node, fit to the window, so the middle of the
         // viewport is that node — no coordinate arithmetic to keep in step with the layout.
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
         var content = host.Windows[0].Content;
         var window = _Show(content);
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
@@ -168,9 +167,9 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void RenamingANodeOnTheSurface_WritesTheNewLabelIntoTheSource() => HeadlessAvalonia.Run(() =>
+    public Task RenamingANodeOnTheSurface_WritesTheNewLabelIntoTheSource() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
 
         _ClickCentre(content, window);
         _Button(content, "Rename").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -190,9 +189,9 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void ConnectingOnTheSurface_TakesTwoClicksInAnExplicitMode() => HeadlessAvalonia.Run(() =>
+    public Task ConnectingOnTheSurface_TakesTwoClicksInAnExplicitMode() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
 
         // Nothing happens on a click until the mode is on: that is what keeps panning and editing apart.
         _ClickCentre(content, window);
@@ -217,11 +216,11 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void ConnectingWithATypedLabel_WritesItOntoTheConnection() => HeadlessAvalonia.Run(() =>
+    public Task ConnectingWithATypedLabel_WritesItOntoTheConnection() => HeadlessAvalonia.RunAsync(async () =>
     {
         // AC-909's first acceptance criterion: the operator's own Connect gesture can carry a label, the way
         // connect_nodes already could.
-        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
 
         _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
@@ -240,11 +239,11 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void PickingAShapeThroughTheShapeAction_ChangesTheNodesShape_KeepingItsLabel() => HeadlessAvalonia.Run(() =>
+    public Task PickingAShapeThroughTheShapeAction_ChangesTheNodesShape_KeepingItsLabel() => HeadlessAvalonia.RunAsync(async () =>
     {
         // AC-909's second acceptance criterion: an existing node's shape can be changed afterwards without losing
         // its label, through a grid of preview shapes rather than a Mermaid-syntax picker (AC4).
-        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
 
         _ClickCentre(content, window);
         var shape = _Button(content, "Shape…");
@@ -275,7 +274,7 @@ public class DiagramCollabWindowTests
     [Fact]
     public Task AFreshNonOperatorEdit_ShowsAGlowingAgentCursor_ThatSettlesAfterTheGlowWindow() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
+        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
 
         host.Registry.Grant("pane-a", surfaceId, DiagramCapability.Edit);
         host.Registry.EditCoupled("pane-a", surfaceId, DiagramHandEditKind.RenameNode, "A", current =>
@@ -301,10 +300,10 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void FollowToggle_PansWithoutChangingZoom_WhenTheAgentEditsAwayFromCentre() => HeadlessAvalonia.Run(() =>
+    public Task FollowToggle_PansWithoutChangingZoom_WhenTheAgentEditsAwayFromCentre() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
         var content = host.Windows[0].Content;
         var window = _Show(content);
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
@@ -339,9 +338,9 @@ public class DiagramCollabWindowTests
     // AC-847/AC-621's precedent: Follow switches itself off the instant the operator's own gesture reaches the
     // viewport — a wheel or a manual pan — since both handlers are only ever driven by real pointer/wheel input.
     [Fact]
-    public void FollowToggle_TurnsOffTheMomentTheOperatorZoomsByHand() => HeadlessAvalonia.Run(() =>
+    public Task FollowToggle_TurnsOffTheMomentTheOperatorZoomsByHand() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, host, content, window, _) = _OpenOnOneNode();
+        var (plugin, host, content, window, _) = await _OpenOnOneNodeAsync();
 
         var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
@@ -358,9 +357,9 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void FollowToggle_TurnsOffTheMomentTheOperatorPansByHand() => HeadlessAvalonia.Run(() =>
+    public Task FollowToggle_TurnsOffTheMomentTheOperatorPansByHand() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, host, content, window, _) = _OpenOnOneNode();
+        var (plugin, host, content, window, _) = await _OpenOnOneNodeAsync();
 
         var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
@@ -378,10 +377,10 @@ public class DiagramCollabWindowTests
         plugin.Dispose();
     });
 
-    private (ICockpitPlugin Plugin, RecordingHost Host, Control Content, Window Window, string SurfaceId) _OpenOnOneNode()
+    private async Task<(ICockpitPlugin Plugin, RecordingHost Host, Control Content, Window Window, string SurfaceId)> _OpenOnOneNodeAsync()
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeQuickStart();
+        await host.InvokeQuickStartAsync();
         var content = host.Windows[0].Content;
         var window = _Show(content);
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
@@ -456,7 +455,7 @@ public class DiagramCollabWindowTests
 
         var host = new RecordingHost();
         plugin!.Initialize(host);
-        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub, host.Surfaces);
         return (plugin, host);
     }
 
@@ -485,7 +484,6 @@ public class DiagramCollabWindowTests
 
     private sealed class RecordingHost : ICockpitHost
     {
-        private readonly List<ToolbarAction> _toolbarActions = [];
 
         public RecordingHost()
         {
@@ -520,9 +518,9 @@ public class DiagramCollabWindowTests
         // AC-896's two-stage path: "Diagrams" opens the list dialog, "New diagram" in its header opens the
         // quick-start — the one entry point that already names a session, standing in for an operator who ticks
         // "couple to this session" and hits Enter on the prefilled name.
-        public void InvokeQuickStart()
+        public async Task InvokeQuickStartAsync()
         {
-            _toolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+            await Surfaces.ToolbarActions[0].OnInvoke();
 
             // UserControl.Content only materialises into the visual tree once templated — shown, here, the same
             // way a document window's content already has to be for its own button lookups to find anything.
@@ -542,33 +540,14 @@ public class DiagramCollabWindowTests
             Registry.SessionEnded(paneId);
             Sessions.Close(paneId);
         }
+        // What CockpitUiHost reaches: the toolbar actions land here and its dialogs are answered by _OnDialog.
+        private RecordingUiSurfaces? _surfaces;
 
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public void AddWorkspaceType(WorkspaceTypeRegistration registration)
-        {
-        }
-
-        public void AddToolbarAction(ToolbarAction action) => _toolbarActions.Add(action);
-
-        public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
+        public RecordingUiSurfaces Surfaces => _surfaces ??= new RecordingUiSurfaces { OnDialog = _OnDialog, ActivePaneId = "pane-a" };
 
         // Overridden rather than left to the default forwarder precisely because the key is what this ticket is
         // about — the real host (PluginDialogHost) keys on it too.
-        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+        private Task _OnDialog(string title, Func<Control> createContent, string singleInstanceKey)
         {
             var content = createContent();
             if (singleInstanceKey == "diagram.quickstart")
@@ -582,7 +561,7 @@ public class DiagramCollabWindowTests
 
             if (singleInstanceKey == "diagram.list")
             {
-                // Not a document window — Windows means document windows only (InvokeQuickStart clicks through it).
+                // Not a document window — Windows means document windows only (InvokeQuickStartAsync clicks through it).
                 _listDialogContent = content;
                 return Task.CompletedTask;
             }

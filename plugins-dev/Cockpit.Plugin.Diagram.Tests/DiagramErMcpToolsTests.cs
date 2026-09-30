@@ -31,7 +31,7 @@ public class DiagramErMcpToolsTests
         source ??= Source.ReplaceLineEndings("\n");
         var registry = new DiagramAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);

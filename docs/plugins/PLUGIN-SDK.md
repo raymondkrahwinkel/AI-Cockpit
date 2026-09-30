@@ -976,8 +976,8 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
   "version": "1.0.0",
   "entryAssembly": "My.Plugin.dll",
   "entryType": "My.Plugin.MyPlugin",
-  "abstractionsVersion": 2,
-  "minHostVersion": "0.1.0",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
   "description": "What it does, one line.",
   "author": "You"
 }
@@ -1339,7 +1339,7 @@ Identical to the in-repo one in [Project setup](#project-setup) except for the f
 </Project>
 ```
 
-Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`2`), and `minHostVersion` to the
+Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`3`), and `minHostVersion` to the
 first host release that carries the contribution points you call — see [the manifest](#the-manifest--pluginjson)
 and [Match the host's versions](#match-the-hosts-versions).
 
@@ -1417,7 +1417,7 @@ complete file using every field below.
         {
           "version": "1.1.0",
           "path": "github-issues/github-issues-1.1.0.zip",
-          "abstractionsVersion": 2,
+          "abstractionsVersion": 3,
           "minHostVersion": "1.0.0",
           "sha256": "<sha-256 of the zip, hex lowercase — optional but recommended>",
           "notes": "gh CLI support, cross-repo issues, searchable/sortable dialog."

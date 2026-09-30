@@ -1,13 +1,13 @@
 {
   "id": "git-status",
   "name": "Git status",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "entryAssembly": "Cockpit.Plugin.GitStatus.dll",
   "entryType": "Cockpit.Plugin.GitStatus.GitStatusPlugin",
   "uiAssembly": "Cockpit.Plugin.GitStatus.UI.dll",
   "uiEntryType": "Cockpit.Plugin.GitStatus.UI.GitStatusUi",
-  "abstractionsVersion": 2,
-  "minHostVersion": "0.39.0",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
   "description": "A git indicator in every session's header — a coloured dot and the branch of the repo that session works in, with the uncommitted and unpushed counts on hover, refreshing when the session runs a git command. Click it to review that session's uncommitted changes.",
   "author": "Cockpit"
 }

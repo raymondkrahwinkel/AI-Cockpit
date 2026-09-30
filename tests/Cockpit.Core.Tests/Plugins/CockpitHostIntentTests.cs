@@ -8,22 +8,20 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// The host side of inter-plugin intents (AC-95): <see cref="DesktopPluginHost.SendIntent"/> and
-/// <see cref="DesktopPluginHost.RegisterIntentHandler"/> route through the shared <see cref="IPluginIntentRegistry"/>
+/// The host side of inter-plugin intents (AC-95): <see cref="DesktopBackendHost.SendIntent"/> and
+/// <see cref="DesktopBackendHost.RegisterIntentHandler"/> route through the shared <see cref="IPluginIntentRegistry"/>
 /// resolved from the host's service provider, and the host stamps the calling plugin's own id on every intent it
 /// sends — a plugin cannot dispatch under another's name, the same guarantee the consent gate gives.
 /// </summary>
 public class CockpitHostIntentTests
 {
-    private static DesktopPluginHost HostFor(string pluginId, IServiceProvider services) =>
+    private static DesktopBackendHost HostFor(string pluginId, IServiceProvider services) =>
         new(
             pluginId,
             pluginId,
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
 

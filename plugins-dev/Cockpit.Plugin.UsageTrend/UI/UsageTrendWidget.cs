@@ -18,15 +18,17 @@ internal sealed class UsageTrendWidget : UserControl
     internal const string HistoryKey = "history";
 
     private readonly IWidgetContext _context;
+    private readonly ICockpitUiHost _host;
     private readonly IPluginUiChannel _channel;
     private readonly StackPanel _profiles = new() { Spacing = 12 };
 
     private IReadOnlyList<UsageTrendSample> _history = [];
 
-    public UsageTrendWidget(IWidgetContext context, IPluginUiChannel channel)
+    public UsageTrendWidget(IWidgetContext context, ICockpitUiHost host)
     {
         _context = context;
-        _channel = channel;
+        _host = host;
+        _channel = host.Channel;
 
         Content = _BuildLayout();
         _Render();
@@ -34,11 +36,11 @@ internal sealed class UsageTrendWidget : UserControl
         // Placing the widget should catch the current reading at once, not only the next time it moves.
         _ = _InitializeAsync();
 
-        _context.Sessions.ActiveSessionUsageChanged += _OnUsageChanged;
+        _host.ActiveSessionUsageChanged += _OnUsageChanged;
         _context.RefreshRequested += _OnRefreshRequested;
         DetachedFromVisualTree += (_, _) =>
         {
-            _context.Sessions.ActiveSessionUsageChanged -= _OnUsageChanged;
+            _host.ActiveSessionUsageChanged -= _OnUsageChanged;
             _context.RefreshRequested -= _OnRefreshRequested;
         };
     }
@@ -132,7 +134,7 @@ internal sealed class UsageTrendWidget : UserControl
 
     private async Task _SampleAsync()
     {
-        if (_context.Sessions.ActiveSessionUsage is not { HasAny: true } snapshot)
+        if (_host.ActiveSessionUsage is not { HasAny: true } snapshot)
         {
             return;
         }

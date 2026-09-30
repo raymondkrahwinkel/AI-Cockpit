@@ -10,6 +10,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.Backend.Tests.Plugins;
 
@@ -161,31 +162,25 @@ public class PluginBackendHostTests
 
         Assert.Equal([new OpenCockpitSession("pane-2", "Two"), new OpenCockpitSession("pane-3", "Three")], observer.OpenSessions);
         Assert.Equal(["pane-1"], closed);
-        Assert.Equal(((string?)null, (string?)null), (observer.ActivePaneId, observer.ActiveSessionWorkingDirectory));
         Assert.Equal(("/work/two", (string?)null), (observer.GetWorkingDirectory("pane-2"), observer.GetWorkingDirectory("pane-1")));
     }
 
-    // The window members do nothing and say so once per plugin; the new-session dialog still keeps its
-    // exactly-one-callback promise, as a cancel.
+    // What a backend has no window for does nothing and says so once per plugin.
     [Fact]
-    public async Task TheWindowMembers_AreNoOps_ThatLogOncePerPlugin()
+    public void AWindowlessContribution_IsANoOp_ThatLogsOncePerPlugin()
     {
         var lines = new List<string>();
         using var logs = LoggerFactory.Create(builder => builder.AddProvider(new CollectingLoggerProvider(lines)));
         var host = _Host(new SessionRegistry(), _InlineLauncher(), logs);
-        var cancelled = 0;
 
-        host.AddSideMenuButton("Open", () => { });
-        host.AddSideMenuButtonWithBadge("Issues", () => { });
-        await host.OpenWorkspaceAsync("workspace.example");
-        await host.ShowNewSessionDialogAsync(onStarted: _ => Assert.Fail("Nothing can start without a dialog."), onCancelled: () => cancelled++);
+        host.AddSupervisedActivityProvider(Substitute.For<ISupervisedActivitySource>());
+        host.AddSupervisedActivityProvider(Substitute.For<ISupervisedActivitySource>());
 
-        Assert.Equal(1, cancelled);
-        Assert.Equal(["Plugin diagram called AddSideMenuButton, and this backend has no window: its window contributions are ignored."], lines);
+        Assert.Equal(["Plugin diagram called AddSupervisedActivityProvider, and this backend has no window: its window contributions are ignored."], lines);
     }
 
     // AC-1369 condition (a): the host is built and used here, in the suite that guards the no-plugin backend, and not
-    // one Avalonia assembly comes with it — the no-op defaults on ICockpitHost are what keeps it that way.
+    // one Avalonia assembly comes with it.
     [Fact]
     public async Task TheBackendHost_LoadsNoAvaloniaAssembly()
     {
@@ -193,16 +188,14 @@ public class PluginBackendHostTests
         registry.Register(_Pane(PaneId, "Echo"));
         var host = _Host(registry, _InlineLauncher());
 
-        host.AddSideMenuButton("Open", () => { });
         await host.SendToSessionAsync(PaneId, "hello");
 
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
     }
 
-    // D6 for the actions: no selection, clipboard or operator, so a confirmation is refused, never assumed; starting a
-    // session goes through the launcher onto the first Sessions desk.
+    // Starting a session goes through the launcher onto the first Sessions desk.
     [Fact]
-    public async Task TheBackendActions_RefuseAConfirmation_AndStartASessionOnTheFirstSessionsDesk()
+    public async Task TheBackendActions_StartASessionOnTheFirstSessionsDesk()
     {
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         var launcher = Substitute.For<ISessionLauncher>();
@@ -215,7 +208,7 @@ public class PluginBackendHostTests
 
         var name = await Task.Run(() => actions.StartSessionAsync("echo", "hello"));
 
-        Assert.Equal(("Echo 1", false, false), (name, await actions.ConfirmAsync("Delete", "Sure?"), actions.HasActiveSession));
+        Assert.Equal("Echo 1", name);
         await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(request => request.WorkspaceId == desk.Id && request.Prompt == "hello"));
     }
 

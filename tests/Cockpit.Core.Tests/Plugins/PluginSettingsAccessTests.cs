@@ -1,15 +1,13 @@
 using Avalonia.Controls;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// Reaching a plugin's settings from where the operator already is (#: settings from anywhere): the plugin can
-/// open its own settings (<see cref="ICockpitHost.ShowSettingsAsync"/>), and every dialog it opens carries a
+/// open its own settings (<see cref="ICockpitUiHost.ShowSettingsAsync"/>), and every dialog it opens carries a
 /// gear to them — but only when the plugin actually registered a settings view, since a gear that opens nothing
 /// is exactly the dead control the cockpit does not ship.
 /// </summary>
@@ -47,17 +45,6 @@ public class PluginSettingsAccessTests
         host.AddSettings(() => new TextBlock(), "Assistant Plugins");
 
         sink.Received(1).AddPluginSettings("test-plugin", "Test Plugin", Arg.Any<Func<Control>>(), "Assistant Plugins");
-    }
-
-    // AC-1030: a plugin binary compiled before the category overload existed only implements the one-arg
-    // AddSettings — the interface default keeps it loading by falling back to that.
-    [Fact]
-    public void AddSettings_WithACategory_OnAnOlderHost_FallsBackToTheCategorylessOverload()
-    {
-        var host = (ICockpitHost)Substitute.ForPartsOf<HostWithoutSettingsAccess>();
-
-        // Not throwing is the assertion (xUnit fails the test on an unhandled exception).
-        host.AddSettings(() => new TextBlock(), "Assistant Plugins");
     }
 
     [Fact]
@@ -107,53 +94,6 @@ public class PluginSettingsAccessTests
         Assert.True(NewHost(sink).HasSettings);
     }
 
-    // The default is a no-op, so a plugin built against this SDK still loads on a host that predates the
-    // capability instead of failing when it asks for its settings.
-    [Fact]
-    public async Task AHostWithoutTheCapability_IgnoresTheRequestAndReportsNoSettings()
-    {
-        var host = (ICockpitHost)Substitute.ForPartsOf<HostWithoutSettingsAccess>();
-
-        var open = () => host.ShowSettingsAsync();
-
-        await open();
-        Assert.False(host.HasSettings);
-    }
-
-    private static ICockpitHost NewHost(IPluginContributionSink sink, IPluginDialogHost? dialogHost = null) =>
-        new DesktopPluginHost(
-            "test-plugin",
-            "Test Plugin",
-            Substitute.For<IServiceProvider>(),
-            sink,
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            dialogHost ?? Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
-
-    /// <summary>An older host: implements only what the contract required before a plugin could open its own settings.</summary>
-    public abstract class HostWithoutSettingsAccess : ICockpitHost
-    {
-        public IServiceProvider Services => Substitute.For<IServiceProvider>();
-
-        public ICockpitActions Actions => Substitute.For<ICockpitActions>();
-
-        public IPluginStorage Storage => Substitute.For<IPluginStorage>();
-
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            Task.CompletedTask;
-    }
+    private static ICockpitUiHost NewHost(IPluginContributionSink sink, IPluginDialogHost? dialogHost = null) =>
+        TestUiHost.Create(sink: sink, dialogHost: dialogHost);
 }

@@ -9,7 +9,6 @@ using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
@@ -23,7 +22,7 @@ namespace Cockpit.App.ViewTests;
 public class DiagramPluginLoadTests
 {
     [Fact]
-    public void ActivatesAndContributes_WithNoAvaloniaFamilyAssemblyInThePluginsOwnContext() => HeadlessAvalonia.Run(() =>
+    public Task ActivatesAndContributes_WithNoAvaloniaFamilyAssemblyInThePluginsOwnContext() => HeadlessAvalonia.RunAsync(async () =>
     {
         var folder = _LocatePluginOutput();
         Assert.NotNull(folder);
@@ -44,13 +43,12 @@ public class DiagramPluginLoadTests
 
         var host = new RecordingHost();
         plugin.Initialize(host);
-        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub);
+        DiagramPluginUi.Initialize(discovered, plugin, host, host.Hub, host.Surfaces);
 
         // AC-850: the Diagram/Whiteboard tabs and the diagrams-list tab are gone — nothing registers a workspace
         // type any more, only toolbar actions: one list opener per surface (AC-896 moved "Nieuw ..." into that
         // list's own header, next to Refresh).
-        Assert.Empty(host.WorkspaceTypes);
-        Assert.Equal(["Diagrams", "Whiteboards", "Wireframes"], host.ToolbarActions.Select(a => a.Title));
+        Assert.Equal(["Diagrams", "Whiteboards", "Wireframes"], host.Surfaces.ToolbarActions.Select(a => a.Title));
 
         // The measurement: nothing named "Avalonia*" ever loaded into the plugin's own AssemblyLoadContext —
         // everything the panel needed from the Avalonia family (including Svg.Controls.Skia.Avalonia's own
@@ -61,8 +59,7 @@ public class DiagramPluginLoadTests
 
         // AC-826/AC-850: "Diagrams" opens a dialog, not a workspace; its body builds against a host with no
         // linked project (default GetProjectMemoryRowsAsync).
-        host.ToolbarActions[0].OnInvoke().GetAwaiter().GetResult();
-        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        await host.Surfaces.ToolbarActions[0].OnInvoke();
         var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
         Assert.IsAssignableFrom<Control>(listDialog.Content);
 
@@ -78,7 +75,6 @@ public class DiagramPluginLoadTests
         listDialog.Content.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "New diagram"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         diagramListWindow.Close();
-        Assert.Empty(host.OpenedWorkspaceTypeIds);
         var diagramDialog = Assert.Single(host.Dialogs, d => d.Key.StartsWith("diagram.document.", StringComparison.Ordinal));
 
         // A non-null cast to the host's own Control is itself the identity proof the ticket asks for: a second
@@ -89,8 +85,7 @@ public class DiagramPluginLoadTests
         // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface — no IWhiteboardAccessRegistry in
         // this host's services, the "no host to fall through to" case the panel has to survive. The toolbar action
         // opens the list, "New whiteboard" opens a window bound to the active session.
-        host.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
-        Assert.Empty(host.OpenedWorkspaceTypeIds);
+        await host.Surfaces.ToolbarActions[1].OnInvoke();
         var whiteboardListDialog = Assert.Single(host.Dialogs, d => d.Key == "whiteboard.list");
         var whiteboardListWindow = new Window { Content = whiteboardListDialog.Content };
         whiteboardListWindow.Show();
@@ -132,12 +127,6 @@ public class DiagramPluginLoadTests
 
         public IPluginBackendChannel Channel => Hub.For(DiagramPluginUi.PluginId);
 
-        public List<WorkspaceTypeRegistration> WorkspaceTypes { get; } = [];
-
-        public List<ToolbarAction> ToolbarActions { get; } = [];
-
-        public List<string> OpenedWorkspaceTypeIds { get; } = [];
-
         public List<(string Key, Control Content)> Dialogs { get; } = [];
 
         public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
@@ -147,36 +136,15 @@ public class DiagramPluginLoadTests
         public IPluginStorage Storage { get; } = new MemoryStorage();
 
         public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
+        // What CockpitUiHost reaches: the toolbar actions land here and its dialogs are answered by _OnDialog.
+        private RecordingUiSurfaces? _surfaces;
 
-        public void AddSettings(Func<Control> createView)
-        {
-        }
-
-        public void AddSideMenuButton(string title, Action onInvoke)
-        {
-        }
-
-        public void AddSideMenuSection(string title, Func<Control> createView)
-        {
-        }
-
-        public void AddWorkspaceType(WorkspaceTypeRegistration registration) => WorkspaceTypes.Add(registration);
-
-        public void AddToolbarAction(ToolbarAction action) => ToolbarActions.Add(action);
-
-        public Task OpenWorkspaceAsync(string workspaceTypeId)
-        {
-            OpenedWorkspaceTypeIds.Add(workspaceTypeId);
-            return Task.CompletedTask;
-        }
-
-        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-            ShowDialogAsync(title, createContent, singleInstanceKey: "", width, height);
+        public RecordingUiSurfaces Surfaces => _surfaces ??= new RecordingUiSurfaces { OnDialog = _OnDialog, ActivePaneId = "pane-a" };
 
         // Builds the quick-start dialog's content and clicks its "Open" button straight away, standing in for
         // an operator who typed nothing and hit Enter — the prefilled name is already a working default. Every
         // other dialog (the diagram/whiteboard windows, the diagrams list) is only recorded, unclicked.
-        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+        private Task _OnDialog(string title, Func<Control> createContent, string singleInstanceKey)
         {
             var content = createContent();
             Dialogs.Add((singleInstanceKey, content));

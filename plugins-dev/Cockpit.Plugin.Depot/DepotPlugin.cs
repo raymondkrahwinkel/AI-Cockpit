@@ -55,7 +55,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily(DepotMemorySource.Scheme, "Depot")
         {
             EmptyHint = "No Depot server configured yet.",
-            ConfigureAsync = _ => host.ShowSettingsAsync(),
+            ConfigureAsync = _ =>
+            {
+                host.Channel.Publish(DepotChannel.OpenSettings, JsonSerializer.SerializeToElement(true, DepotChannel.Json));
+                return Task.CompletedTask;
+            },
         });
 
         // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did

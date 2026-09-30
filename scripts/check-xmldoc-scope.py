@@ -8,8 +8,8 @@ situation was allowed to happen the first time.
 
     scripts/check-xmldoc-scope.py [root ...]   # defaults to src and plugins-dev
 
-Cockpit.Plugins.Abstractions is exempt (see its csproj): it ships XML docs to NuGet for
-plugin-author IntelliSense, so /// on its public SDK types is not the same kind of doc
+Cockpit.Plugins.Abstractions and Cockpit.Plugins.Abstractions.UI are exempt (see their csproj): they ship XML
+docs to NuGet for plugin-author IntelliSense, so /// on its public SDK types is not the same kind of doc
 this gate is about.
 """
 import re
@@ -95,7 +95,7 @@ def main():
         for p in sorted(root.rglob("*.cs")):
             if set(p.parts) & {"bin", "obj"}:
                 continue
-            if "Cockpit.Plugins.Abstractions" in p.parts:
+            if set(p.parts) & {"Cockpit.Plugins.Abstractions", "Cockpit.Plugins.Abstractions.UI"}:
                 continue
             for line_no in violations_in(p):
                 bad += 1

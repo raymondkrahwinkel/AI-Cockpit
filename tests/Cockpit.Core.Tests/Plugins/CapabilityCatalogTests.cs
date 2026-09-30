@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -12,7 +13,7 @@ namespace Cockpit.Core.Tests.Plugins;
 public class CapabilityCatalogTests
 {
     private static readonly Type[] _Surface =
-        [typeof(ICockpitHost), typeof(ICockpitActions), typeof(IPluginStorage), typeof(IPluginCache)];
+        [typeof(ICockpitHost), typeof(ICockpitActions), typeof(IPluginStorage), typeof(IPluginCache), typeof(ICockpitUiHost)];
 
     // The members that are doors rather than contribution points: they hand back an interface whose own
     // members are catalogued individually, and reaching them does nothing on its own. ICockpitHost.Services is
@@ -68,6 +69,13 @@ public class CapabilityCatalogTests
                 // Property getters and event add/remove pairs arrive as methods too; the property or event
                 // itself is already in this list, so counting the accessors would double every one of them.
                 if (member is MethodInfo { IsSpecialName: true })
+                {
+                    continue;
+                }
+
+                // The UI host repeats what a backend can do too (consent, intents, managed CLIs, ...): one call, one
+                // contribution point, catalogued under ICockpitHost. Only the members it alone has are its own.
+                if (contract == typeof(ICockpitUiHost) && typeof(ICockpitHost).GetMember(member.Name).Length > 0)
                 {
                     continue;
                 }

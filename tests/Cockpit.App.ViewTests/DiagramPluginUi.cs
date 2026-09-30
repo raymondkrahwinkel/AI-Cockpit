@@ -13,9 +13,10 @@ internal static class DiagramPluginUi
 {
     public const string PluginId = "diagram";
 
-    public static void Initialize(DiscoveredPlugin discovered, ICockpitPlugin plugin, ICockpitHost host, PluginChannelHub hub)
+    public static void Initialize(DiscoveredPlugin discovered, ICockpitPlugin plugin, ICockpitHost host, PluginChannelHub hub, RecordingUiSurfaces surfaces)
     {
         var ui = PluginUiManager.ActivateUi(discovered, plugin) ?? throw new InvalidOperationException("Diagram's UI part did not activate.");
-        ui.InitializeUi(new CockpitUiHost(PluginId, host, new ServiceCollection().AddSingleton(hub).BuildServiceProvider()));
+        var services = new ServiceCollection().AddSingleton(hub).AddSingleton<IWorkspaceTypeRegistry>(provider => new WorkspaceTypeRegistry(provider)).BuildServiceProvider();
+        ui.InitializeUi(new CockpitUiHost(PluginId, "Diagram", host, services, surfaces, surfaces, surfaces, surfaces, []));
     }
 }

@@ -1,13 +1,13 @@
 {
   "id": "usage-trend",
   "name": "Usage Trend",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "entryAssembly": "Cockpit.Plugin.UsageTrend.dll",
   "entryType": "Cockpit.Plugin.UsageTrend.UsageTrendPlugin",
   "uiAssembly": "Cockpit.Plugin.UsageTrend.UI.dll",
   "uiEntryType": "Cockpit.Plugin.UsageTrend.UI.UsageTrendUi",
-  "abstractionsVersion": 2,
-  "minHostVersion": "0.42.0",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
   "description": "Charts the context / 5h / weekly usage of your sessions over time, per profile, on a Dashboard workspace.",
   "author": "Cockpit"
 }

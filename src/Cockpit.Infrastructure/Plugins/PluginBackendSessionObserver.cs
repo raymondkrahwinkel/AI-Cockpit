@@ -23,19 +23,11 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
         }
     }
 
-    public string? ActiveSessionWorkingDirectory => null;
-
     public IReadOnlyList<OpenCockpitSession> OpenSessions =>
         [.. _registry.All.Select(session => new OpenCockpitSession(session.PaneId, session.Title)),
             .. _registry.Assistant is { } assistant
                 ? [new OpenCockpitSession(assistant.PaneId, assistant.Title)]
                 : Array.Empty<OpenCockpitSession>()];
-
-    public event EventHandler? ActiveSessionChanged
-    {
-        add { }
-        remove { }
-    }
 
     public event EventHandler<SessionOutputText>? OutputProduced
     {

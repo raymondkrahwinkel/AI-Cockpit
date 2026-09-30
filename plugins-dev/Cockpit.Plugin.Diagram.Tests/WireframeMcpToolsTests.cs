@@ -30,7 +30,7 @@ public class WireframeMcpToolsTests
     {
         var registry = new WireframeAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var builtHost = Substitute.For<ICockpitHost>();
+        var builtHost = Substitute.For<ICockpitHost, IWindowProbe>();
         builtHost.CurrentMcpCallerPaneId.Returns((string?)null);
         builtHost.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
         host = builtHost;
@@ -406,7 +406,7 @@ public class WireframeMcpToolsTests
     {
         // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
         var registry = new WireframeAccessRegistry();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()) { SkipWireframeConsent = true };
         var tools = new WireframeMcpTools(host, registry, settings, TestChannel.Desktop(host, wireframes: registry));

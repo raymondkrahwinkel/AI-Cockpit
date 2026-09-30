@@ -355,8 +355,7 @@ public class ManageProfilesDialogViewModelTests
         ProviderId: providerId,
         DisplayName: providerId,
         CreateDriverFactory: _ => null!,
-        Capabilities: new PluginSessionCapabilities(true, supportsPermissions) { SupportsEnvVars = supportsEnvVars },
-        CreateConfigView: _ => null!);
+        Capabilities: new PluginSessionCapabilities(true, supportsPermissions) { SupportsEnvVars = supportsEnvVars });
 
     [Fact]
     public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()

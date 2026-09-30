@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Tracking;
 using NSubstitute;
 
@@ -132,12 +133,13 @@ public class AutopilotPlanIntentTests : IDisposable
         host.Storage.Returns(storage);
         host.TrackerProviders.Returns([tracker]);
         host.RegisteredAutopilotTemplates.Returns([]);
-        // The directory the plugin runs its merge check in (AutopilotPlugin: active session's directory, else the
-        // process's own). Naming the test's own repository here is what keeps the epic tests from answering
-        // differently depending on where the run happens to sit.
-        host.Sessions.ActiveSessionWorkingDirectory.Returns(_clone);
-        host.OpenWorkspaceAsync(Arg.Any<string>()).Returns(Task.CompletedTask);
-        host.ShowSettingsAsync().Returns(Task.CompletedTask);
+        // The directory the plugin runs its merge check in (AutopilotPlugin: what the UI part reported as the selected
+        // session's directory, else the process's own). Reporting the test's own repository here is what keeps the
+        // epic tests from answering differently depending on where the run happens to sit.
+        var channel = Substitute.For<IPluginBackendChannel>();
+        host.Channel.Returns(channel);
+        Func<JsonElement, CancellationToken, Task<JsonElement>>? reportDirectory = null;
+        channel.Handle(AutopilotChannel.ActiveDirectory, Arg.Do<Func<JsonElement, CancellationToken, Task<JsonElement>>>(handle => reportDirectory = handle));
 
         Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>? handler = null;
         host.When(candidate => candidate.RegisterIntentHandler("plan", Arg.Any<Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>>()))
@@ -145,6 +147,8 @@ public class AutopilotPlanIntentTests : IDisposable
 
         new AutopilotPlugin().Initialize(host);
 
+        Assert.NotNull(reportDirectory);
+        reportDirectory!(JsonSerializer.SerializeToElement(_clone), CancellationToken.None).GetAwaiter().GetResult();
         Assert.NotNull(handler);
         return (handler!, tracker);
     }

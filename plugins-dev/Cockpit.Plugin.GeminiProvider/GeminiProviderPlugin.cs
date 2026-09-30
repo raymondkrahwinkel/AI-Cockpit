@@ -35,9 +35,6 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            // AC-1393: the UI part's InitializeUi (GeminiProviderUi) replaces this with the real config view via
-            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
-            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini));
 
         host.AddSessionProvider(new SessionProviderRegistration(
@@ -51,9 +48,6 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            // AC-1393: the UI part's InitializeUi (GeminiProviderUi) replaces this with the real config view via
-            // ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor can open.
-            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenAi));
     }
 

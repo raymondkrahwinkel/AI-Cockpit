@@ -62,10 +62,6 @@ public sealed class LocalCiPlugin : ICockpitPlugin
             () => Guid.NewGuid().ToString("n"));
         _runner = runner;
 
-        // Docker Desktop may well have been started while the settings page was open; a save is the cheapest honest
-        // moment to stop trusting a stale answer.
-        host.OnSettingsSaved(runtime.Invalidate);
-
         // A container this plugin started on an agent's say-so belongs in the status bar with a Kill only the
         // operator can press (AC-82).
         host.AddSupervisedActivityProvider(tracker);

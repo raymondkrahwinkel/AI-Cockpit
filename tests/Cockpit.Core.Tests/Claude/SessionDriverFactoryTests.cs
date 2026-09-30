@@ -28,8 +28,7 @@ public class SessionDriverFactoryTests
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini",
             CreateDriverFactory: _ => driverFactory,
-            Capabilities: new PluginSessionCapabilities(true, false),
-            CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
+            Capabilities: new PluginSessionCapabilities(true, false));
 
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
@@ -54,8 +53,7 @@ public class SessionDriverFactoryTests
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex",
             CreateDriverFactory: _ => driverFactory,
-            Capabilities: new PluginSessionCapabilities(true, true),
-            CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
+            Capabilities: new PluginSessionCapabilities(true, true));
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
 
@@ -90,8 +88,7 @@ public class SessionDriverFactoryTests
             ProviderId: "claude",
             DisplayName: "Claude",
             CreateDriverFactory: _ => driverFactory,
-            Capabilities: new PluginSessionCapabilities(true, true),
-            CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
+            Capabilities: new PluginSessionCapabilities(true, true));
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
         var services = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();

@@ -12,10 +12,10 @@ Every type and method a plugin can call, from the one assembly you reference:
 **`Cockpit.Plugins.Abstractions`**. For the how-to (project setup, manifest, packaging, install, stores),
 see the [Plugin SDK guide](PLUGIN-SDK.md); this page is the method-by-method reference.
 
-- **Contract version:** `AbstractionsContract.Version` (currently **`2`**). Your `plugin.json`'s
-  `abstractionsVersion` must equal the host's major, or the host refuses to load the plugin. Coming from `1`?
-  See [Migrating from `bool Save()`](PLUGIN-SDK.md#migrating-from-bool-save--contract-1--2) — the settings
-  contract is the only thing that changed.
+- **Contract version:** `AbstractionsContract.Version` (currently **`3`**). Your `plugin.json`'s
+  `abstractionsVersion` must equal the host's major, or the host refuses to load the plugin. Coming from `2`?
+  See [Migrating from contract 2 to 3](#migrating-2-to-3). Coming from `1`? See
+  [Migrating from `bool Save()`](PLUGIN-SDK.md#migrating-from-bool-save--contract-1--2) first.
 - **Threading:** contribution callbacks (`Func<Control>`, `Action onInvoke`, `TryStage()` and the `commit` it
   hands back) run on the **UI thread**. `ICockpitActions` methods are async and safe to `await` from the UI
   thread.
@@ -28,7 +28,7 @@ see the [Plugin SDK guide](PLUGIN-SDK.md); this page is the method-by-method ref
 ```csharp
 public static class AbstractionsContract
 {
-    public const int Version = 2;
+    public const int Version = 3;
 }
 ```
 
@@ -39,6 +39,48 @@ this. The contract grows **additively** within a major (new members arrive as de
 **`2`** (host 0.26.0) — `IPluginSettingsView` no longer persists its own settings: `bool Save()` became
 [`bool TryStage(out Action? commit, out string? error)`](#ipluginsettingsview). The only break so far, and the
 only reason a contract-`1` plugin is refused.
+
+**`3`** (host 0.46.0, SDK 3.0.0) — `Cockpit.Plugins.Abstractions` no longer references Avalonia: the window types
+moved to `Cockpit.Plugins.Abstractions.UI` and every window member left `ICockpitHost`. A contract-`2` plugin is
+refused, with the reason in Plugin Manager. See [Migrating from contract 2 to 3](#migrating-2-to-3).
+
+### Migrating from contract 2 to 3 {#migrating-2-to-3}
+
+A backend without a UI stack must be able to load your plugin's backend part, so the SDK splits in two. Nothing
+else changed: a member that stayed keeps its name and signature.
+
+1. **Split the plugin.** Backend part: `ICockpitPlugin` in the assembly `entryAssembly` names, with no Avalonia
+   reference. UI part: `ICockpitPluginUi` in `uiAssembly` (`uiEntryType` when the assembly holds more than one).
+   A plugin that is only a UI part leaves `entryAssembly` out. Backend and UI part talk over the plugin's own
+   channel ([the plugin's own channel](#the-plugins-own-channel)), never by object reference.
+2. **Reference both SDK packages.** `Cockpit.Plugins.Abstractions` `3.0.0` for the backend part,
+   `Cockpit.Plugins.Abstractions.UI` `3.0.0` for the UI part, both compile-only (`<Private>false</Private>`). The
+   package major now equals the contract; `2.x` was never published, because the break to contract 2 left the
+   package on `1.x`.
+3. **Move the window types.** These keep their namespaces, so the UI part compiles unchanged:
+   `DockPanelRegistration`, `WidgetRegistration`, `WorkspaceTypeRegistration`, `CompanionToolRegistration`,
+   `IPluginProviderConfigView`, `ProviderConfigStatus`, `ManagedCliConfigSection`, `ThemeBrush`.
+4. **Register your UI through `ICockpitUiHost`** in `InitializeUi`, not through `ICockpitHost` in `Initialize`.
+   Moved off `ICockpitHost`: `AddSettings`, `ShowSettingsAsync`, `HasSettings`, `OnSettingsSaved`,
+   `AddSideMenuButton`, `AddSideMenuButtonWithBadge`, `AddSideMenuSection`, `AddSessionHeaderItem`,
+   `AddSessionBanner`, `AddSessionHeaderAction`, `AddToolbarAction`, `AddShortcut`, `AddConversationPicker`,
+   `AddWidget`, `AddDockPanel`, `AddCompanionTool`, `AddWorkspaceType`, `OpenWorkspaceAsync`, `ShowDialogAsync`,
+   `ShowNewSessionDialogAsync`, `CreateMarkdownView`, `CreateHelpHint`, `OpenHelp`, `HasHelp`. The `Widgets`,
+   `CompanionTools` and `WorkspaceTypes` lists are gone with them.
+5. **The active session is the window's.** Gone from `ICockpitActions`: `SetClipboardTextAsync`, `ConfirmAsync`,
+   `InjectIntoActiveSessionAsync`, `HasActiveSession`, `SetActiveSessionStatusAsync`. Gone from
+   `ICockpitSessionObserver`: `ActivePaneId`, `ActiveSessionWorkingDirectory`, `ActiveSessionUsage`,
+   `ActiveSessionChanged`, `ActiveSessionUsageChanged`. The UI host has the clipboard, `ConfirmAsync` and the
+   `Active*` members; to place text in a pane's input use `InsertIntoSessionAsync(paneId, text)`, and to label a
+   pane use `ICockpitHost.SetSessionStatusline(paneId, …)` and `SetSessionName(paneId, …)`.
+6. **Provider config views.** `SessionProviderRegistration.CreateConfigView` is gone. The provider's UI part
+   registers the view with `ICockpitUiHost.AddProviderConfigView(providerId, createView)`.
+7. **Embedded sessions.** `IEmbeddedSession.View` is gone. Hold the session by `PaneId` in the backend part and
+   place its view from the UI part with `ICockpitUiHost.CreateEmbeddedSessionView(paneId)`.
+8. **Set the manifest.** `"abstractionsVersion": 3` and `"minHostVersion": "0.46.0"`: no earlier host loads a
+   contract-3 plugin. Bump the plugin's own `version` too, or the store will not offer the update.
+
+The transitional route, one entry type that is both `ICockpitPlugin` and `ICockpitPluginUi`, is gone.
 
 ---
 
@@ -62,26 +104,26 @@ discovery list: if a contribution point is not in this table, it does not exist.
 
 | ID | Capability | Risk | Since | Scope | Contribution points |
 |---|---|---|---|---|---|
-| `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitHost.AddSettings`, `ICockpitHost.ShowSettingsAsync`, `ICockpitHost.HasSettings`, `ICockpitHost.OnSettingsSaved` |
-| `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitHost.AddSideMenuButton`, `ICockpitHost.AddSideMenuSection`, `ICockpitHost.AddSideMenuButtonWithBadge` |
-| `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitHost.AddToolbarAction`, `ICockpitHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitHost.AddWidget`, `ICockpitHost.Widgets`, `ICockpitHost.AddDockPanel`, `ICockpitHost.AddCompanionTool`, `ICockpitHost.CompanionTools` |
-| `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitHost.AddSessionHeaderItem`, `ICockpitHost.AddSessionBanner`, `ICockpitHost.AddSessionHeaderAction`, `ICockpitHost.AddConversationPicker` |
+| `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
+| `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
+| `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
-| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitActions.ConfirmAsync` |
-| `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitHost.CreateMarkdownView`, `ICockpitHost.CreateHelpHint`, `ICockpitHost.OpenHelp`, `ICockpitHost.HasHelp` |
+| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
+| `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitUiHost.CreateMarkdownView`, `ICockpitUiHost.CreateHelpHint`, `ICockpitUiHost.OpenHelp`, `ICockpitUiHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
 | `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
-| `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync`, `ICockpitHost.EmbedSession` |
+| `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWorkspaceType`, `ICockpitUiHost.OpenWorkspaceAsync`, `ICockpitHost.EmbedSession`, `ICockpitUiHost.CreateEmbeddedSessionView` |
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
-| `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitActions.SetClipboardTextAsync` |
+| `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
 | `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
-| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId` |
-| `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName`, `ICockpitActions.SetActiveSessionStatusAsync` |
-| `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitHost.ShowNewSessionDialogAsync` |
+| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
+| `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName` |
+| `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitUiHost.ShowNewSessionDialogAsync` |
 | `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |
 | `workflows.trigger-observe` | Watching workflow triggers | Sensitive | 0.3.0 | `typeId` | `ICockpitHost.WorkflowTriggerRaised` |
 | `autopilot.templates` | Autopilot templates | Sensitive | 0.5.0 | — | `ICockpitHost.RegisterAutopilotTemplate`, `ICockpitHost.RegisteredAutopilotTemplates` |
@@ -98,8 +140,8 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `workflows.trigger-raise` | Starting a workflow | Dangerous | 0.3.0 | `typeId` | `ICockpitHost.RaiseWorkflowTrigger` |
 | `sessions.start` | Starting sessions | Dangerous | 0.3.0 | `profileLabel` | `ICockpitActions.StartSessionAsync` |
 | `sessions.delegate` | Handing work to a profile | Dangerous | 0.3.0 | `profileLabel`, `permission` | `ICockpitActions.DelegateAsync` |
-| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.InjectIntoActiveSessionAsync`, `ICockpitActions.HasActiveSession` |
-| `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider` |
+| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession` |
+| `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
 | `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync` |
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
@@ -218,7 +260,9 @@ using var subscription = host.Channel.Subscribe("changed", e => Dispatcher.UIThr
 
 ## `ICockpitHost` {#icockpithost}
 
-Handed to you in `Initialize`. The contract's only intended growth surface.
+Handed to you in `Initialize`. The contract's only intended growth surface. The window members listed below under
+AddSettings, side menu, dialogs, widgets, panels, workspaces and help left this interface in contract 3; they are
+the UI host's now ([Migrating from contract 2 to 3](#migrating-2-to-3)).
 
 ```csharp
 public interface ICockpitHost

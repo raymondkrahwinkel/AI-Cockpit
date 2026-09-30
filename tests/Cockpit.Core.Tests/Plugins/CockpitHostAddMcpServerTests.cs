@@ -11,7 +11,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.AddMcpServer"/> (#60): a plugin's HTTP MCP-server contribution reaches the shared
+/// <see cref="DesktopBackendHost.AddMcpServer"/> (#60): a plugin's HTTP MCP-server contribution reaches the shared
 /// <see cref="IMcpServerStore"/> registry as an idempotent upsert-by-name — the same registry the MCP-servers
 /// dialog, the local tool-loop and the Claude fan-out all read. Covers the add path, the update-existing path
 /// (URL/token refreshed, <see cref="McpServerConfig.Enabled"/> and <see cref="McpServerConfig.Scope"/> left
@@ -253,17 +253,15 @@ public class CockpitHostAddMcpServerTests
         Assert.Equal("disk is full", failure.Error);
     }
 
-    private static DesktopPluginHost _BuildHost(IMcpServerStore store, PluginDiagnostics? diagnostics = null)
+    private static DesktopBackendHost _BuildHost(IMcpServerStore store, PluginDiagnostics? diagnostics = null)
     {
         var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "youtrack",
             "YouTrack",
             services,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             diagnostics ?? new PluginDiagnostics());
     }

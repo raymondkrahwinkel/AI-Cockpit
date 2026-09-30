@@ -11,9 +11,9 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.GetProjectMemoryRowsAsync"/> (AC-827): the read seam over a project's own
+/// <see cref="DesktopBackendHost.GetProjectMemoryRowsAsync"/> (AC-827): the read seam over a project's own
 /// <see cref="ProjectResourceRole.Memory"/> rows, paneId-resolved the same way
-/// <see cref="DesktopPluginHost.GetProjectFieldValueAsync"/> already is.
+/// <see cref="DesktopBackendHost.GetProjectFieldValueAsync"/> already is.
 /// </summary>
 public class CockpitHostProjectMemoryRowsTests
 {
@@ -99,14 +99,12 @@ public class CockpitHostProjectMemoryRowsTests
         services.AddSingleton(store);
         var provider = services.BuildServiceProvider();
 
-        return new DesktopPluginHost(
+        return new DesktopBackendHost(
             "test-plugin",
             "Test Plugin",
             provider,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
     }

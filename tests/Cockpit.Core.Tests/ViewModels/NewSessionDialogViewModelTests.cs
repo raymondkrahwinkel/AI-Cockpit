@@ -43,8 +43,7 @@ public class NewSessionDialogViewModelTests
         registry.Resolve("claude").Returns(new SessionProviderRegistration(
             "claude", "Claude",
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            _ => Substitute.For<IPluginProviderConfigView>())
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true))
         {
             Options =
             [
@@ -179,8 +178,7 @@ public class NewSessionDialogViewModelTests
         registry.Resolve("claude").Returns(new SessionProviderRegistration(
             "claude", "Claude",
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            _ => Substitute.For<IPluginProviderConfigView>()));
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)));
         var profile = new SessionProfile("work", new PluginProviderConfig("claude", "{}"));
         var vm = NewVmWithSessionProvider([profile], registry);
 
@@ -220,8 +218,7 @@ public class NewSessionDialogViewModelTests
         registry.Resolve("gemini-provider.gemini").Returns(new SessionProviderRegistration(
             "gemini-provider.gemini", "Gemini",
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
-            _ => Substitute.For<IPluginProviderConfigView>()));
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)));
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
         var vm = NewVmWithSessionProvider([profile], registry);
 
@@ -1078,8 +1075,7 @@ public class NewSessionDialogViewModelTests
             "cli-agent-provider.codex",
             "Codex (CLI)",
             _ => Substitute.For<IPluginSessionDriverFactory>(),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            _ => Substitute.For<IPluginProviderConfigView>())
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true))
         {
             Options = options,
             ResolveOptionsAsync = resolveOptionsAsync,

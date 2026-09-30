@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopPluginHost.RemoveProjectMemorySource"/> (AC-501): the host's forwarding half of
+/// <see cref="DesktopBackendHost.RemoveProjectMemorySource"/> (AC-501): the host's forwarding half of
 /// <see cref="IProjectMemorySourceRegistry.Remove"/>, exercised through the real DI-resolved registry rather than a
 /// mock — <see cref="ProjectMemorySourceRegistryTests"/> already covers the registry's own rules in isolation.
 /// </summary>
@@ -74,14 +74,12 @@ public class CockpitHostProjectMemorySourceTests
         services.AddServices(typeof(ProjectMemorySourceRegistry).Assembly);
         var provider = services.BuildServiceProvider();
 
-        var host = new DesktopPluginHost(
+        var host = new DesktopBackendHost(
             "test-plugin",
             "Test Plugin",
             provider,
-            Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
 

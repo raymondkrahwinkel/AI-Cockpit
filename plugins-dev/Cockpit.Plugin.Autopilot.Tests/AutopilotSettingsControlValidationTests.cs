@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -62,8 +63,9 @@ public class AutopilotSettingsControlValidationTests
     {
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        return new AutopilotSettingsControl(settings, host, new AutopilotTemplateStore(new FakeStorage()));
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        return new AutopilotSettingsControl(settings, host, uiHost, new AutopilotTemplateStore(new FakeStorage()));
     }
 
     private sealed class FakeStorage : IPluginStorage

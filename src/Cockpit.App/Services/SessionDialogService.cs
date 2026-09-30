@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -40,6 +41,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IMcpOAuthCoordinator _oauthCoordinator;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
+    private readonly IPluginProviderConfigViews _pluginConfigViews;
     private readonly IShellAccessSwitch _shellAccessSwitch;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
@@ -81,8 +83,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProjectOwnershipRegistry projectOwnership,
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore,
-        IProfileLoginStarter loginStarter)
+        IProfileLoginStarter loginStarter,
+        IPluginProviderConfigViews pluginConfigViews)
     {
+        _pluginConfigViews = pluginConfigViews;
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
         _conversationPickers = conversationPickers;
@@ -246,7 +250,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             var viewModel = new AssistantProfileDialogViewModel(
                 _assistantProfileStore, _profileStore, assistant, _loginChecker,
-                _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver);
+                _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews);
             await viewModel.LoadAsync();
 
             return new AssistantProfileDialog { DataContext = viewModel };

@@ -39,9 +39,6 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            // AC-1393: the UI part's InitializeUi (GitHubModelsProviderUi) replaces this with the real config
-            // view via ICockpitUiHost.AddProviderConfigView, which always runs before any profile editor opens.
-            CreateConfigView: _ => throw new InvalidOperationException("The UI part registers this provider's config view."),
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.GitHubModels));
     }
 

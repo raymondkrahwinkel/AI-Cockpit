@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 using Xunit.Abstractions;
 
@@ -60,12 +61,13 @@ public class AutopilotSettingsControlTemplateFitTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var templates = new AutopilotTemplateStore(storage);
         templates.UpsertUserTemplate(AutopilotTemplate.ForUser(
             "user.long", "A template name long enough to run the whole width of the row and then quite a lot further past it, well beyond where the buttons sit", "body"));
 
-        var control = new AutopilotSettingsControl(new AutopilotSettings(storage), host, templates);
+        var control = new AutopilotSettingsControl(new AutopilotSettings(storage), host, uiHost, templates);
         control.ShowSection(3); // "Templates"
 
         const double width = 640;
@@ -94,9 +96,10 @@ public class AutopilotSettingsControlTemplateFitTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
-        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, new AutopilotTemplateStore(storage));
+        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, uiHost, new AutopilotTemplateStore(storage));
     }
 
     private sealed class FakeStorage : IPluginStorage

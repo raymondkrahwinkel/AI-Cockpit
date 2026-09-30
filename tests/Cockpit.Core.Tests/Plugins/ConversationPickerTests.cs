@@ -1,9 +1,7 @@
-using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -65,20 +63,6 @@ public class ConversationPickerTests
         Assert.Empty(new ConversationPickerRegistry().Pickers);
     }
 
-    private static ICockpitHost NewHost(IConversationPickerRegistry registry)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(registry);
-
-        return new DesktopPluginHost(
-            "test-plugin",
-            "Test Plugin",
-            services.BuildServiceProvider(),
-            Substitute.For<IPluginContributionSink>(),
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
-    }
+    private static ICockpitUiHost NewHost(IConversationPickerRegistry registry) =>
+        TestUiHost.Create(services => services.AddSingleton(registry));
 }

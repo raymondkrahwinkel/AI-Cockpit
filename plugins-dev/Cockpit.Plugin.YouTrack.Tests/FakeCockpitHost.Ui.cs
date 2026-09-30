@@ -49,6 +49,12 @@ internal sealed partial class FakeCockpitHost : ICockpitUiHost
         remove { }
     }
 
+    public event EventHandler? ActiveSessionUsageChanged
+    {
+        add { }
+        remove { }
+    }
+
     // Registers the backend part's real handlers on this host's channel and hands back the UI part's door to them.
     public UiBackend ConnectBackend(SessionIssueLinks links, IssueStateChanges? stateChanges = null)
     {

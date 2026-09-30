@@ -15,43 +15,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginActionsTests
 {
     [Fact]
-    public void HasActiveSession_ReflectsTheSelectedSession()
-    {
-        var cockpit = new CockpitViewModel();
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
-
-        cockpit.SelectedSession = new SessionViewModel();
-        Assert.True(actions.HasActiveSession);
-
-        cockpit.SelectedSession = null;
-        Assert.False(actions.HasActiveSession);
-    }
-
-    [Fact]
-    public async Task InjectIntoActiveSessionAsync_AppendsToTheSdkSessionsInput()
-    {
-        var cockpit = new CockpitViewModel();
-        var session = new SessionViewModel();
-        cockpit.SelectedSession = session;
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
-
-        await actions.InjectIntoActiveSessionAsync("issue #42: fix the thing");
-
-        Assert.Contains("issue #42: fix the thing", session.InputText);
-    }
-
-    [Fact]
-    public async Task InjectIntoActiveSessionAsync_NoActiveSession_DoesNotThrow()
-    {
-        var cockpit = new CockpitViewModel { SelectedSession = null };
-        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()));
-
-        var act = () => actions.InjectIntoActiveSessionAsync("x");
-
-        await act();
-    }
-
-    [Fact]
     public async Task SetClipboardTextAsync_WritesToTheClipboard()
     {
         // Avalonia 12's IClipboard.SetTextAsync is an extension over SetDataAsync(DataTransfer), so assert

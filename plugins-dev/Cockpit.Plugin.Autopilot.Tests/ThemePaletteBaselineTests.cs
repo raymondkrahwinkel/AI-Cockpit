@@ -99,9 +99,10 @@ public class ThemePaletteBaselineTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
-        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, new AutopilotTemplateStore(storage));
+        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, uiHost, new AutopilotTemplateStore(storage));
     }
 
     // An in-memory `IPluginStorage` that round-trips through the object itself, like the settings-sections test's own fake.

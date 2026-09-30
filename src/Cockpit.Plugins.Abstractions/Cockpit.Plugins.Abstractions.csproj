@@ -3,7 +3,7 @@
   <!-- The single assembly shared by the host and every plugin (#14). Plugins reference this with
        <Private>false</Private> so the host's copy is the one loaded — see the plugin build plan's
        type-identity pitfall. Kept dependency-light on purpose: only the DI abstractions (for the
-       ConfigureServices hook) and Avalonia (for the Control-factory contribution points). -->
+       ConfigureServices hook) and the icon enum. No UI stack: that is Cockpit.Plugins.Abstractions.UI. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -486,7 +486,15 @@
          name), answering false by default — the bool-returning twins of SetSessionStatusline and SetSessionName, so a
          caller can tell a pane that took the label from one that closed first. A plugin that relies on them sets
          minHostVersion 0.45.0. Additive — a minor; major and abstractionsVersion stay 2. -->
-    <Version>1.73.0</Version>
+    <!-- 3.0.0 (AC-1402, F2.14): the contract flip, abstractionsVersion 3. REMOVED: the Avalonia reference; the window
+         types (DockPanelRegistration, WidgetRegistration, WorkspaceTypeRegistration, CompanionToolRegistration,
+         IPluginProviderConfigView, ProviderConfigStatus, ThemeBrush), now in Cockpit.Plugins.Abstractions.UI with the
+         same namespaces; every window member of ICockpitHost; ICockpitActions.SetClipboardTextAsync, ConfirmAsync,
+         InjectIntoActiveSessionAsync, HasActiveSession and SetActiveSessionStatusAsync; the Active* members of
+         ICockpitSessionObserver; SessionProviderRegistration.CreateConfigView; IEmbeddedSession.View. The package is
+         numbered by the rule above (major = contract): 2.x is skipped because the break to contract 2 (AC-1003) left it
+         on 1.x. -->
+    <Version>3.0.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
@@ -518,10 +526,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
-    <PackageReference Include="Avalonia" Version="12.1.1" />
     <!-- The MaterialIconKind enum only (no Avalonia control), so a contribution point can name a bundled vector
          icon (AC-33). The host ships the runtime copy via Material.Icons.Avalonia; plugins get the enum through
-         this reference compile-only, like Avalonia above. -->
+         this reference compile-only. -->
     <PackageReference Include="Material.Icons" Version="3.0.2" />
   </ItemGroup>
 

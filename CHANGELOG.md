@@ -580,6 +580,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: plugins built for plugin contract 2 no longer load, and Plugins shows why ("Built for plugin contract version
+  2, this cockpit provides 3"). Update them from Plugins; every plugin that ships with the cockpit is already
+  rebuilt and needs this version or newer. For plugin authors: `Cockpit.Plugins.Abstractions` no longer references
+  Avalonia, so a backend without a window can load a plugin's backend part. The window types and members moved to
+  `Cockpit.Plugins.Abstractions.UI`, and the SDK packages are now `3.0.0`. Follow the migration steps in the
+  plugin API reference.
 - changed: for plugin authors, a backend part can now ask whether a session took its label or its name, through
   `ICockpitHost.SetSessionStatuslineAsync` and `ICockpitHost.SetSessionNameAsync` (cockpit 0.45.0 and later). The
   Workflows step that sets a session's status now fails, naming the session, when it took no status or not the
