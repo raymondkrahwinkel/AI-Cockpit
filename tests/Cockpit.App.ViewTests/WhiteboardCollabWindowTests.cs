@@ -89,7 +89,7 @@ public class WhiteboardCollabWindowTests
         // W-2/AC-843 replaced AC-842's "no session, no window, a toast" with the diagram's quick-start shape: the
         // board opens on its name alone, and "no agent on this board" is a state the window itself draws.
         var (plugin, host) = _StartPlugin();
-        host.Sessions = new FakeSessions(activePaneId: null);
+        host.Surfaces.ActivePaneId = null;
 
         host.InvokeWhiteboardAction();
 
