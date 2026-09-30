@@ -291,6 +291,40 @@ public class DiagramMcpToolsTests
         Assert.Contains("no longer available", json["error"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task ReadDiagram_CarriesTheFidelityReport_SoAnIncompleteRenderIsNeverDescribedAsClean()
+    {
+        // AC-808's contract, carried through the MCP surface (AC-810's DoD point 3): a stateDiagram-v2 composite
+        // transition that Mermaider is known to drop must show up in the tool's own response, not just on the
+        // operator's screen.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        const string composite = """
+            stateDiagram-v2
+                state Watching {
+                    [*] --> Idle
+                }
+                Idle --> Watching : arm
+            """;
+        registry.SurfaceOpened("diagram-1", "State machine", composite);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "State machine"));
+
+        Assert.False(json!["fidelity"]!["complete"]!.GetValue<bool>());
+        Assert.NotEmpty(json["fidelity"]!["findings"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task ReadDiagram_OfACleanDiagram_ReportsFidelityAsComplete_WithNoFindings()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
+
+        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
+
+        Assert.True(json!["fidelity"]!["complete"]!.GetValue<bool>());
+        Assert.Empty(json["fidelity"]!["findings"]!.AsArray());
+    }
+
     // ---- open_diagram (AC-835, direct path since AC-891): the agent asks for a window of its own ----
 
     [Fact]
