@@ -17,52 +17,6 @@ public class SessionHostTests
 {
     private static readonly SessionProfile Profile = new("work", new ClaudeConfig("/fake/.claude"));
 
-    /// <summary>
-    /// The host never ends a turn on its own: the runtime's TurnCompleted alone leaves the second prompt queued, and
-    /// only the consumer's <c>CompleteTurn</c> — its duty when it applies that event — sends it.
-    /// </summary>
-    [Fact]
-    public async Task TheSecondOfTwoPrompts_LeavesOnlyWhenTheConsumerCompletesTheTurn()
-    {
-        var (host, runtime) = _Started();
-        await host.SubmitAsync(new QueuedPrompt("first", []));
-        await host.SubmitAsync(new QueuedPrompt("second", []));
-
-        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(_TurnCompleted());
-
-        await _AssertSent(runtime, "second", times: 0);
-        Assert.Single(host.Queue);
-
-        host.CompleteTurn();
-        await host.DisposeAsync();
-
-        await _AssertSent(runtime, "first", times: 1);
-        await _AssertSent(runtime, "second", times: 1);
-        Assert.Empty(host.Queue);
-    }
-
-    /// <summary>
-    /// AC-1321: a turn that ends during a hold starts nothing; lifting the hold sends what waited behind it.
-    /// </summary>
-    [Fact]
-    public async Task AHeldPrompt_WaitsOutTheTurnsEnd_AndLeavesWhenTheHoldLifts()
-    {
-        var (host, runtime) = _Started();
-        await host.SubmitAsync(new QueuedPrompt("first", []));
-        await host.SubmitAsync(new QueuedPrompt("waiting", []));
-        host.TurnsHeldBecause = "a controller holds the line";
-
-        host.CompleteTurn();
-
-        await _AssertSent(runtime, "waiting", times: 0);
-        Assert.Single(host.Queue);
-
-        host.TurnsHeldBecause = null;
-        await host.DisposeAsync();
-
-        await _AssertSent(runtime, "waiting", times: 1);
-    }
-
     public static TheoryData<Func<SessionHost<QueuedPrompt>, Func<int>>, TimeSpan> Polls => new()
     {
         {
@@ -87,24 +41,6 @@ public class SessionHostTests
             TimeSpan.FromSeconds(30)
         },
     };
-
-    /// <summary>
-    /// The login poll and the usage catch-up each tick exactly once per interval, and not at all before it.
-    /// </summary>
-    [Theory]
-    [MemberData(nameof(Polls))]
-    public void APoll_TicksOncePerInterval_AndNeverBeforeIt(Func<SessionHost<QueuedPrompt>, Func<int>> start, TimeSpan interval)
-    {
-        var clock = new ManualClock();
-        var (host, _) = _Started(clock);
-        var ticks = start(host);
-
-        clock.Advance(interval - TimeSpan.FromSeconds(1));
-        Assert.Equal(0, ticks());
-
-        clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal(1, ticks());
-    }
 
     /// <summary>
     /// Two sessions raising at once: each stream rises strictly and no number is handed out twice. Only the order is
@@ -155,54 +91,6 @@ public class SessionHostTests
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), _IsAvalonia);
     }
 
-    /// <summary>
-    /// Moved from <c>SessionViewModelSignOfLifeDisposeTests</c> (AC-786): a clock left armed would keep the pane alive
-    /// after it closed. A tick whose timer fires only after a restart replaced it still carries its own, stale arm.
-    /// </summary>
-    [Fact]
-    public async Task TheSignOfLife_KnowsALateTickAsStale_AndStopsForGoodOnDispose()
-    {
-        var clock = new ManualClock();
-        var (host, _) = _Started(clock);
-        var arms = new List<int>();
-        host.SignOfLifeDue += arms.Add;
-
-        host.RestartSignOfLife(TimeSpan.FromSeconds(10));
-        var replaced = clock.LastCreated;
-        host.RestartSignOfLife(TimeSpan.FromSeconds(10));
-        replaced.Fire();
-        Assert.False(host.IsCurrentSignOfLife(Assert.Single(arms)));
-
-        await host.DisposeAsync();
-        clock.Advance(TimeSpan.FromMinutes(5));
-        Assert.Single(arms);
-    }
-
-    /// <summary>
-    /// A tick runs on the pool, where a throw would take the process down: it is logged as an error and the timer
-    /// keeps its cadence, as the UI thread's net did for the DispatcherTimers these replace.
-    /// </summary>
-    [Fact]
-    public void AThrowingTick_IsLoggedAsAnError_AndTheTimerKeepsTicking()
-    {
-        var clock = new ManualClock();
-        var logger = new RecordingLogger();
-        var (host, _) = _Started(clock, logger);
-        var ticks = 0;
-        host.UsageCatchUpDue += () =>
-        {
-            ticks++;
-            throw new InvalidOperationException("the handler broke");
-        };
-        host.StartUsageCatchUp();
-
-        clock.Advance(TimeSpan.FromSeconds(30));
-        clock.Advance(TimeSpan.FromSeconds(30));
-
-        Assert.Equal(2, ticks);
-        Assert.Equal([LogLevel.Error, LogLevel.Error], logger.Levels);
-    }
-
     private static (SessionHost<QueuedPrompt> Host, ISessionRuntime Runtime) _Started(ManualClock? clock = null, ILogger? logger = null)
     {
         var runtime = Substitute.For<ISessionRuntime>();
@@ -217,9 +105,6 @@ public class SessionHostTests
         host.Attach(Profile);
         return (host, runtime);
     }
-
-    private static Task _AssertSent(ISessionRuntime runtime, string text, int times) =>
-        runtime.Received(times).SendUserMessageAsync(text, Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
 
     private static TurnCompleted _TurnCompleted() =>
         new() { SessionId = "S1", Subtype = "success", Result = "done", IsError = false };

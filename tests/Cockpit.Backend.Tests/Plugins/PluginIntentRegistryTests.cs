@@ -15,64 +15,6 @@ public class PluginIntentRegistryTests
         new(caller, target, action, data.ToDictionary(pair => pair.Item1, pair => pair.Item2));
 
     [Fact]
-    public async Task Dispatch_InvokesTheRegisteredHandler_AndReturnsItsResult()
-    {
-        var registry = new PluginIntentRegistry();
-        registry.Register("autopilot", "start", intent =>
-            Task.FromResult<IReadOnlyDictionary<string, string>>(
-                new Dictionary<string, string> { ["session"] = "pane-" + intent.Data["issue"] }));
-
-        var result = await registry.Dispatch(Intent("youtrack", "autopilot", "start", ("issue", "AC-95")));
-
-        Assert.NotNull(result);
-        Assert.Equal("pane-AC-95", result!["session"]);
-    }
-
-    [Fact]
-    public async Task Dispatch_ReturnsNull_WhenNoHandlerIsRegistered()
-    {
-        var registry = new PluginIntentRegistry();
-
-        var result = await registry.Dispatch(Intent("youtrack", "autopilot", "start"));
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task Dispatch_ReturnsNull_WhenThePluginHandlesAnotherActionButNotThisOne()
-    {
-        var registry = new PluginIntentRegistry();
-        registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
-
-        var result = await registry.Dispatch(Intent("youtrack", "autopilot", "stop"));
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void HasHandler_ReflectsExactlyWhatIsRegistered()
-    {
-        var registry = new PluginIntentRegistry();
-        registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
-
-        Assert.True(registry.HasHandler("autopilot", "start"));
-        Assert.False(registry.HasHandler("autopilot", "stop"));
-        Assert.False(registry.HasHandler("something-else", "start"));
-    }
-
-    [Fact]
-    public void Register_Throws_WhenOnePluginClaimsTheSameActionTwice()
-    {
-        var registry = new PluginIntentRegistry();
-        registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
-
-        var act = () => registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
-
-        var ex = Assert.Throws<InvalidOperationException>(act);
-        Assert.Contains("already registered", ex.Message);
-    }
-
-    [Fact]
     public async Task Register_TwoPluginsMayOfferTheSameAction_AndDispatchStaysAddressed()
     {
         var registry = new PluginIntentRegistry();

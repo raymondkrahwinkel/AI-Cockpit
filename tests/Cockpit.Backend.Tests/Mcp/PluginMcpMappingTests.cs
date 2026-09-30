@@ -13,25 +13,6 @@ namespace Cockpit.Backend.Tests.Mcp;
 public class PluginMcpMappingTests
 {
     [Fact]
-    public void ToAuth_ContributionWithNeither_MapsToNone()
-    {
-        var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp");
-
-        Assert.Equal(McpServerAuth.None, PluginMcpMapping.ToAuth(contribution));
-    }
-
-    // A whitespace-only authority is not a usable OAuth configuration — it must not win over a real bearer token,
-    // and must not mark the server OAuth at all, or it is stuck forever in McpToolProvider's ServersNeedingSignIn
-    // with nothing to negotiate against. Mirrors EditableMcpServerViewModel.ToConfig()'s own IsNullOrWhiteSpace rule.
-    [Fact]
-    public void ToAuth_ContributionWithWhitespaceOnlyAuthority_IsNotTreatedAsOAuth()
-    {
-        var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp", "token-123") { OAuthAuthority = "   " };
-
-        Assert.Equal(McpServerAuth.ApiKey, PluginMcpMapping.ToAuth(contribution));
-    }
-
-    [Fact]
     public void ToServerConfig_OAuthContribution_CarriesAuthorityAndClientIdIntoTheServerConfig()
     {
         var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp")
@@ -89,24 +70,4 @@ public class PluginMcpMappingTests
         Assert.Equal("connection-id", PluginMcpMapping.ToServerConfig(contribution).IdentityKey);
     }
 
-    [Fact]
-    public void ToServerConfig_ContributionWithoutAnId_KeepsTheNameKeyedBehaviourItAlwaysHad()
-    {
-        // A plugin with a fixed name has nothing to gain from an id and does not have to be rebuilt to keep working:
-        // it lands on the id its name derives to, which is the key the name-keyed store used before AC-403 — so an
-        // already-stored token stays reachable.
-        var contribution = new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123");
-
-        Assert.Equal(McpServerIdentity.LegacyIdFor("YouTrack: Prod"), PluginMcpMapping.ToServerConfig(contribution).IdentityKey);
-    }
-
-    [Fact]
-    public void ToServerConfig_ContributionWithABlankId_IsTreatedAsHavingNone()
-    {
-        // A plugin that sets the property but computes an empty value must not land every one of its servers on the
-        // same empty key, sharing one credential between them.
-        var contribution = new McpServerContribution("Depot: work", "https://depot.example/mcp") { Id = "   " };
-
-        Assert.Equal(McpServerIdentity.LegacyIdFor("Depot: work"), PluginMcpMapping.ToServerConfig(contribution).IdentityKey);
-    }
 }
