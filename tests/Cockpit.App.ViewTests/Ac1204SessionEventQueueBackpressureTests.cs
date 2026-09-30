@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
@@ -33,25 +32,20 @@ public sealed class Ac1204SessionEventQueueBackpressureTests
     public Task EnqueueingWhileTheUiThreadIsStarvedAtRender_StaysBounded_AndAppliesAfterRecovery() =>
         _StarvedEnqueueStaysBounded(DispatcherPriority.Render);
 
-    /// <summary>The silent positive control: a quiet UI thread applies one event within a few ms, in the same run.</summary>
+    /// <summary>The silent positive control: a quiet UI thread applies one event within one dispatcher round, in the same run.</summary>
     [Fact]
     public async Task TheSameQueueOnAQuietUiThread_AppliesOneEventWithinMilliseconds()
     {
         var applied = new ConcurrentQueue<SessionEvent>();
         var queue = new SessionEventQueue(applied.Enqueue);
 
-        var clock = Stopwatch.StartNew();
         await Task.Run(() => queue.Enqueue(_Delta("x")));
 
-        while (applied.IsEmpty && clock.Elapsed < TimeSpan.FromSeconds(1))
-        {
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-        }
-
-        clock.Stop();
+        // One Background hop only runs once everything already posted at Default has, so it counts dispatcher
+        // rounds instead of milliseconds: the drain must have applied the event by then, however slow the runner.
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
         Assert.Single(applied);
-        Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(200), $"a free UI thread took {clock.Elapsed}");
     }
 
     private static async Task _StarvedEnqueueStaysBounded(DispatcherPriority priority)
