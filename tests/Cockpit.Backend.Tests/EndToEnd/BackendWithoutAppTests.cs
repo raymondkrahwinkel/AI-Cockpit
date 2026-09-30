@@ -1,3 +1,4 @@
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
@@ -20,6 +21,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
@@ -83,11 +85,7 @@ public sealed class BackendWithoutAppTests : IDisposable
     [Fact]
     public async Task TheBackendWithoutApp_MountsEveryCoreEndpoint_AndStartsANodeAgentThroughTheConnectKeyDoor()
     {
-        var keyFile = Path.Combine(_stateRoot, "connect-key");
-        await File.WriteAllTextAsync(keyFile, BootstrapKey);
-        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, keyFile);
-        ConnectKeyBootstrapEnvironment.Capture();
-        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, _previousConnectKeyFile);
+        await _CaptureTheBootstrapKeyAsync();
         var driver = new EchoDriver();
         var backend = CockpitBackend.Build(_loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver)));
         await using var services = backend.Services;
@@ -119,6 +117,43 @@ public sealed class BackendWithoutAppTests : IDisposable
         // AC-1379's threading edge, measured: with no App there is no UI thread, and a node call reaches the session
         // on a thread with no synchronization context to return to.
         Assert.Null(driver.ContextAtSend);
+    }
+
+    // AC-1386 criterion 1: a session started over the backend API answers, and its row reaches the event stream.
+    // The counter-proof: a key whose scope lacks the profile gets a 404 on the pane and
+    // never sees its rows, though it does see the next session's arrival that follows them.
+    [Fact]
+    public async Task ASessionStartedOverTheApi_StreamsItsAnswer_OnlyToAKeyThatMaySeeIt()
+    {
+        await _CaptureTheBootstrapKeyAsync();
+        var driver = new EchoDriver();
+        var backend = CockpitBackend.Build(_loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver)));
+        await using var services = backend.Services;
+        await _SaveAFreshNodeAsync(services);
+        backend.Start();
+        var nodeUrl = new Uri(Assert.Single(services.GetRequiredService<CockpitMcpEndpointHost>().GetNodeAddresses()).Url);
+        var baseAddress = new Uri(nodeUrl, "/");
+        var fingerprint = services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint;
+        var issuer = new NodeCaller("bootstrap", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+        var narrow = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync(
+            "narrow", ConnectKeyCapability.Operate, 30, issuer, scope: new ConnectKeyScope { AllowAllProfiles = false, AllowedProfileLabels = ["Other"] });
+        using var admin = new BackendApiClient(baseAddress, BootstrapKey, fingerprint, TimeProvider.System);
+        using var outsider = new BackendApiClient(baseAddress, narrow.Secret, fingerprint, TimeProvider.System);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = Profile, prompt = "hello" });
+        var paneId = started["paneId"]?.GetValue<string>() ?? "";
+        var answer = await admin.StreamEventsAsync(0, timeout.Token)
+            .FirstAsync(evt => _RowOf(evt) == paneId && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
+        var refused = await Assert.ThrowsAsync<BackendApiException>(() => outsider.GetAsync<JsonObject>($"api/v1/sessions/{paneId}/transcript"));
+        // A second start as the marker: its registration is announced to every key, while the first pane is still live.
+        await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = Profile });
+        var seenByTheOutsider = await outsider.StreamEventsAsync(0, timeout.Token)
+            .TakeWhile(evt => evt.Kind != "sessions-changed" || evt.Seq < answer.Seq)
+            .ToListAsync(timeout.Token);
+
+        Assert.Equal(HttpStatusCode.NotFound, refused.Status);
+        Assert.DoesNotContain(seenByTheOutsider, evt => _RowOf(evt) == paneId);
     }
 
     // The counter-proof: the bootstrap's own launcher registration gone, and the endpoint that starts sessions takes the
@@ -166,6 +201,20 @@ public sealed class BackendWithoutAppTests : IDisposable
         await using var services = CockpitBackend.Build(_loggerFactory).Services;
 
         Assert.Equal(typeof(CockpitBackend).Assembly, services.GetRequiredService(seam).GetType().Assembly);
+    }
+
+    // The pane a row event belongs to, from its data: an SSE frame has no pane of its own.
+    private static string? _RowOf(Cockpit.Core.Abstractions.Events.BackendEvent evt) =>
+        evt.Kind == "row" && evt.Data.TryGetProperty("PaneId", out var pane) ? pane.GetString() : null;
+
+    // The bootstrap key as a container hands it over: a file named by the environment, read once and then forgotten.
+    private async Task _CaptureTheBootstrapKeyAsync()
+    {
+        var keyFile = Path.Combine(_stateRoot, "connect-key");
+        await File.WriteAllTextAsync(keyFile, BootstrapKey);
+        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, keyFile);
+        ConnectKeyBootstrapEnvironment.Capture();
+        Environment.SetEnvironmentVariable(ConnectKeyVerifier.BootstrapFileVariable, _previousConnectKeyFile);
     }
 
     // A desk to land on, an SDK profile to run (a TTY one needs a window) and the node door on a port of the OS's choosing.

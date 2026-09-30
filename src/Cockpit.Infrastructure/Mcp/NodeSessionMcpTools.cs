@@ -65,7 +65,7 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
+            var visible = await _Policy.VisibleSessionsAsync(_Caller()).ConfigureAwait(false);
             // AC-1324: the open questions ride on the same read as the sessions they belong to, so needsYou and the
             // rows the controller draws for it can never come from two different moments.
             var pending = (await read.ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
@@ -277,53 +277,13 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            // Both checks against the live grant, not a copy read at pairing time, so unticking a row takes
-            // effect on the next call. The label is resolved to a real profile first, with the same
-            // case-insensitive comparison the spawn uses, so "Foo"/"foo" can't pass a grant check on the wrong one.
-            if (await _ResolveAllowedProfileAsync(profile).ConfigureAwait(false) is not { } allowedProfile)
+            var check = await _Policy.CheckStartAsync(_Caller(), profile, projectId).ConfigureAwait(false);
+            if (check.Profile is not { } allowedProfile)
             {
-                return _Serialize(new
-                {
-                    ok = false,
-                    error = _Caller().ByConnectKey
-                        ? $"The scope of this connect key does not include the profile '{profile}'. Call list_node_profiles for the ones it does."
-                        : $"This node's operator has not allowed the profile '{profile}'. Call list_node_profiles for the ones they have, and ask them to tick it on that machine if the one you want is missing.",
-                });
+                return _Serialize(new { ok = false, error = check.Refusal });
             }
 
-            // AC-1367: in scope is not enough for a profile that skips its approvals — that takes its own grant.
-            if (!_Caller().MayStartBypass && UnsupervisedProfile.SkipsApprovals(allowedProfile.Defaults))
-            {
-                return _Serialize(new
-                {
-                    ok = false,
-                    error = $"The profile '{allowedProfile.Label}' skips its approvals, and this connect key does not have the mayStartBypassProfiles grant to start such a profile.",
-                });
-            }
-
-            if (projectId is { Length: > 0 } project && !_IsProjectAllowed(project))
-            {
-                return _Serialize(new
-                {
-                    ok = false,
-                    error = _Caller().ByConnectKey
-                        ? $"The scope of this connect key does not include the project '{project}'. Call list_node_projects for the ones it does."
-                        : $"This node's operator has not allowed the project '{project}'. Call list_node_projects for the ones they have.",
-                });
-            }
-
-            // AC-1367: a key may start only what it could see afterwards, and a session without a project is visible
-            // only to a key with every project. A pairing is not held to this (AC-795).
-            if (projectId is not { Length: > 0 } && !_Caller().AllowsSession(allowedProfile.Label, null, pairing))
-            {
-                return _Serialize(new
-                {
-                    ok = false,
-                    error = "The scope of this connect key is limited to certain projects, so a start must name one of them. Call list_node_projects for the ones it does.",
-                });
-            }
-
-            if (await _ActiveWorkspaceIdAsync().ConfigureAwait(false) is not { } workspaceId)
+            if (await _Policy.ActiveWorkspaceIdAsync().ConfigureAwait(false) is not { } workspaceId)
             {
                 return _Serialize(new { ok = false, error = "This node has no desk that can hold a session just now." });
             }
@@ -375,8 +335,7 @@ internal sealed class NodeSessionMcpTools(
 
             // Stopping is bounded by exactly what listing showed — a session under an unticked profile is the
             // node operator's work, not this caller's, else a fresh empty pairing could still end every agent.
-            var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
-            if (!visible.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal)))
+            if (!await _Policy.IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false))
             {
                 return _Serialize(new
                 {
@@ -707,45 +666,17 @@ internal sealed class NodeSessionMcpTools(
 
     // AC-1323: the four controls share stop's bound — a session outside what listing showed is the node operator's
     // own, whatever the controller wants to do with it.
-    private async Task<string?> _RefuseIfNotVisibleAsync(string paneId)
-    {
-        var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
-        return visible.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+    private async Task<string?> _RefuseIfNotVisibleAsync(string paneId) =>
+        await _Policy.IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
             ? null
             : _Serialize(new
             {
                 ok = false,
                 error = $"There is no session '{paneId}' on this node that you may reach. Call list_node_sessions for the ones you can see; anything else there is running outside what this node's operator allowed you.",
             });
-    }
 
-    // The sessions this controller may see, the same set it may stop — one method rather than a filter per call
-    // site, closing the gap where "see" and "end" could drift apart. Live against the grant: an unticked profile
-    // disappears from the list immediately, and the node operator's own sessions are visible under a shared profile.
-    private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
-    {
-        var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
-        return [.. sessions.Where(session => _Caller().AllowsSession(session.Profile, session.ProjectId, pairing))];
-    }
-
-    // The profile this label names, if the grant covers it — or null, which is the only other answer callers need.
-    // Compared the way the spawn path compares (`AssistantAgentGateway`: OrdinalIgnoreCase), so the profile checked
-    // here is the profile that would run.
-    private async Task<SessionProfile?> _ResolveAllowedProfileAsync(string label)
-    {
-        var known = await profiles.LoadAsync().ConfigureAwait(false);
-        var match = known.FirstOrDefault(candidate => string.Equals(candidate.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
-        return match is not null && _IsProfileAllowed(match.Label) ? match : null;
-    }
-
-    // The desk a controller's session lands on, derived here and never named by the caller — a controller has
-    // never seen this cockpit's desks. Falls back to the first desk that can hold a session.
-    private async Task<string?> _ActiveWorkspaceIdAsync()
-    {
-        var workspaces = await gateway.ListWorkspacesAsync().ConfigureAwait(false);
-        var usable = workspaces.Where(workspace => workspace.CanHostSessions).ToList();
-        return (usable.FirstOrDefault(workspace => workspace.IsActive) ?? usable.FirstOrDefault())?.Id;
-    }
+    // AC-1386: built per use rather than held, as a field initialised from these parameters would capture them twice.
+    private NodeCallerSessionPolicy _Policy => new(read, gateway, pairing, profiles);
 
     // AC-1329: the same two-value parse `remember` uses on the controller, kept local rather than shared — every
     // MCP tool class here already carries its own `_Serialize`/refusal helpers rather than a common base.

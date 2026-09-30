@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the backend API can list, read, start, prompt and stop sessions and answer their permission prompts
+  (`/api/v1/sessions`), and read and prompt the assistant (`/api/v1/assistant`), with the same limits a connect
+  key has on the node tools: a session outside the key's scope is not found, and a start outside it is refused
+  with the reason. The event stream now carries each new or changed transcript row and a notice when sessions come
+  and go, each only to keys allowed to see that session. Every change made over the API is written to the node
+  access log, and prompting the assistant over the API leaves it available to its own operator.
 - added: a connect key can be limited to certain profiles and projects, and a key only starts a profile that
   skips its approvals when it is allowed to. A key limited to some projects sees and reaches only the sessions in
   those projects. You can also stop a key from answering permission prompts. Set the
