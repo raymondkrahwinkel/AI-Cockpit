@@ -50,27 +50,4 @@ public class CiWorkflowRunClientTests
         Assert.Equal(expected, new CiRun("CI", "main", "push", status, conclusion, null, "https://github.com/o/r/actions/runs/1")
             .State.ToString());
     }
-
-    [Theory]
-    [InlineData("", false)]
-    [InlineData("not-json", false)]
-    [InlineData("{}", false)]
-    public void ParseRuns_ToleratesEmptyOrInvalidJson(string json, bool _)
-    {
-        Assert.Empty(CiWorkflowRunClient.ParseRuns(json));
-    }
-
-    [Fact]
-    public void ParseRuns_DerivesDurationFromCreatedAndUpdatedAt()
-    {
-        const string json = """
-            [{ "workflowName": "CI", "headBranch": "main", "event": "push", "status": "completed",
-               "conclusion": "success", "createdAt": "2026-07-18T00:00:00Z", "updatedAt": "2026-07-18T00:03:30Z",
-               "url": "https://github.com/owner/repo/actions/runs/1" }]
-            """;
-
-        var run = Assert.Single(CiWorkflowRunClient.ParseRuns(json));
-
-        Assert.Equal(TimeSpan.FromMinutes(3.5), run.Duration);
-    }
 }

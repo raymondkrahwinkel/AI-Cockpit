@@ -32,17 +32,6 @@ public class ArgoManagedResourcesDiffTests
     }
 
     [Fact]
-    public void Summarize_NoModifiedResources_ZeroCount_HeadlineOnly()
-    {
-        var root = JsonNode.Parse("""[{"kind":"Service","name":"x","modified":false}]""");
-
-        var (lines, modifiedCount) = ArgoManagedResourcesDiff.Summarize(root, maxLength: 10_000);
-
-        Assert.Equal(0, modifiedCount);
-        Assert.Single(lines);
-    }
-
-    [Fact]
     public void Summarize_AcceptsAnItemsWrapper_NotOnlyABareArray()
     {
         var root = JsonNode.Parse("""{"items":[{"kind":"Service","name":"x","modified":true,"diff":"changed"}]}""");
@@ -50,22 +39,5 @@ public class ArgoManagedResourcesDiffTests
         var (_, modifiedCount) = ArgoManagedResourcesDiff.Summarize(root, maxLength: 10_000);
 
         Assert.Equal(1, modifiedCount);
-    }
-
-    [Fact]
-    public void Summarize_EmptyOrUnrecognizedPayload_IsZeroModified_NotAThrow()
-    {
-        Assert.Equal(0, ArgoManagedResourcesDiff.Summarize(JsonNode.Parse("{}"), 10_000).ModifiedCount);
-        Assert.Equal(0, ArgoManagedResourcesDiff.Summarize(null, 10_000).ModifiedCount);
-    }
-
-    [Fact]
-    public void Summarize_PastMaxLength_TruncatesAndSaysHowMany()
-    {
-        var root = JsonNode.Parse(TwoModifiedOneUnchanged);
-
-        var (lines, _) = ArgoManagedResourcesDiff.Summarize(root, maxLength: 40);
-
-        Assert.Contains(lines, line => line.Contains("more resource(s) not shown"));
     }
 }

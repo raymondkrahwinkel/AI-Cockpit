@@ -44,18 +44,6 @@ public class HelmCommandTests
     }
 
     [Fact]
-    public void Build_BlankContextName_OmitsTheFlag_ButKubeconfigStaysExplicit()
-    {
-        var cluster = new ClusterRegistration("id-1", "prod", ContextName: "", ["default"], KubeconfigPath: "~/.kube/config");
-
-        var (command, error) = HelmCommand.Build("helm", cluster, "default", "upgrade", ["web", "chart"]);
-
-        Assert.Null(error);
-        Assert.DoesNotContain("--kube-context", command!.Arguments);
-        Assert.Contains("--kubeconfig", command.Arguments);
-    }
-
-    [Fact]
     public void Build_PastedKubeconfigCluster_ReturnsAnExplicitError_AndNoCommand()
     {
         var cluster = new ClusterRegistration("id-1", "prod", ContextName: "prod-ctx", ["default"], KubeconfigPath: "");

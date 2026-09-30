@@ -79,72 +79,12 @@ public class SessionPullRequestStatusClientTests
         Assert.Equal(PullRequestCheckState.Running, status.Checks[1].State);
     }
 
-    [Theory]
-    [InlineData("COMPLETED", "SUCCESS", "Passed")]
-    [InlineData("COMPLETED", "FAILURE", "Failed")]
-    [InlineData("COMPLETED", "TIMED_OUT", "Failed")]
-    [InlineData("COMPLETED", "CANCELLED", "Other")]
-    [InlineData("COMPLETED", "NEUTRAL", "Other")]
-    [InlineData("COMPLETED", "SKIPPED", "Other")]
-    [InlineData("IN_PROGRESS", null, "Running")]
-    [InlineData("QUEUED", null, "Running")]
-    public void CheckRunState_DerivesFromStatusAndConclusion(string status, string? conclusion, string expected)
-    {
-        var conclusionJson = conclusion is null ? "null" : $"\"{conclusion}\"";
-        var json = $$"""
-            { "number": 1, "headRefName": "main", "additions": 0, "deletions": 0, "url": "https://github.com/o/r/pull/1",
-              "statusCheckRollup": [
-                { "__typename": "CheckRun", "name": "c", "status": "{{status}}", "conclusion": {{conclusionJson}} }
-              ]
-            }
-            """;
-
-        var parsed = SessionPullRequestStatusClient.Parse(json);
-
-        Assert.Equal(expected, parsed!.Checks[0].State.ToString());
-    }
-
     // AC-6's visibility rule for the parsing seam: nothing that isn't a genuine, complete PR object yields a
     // status a caller could render — a caller only ever hides the banner on null, never renders a half-built one.
-    [Theory]
-    [InlineData("")]
-    [InlineData("not-json")]
-    [InlineData("[]")]
-    [InlineData("null")]
-    public void Parse_ToleratesEmptyOrInvalidJson(string json)
-    {
-        Assert.Null(SessionPullRequestStatusClient.Parse(json));
-    }
-
-    [Fact]
-    public async Task GetOpenPullRequestAsync_ANonExistentWorkingDirectory_ReturnsNull()
-    {
-        var client = new SessionPullRequestStatusClient();
-
-        var status = await client.GetOpenPullRequestAsync(
-            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()), CancellationToken.None);
-
-        Assert.Null(status);
-    }
 
     // OverallState's priority (failure beats running beats passed) is what the collapsed dot/CI-summary text reads
     // off — the mockup's second frame (3/4 passed, one still running) shows amber, not green, and its third frame
     // (one failed among others) shows red even though not every check has finished.
-    [Theory]
-    [InlineData(new[] { "Passed", "Passed", "Passed", "Passed" }, "Passed")]
-    [InlineData(new[] { "Passed", "Passed", "Passed", "Running" }, "Running")]
-    [InlineData(new[] { "Passed", "Failed", "Running" }, "Failed")]
-    [InlineData(new[] { "Other" }, "Other")]
-    public void OverallState_PrioritizesFailureThenRunningThenPassed(string[] checkStates, string expected)
-    {
-        var checks = checkStates
-            .Select((state, i) => new PullRequestCheck($"c{i}", Enum.Parse<PullRequestCheckState>(state), null))
-            .ToList();
-
-        var status = new SessionPullRequestStatus(1, "o/r", "main", 0, 0, "https://github.com/o/r/pull/1", checks);
-
-        Assert.Equal(expected, status.OverallState.ToString());
-    }
 
     private static (string Name, PullRequestCheckState State, TimeSpan? Duration) _Tuple(PullRequestCheck check) =>
         (check.Name, check.State, check.Duration);

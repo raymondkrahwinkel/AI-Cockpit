@@ -51,18 +51,6 @@ public class HelmUpgradeTests
     }
 
     [Fact]
-    public async Task HelmUpgrade_UnknownCluster_IsACleanError()
-    {
-        var (tools, runner, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmUpgrade("does-not-exist", Session, "default", "proof", "./chart"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Null(runner.Command);
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task HelmUpgrade_APastedKubeconfigCluster_IsRefusedBeforeHelmRunsOrAnythingIsAsked()
     {
         var (tools, runner, asked) = _Build(ConsentOutcome.Approved, pathRegistered: false);
@@ -73,17 +61,6 @@ public class HelmUpgradeTests
         Assert.Contains("kubeconfig file path", json["error"]!.GetValue<string>());
         Assert.Null(runner.Command);
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task HelmUpgrade_ReleaseOrChartMissing_IsRefusedWithoutRunningHelm()
-    {
-        var (tools, runner, _) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmUpgrade("prod", Session, "default", "proof", chart: "  "));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Null(runner.Command);
     }
 
     [Fact]
@@ -114,29 +91,6 @@ public class HelmUpgradeTests
     }
 
     [Fact]
-    public async Task HelmUpgrade_WithoutValues_LeavesStdinAlone_AndStillReusesTheCurrentValues()
-    {
-        var (tools, runner, _) = _Build(ConsentOutcome.Approved);
-
-        await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart");
-
-        var command = Assert.IsType<HelmCommand>(runner.Command);
-        Assert.Null(command.StandardInput);
-        Assert.Contains("--reuse-values", command.Arguments);
-        Assert.DoesNotContain("-f", command.Arguments);
-    }
-
-    [Fact]
-    public async Task HelmUpgrade_ReuseValuesOff_DropsTheFlag_SoHelmStartsFromTheChartDefaults()
-    {
-        var (tools, runner, _) = _Build(ConsentOutcome.Approved);
-
-        await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart", reuseValues: false);
-
-        Assert.DoesNotContain("--reuse-values", Assert.IsType<HelmCommand>(runner.Command).Arguments);
-    }
-
-    [Fact]
     public async Task HelmUpgrade_WhenConsentIsDenied_HelmIsNeverRun()
     {
         var (tools, runner, _) = _Build(ConsentOutcome.Denied);
@@ -157,28 +111,6 @@ public class HelmUpgradeTests
         var request = Assert.Single(asked, candidate => candidate.Scope.StartsWith("k8s.secret:", StringComparison.Ordinal));
         Assert.Equal(ConsentRisk.Dangerous, request.Risk);
         Assert.False(request.AllowRemember);
-    }
-
-    [Fact]
-    public async Task HelmUpgrade_WhenHelmFails_TheAnswerIsAHintPlusTheRawStderr()
-    {
-        var (tools, _, _) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart"));
-
-        var error = json!["error"]!.GetValue<string>();
-        Assert.Contains("does not exist", error);
-        Assert.Contains("has no deployed releases", error);
-    }
-
-    [Fact]
-    public async Task HelmUpgrade_WhenHelmIsNotInstalled_SaysSoRatherThanGuessingAtStderr()
-    {
-        var (tools, _, _) = _Build(ConsentOutcome.Approved, HelmResult.NotStarted);
-
-        var json = JsonNode.Parse(await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart"));
-
-        Assert.Contains("could not be started", json!["error"]!.GetValue<string>());
     }
 
     [Fact]

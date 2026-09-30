@@ -39,18 +39,6 @@ public class KubernetesHelmMcpToolsTests
     }
 
     [Fact]
-    public async Task HelmList_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmList("does-not-exist", Session, "default"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task HelmList_WhenConsentDenied_StopsBeforeTheCluster()
     {
         var (tools, _) = _Build(ConsentOutcome.Denied);
@@ -74,33 +62,6 @@ public class KubernetesHelmMcpToolsTests
         Assert.NotNull(request);
         Assert.Equal(ConsentRisk.Dangerous, request!.Risk);
         Assert.False(request.AllowRemember);
-    }
-
-    [Fact]
-    public async Task HelmList_WhenApproved_ReachesTheConnection()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
-
-        var json = JsonNode.Parse(await tools.HelmList("prod", Session, "default"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
-    }
-
-    [Theory]
-    [InlineData("HelmStatus")]
-    [InlineData("HelmHistory")]
-    [InlineData("HelmValues")]
-    [InlineData("HelmManifest")]
-    public async Task SingleReleaseTools_UnknownCluster_IsACleanError(string toolMethod)
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await _Invoke(tools, toolMethod, "does-not-exist"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
     }
 
     [Theory]

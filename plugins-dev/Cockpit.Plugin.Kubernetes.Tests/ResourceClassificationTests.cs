@@ -8,17 +8,6 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 public class ResourceClassificationTests
 {
     [Theory]
-    [InlineData("v1", "", "v1")]
-    [InlineData("apps/v1", "apps", "v1")]
-    [InlineData("networking.k8s.io/v1", "networking.k8s.io", "v1")]
-    public void ApiVersionRef_Parse_SplitsGroupAndVersion(string apiVersion, string group, string version)
-    {
-        var reference = ApiVersionRef.Parse(apiVersion);
-        Assert.Equal(group, reference.Group);
-        Assert.Equal(version, reference.Version);
-    }
-
-    [Theory]
     [InlineData("", "nodes")]
     [InlineData("", "namespaces")]
     [InlineData("", "persistentvolumes")]

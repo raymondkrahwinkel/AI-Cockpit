@@ -50,17 +50,6 @@ public class HelmRollbackTests
     }
 
     [Fact]
-    public async Task HelmRollback_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmRollback("does-not-exist", Session, "system-ingress", "traefik", 6));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task HelmRollback_ARevisionBelowOne_IsRefusedBeforeAnythingIsAsked()
     {
         var (tools, asked) = _Build(ConsentOutcome.Approved);

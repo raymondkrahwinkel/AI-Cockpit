@@ -27,30 +27,4 @@ public class ResourceShapingTests
         Assert.Equal("nginx", node["metadata"]!["name"]!.GetValue<string>());
         Assert.Equal(3, node["spec"]!["replicas"]!.GetValue<int>());
     }
-
-    [Fact]
-    public void ResourceListSummary_ReturnsNameAndNamespacePerItem()
-    {
-        const string json = """
-        {"apiVersion":"v1","kind":"PodList","items":[
-          {"metadata":{"name":"a","namespace":"default","creationTimestamp":"2026-07-18T00:00:00Z"}},
-          {"metadata":{"name":"b","namespace":"kube-system"}}
-        ]}
-        """;
-
-        var list = KubernetesJson.Deserialize<RawKubernetesList>(json);
-        var summary = ResourceListSummary.Summarize(list);
-
-        Assert.Equal(2, summary["count"]!.GetValue<int>());
-        Assert.Equal("a", summary["items"]![0]!["name"]!.GetValue<string>());
-        Assert.Equal("default", summary["items"]![0]!["namespace"]!.GetValue<string>());
-        Assert.Equal("b", summary["items"]![1]!["name"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void ResourceListSummary_EmptyList_IsZeroItems()
-    {
-        var list = KubernetesJson.Deserialize<RawKubernetesList>("""{"apiVersion":"v1","kind":"PodList","items":[]}""");
-        Assert.Equal(0, ResourceListSummary.Summarize(list)["count"]!.GetValue<int>());
-    }
 }

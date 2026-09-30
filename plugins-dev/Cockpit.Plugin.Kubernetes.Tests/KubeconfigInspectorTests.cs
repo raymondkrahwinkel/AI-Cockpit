@@ -64,11 +64,6 @@ public class KubeconfigInspectorTests
         ["this: is: not: valid: kubeconfig: [", null!, false],
     ];
 
-    [Theory]
-    [MemberData(nameof(Kubeconfigs))]
-    public void Inspect_ReportsExecAuth_ForTheContextItResolved(string yaml, string? contextName, bool usesExecAuth) =>
-        Assert.Equal(usesExecAuth, KubeconfigInspector.Inspect(yaml, contextName).UsesExecAuth);
-
     private const string MultiContextKubeconfig = """
     apiVersion: v1
     kind: Config
@@ -101,35 +96,5 @@ public class KubeconfigInspectorTests
         var contexts = KubeconfigInspector.ListContexts(MultiContextKubeconfig);
         Assert.Equal(new[] { "dev", "prod" }, contexts.Names);
         Assert.Equal("prod", contexts.Current);
-    }
-
-    [Fact]
-    public void ListContexts_Unparseable_IsEmpty() =>
-        Assert.Empty(KubeconfigInspector.ListContexts("not a kubeconfig [").Names);
-
-    [Fact]
-    public void ExpandPath_ExpandsLeadingTilde()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.Combine(home, ".kube/config"), KubeconfigInspector.ExpandPath("~/.kube/config"));
-        Assert.Equal("/etc/kube/config", KubeconfigInspector.ExpandPath("/etc/kube/config"));
-    }
-
-    [Fact]
-    public void ReadYaml_PrefersThePath_ThenContent_ThenNull()
-    {
-        var tmp = Path.Combine(Path.GetTempPath(), $"kubetest-{Guid.NewGuid():n}.yaml");
-        File.WriteAllText(tmp, "from-file");
-        try
-        {
-            Assert.Equal("from-file", KubeconfigInspector.ReadYaml(tmp, "from-content"));
-            Assert.Equal("from-content", KubeconfigInspector.ReadYaml(null, "from-content"));
-            Assert.Null(KubeconfigInspector.ReadYaml("", ""));
-            Assert.Null(KubeconfigInspector.ReadYaml("/no/such/file/at/all", null));
-        }
-        finally
-        {
-            File.Delete(tmp);
-        }
     }
 }

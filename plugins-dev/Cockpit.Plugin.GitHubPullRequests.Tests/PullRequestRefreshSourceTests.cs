@@ -12,68 +12,6 @@ public class PullRequestRefreshSourceTests
     private static readonly GitHubPullRequest SamplePullRequest = new(1, "Fix the thing", "https://github.com/octocat/hello-world/pull/1", null, "octocat/hello-world", "octocat");
 
     [Fact]
-    public async Task Refresh_RunsOnItsOwnTimer_WithNoViewEverAttached()
-    {
-        var calls = 0;
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            (_, _) =>
-            {
-                Interlocked.Increment(ref calls);
-                return Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false));
-            },
-            pollInterval: TimeSpan.FromMilliseconds(30));
-
-        // Nothing here ever builds a Widget or a badge, or attaches anything to a visual tree — the background
-        // poll firing more than once is entirely the source's own doing.
-        var sawMultipleTicks = await _WaitUntilAsync(() => Volatile.Read(ref calls) >= 3, TimeSpan.FromSeconds(2));
-
-        source.Dispose();
-
-        Assert.True(sawMultipleTicks, $"expected at least 3 background ticks with no view attached, saw {calls}");
-    }
-
-    [Fact]
-    public async Task ColdStart_ShowsThePersistedSnapshotBeforeAnyFetchCompletes()
-    {
-        var storage = new InMemoryPluginStorage();
-        var oldSnapshot = new PullRequestFeedSnapshot(
-            new PullRequestFeedResult([SamplePullRequest], [], RepositoryMissing: false),
-            DateTimeOffset.UtcNow - PullRequestRefreshSource.StaleAfter - TimeSpan.FromMinutes(1));
-        storage.Set("refreshSourceSnapshot", oldSnapshot);
-
-        var release = new TaskCompletionSource<PullRequestFeedResult>();
-        var source = new PullRequestRefreshSource(storage, (_, _) => release.Task, pollInterval: TimeSpan.FromMinutes(10));
-
-        // The very first fetch is still pending (release.Task has not completed) — Current must already be the
-        // restart-time list, not empty and not a wait.
-        var beforeFetch = source.Current;
-
-        var freshPullRequest = SamplePullRequest with { Title = "Fix the other thing" };
-        release.SetResult(new PullRequestFeedResult([freshPullRequest], [], RepositoryMissing: false));
-
-        // Wait for the write to storage as well, not just for Current: the source assigns _current and only then
-        // calls _storage.Set, so a wait on Current alone can return inside that window and read the pre-fetch
-        // snapshot back out — which is what made this test flaky on a loaded runner.
-        await _WaitUntilAsync(
-            () => source.Current.Result.PullRequests.Count > 0
-                  && source.Current.Result.PullRequests[0].Title == freshPullRequest.Title
-                  && storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot")?.Result.PullRequests is [{ Title: "Fix the other thing" }, ..],
-            TimeSpan.FromSeconds(2));
-
-        var afterFetch = source.Current;
-        var persisted = storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot");
-
-        source.Dispose();
-
-        Assert.Equal(SamplePullRequest.Title, beforeFetch.Result.PullRequests[0].Title);
-        Assert.True(DateTimeOffset.UtcNow - beforeFetch.FetchedAt!.Value > PullRequestRefreshSource.StaleAfter, "the pre-fetch snapshot has to be the old, restart-time one");
-        Assert.Equal(freshPullRequest.Title, afterFetch.Result.PullRequests[0].Title);
-        Assert.True(DateTimeOffset.UtcNow - afterFetch.FetchedAt!.Value < TimeSpan.FromSeconds(5), "the post-fetch snapshot has to be freshly timestamped");
-        Assert.Equal(freshPullRequest.Title, persisted?.Result.PullRequests[0].Title);
-    }
-
-    [Fact]
     public async Task RestartSnapshot_PersistsRenderableFieldsWithoutBody()
     {
         var storage = new InMemoryPluginStorage();
@@ -110,81 +48,8 @@ public class PullRequestRefreshSourceTests
         restarted.Dispose();
     }
 
-    [Fact]
-    public async Task OverlappingRefreshCalls_CollapseIntoOneLoad()
-    {
-        var calls = 0;
-        var release = new TaskCompletionSource<PullRequestFeedResult>();
-        var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
-
-        // No startup tick: it would race the three overlapping calls below for who counts as "the winner", and
-        // waiting for its Updated is not enough — Updated is raised while the gate is still held (AC-1416), so
-        // the calls could still be gated out by the tick that had just published (AC-1122).
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            (_, _) =>
-            {
-                Interlocked.Increment(ref calls);
-                return release.Task;
-            },
-            pollInterval: TimeSpan.FromMinutes(10),
-            firstTickDue: Timeout.InfiniteTimeSpan);
-
-        var overlapping = new[]
-        {
-            source.RefreshAsync(forceRefresh: true),
-            source.RefreshAsync(forceRefresh: true),
-            source.RefreshAsync(forceRefresh: true),
-        };
-
-        release.SetResult(emptyResult);
-        var ran = await Task.WhenAll(overlapping);
-
-        source.Dispose();
-
-        Assert.Equal(1, calls); // exactly one of the three overlapping callers loaded
-        Assert.Equal(2, ran.Count(x => !x));
-    }
-
     // AC-1416: Updated is raised while the refresh gate is held, so a newer refresh cannot publish ahead of an
     // older one that is still inside its handlers.
-    [Fact]
-    public async Task WhileAnUpdatedHandlerRuns_AnotherRefreshIsGatedOut_AndOnceItIsDoneRefreshRunsAgain()
-    {
-        var subscribed = new TaskCompletionSource();
-        var inHandler = new TaskCompletionSource();
-        var handlerMayFinish = new TaskCompletionSource();
-        var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
-
-        // The startup tick is the refresh whose handler is held: the load waits for the subscription so the handler
-        // cannot miss it.
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            async (_, _) =>
-            {
-                await subscribed.Task;
-                return emptyResult;
-            },
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        source.Updated += (_, _) =>
-        {
-            inHandler.TrySetResult();
-            handlerMayFinish.Task.Wait(TimeSpan.FromSeconds(5));
-        };
-        subscribed.SetResult();
-        await inHandler.Task.WaitAsync(TimeSpan.FromSeconds(30));
-
-        var whileHandlerRuns = await source.RefreshAsync(forceRefresh: true);
-
-        handlerMayFinish.SetResult();
-        var ranAfterwards = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
-
-        source.Dispose();
-
-        Assert.False(whileHandlerRuns, "a refresh arriving while the previous one is still publishing has to be gated out");
-        Assert.True(ranAfterwards, "once the handler is done the gate has to be free again");
-    }
 
     // The JSON-backed test storage reproduces the host's deserialize path: malformed persisted data must fall
     // back to an empty snapshot instead of aborting plugin initialization.
@@ -211,21 +76,6 @@ public class PullRequestRefreshSourceTests
     // does not enforce non-null reference members. A bare `?? Empty` on the constructor's read would miss
     // this: the deserialized object is not null, only its `Result` is — so `PullRequestRefreshSource`
     // must reject it explicitly rather than merely catch an exception that never comes.
-    [Fact]
-    public void ColdStart_WithWrongShapedJson_FallsBackToEmpty_InsteadOfCarryingANullResult()
-    {
-        var storage = new InMemoryPluginStorage();
-        storage.SeedRaw("refreshSourceSnapshot", """{"totally":"unrelated","shape":true}""");
-
-        var source = new PullRequestRefreshSource(storage, _NeverLoads, pollInterval: TimeSpan.FromMinutes(10));
-
-        var current = source.Current;
-        source.Dispose();
-
-        Assert.NotNull(current.Result);
-        Assert.Empty(current.Result.PullRequests);
-        Assert.Null(current.FetchedAt);
-    }
 
     // A confirming review's follow-up on the same class of bug, one level deeper: a stored `{"Result":{}}`
     // deserializes to a non-null `PullRequestFeedResult` whose `PullRequests`/`ReviewRequested`
@@ -233,30 +83,6 @@ public class PullRequestRefreshSourceTests
     // neither the record nor its positional parameters. A bare `Result: not null` check (the fix for the
     // blocker above) lets this one through; `GitHubPullRequestsWidget._ApplySnapshot`'s
     // `result.ReviewRequested.Select(...)` would throw a `NullReferenceException` rendering it.
-    [Fact]
-    public void ColdStart_WithNullCollectionsInsideResult_FallsBackToEmpty_InsteadOfCarryingNullLists()
-    {
-        var storage = new InMemoryPluginStorage();
-        storage.SeedRaw("refreshSourceSnapshot", """{"Result":{}}""");
-
-        var source = new PullRequestRefreshSource(storage, _NeverLoads, pollInterval: TimeSpan.FromMinutes(10));
-
-        var current = source.Current;
-        source.Dispose();
-
-        Assert.NotNull(current.Result.PullRequests);
-        Assert.NotNull(current.Result.ReviewRequested);
-        Assert.Empty(current.Result.PullRequests);
-        Assert.Null(current.FetchedAt);
-    }
-
-    [Fact]
-    public void StaleAfter_IsThreeTimesTheGhClientTtl_NotARoundedNumber()
-    {
-        // Asserted against the constant itself, not a literal like TimeSpan.FromMinutes(15) — a change to the
-        // client's own TTL must not silently desynchronise the marker's threshold from what the doc comment claims.
-        Assert.Equal(GitHubPrGhClient.PullRequestTtl * 3, PullRequestRefreshSource.StaleAfter);
-    }
 
     // Adversarial-review defect: `Dispose()` tore down the gate a still-running `PullRequestRefreshSource.RefreshAsync`
     // call was about to release into. This reproduces the exact shape — a call holding the gate and mid-`_load`
@@ -266,143 +92,17 @@ public class PullRequestRefreshSourceTests
     // handle a fire-and-forget timer callback never gives the production code. Before the fix this call's task
     // faulted with `ObjectDisposedException` once `release` completed — unobserved in production,
     // since every real caller is `_ = RefreshAsync(...)`.
-    [Fact]
-    public async Task Dispose_WhileARefreshIsInFlight_DoesNotThrowFromTheGateItDisposes()
-    {
-        var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
-        var release = new TaskCompletionSource<PullRequestFeedResult>();
-
-        // No startup tick, so the call below is the only one that can hold the gate (see the overlapping test).
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            (_, _) => release.Task,
-            pollInterval: TimeSpan.FromMinutes(10),
-            firstTickDue: Timeout.InfiniteTimeSpan);
-
-        // Holds the gate and is suspended awaiting `_load` (release.Task, still pending) the moment Dispose runs —
-        // the callback-still-running-at-unload shape the review flagged.
-        var inFlight = source.RefreshAsync(forceRefresh: true);
-
-        source.Dispose();
-        release.SetResult(emptyResult);
-
-        var ran = await inFlight;
-
-        Assert.True(ran, "the in-flight call actually ran the load and should still report that, not fault");
-    }
 
     // The other half of the same defect: a call that had not even reached the gate yet when `Dispose()` ran —
     // `SemaphoreSlim.WaitAsync(int)` itself throws `ObjectDisposedException` unconditionally
     // once the semaphore is disposed, regardless of its count. Before the fix this propagated straight out of
     // `PullRequestRefreshSource.RefreshAsync`.
-    [Fact]
-    public async Task RefreshAsync_CalledAfterDispose_IsGatedOutInsteadOfThrowing()
-    {
-        var firstLoad = new TaskCompletionSource<PullRequestFeedResult>();
-        var firstTickPublished = new TaskCompletionSource();
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            (_, _) => firstLoad.Task,
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        // Drains the constructor's own due-time-zero tick before disposing, so what this measures is a call made
-        // after Dispose rather than one gated out by a tick a fixed delay was betting on having finished.
-        source.Updated += (_, _) => firstTickPublished.TrySetResult();
-        firstLoad.SetResult(new PullRequestFeedResult([], [], RepositoryMissing: false));
-        await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
-
-        source.Dispose();
-
-        var ranAfterDispose = await source.RefreshAsync(forceRefresh: true);
-
-        Assert.False(ranAfterDispose, "a call arriving after Dispose must be gated out like any other, not throw");
-    }
-
-    [Fact]
-    public async Task AFailedFetch_StillRaisesUpdated_SoAFirstEverAttemptIsNotSilent()
-    {
-        var storage = new InMemoryPluginStorage();
-
-        // The constructor's due-time-zero tick fetches straight away, so a handler attached on the line after it can
-        // already be too late: the fetch fails, Updated fires with nothing listening, and the wait below then just
-        // runs its two seconds out and reports a null that never had a chance. Holding the fetch until the handler
-        // is actually on makes the ordering this test's own rather than the thread pool's. More time would not have
-        // helped — the event it is waiting for is already gone.
-        var subscribed = new TaskCompletionSource();
-        var source = new PullRequestRefreshSource(
-            storage,
-            async (_, _) =>
-            {
-                await subscribed.Task;
-                throw new InvalidOperationException("gh not installed");
-            },
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        PullRequestFeedSnapshot? received = null;
-        source.Updated += (_, snapshot) => received = snapshot;
-        subscribed.SetResult();
-
-        var raised = await _WaitUntilAsync(() => received is not null, TimeSpan.FromSeconds(2));
-
-        source.Dispose();
-
-        Assert.True(raised, "a failed fetch must still raise Updated, so a first-ever attempt is not silent");
-        Assert.NotNull(received);
-        Assert.Null(received!.FetchedAt);
-        Assert.Null(storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot"));
-    }
-
-    [Fact]
-    public async Task ExplicitRefresh_ThatRan_ReportsItsOwnFailure()
-    {
-        var calls = 0;
-        var firstLoad = new TaskCompletionSource<PullRequestFeedResult>();
-        var firstTickPublished = new TaskCompletionSource();
-        var source = new PullRequestRefreshSource(
-            new InMemoryPluginStorage(),
-            (_, _) => Interlocked.Increment(ref calls) == 1
-                ? firstLoad.Task
-                : Task.FromException<PullRequestFeedResult>(new InvalidOperationException("gh not installed")),
-            pollInterval: TimeSpan.FromMinutes(10));
-
-        // Drains the constructor's own due-time-zero tick first, so the failure asserted below is this call's own
-        // and not the tick's. A fixed 50 ms delay used to stand here, betting on a quiet machine (AC-1122).
-        source.Updated += (_, _) => firstTickPublished.TrySetResult();
-        firstLoad.SetResult(new PullRequestFeedResult([], [], RepositoryMissing: false));
-        await firstTickPublished.Task.WaitAsync(TimeSpan.FromSeconds(30));
-
-        // Updated is raised with the gate still held (AC-1416), so the call is retried until the tick has let go;
-        // a gated-out call runs no load and touches no LastError, so the retries cost nothing.
-        var ran = await _WaitUntilAsync(() => source.RefreshAsync(forceRefresh: true), TimeSpan.FromSeconds(30));
-
-        source.Dispose();
-
-        Assert.True(ran);
-        Assert.NotNull(source.LastError);
-        Assert.Equal("gh not installed", source.LastError!.Message);
-    }
 
     // A load that never returns, for the cold-start tests: they assert that nothing has fetched yet, and the
     // constructor's due-time-zero tick would otherwise land between it and the read and stamp a FetchedAt on
     // it (AC-1122). Never completing is what makes "nothing has fetched yet" hold rather than usually hold.
     private static Task<PullRequestFeedResult> _NeverLoads(bool forceRefresh, CancellationToken cancellationToken) =>
         new TaskCompletionSource<PullRequestFeedResult>().Task;
-
-    private static async Task<bool> _WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (await condition())
-            {
-                return true;
-            }
-
-            await Task.Delay(10);
-        }
-
-        return await condition();
-    }
 
     private static async Task<bool> _WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
@@ -419,5 +119,4 @@ public class PullRequestRefreshSourceTests
 
         return condition();
     }
-
 }

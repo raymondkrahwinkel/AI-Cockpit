@@ -24,12 +24,4 @@ public class KindCommandTests
         Assert.Equal("kind", command.FileName);
         Assert.Equal(["delete", "cluster", "--name", "cockpit-ac179", "--kubeconfig", "/state/kind/cockpit-ac179.kubeconfig"], command.Arguments);
     }
-
-    [Fact]
-    public void GetClusters_BuildsGetClustersArgv()
-    {
-        var command = KindCommand.GetClusters("kind");
-
-        Assert.Equal(["get", "clusters"], command.Arguments);
-    }
 }

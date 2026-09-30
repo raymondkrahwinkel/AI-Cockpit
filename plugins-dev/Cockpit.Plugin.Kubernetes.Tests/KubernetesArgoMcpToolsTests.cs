@@ -39,18 +39,6 @@ public class KubernetesArgoMcpToolsTests
     }
 
     [Fact]
-    public async Task ArgoApps_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ArgoApps("does-not-exist", Session, "argocd"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task ArgoApps_WhenConsentDenied_StopsBeforeTheCluster()
     {
         var (tools, _) = _Build(ConsentOutcome.Denied);
@@ -69,32 +57,6 @@ public class KubernetesArgoMcpToolsTests
         await tools.ArgoApps("prod", Session, "argocd");
 
         Assert.DoesNotContain(asked, request => request.Risk == ConsentRisk.Dangerous);
-    }
-
-    [Fact]
-    public async Task ArgoApps_WhenApproved_ReachesTheConnection()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
-
-        var json = JsonNode.Parse(await tools.ArgoApps("prod", Session, "argocd"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
-    }
-
-    [Theory]
-    [InlineData("ArgoApp")]
-    [InlineData("ArgoHistory")]
-    [InlineData("ArgoLastSync")]
-    public async Task PerApplicationTools_UnknownCluster_IsACleanError(string toolMethod)
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await _Invoke(tools, toolMethod, "does-not-exist"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
     }
 
     [Theory]

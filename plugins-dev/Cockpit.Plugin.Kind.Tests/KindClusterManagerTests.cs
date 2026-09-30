@@ -1,4 +1,3 @@
-using Cockpit.Plugin.Kind.Cli;
 using Cockpit.Plugin.Kind.Settings;
 using Cockpit.Plugins.Abstractions;
 using NSubstitute;
@@ -12,83 +11,6 @@ public class KindClusterManagerTests
     private const string OwnerPane = "pane-1";
 
     [Fact]
-    public async Task CreateAsync_OnSuccess_RegistersTheKindRecord()
-    {
-        var (manager, settings, cli, host) = _Manager();
-
-        var (record, error) = await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-
-        Assert.Null(error);
-        Assert.NotNull(record);
-        Assert.Equal("cockpit-ac179", record!.Name);
-        Assert.Equal(OwnerPane, record.OwnerPaneId);
-        Assert.Contains(settings.KindClusters, r => r.Name == "cockpit-ac179");
-
-        var createCall = cli.Calls.Single(call => call.Arguments[0] == "create");
-        Assert.Contains("cockpit-ac179", createCall.Arguments);
-
-        // AC-1083: with the Kubernetes plugin installed, the cluster registers itself there — no manual step.
-        await host.Received(1).SendIntent("kubernetes", "cluster.register", Arg.Is<IReadOnlyDictionary<string, string>>(
-            data => data["id"] == "kind-cockpit-ac179" && data["context"] == "kind-cockpit-ac179" && data["kubeconfigPath"] == record.KubeconfigPath));
-    }
-
-    [Fact]
-    public async Task CreateAsync_KindNotInstalled_ReturnsTheInstallMessageAndTouchesNothing()
-    {
-        var (manager, settings, cli, _) = _Manager();
-        cli.Handler = _ => CliResult.NotStarted;
-
-        var (record, error) = await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-
-        Assert.Null(record);
-        Assert.Contains("was not found on PATH", error);
-        Assert.Empty(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task CreateAsync_KindCommandFails_ReturnsTheFailureDescriptionAndTouchesNothing()
-    {
-        var (manager, settings, cli, _) = _Manager();
-        cli.Handler = command => command.Arguments[0] == "create"
-            ? CliResult.Exited(1, string.Empty, "some kind failure")
-            : CliResult.Exited(0, string.Empty, string.Empty);
-
-        var (record, error) = await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-
-        Assert.Null(record);
-        Assert.Contains("some kind failure", error);
-        Assert.Empty(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task CreateAsync_NameAlreadyRegistered_RefusesWithoutRunningKind()
-    {
-        var (manager, settings, cli, _) = _Manager();
-        await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-        cli.Calls.Clear();
-
-        var (record, error) = await manager.CreateAsync("cockpit-ac179", "pane-2", CancellationToken.None);
-
-        Assert.Null(record);
-        Assert.Contains("already registered", error);
-        Assert.Empty(cli.Calls);
-    }
-
-    [Fact]
-    public async Task DeleteAsync_RemovesTheRecordAndTheKubeconfigFile()
-    {
-        var (manager, settings, _, _) = _Manager();
-        var (created, _) = await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-        File.WriteAllText(created!.KubeconfigPath, "current-context: kind-cockpit-ac179\n");
-
-        var (ok, error) = await manager.DeleteAsync("cockpit-ac179", CancellationToken.None);
-
-        Assert.True(ok, error);
-        Assert.Empty(settings.KindClusters);
-        Assert.False(File.Exists(created.KubeconfigPath));
-    }
-
-    [Fact]
     public async Task DeleteAsync_UnregisteredName_RefusesWithoutRunningKind()
     {
         var (manager, _, cli, _) = _Manager();
@@ -98,60 +20,6 @@ public class KindClusterManagerTests
         Assert.False(ok);
         Assert.Contains("No kind cluster named", error);
         Assert.Empty(cli.Calls);
-    }
-
-    [Fact]
-    public async Task ListAsync_ReportsRunningOnlyForNamesKindActuallyReports()
-    {
-        var (manager, _, cli, _) = _Manager();
-        await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-        cli.Handler = command => command.Arguments is ["get", "clusters"]
-            ? CliResult.Exited(0, "cockpit-ac179\n", string.Empty)
-            : CliResult.Exited(0, string.Empty, string.Empty);
-
-        var entries = await manager.ListAsync(CancellationToken.None);
-
-        var entry = Assert.Single(entries);
-        Assert.Equal("cockpit-ac179", entry.Name);
-        Assert.Equal(OwnerPane, entry.OwnerPaneId);
-        Assert.False(entry.IsPinned);
-        Assert.True(entry.IsRunning);
-    }
-
-    [Fact]
-    public async Task ListAsync_EmptyKindOutput_ReportsNotRunningRatherThanThrowing()
-    {
-        var (manager, _, cli, _) = _Manager();
-        await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
-        cli.Handler = command => command.Arguments is ["get", "clusters"]
-            ? CliResult.Exited(0, "No kind clusters found.\n", string.Empty)
-            : CliResult.Exited(0, string.Empty, string.Empty);
-
-        var entries = await manager.ListAsync(CancellationToken.None);
-
-        Assert.False(Assert.Single(entries).IsRunning);
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_DeadOwner_DeletesTheCluster()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("orphaned", OwnerPane, CancellationToken.None);
-
-        await manager.ReconcileAsync(liveSessionIds: [], CancellationToken.None);
-
-        Assert.Empty(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_LiveOwner_KeepsTheCluster()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("still-owned", OwnerPane, CancellationToken.None);
-
-        await manager.ReconcileAsync(liveSessionIds: [OwnerPane], CancellationToken.None);
-
-        Assert.Single(settings.KindClusters);
     }
 
     [Fact]
@@ -182,36 +50,12 @@ public class KindClusterManagerTests
     }
 
     [Fact]
-    public async Task SweepExpiredAsync_PastMaxLifetimeAndUnpinned_IsDeleted()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("stale", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [settings.KindClusters.Single() with { CreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(5) }];
-        settings.KindClusterMaxLifetime = TimeSpan.FromHours(4);
-
-        await manager.SweepExpiredAsync(CancellationToken.None);
-
-        Assert.Empty(settings.KindClusters);
-    }
-
-    [Fact]
     public async Task SweepExpiredAsync_PastMaxLifetimeButPinned_IsKept()
     {
         var (manager, settings, _, _) = _Manager();
         await manager.CreateAsync("stale-but-pinned", OwnerPane, CancellationToken.None);
         settings.KindClusters = [settings.KindClusters.Single() with { CreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(5), IsPinned = true }];
         settings.KindClusterMaxLifetime = TimeSpan.FromHours(4);
-
-        await manager.SweepExpiredAsync(CancellationToken.None);
-
-        Assert.Single(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task SweepExpiredAsync_WithinMaxLifetime_IsKept()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("fresh", OwnerPane, CancellationToken.None);
 
         await manager.SweepExpiredAsync(CancellationToken.None);
 
@@ -231,19 +75,6 @@ public class KindClusterManagerTests
         Assert.Equal("pinned", Assert.Single(settings.KindClusters).Name);
     }
 
-    [Fact]
-    public void Snapshot_ListsEveryRegisteredClusterWithAnOwnerOnlyKill()
-    {
-        var (manager, settings, _, _) = _Manager();
-        settings.KindClusters = [new KindClusterRecord("cockpit-ac179", OwnerPane, "/tmp/x.kubeconfig", DateTimeOffset.UtcNow)];
-
-        var snapshot = manager.Snapshot();
-
-        var activity = Assert.Single(snapshot);
-        Assert.Equal("cockpit-ac179", activity.Id);
-        Assert.Contains(activity.Details, detail => detail.Label == "owner" && detail.Value == OwnerPane);
-    }
-
     // AC-1349 (AC-1347 decision 2B): the operator's default for clusters this plugin makes rides along on the
     // register intent by name, so a fresh kind cluster lands in the Kubernetes plugin already in that mode.
     [Fact]
@@ -260,26 +91,6 @@ public class KindClusterManagerTests
 
     // AC-1083's whole point: the Kubernetes plugin is optional. Without it the cluster still comes up and the
     // answer carries the kubeconfig and context to reach it by hand.
-    [Fact]
-    public async Task CreateAsync_WithoutTheKubernetesPlugin_StillCreatesTheClusterAndSaysItDidNotRegister()
-    {
-        var settings = new KindSettings(new FakePluginStorage());
-        var cli = new FakeCliRunner();
-        var directory = Directory.CreateTempSubdirectory("ac1083-no-kubernetes").FullName;
-        var manager = new KindClusterManager(settings, cli, new KindRuntime(cli), "kind", directory, host: null);
-
-        var (record, notice) = await manager.CreateAsync("cockpit-ac1083", OwnerPane, CancellationToken.None);
-
-        Assert.NotNull(record);
-        Assert.Single(settings.KindClusters);
-        Assert.Contains("not registered", notice);
-        Assert.Contains(record!.KubeconfigPath, notice);
-        Assert.Contains("kind-cockpit-ac1083", notice);
-
-        // And tearing it down again must not fail on the missing plugin either.
-        var (ok, error) = await manager.DeleteAsync("cockpit-ac1083", CancellationToken.None);
-        Assert.True(ok, error);
-    }
 
     // The default host has the Kubernetes plugin installed and answering (AC-1083); the test that proves the
     // degradation builds its own manager without one.

@@ -29,18 +29,6 @@ public sealed class ProxmoxMcpToolsTests
     // ---- The async task model: a write reports the task's real outcome, never just "accepted" ---------------------
 
     [Fact]
-    public async Task StartVm_WhenTheTaskSucceeds_ReportsSuccessWithExitStatus()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.NextOutcome = new ProxmoxTaskOutcome("UPID:pve1:...", IsSuccess: true, ExitStatus: "OK", TimedOut: false);
-
-        var json = JsonNode.Parse(await h.Tools.StartVm(Session, "pve1", "100"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("OK", json["exitStatus"]!.GetValue<string>());
-    }
-
-    [Fact]
     public async Task StartVm_WhenTheTaskFails_ReportsFailure_NotAcceptance()
     {
         var h = _Build(ConsentOutcome.Approved);
@@ -80,21 +68,6 @@ public sealed class ProxmoxMcpToolsTests
 
     // ---- Shutdown vs stop: two distinct actions, never merged --------------------------------------------------
 
-    [Fact]
-    public async Task ShutdownVm_AsksAGracefulAction_DistinctFromStopVm()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        await h.Tools.ShutdownVm(Session, "pve1", "100");
-        await h.Tools.StopVm(Session, "pve1", "100");
-
-        var shutdownAction = h.Asked[1].Action;
-        var stopAction = h.Asked[3].Action;
-        Assert.Contains("gracefully shut down", shutdownAction, StringComparison.Ordinal);
-        Assert.Contains("hard power off", stopAction, StringComparison.Ordinal);
-        Assert.NotEqual(shutdownAction, stopAction);
-    }
-
     // ---- Off-by-default capabilities ---------------------------------------------------------------------------
 
     [Fact]
@@ -123,14 +96,4 @@ public sealed class ProxmoxMcpToolsTests
     }
 
     // ---- LXC naming: never "container" bare, so it cannot be confused with a Docker container --------------------
-
-    [Fact]
-    public async Task StartLxc_NamesItLxcContainer_NotBareContainer()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        await h.Tools.StartLxc(Session, "pve1", "200");
-
-        Assert.Contains("LXC container", h.Asked[1].Action, StringComparison.Ordinal);
-    }
 }

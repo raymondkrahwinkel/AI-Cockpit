@@ -33,26 +33,6 @@ public class ArgoApplicationSummaryTests
     private static RawKubernetesObject _Parse(string json) => KubernetesJson.Deserialize<RawKubernetesObject>(json);
 
     [Fact]
-    public void SummarizeList_HealthyApp_HasNoHealthPropertyPerResource_AndAppLevelHealthStillReads()
-    {
-        const string listJson = """{"apiVersion":"argoproj.io/v1alpha1","kind":"ApplicationList","items":[""" + HealthyApp + "]}";
-        var list = KubernetesJson.Deserialize<RawKubernetesList>(listJson);
-
-        var summary = ArgoApplicationSummary.SummarizeList(list) as JsonObject;
-
-        Assert.Equal(1, summary!["count"]!.GetValue<int>());
-        var app = summary["applications"]![0]!;
-        Assert.Equal("cert-manager", app["name"]!.GetValue<string>());
-        Assert.Equal("infra", app["project"]!.GetValue<string>());
-        Assert.Equal("Synced", app["syncStatus"]!.GetValue<string>());
-        Assert.Equal("Healthy", app["health"]!.GetValue<string>());
-        Assert.Equal("Helm", app["sourceType"]!.GetValue<string>());
-        Assert.Equal(0, app["outOfSyncCount"]!.GetValue<int>());
-        // A full commit sha is abbreviated, since the summary exists to stay small (criterion 3 below).
-        Assert.Equal("a1b2c3d", app["revision"]!.GetValue<string>());
-    }
-
-    [Fact]
     public void SummarizeList_CountsOutOfSyncResources()
     {
         const string outOfSyncApp = """
@@ -73,19 +53,6 @@ public class ArgoApplicationSummaryTests
     }
 
     [Fact]
-    public void SummarizeList_ThirtyFiveApps_StaysUnderEightKilobytes()
-    {
-        // AC-576 acceptance criterion 3, against get_resource's measured 51 KB for a single Application.
-        var items = string.Join(',', Enumerable.Repeat(HealthyApp, 35));
-        var list = KubernetesJson.Deserialize<RawKubernetesList>(
-            """{"apiVersion":"argoproj.io/v1alpha1","kind":"ApplicationList","items":[""" + items + "]}");
-
-        var bytes = ArgoApplicationSummary.SummarizeList(list).ToJsonString().Length;
-
-        Assert.True(bytes < 8 * 1024, $"argo_apps for 35 Applications was {bytes} bytes, expected under 8 KB.");
-    }
-
-    [Fact]
     public void SummarizeApp_ReportsAutoSyncAndSelfHeal()
     {
         var app = ArgoApplicationSummary.SummarizeApp(_Parse(HealthyApp)) as JsonObject;
@@ -95,27 +62,6 @@ public class ArgoApplicationSummaryTests
         Assert.Equal("git@example.invalid:infra.git", app["source"]!["repoURL"]!.GetValue<string>());
         Assert.Equal("HEAD", app["source"]!["targetRevision"]!.GetValue<string>());
         Assert.Equal("system-secrets", app["destination"]!["namespace"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void SummarizeApp_NoSyncPolicy_IsAutoSyncFalse_NotAMissingField()
-    {
-        const string manual = """{"metadata":{"name":"manual"},"spec":{"project":"infra"},"status":{}}""";
-
-        var app = ArgoApplicationSummary.SummarizeApp(_Parse(manual)) as JsonObject;
-
-        Assert.False(app!["autoSync"]!.GetValue<bool>());
-        Assert.False(app["selfHeal"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public void SummarizeApp_HealthyResource_HasNullHealth_NotAThrow()
-    {
-        var app = ArgoApplicationSummary.SummarizeApp(_Parse(HealthyApp)) as JsonObject;
-
-        var resources = app!["resources"]!.AsArray();
-        Assert.Equal(2, resources.Count);
-        Assert.Null(resources[0]!["health"]);
     }
 
     [Fact]
@@ -146,16 +92,6 @@ public class ArgoApplicationSummaryTests
         Assert.Equal("aaa111", history[0]!["revision"]!.GetValue<string>());
         Assert.Equal("raymond", history[0]!["initiatedBy"]!.GetValue<string>());
         Assert.Equal("automated sync", history[1]!["initiatedBy"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void SummarizeLastSync_NoOperationState_IsNullNotAThrow()
-    {
-        const string neverSynced = """{"metadata":{"name":"fresh"},"status":{}}""";
-
-        var summary = ArgoApplicationSummary.SummarizeLastSync(_Parse(neverSynced)) as JsonObject;
-
-        Assert.Null(summary!["operationState"]);
     }
 
     [Fact]

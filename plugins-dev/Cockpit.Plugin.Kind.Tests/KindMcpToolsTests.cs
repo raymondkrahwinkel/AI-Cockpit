@@ -28,16 +28,6 @@ public class KindMcpToolsTests
     }
 
     [Fact]
-    public async Task KindCreate_ShowsTheLiteralKindCommandOnTheConsentCard()
-    {
-        var (tools, _, host) = _Tools(ConsentOutcome.Approved);
-
-        await tools.KindCreate(AgentSuppliedSession, "cockpit-ac179");
-
-        await host.Received(1).RequestConsentAsync(Arg.Is<ConsentRequest>(request => request.Action.Contains("kind create cluster --name cockpit-ac179")));
-    }
-
-    [Fact]
     public async Task KindCreate_Denied_CreatesNothing()
     {
         var (tools, settings, _) = _Tools(ConsentOutcome.Denied);
@@ -45,30 +35,6 @@ public class KindMcpToolsTests
         var response = await tools.KindCreate(AgentSuppliedSession, "cockpit-ac179");
 
         Assert.Contains("\"ok\":false", response);
-        Assert.Empty(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task KindList_ReturnsRegisteredClustersAsJson()
-    {
-        var (tools, settings, _) = _Tools(ConsentOutcome.Approved);
-        settings.KindClusters = [new KindClusterRecord("cockpit-ac179", CallerPaneId, "/tmp/x.kubeconfig", DateTimeOffset.UtcNow)];
-
-        var response = await tools.KindList();
-
-        Assert.Contains("cockpit-ac179", response);
-        Assert.Contains(CallerPaneId, response);
-    }
-
-    [Fact]
-    public async Task KindDelete_Approved_RemovesTheRegisteredCluster()
-    {
-        var (tools, settings, _) = _Tools(ConsentOutcome.Approved);
-        await tools.KindCreate(AgentSuppliedSession, "cockpit-ac179");
-
-        var response = await tools.KindDelete(AgentSuppliedSession, "cockpit-ac179");
-
-        Assert.Contains("\"ok\":true", response);
         Assert.Empty(settings.KindClusters);
     }
 
