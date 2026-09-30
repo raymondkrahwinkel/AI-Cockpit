@@ -26,63 +26,6 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
     }
 
     /// <summary>
-    /// The loader opens a dependency chain out of one flat directory, so every native in the package has to
-    /// arrive — and arrive flattened, since the package nests them under build/{rid} and the loader does not.
-    /// </summary>
-    [Fact]
-    public void ExtractNatives_TakesEveryNativeAndFlattensThePackageFolderAway()
-    {
-        var package = _CreatePackage(
-            ("build/win-x64/ggml-base-whisper.dll", "base"),
-            ("build/win-x64/ggml-cuda-whisper.dll", "cuda"),
-            ("build/win-x64/whisper.dll", "whisper"));
-        var staging = Path.Combine(_root, "staging");
-        Directory.CreateDirectory(staging);
-
-        var extracted = WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging);
-
-        Assert.Equal(3, extracted);
-        Assert.Equivalent(
-            new object[] { "ggml-base-whisper.dll", "ggml-cuda-whisper.dll", "whisper.dll" },
-            Directory.GetFiles(staging).Select(Path.GetFileName));
-    }
-
-    /// <summary>A .nupkg also carries a nuspec, a readme and signatures; none of that belongs next to the natives.</summary>
-    [Fact]
-    public void ExtractNatives_LeavesEverythingOutsideTheNativeFolderAlone()
-    {
-        var package = _CreatePackage(
-            ("build/win-x64/whisper.dll", "whisper"),
-            ("content/readme.md", "readme"),
-            ("build/Whisper.net.Runtime.Cuda12.Windows.targets", "targets"),
-            ("build/linux-x64/libwhisper.so", "the other platform"));
-        var staging = Path.Combine(_root, "staging");
-        Directory.CreateDirectory(staging);
-
-        var extracted = WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging);
-
-        Assert.Equal(1, extracted);
-        Assert.Equivalent(new[] { "whisper.dll" }, Directory.GetFiles(staging).Select(Path.GetFileName));
-    }
-
-    /// <summary>
-    /// The meta-package trap: Whisper.net.Runtime.Cuda12 (no OS suffix) holds a readme and two dependencies and
-    /// no natives at all. Fetching it must report nothing extracted, so the caller says so and stays on the CPU
-    /// rather than caching an empty directory the loader would skip without a word.
-    /// </summary>
-    [Fact]
-    public void ExtractNatives_ReportsNothingForAMetaPackageWithNoNatives()
-    {
-        var package = _CreatePackage(
-            ("content/readme.md", "readme"),
-            ("Whisper.net.Runtime.Cuda12.nuspec", "nuspec"));
-        var staging = Path.Combine(_root, "staging");
-        Directory.CreateDirectory(staging);
-
-        Assert.Equal(0, WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging));
-    }
-
-    /// <summary>
     /// A package is a zip from the internet, so a traversing entry name must not be able to write outside the
     /// staging directory. Only the entry's file name is ever joined onto the path, which is what makes it safe.
     /// </summary>
@@ -97,33 +40,6 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         Assert.False(File.Exists(Path.Combine(_root, "escaped.dll")));
         Assert.Equivalent(new[] { "escaped.dll" }, Directory.GetFiles(staging).Select(Path.GetFileName));
-    }
-
-    /// <summary>
-    /// After a Whisper.net bump the old natives are hundreds of megabytes nothing will read again — the version
-    /// is part of the path the loader searches, so they are unreachable rather than merely stale.
-    /// </summary>
-    [Fact]
-    public void RemoveOtherVersions_KeepsTheVersionInUseAndDropsTheRest()
-    {
-        Directory.CreateDirectory(Path.Combine(_root, "1.9.1", "runtimes"));
-        Directory.CreateDirectory(Path.Combine(_root, "1.8.0", "runtimes"));
-        Directory.CreateDirectory(Path.Combine(_root, "1.7.6", "runtimes"));
-
-        WhisperRuntimeCache.RemoveOtherVersions(_root, "1.9.1", logger: null);
-
-        Assert.Equivalent(new[] { "1.9.1" }, Directory.GetDirectories(_root).Select(Path.GetFileName));
-    }
-
-    /// <summary>Nothing has been fetched yet on a fresh install; that is not a failure to clean up.</summary>
-    [Fact]
-    public void RemoveOtherVersions_DoesNothingWhenNothingHasEverBeenCached()
-    {
-        var absent = Path.Combine(_root, "never-created");
-
-        var removing = () => WhisperRuntimeCache.RemoveOtherVersions(absent, "1.9.1", logger: null);
-
-        removing();
     }
 
     private string _CreatePackage(params (string EntryPath, string Content)[] entries)

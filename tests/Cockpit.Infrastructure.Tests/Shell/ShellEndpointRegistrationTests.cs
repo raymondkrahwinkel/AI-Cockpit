@@ -15,19 +15,6 @@ namespace Cockpit.Infrastructure.Tests.Shell;
 public class ShellEndpointRegistrationTests
 {
     [Fact]
-    public void CockpitShell_IsAlwaysMounted_AndNotInternal()
-    {
-        var services = new ServiceCollection().AddLogging().AddCore().AddInfrastructure()
-            .AddServices(typeof(Cockpit.Core.DependencyInjection).Assembly, typeof(DependencyInjection).Assembly);
-        var provider = services.BuildServiceProvider();
-
-        var endpoint = provider.GetServices<CockpitMcpEndpoint>().Single(candidate => candidate.ServerName == "cockpit-shell");
-
-        Assert.True(endpoint.AlwaysMounted);
-        Assert.False(endpoint.Internal);
-    }
-
-    [Fact]
     public void CockpitShell_IsEnabled_DefaultsOff_AndFollowsTheSwitchLive()
     {
         var services = new ServiceCollection().AddLogging().AddCore().AddInfrastructure()

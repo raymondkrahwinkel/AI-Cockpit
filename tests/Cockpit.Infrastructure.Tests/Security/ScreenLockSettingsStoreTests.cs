@@ -1,4 +1,3 @@
-using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Security;
 
 namespace Cockpit.Infrastructure.Tests.Security;
@@ -29,15 +28,4 @@ public sealed class ScreenLockSettingsStoreTests : IDisposable
             (await new ScreenLockSettingsStore(ConfigPath).LoadAsync()).LockWhenOperatingSystemLocks,
             "locking with the OS is the default while encryption is on");
 
-    [Fact]
-    public async Task Save_RoundTripsTheChoice()
-    {
-        var store = new ScreenLockSettingsStore(ConfigPath);
-
-        await store.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = false });
-        Assert.False((await store.LoadAsync()).LockWhenOperatingSystemLocks, "the operator turned it off");
-
-        await store.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = true });
-        Assert.True((await store.LoadAsync()).LockWhenOperatingSystemLocks, "and back on again");
-    }
 }

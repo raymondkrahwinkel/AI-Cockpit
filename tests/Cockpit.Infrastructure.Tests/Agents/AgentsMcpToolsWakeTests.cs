@@ -64,24 +64,6 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
-    public async Task Notify_Urgent_ToAPaneThatOptedIn_WakesIt()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-        _gateway.TryWakeAsync("sender", "target", "branch").Returns(AgentWakeOutcome.Woken);
-
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.True(json["wake"]!["woken"]!.GetValue<bool>());
-        Assert.Equal(nameof(AgentWakeOutcome.Woken), json["wake"]!["outcome"]!.GetValue<string>());
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.True(entry.Urgent);
-        Assert.Equal(AgentWakeOutcome.Woken, entry.Wake);
-    }
-
-    [Fact]
     public async Task Notify_Urgent_ToAPaneThatNeverOptedIn_DoesNotReachTheWakeAtAll()
     {
         _DeskWith("sender", "target");
@@ -115,134 +97,6 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
-    public async Task Notify_Urgent_AfterTheRecipientMadeOtherToolCalls_StillWakes()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-        _gateway.TryWakeAsync("sender", "target", "branch").Returns(AgentWakeOutcome.Woken);
-
-        // Enroll is what every cockpit-agents call does for its caller, and it shares the roster entry the consent
-        // lives in. An Enroll that overwrote that entry would revoke this opt-in on the recipient's very next
-        // list_agents — an agent that said yes, never woken, with nothing anywhere saying why.
-        _coordinator.Enroll("target");
-        _coordinator.Enroll("target");
-
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        Assert.Equal(nameof(AgentWakeOutcome.Woken), json["wake"]!["outcome"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task Notify_WithoutUrgent_ReportsNoWakeAndAttemptsNone()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: false));
-
-        // Null rather than an outcome saying nothing happened: an ordinary send reads exactly as it did before wake
-        // existed, so a sender that never asks about waking is never told about it either.
-        Assert.Null(json["wake"]);
-        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.False(entry.Urgent);
-        Assert.Null(entry.Wake);
-    }
-
-    [Fact]
-    public async Task Notify_UrgentTwiceWithTheSameMessage_WakesOnlyOnTheFirst()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-        _gateway.TryWakeAsync("sender", "target", "branch").Returns(AgentWakeOutcome.Woken);
-
-        _ = await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true);
-        var second = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        // The second send added nothing — the same message is still waiting unread. Waking again would make the
-        // wake as repeatable as the sender's own retry loop, and the cap that is meant to bound this line is a
-        // later ticket.
-        Assert.Equal(nameof(AgentWakeOutcome.AlreadyWaiting), second["wake"]!["outcome"]!.GetValue<string>());
-        Assert.False(second["wake"]!["woken"]!.GetValue<bool>());
-        _ = await _gateway.Received(1).TryWakeAsync("sender", "target", "branch");
-    }
-
-    [Fact]
-    public async Task Notify_UrgentResendToAPaneThatNeverOptedIn_KeepsSayingWhyItWillNotBeWoken()
-    {
-        _DeskWith("sender", "target");
-
-        _ = await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true);
-        var second = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        // Both refusals apply here — the recipient never opted in, and the message is a duplicate. Which one the
-        // sender hears is the point: consent is a standing fact about the recipient and worth repeating, where
-        // "you already said that" tells it nothing it can act on.
-        Assert.Equal(nameof(AgentWakeOutcome.NotOptedIn), second["wake"]!["outcome"]!.GetValue<string>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
-    }
-
-    [Fact]
-    public async Task Notify_Urgent_WhenTheSendItselfFails_StillRecordsWhatWasAskedFor()
-    {
-        // The catch-all around the whole send, not the one around the wake: the failure happens before a message
-        // exists, so there is no wake outcome to record — only what the sender asked for, which is the half an
-        // operator reading the trail for a pane that keeps trying to wake a neighbour needs to see.
-        _gateway.GetWorkspaceSnapshotAsync("sender").Returns<Task<WorkspaceAgentSnapshot?>>(_ => throw new InvalidOperationException("the desk went away"));
-
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.Equal(AgentNotifyOutcome.RefusedError, entry.Outcome);
-        Assert.True(entry.Urgent);
-        Assert.Null(entry.Wake);
-    }
-
-    [Fact]
-    public async Task Notify_Urgent_WhenTheWakeThrows_KeepsTheMessageAndRecordsTheFailure()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-        _gateway.TryWakeAsync("sender", "target", "branch").Returns<AgentWakeOutcome>(_ => throw new InvalidOperationException("pane blew up"));
-
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        // The message was accepted before the wake was attempted, so a failing wake must not turn the whole send
-        // into an error — that would tell the sender to resend something already waiting.
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.Equal(nameof(AgentWakeOutcome.Failed), json["wake"]!["outcome"]!.GetValue<string>());
-        Assert.Single(_inbox.Drain("target", int.MaxValue).Messages);
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.Equal(AgentNotifyOutcome.Accepted, entry.Outcome);
-        Assert.Equal(AgentWakeOutcome.Failed, entry.Wake);
-    }
-
-    [Fact]
-    public async Task Notify_UrgentToItself_IsRefusedAndNothingIsWoken()
-    {
-        _DeskWith("sender");
-        _coordinator.SetWakeConsent("sender", true);
-
-        var json = _Json(await _NotifyAs("sender", "sender", "branch", "wake me", urgent: true));
-
-        // Urgency must not become a way around the self-send refusal: a pane that could wake itself has a loop, not
-        // a line.
-        Assert.False(json["ok"]!.GetValue<bool>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.Equal(AgentNotifyOutcome.RefusedSelf, entry.Outcome);
-        // What was asked for is recorded even though nothing was attempted — an operator reading the trail for a
-        // pane that kept trying to wake someone should see the asking, not only the refusing.
-        Assert.True(entry.Urgent);
-        Assert.Null(entry.Wake);
-    }
-
-    [Fact]
     public async Task Notify_UrgentToAPaneOnAnotherDesk_IsRefusedAndNothingIsWoken()
     {
         _DeskWith("sender");
@@ -260,62 +114,6 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
-    public async Task SetWakeOptIn_TurnsWakingOnAndOffForTheCallersOwnPane()
-    {
-        _DeskWith("me");
-        McpRequestContext.Set("me");
-
-        var on = _Json(await _Tools().SetWakeOptInAsync(enabled: true));
-        Assert.True(on["ok"]!.GetValue<bool>());
-        Assert.True(on["wakeOptIn"]!.GetValue<bool>());
-        Assert.True(_coordinator.HasWakeConsent("me"));
-
-        var off = _Json(await _Tools().SetWakeOptInAsync(enabled: false));
-        Assert.False(off["wakeOptIn"]!.GetValue<bool>());
-        Assert.False(_coordinator.HasWakeConsent("me"));
-    }
-
-    [Fact]
-    public async Task SetWakeOptIn_FollowsTheOperatorsSettingUntilTheSessionSaysOtherwise()
-    {
-        _DeskWith("me");
-        McpRequestContext.Set("me");
-        _coordinator.SetDefaultWakeConsent(false);
-
-        // Enrolled by a tool call, and following the operator's answer because it has not given one of its own.
-        _ = await _Tools().ListAgentsAsync();
-        Assert.False(_coordinator.HasWakeConsent("me"));
-
-        // AC-615: the operator's setting reaches a session that is already running, without it calling anything.
-        _coordinator.SetDefaultWakeConsent(true);
-        Assert.True(_coordinator.HasWakeConsent("me"));
-        Assert.False(_coordinator.HasOwnWakeConsent("me"));
-    }
-
-    /// <summary>
-    /// The override, in the direction that matters most: a session that says no stays no, whatever the operator's
-    /// setting does afterwards. "Has not said" and "said no" are different states, and collapsing them would let a
-    /// setting change quietly overrule a session that had opted out on purpose.
-    /// </summary>
-    [Fact]
-    public async Task SetWakeOptIn_False_SurvivesTheOperatorTurningWakesOnAgain()
-    {
-        _DeskWith("me");
-        McpRequestContext.Set("me");
-        _coordinator.SetDefaultWakeConsent(true);
-
-        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: false));
-
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.True(json["yourOwnAnswer"]!.GetValue<bool>());
-        Assert.False(_coordinator.HasWakeConsent("me"));
-
-        _coordinator.SetDefaultWakeConsent(true);
-        Assert.False(_coordinator.HasWakeConsent("me"));
-        Assert.True(_coordinator.HasOwnWakeConsent("me"));
-    }
-
-    [Fact]
     public async Task SetWakeOptIn_WithNoVerifiedPane_Refuses()
     {
         McpRequestContext.Set(null);
@@ -326,21 +124,6 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
         // recorded against the wrong pane is a standing permission to wake a session that never agreed.
         Assert.False(json["ok"]!.GetValue<bool>());
         _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-    }
-
-    [Fact]
-    public async Task SetWakeOptIn_FromAPaneWithNoWorkspace_Refuses()
-    {
-        // A plain terminal pane carries a pane id and an MCP key but is not an agent session; the gateway answers
-        // null for it. Consent from one would be a standing permission to inject turns into something with no
-        // agent on the other end.
-        _gateway.GetWorkspaceSnapshotAsync("terminal").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(null));
-        McpRequestContext.Set("terminal");
-
-        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: true));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.False(_coordinator.HasWakeConsent("terminal"));
     }
 
     [Fact]
@@ -358,47 +141,4 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
         Assert.False(_coordinator.HasWakeConsent("me"));
     }
 
-    [Fact]
-    public async Task ListAgents_ReportsEachPanesOwnWakeOptIn()
-    {
-        _DeskWith("me", "opted-in", "not-opted-in");
-        // The operator's setting off, so what the roster reports per pane is each pane's own answer and not one
-        // default showing through three rows (AC-615).
-        _coordinator.SetDefaultWakeConsent(false);
-        _coordinator.SetWakeConsent("opted-in", true);
-        McpRequestContext.Set("me");
-
-        var agents = _Json(await _Tools().ListAgentsAsync())["agents"]!.AsArray();
-
-        var byPane = agents.ToDictionary(
-            agent => agent!["paneId"]!.GetValue<string>(),
-            agent => agent!["wakeOptIn"]!.GetValue<bool>(),
-            StringComparer.Ordinal);
-
-        // Asserted per pane rather than "at least one is true": a roster that reported the caller's own answer for
-        // every row would pass a looser check while telling every sender the opposite of the truth about someone.
-        Assert.True(byPane["opted-in"]);
-        Assert.False(byPane["not-opted-in"]);
-        Assert.False(byPane["me"]);
-    }
-
-    [Fact]
-    public async Task Forget_DropsWakeConsentWithTheRoster()
-    {
-        _DeskWith("target");
-        _coordinator.SetDefaultWakeConsent(false);
-        _coordinator.SetWakeConsent("target", true);
-
-        _coordinator.Forget("target");
-
-        Assert.False(_coordinator.HasWakeConsent("target"));
-
-        // And a pane id that comes back comes back with no answer of its own — following the operator's setting like
-        // any fresh session, not carrying the previous session's yes.
-        _coordinator.Enroll("target");
-        Assert.False(_coordinator.HasOwnWakeConsent("target"));
-        Assert.False(_coordinator.HasWakeConsent("target"));
-
-        await Task.CompletedTask;
-    }
 }

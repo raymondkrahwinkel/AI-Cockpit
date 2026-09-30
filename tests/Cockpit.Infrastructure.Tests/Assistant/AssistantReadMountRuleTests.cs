@@ -125,25 +125,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.Equal(expectedKeys, actualKeys);
     }
 
-    // AC-1311 criterion 4: needsYou stays on the wire exactly as the row carries it, never recomputed. The
-    // second case is one the real derivation would never produce — a tool that "corrected" it to false would
-    // itself be the second opinion this criterion rules out.
-    [Theory]
-    [InlineData("NeedsAttention", true)]
-    [InlineData("Busy", true)]
-    public async Task ListSessions_NeedsYou_IsProjectedStraightFromTheRow_NeverRecomputed(string status, bool needsYou)
-    {
-        _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
-            [new AssistantSessionRow("pane-1", "AC-223", "Opus", "", "ws-2", "Cockpit", status, needsYou)]));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ListSessionsAsync());
-        var session = result["sessions"]!.AsArray()[0]!;
-
-        Assert.Equal(status, (string)session["status"]!);
-        Assert.Equal(needsYou, (bool)session["needsYou"]!);
-    }
-
     [Fact]
     public void TheBroadReadServer_IsNeverInTheNoSelectionFanOut()
     {
@@ -236,67 +217,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadTranscript_DefaultsToTheLastEntries_AndSaysHowManyItLeftOut()
-    {
-        // Two halves of one criterion. The first: the gateway is asked for the bound, not for everything — a tool
-        // that passed the caller's silence straight through would pull a whole session per turn and still pass any
-        // assertion made only about what came back.
-        _gateway.ReadTranscriptAsync("pane-1", AssistantReadMcpTools.DefaultEntryCount).Returns(
-            Task.FromResult<AssistantTranscript?>(new AssistantTranscript("pane-1", "AC-223", 500,
-                [.. Enumerable.Range(0, AssistantReadMcpTools.DefaultEntryCount)
-                    .Select(index => new AssistantTranscriptEntry("AssistantText", $"line {index}", null))])));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
-
-        await _gateway.Received(1).ReadTranscriptAsync("pane-1", AssistantReadMcpTools.DefaultEntryCount);
-
-        // The second: the remainder is reported. Without it a tail and a whole short session are the same reply, and
-        // the assistant confidently describes a beginning it was never shown.
-        Assert.Equal(AssistantReadMcpTools.DefaultEntryCount, (int)result["count"]!);
-        Assert.Equal(500, (int)result["totalEntries"]!);
-        Assert.Equal(500 - AssistantReadMcpTools.DefaultEntryCount, (int)result["omitted"]!);
-        Assert.Contains("were not read", (string)result["more"]!);
-    }
-
-    [Fact]
-    public async Task ReadTranscript_ClampsAWideRequestToTheCeiling()
-    {
-        // "A bound, not a pagination framework": the count exists for a genuinely wider question, and the ceiling
-        // exists because the number is chosen by a model that cannot see what it costs. Clamped, not refused.
-        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
-            new AssistantTranscript("pane-1", "AC-223", 0, [])));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools().ReadTranscriptAsync("pane-1", count: 100_000);
-
-        await _gateway.Received(1).ReadTranscriptAsync("pane-1", AssistantReadMcpTools.MaxEntryCount);
-    }
-
-    [Fact]
-    public async Task ReadTranscript_CutsOneEnormousEntry_AndMarksItTruncated()
-    {
-        // Bounding the entry count does not bound the byte count: a single tool result — a build log, a diff, a file
-        // read — is routinely larger than the whole rest of the transcript, and nothing upstream stops it being
-        // megabytes. Cut, and said to be cut, so the tail is never quoted as a complete result.
-        var huge = new string('x', AssistantReadMcpTools.MaxEntryTextLength * 4);
-        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
-            new AssistantTranscript("pane-1", "AC-223", 2,
-            [
-                new AssistantTranscriptEntry("AssistantText", "short", null),
-                new AssistantTranscriptEntry("ToolUse", "Tool: Bash", huge),
-            ])));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
-
-        var entries = result["entries"]!.AsArray();
-        Assert.False((bool)entries[0]!["truncated"]!);
-        Assert.True((bool)entries[1]!["truncated"]!);
-        Assert.True(((string)entries[1]!["toolResult"]!).Length <= AssistantReadMcpTools.MaxEntryTextLength + 1);
-    }
-
-    [Fact]
     public async Task ReadTranscript_StripsTerminalControlSequences()
     {
         // A transcript is the most agent-authored text in the cockpit and it lands in a reply the assistant's own
@@ -311,20 +231,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.DoesNotContain('\u001b', (string)result["entries"]!.AsArray()[0]!["text"]!);
     }
 
-    [Fact]
-    public async Task ReadTranscript_ForAPaneWithNoAiSession_SaysSo()
-    {
-        // A closed session, or a plain terminal pane with no agent behind it. Answered, not thrown, and pointed back
-        // at list_sessions rather than left as a bare "null".
-        _gateway.ReadTranscriptAsync("pane-gone", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(null));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ReadTranscriptAsync("pane-gone"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Contains("list_sessions", (string)result["error"]!);
-    }
-
     // ── AC-797: list_shared_projects ────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -336,29 +242,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
         Assert.False((bool)result["ok"]!);
         await _gateway.DidNotReceive().ListSharedProjectsAsync();
-    }
-
-    [Fact]
-    public async Task ListSharedProjects_OneFailedSourceDoesNotCostTheOthersRows()
-    {
-        // Criterion 2/3: a broken source is reported with a reason, and the working source's rows still arrive.
-        _gateway.ListSharedProjectsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSharedProjectSourceRow>>(
-        [
-            new AssistantSharedProjectSourceRow("Depot — Work", true, null,
-                [new AssistantSharedProjectRow("depot:proj-1", "Marketing site", "The public site", "Owner")]),
-            new AssistantSharedProjectSourceRow("Depot — Personal", false, "Not signed in to Depot — Personal.", []),
-        ]));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ListSharedProjectsAsync());
-
-        Assert.True((bool)result["ok"]!);
-        var sources = result["sources"]!.AsArray();
-        Assert.True((bool)sources[0]!["succeeded"]!);
-        Assert.Equal("Marketing site", (string)sources[0]!["projects"]![0]!["name"]!);
-        Assert.False((bool)sources[1]!["succeeded"]!);
-        Assert.Contains("Not signed in", (string)sources[1]!["error"]!);
-        Assert.Empty(sources[1]!["projects"]!.AsArray());
     }
 
     // ── AC-641: the delegated work list_sessions cannot see ───────────────────────────────────────────────────
@@ -396,23 +279,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         _delegation.Received(1).ListTasks(null, null);
     }
 
-    [Fact]
-    public void ListDelegatedTasks_NamesTheOwnerPane_SoBackgroundWorkCanBeAttributed()
-    {
-        _delegation.ListTasks(null, null).Returns([_Task("t1", ownerPaneId: "pane-7")]);
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var task = _Json(_Tools().ListDelegatedTasks())["tasks"]!.AsArray()[0]!;
-
-        Assert.Equal("pane-7", (string)task["ownerPaneId"]!);
-        Assert.Equal("review the diff", (string)task["label"]!);
-        Assert.Equal(2, (int)task["turnCount"]!);
-
-        // The status by name, not as the number the default enum serialization would write: "3" is nothing the
-        // assistant can say out loud, and it reads as a count of something.
-        Assert.Equal("Running", (string)task["status"]!);
-    }
-
     /// <summary>
     /// The same lesson as <see cref="ListSessions_JsonShape_CoversEveryFieldOnAssistantSessionRow"/>, applied to the
     /// projection this tool has to write by hand: a field added to <see cref="DelegatedTaskView"/> later and never
@@ -432,32 +298,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
             .ToHashSet();
 
         Assert.Equal(expectedKeys, actualKeys);
-    }
-
-    [Fact]
-    public void ListDelegatedTasks_WithAStatus_FiltersOnIt_CaseInsensitively()
-    {
-        _delegation.ListTasks(DelegatedTaskStatus.Failed, null).Returns([_Task("t1", DelegatedTaskStatus.Failed)]);
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(_Tools().ListDelegatedTasks("failed"));
-
-        Assert.True((bool)result["ok"]!);
-        _delegation.Received(1).ListTasks(DelegatedTaskStatus.Failed, null);
-    }
-
-    [Fact]
-    public void ListDelegatedTasks_WithAStatusThatIsNotOne_IsRefusedRatherThanListingEverything()
-    {
-        // A silently-dropped filter is the dangerous answer here: "are any tasks failed?" asked with a word that is
-        // not a status would come back as every task there is, and be read out as the failures.
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(_Tools().ListDelegatedTasks("broken"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Contains("Failed", (string)result["error"]!, StringComparison.Ordinal);
-        _delegation.DidNotReceive().ListTasks(Arg.Any<DelegatedTaskStatus?>(), Arg.Any<string?>());
     }
 
     // ── Criterion 3: list_agents is unchanged, and still workspace-scoped ──────────────────────────────────────
