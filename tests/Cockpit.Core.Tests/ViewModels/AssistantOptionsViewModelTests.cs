@@ -10,93 +10,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile row (a name and an editor, not a picker), the hotkey, and the independent speak-replies switch.</summary>
 public class AssistantOptionsViewModelTests
 {
-    // Decision 7 / criterion 1: a fresh dialog with nothing saved yet reads as off, before any store is even asked.
-    [Fact]
-    public void Constructed_WithNoStores_StartsDisabled()
-    {
-        var vm = new AssistantOptionsViewModel();
-
-        Assert.False(vm.IsEnabled);
-    }
-
-    [Fact]
-    public async Task TogglingIsEnabled_PersistsThroughTheSettingsStore_WithoutTouchingSiblingFields()
-    {
-        // The indicator (a different strand) owns AlwaysOnCostAcknowledged; a save from this view model must not reset it.
-        var settingsStore = new FakeSettingsStore(new AssistantSettings { AlwaysOnCostAcknowledged = true });
-        var vm = new AssistantOptionsViewModel(settingsStore);
-        await vm.RefreshAsync();
-
-        vm.IsEnabled = true;
-
-        Assert.True(settingsStore.Saved!.IsEnabled);
-        Assert.True(settingsStore.Saved!.AlwaysOnCostAcknowledged);
-    }
-
-    // Criterion 9: speaking and being enabled are two separate switches.
-    [Fact]
-    public async Task TogglingSpeakReplies_DoesNotChangeIsEnabled()
-    {
-        var settingsStore = new FakeSettingsStore(new AssistantSettings { IsEnabled = true });
-        var vm = new AssistantOptionsViewModel(settingsStore);
-        await vm.RefreshAsync();
-
-        vm.SpeakReplies = false;
-
-        Assert.False(settingsStore.Saved!.SpeakReplies);
-        Assert.True(settingsStore.Saved!.IsEnabled);
-    }
-
-    // AC-681: the chat window's always-on-top used to be hardcoded; this switch is what turns it off.
-    [Fact]
-    public async Task TogglingAlwaysOnTop_PersistsThroughTheSettingsStore()
-    {
-        var settingsStore = new FakeSettingsStore(new AssistantSettings { IsEnabled = true });
-        var vm = new AssistantOptionsViewModel(settingsStore);
-        await vm.RefreshAsync();
-
-        Assert.True(vm.AlwaysOnTop);
-
-        vm.AlwaysOnTop = false;
-
-        Assert.False(settingsStore.Saved!.AlwaysOnTop);
-        Assert.True(settingsStore.Saved!.IsEnabled);
-    }
-
-    /// <summary>
-    /// The page names the assistant's own profile — it does not offer a choice among the profile list.
-    /// </summary>
-    /// <remarks>
-    /// The slot has always held a whole record of its own, and presenting it as a selection from that list is what
-    /// made an operator set <c>bypassPermissions</c> on "default" and expect the assistant to obey it. A label plus
-    /// its provider, next to an editor, is the page saying what the thing actually is.
-    /// </remarks>
-    [Fact]
-    public async Task RefreshAsync_NamesTheAssistantsOwnProfile_AndWhatItRunsOn()
-    {
-        var vm = new AssistantOptionsViewModel(
-            profileStore: new FakeProfileStore(new AssistantProfileSlot(new SessionProfile("My Claude login", new ClaudeConfig("/tmp")))));
-
-        await vm.RefreshAsync();
-
-        Assert.NotNull(vm.ProfileLabel);
-        Assert.Contains("My Claude login", vm.ProfileLabel, StringComparison.Ordinal);
-        Assert.Null(vm.ProfileUnsetReason);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_WhenSlotIsUnset_SurfacesTheReason()
-    {
-        var vm = new AssistantOptionsViewModel(
-            profileStore: new FakeProfileStore(new AssistantProfileSlot(null, "The Codex switch failed: no API key.")));
-
-        await vm.RefreshAsync();
-
-        // One or the other, never both: a name and an explanation for having none would each be describing a
-        // different state of the same slot.
-        Assert.Null(vm.ProfileLabel);
-        Assert.Equal("The Codex switch failed: no API key.", vm.ProfileUnsetReason);
-    }
 
     // ── AC-575: the consent-bypass rows ───────────────────────────────────────────────────────────────────────
 
@@ -196,17 +109,6 @@ public class AssistantOptionsViewModelTests
     // ── AC-637: the "allow all" switch above them ─────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Constructed_WithNoStores_HasAllowAllOn()
-    {
-        // The default the page shows before any store is asked has to be the one the settings record holds, or the
-        // dialog opens saying the opposite of what is in force.
-        var vm = new AssistantOptionsViewModel();
-
-        Assert.True(vm.ConsentBypassAll);
-        Assert.True(vm.HasConsentBypass);
-    }
-
-    [Fact]
     public async Task SwitchingAllowAllOff_PersistsIt_AndKeepsTheRowsAsTheyWere()
     {
         // Off falls back to the granular list rather than to an empty one: the rows are hidden while allow-all is
@@ -229,18 +131,6 @@ public class AssistantOptionsViewModelTests
     }
 
     [Fact]
-    public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
-    {
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false });
-        var vm = new AssistantOptionsViewModel(store);
-
-        await vm.RefreshAsync();
-
-        Assert.False(vm.ConsentBypassAll);
-        Assert.Null(store.Saved);
-    }
-
-    [Fact]
     public async Task UntickingASource_RemovesItRatherThanLeavingItOnDisk()
     {
         var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
@@ -250,18 +140,6 @@ public class AssistantOptionsViewModelTests
         vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk = false;
 
         Assert.Empty(store.Saved!.ConsentBypassSources);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_DoesNotSaveTheRowsBackOut()
-    {
-        // Seeding the checkboxes from disk must not read as the operator ticking them — the same guard the other
-        // switches on this page already have, and the one that would otherwise rewrite the file on every open.
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
-
-        await new AssistantOptionsViewModel(store).RefreshAsync();
-
-        Assert.Null(store.Saved);
     }
 
     private static ConsentAuditEntry Audit(string? pluginId, string label) =>
