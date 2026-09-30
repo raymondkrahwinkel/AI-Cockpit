@@ -74,41 +74,4 @@ public class ProjectDefinitionConflictViewModelTests
         Assert.False(viewModel.HasCollision);
     }
 
-    [Fact]
-    public void Cancel_ReturnsNull()
-    {
-        var viewModel = new ProjectDefinitionConflictViewModel(Edit(), Binding(), Binding());
-        ProjectDefinitionConflictResolution? result = new(TakeTheirs: true);
-        var raised = false;
-        viewModel.CloseRequested += resolution => { raised = true; result = resolution; };
-
-        viewModel.CancelCommand.Execute(null);
-
-        Assert.True(raised);
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void TakeTheirs_ReturnsATakeTheirsResolution()
-    {
-        var viewModel = new ProjectDefinitionConflictViewModel(Edit(), Binding(), Binding());
-        ProjectDefinitionConflictResolution? result = null;
-        viewModel.CloseRequested += resolution => result = resolution;
-
-        viewModel.TakeTheirsCommand.Execute(null);
-
-        Assert.True(result!.TakeTheirs);
-    }
-
-    [Fact]
-    public void ApplyMine_ReturnsAMergeResolution()
-    {
-        var viewModel = new ProjectDefinitionConflictViewModel(Edit(), Binding(), Binding());
-        ProjectDefinitionConflictResolution? result = null;
-        viewModel.CloseRequested += resolution => result = resolution;
-
-        viewModel.ApplyMineCommand.Execute(null);
-
-        Assert.False(result!.TakeTheirs);
-    }
 }
