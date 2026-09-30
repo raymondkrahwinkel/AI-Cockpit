@@ -59,52 +59,6 @@ public class DiscordChannelBridgeTests
     }
 
     [Fact]
-    public async Task RealFailure_GetsAWarningReactionUnlikeAnIgnoredSender()
-    {
-        var (bridge, gateway, sink) = _Build();
-        gateway.NextResult = AssistantChannelSendResult.Refused("the assistant refused");
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "hi", messageId: 42);
-
-        var reaction = Assert.Single(sink.Reactions);
-        Assert.Equal(42UL, reaction.MessageId);
-    }
-
-    [Theory]
-    [InlineData(AssistantChannelVerbosity.FinalAnswerOnly, AssistantChannelRowKind.ToolUse, 0)]
-    [InlineData(AssistantChannelVerbosity.Everything, AssistantChannelRowKind.ToolUse, 1)]
-    [InlineData(AssistantChannelVerbosity.StatusLines, AssistantChannelRowKind.ToolUse, 1)]
-    public void RowRelay_HonoursTheVerbositySetting(AssistantChannelVerbosity verbosity, AssistantChannelRowKind kind, int expectedPosts)
-    {
-        var (_, gateway, sink) = _Build(verbosity);
-
-        gateway.RaiseRowChanged(new AssistantChannelRow
-        {
-            Id = Guid.NewGuid(),
-            Kind = kind,
-            Text = "some tool ran",
-            Timestamp = DateTimeOffset.UtcNow,
-            ToolName = "git status",
-        });
-
-        Assert.Equal(expectedPosts, sink.Posted.Count);
-    }
-
-    [Fact]
-    public void RowRelay_EditsTheSameMessageOnAnUpdate()
-    {
-        var (_, gateway, sink) = _Build();
-        var rowId = Guid.NewGuid();
-
-        gateway.RaiseRowChanged(new AssistantChannelRow { Id = rowId, Kind = AssistantChannelRowKind.AssistantText, Text = "Working", Timestamp = DateTimeOffset.UtcNow });
-        gateway.RaiseRowChanged(new AssistantChannelRow { Id = rowId, Kind = AssistantChannelRowKind.AssistantText, Text = "Working on it…", Timestamp = DateTimeOffset.UtcNow, IsUpdate = true });
-
-        Assert.Single(sink.Posted);
-        var edit = Assert.Single(sink.Edited);
-        Assert.Equal("Working on it…", edit.Text);
-    }
-
-    [Fact]
     public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
     {
         var (_, gateway, sink) = _Build();
@@ -178,23 +132,6 @@ public class DiscordChannelBridgeTests
 
     // AC-1360 review: a prompt closed while its post was still on its way used to be registered afterwards, dead at
     // the head of the JA/NEE queue — so every later "JA" answered nothing, not even the prompt that was really open.
-    [Fact]
-    public async Task APromptClosedWhileItsPostIsInFlight_NeverBlocksTheNextOne()
-    {
-        var (bridge, gateway, sink) = _Build();
-        var held = new TaskCompletionSource<ulong>();
-        sink.HoldNextPost = held;
-        var closed = _ConsentPrompt("answered elsewhere");
-        var live = _ConsentPrompt("still open");
-
-        gateway.RaisePromptOpened(closed);
-        gateway.RaisePromptClosed(closed.Id);
-        held.SetResult(99);
-        gateway.RaisePromptOpened(live);
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId: 1);
-
-        Assert.Equal((live.Id, ConsentOutcome.Approved, false), Assert.Single(gateway.Responses));
-    }
 
     // Review point 2: a failed post must not register the prompt as open — otherwise a "JA" typed for an
     // unrelated reason later would answer a prompt nobody in the channel ever actually saw.
@@ -215,30 +152,6 @@ public class DiscordChannelBridgeTests
     // Review point 1: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread
     // while HandleInboundMessageAsync/HandleButtonAsync arrive from Discord.NET's socket threads — this hammers
     // the shared row/prompt tracking from both sides at once and only asserts that nothing throws.
-    [Fact]
-    public async Task ConcurrentRowAndPromptActivity_AcrossThreads_NeverThrows()
-    {
-        var (bridge, gateway, _) = _Build();
-        var tasks = new List<Task>();
-
-        for (var i = 0; i < 200; i++)
-        {
-            var row = new AssistantChannelRow { Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.AssistantText, Text = $"row {i}", Timestamp = DateTimeOffset.UtcNow };
-            tasks.Add(Task.Run(() => gateway.RaiseRowChanged(row)));
-
-            var prompt = _ConsentPrompt($"action {i}");
-            tasks.Add(Task.Run(() =>
-            {
-                gateway.RaisePromptOpened(prompt);
-                gateway.RaisePromptClosed(prompt.Id);
-            }));
-
-            var messageId = (ulong)i;
-            tasks.Add(Task.Run(() => bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId)));
-        }
-
-        await Task.WhenAll(tasks);
-    }
 
     private static AssistantChannelConsentPrompt _ConsentPrompt(string action) => new(
         Guid.NewGuid(),

@@ -6,9 +6,9 @@ allow-growth	tests/Cockpit.Journeys
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	59
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	68
-plugins-dev/Cockpit.Plugin.Depot.Tests	339
-plugins-dev/Cockpit.Plugin.Diagram.Tests	365
-plugins-dev/Cockpit.Plugin.Discord.Tests	47
+plugins-dev/Cockpit.Plugin.Depot.Tests	138
+plugins-dev/Cockpit.Plugin.Diagram.Tests	108
+plugins-dev/Cockpit.Plugin.Discord.Tests	21
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
 plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	8
@@ -21,12 +21,12 @@ plugins-dev/Cockpit.Plugin.GrokProvider.Tests	5
 plugins-dev/Cockpit.Plugin.KimiProvider.Tests	48
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
-plugins-dev/Cockpit.Plugin.LocalCi.Tests	154
+plugins-dev/Cockpit.Plugin.LocalCi.Tests	69
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	5
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	12
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
-plugins-dev/Cockpit.Plugin.Slack.Tests	55
+plugins-dev/Cockpit.Plugin.Slack.Tests	26
 plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	5
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	28

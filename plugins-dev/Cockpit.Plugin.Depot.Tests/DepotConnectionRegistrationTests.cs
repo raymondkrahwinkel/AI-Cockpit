@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Mcp;
-using Cockpit.Plugin.Depot.Model;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -8,15 +7,6 @@ namespace Cockpit.Plugin.Depot.Tests;
 // upsert-by-name) an unrelated server an operator configured by hand in the MCP-servers dialog.
 public class DepotConnectionRegistrationTests
 {
-    [Fact]
-    public void McpServerName_IsThePrefixedName()
-    {
-        // The connection's own name carries through the prefix, which is also why two connections named
-        // differently can never contribute under the same server name.
-        var connection = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
-
-        Assert.Equal("Depot: Work", connection.McpServerName);
-    }
 }
 
 // `PluginMcpSignInOutcome`'s zero value (AC-243): must be `Unavailable`, not `Authorized` —

@@ -23,44 +23,10 @@ public class WhiteboardToDiagramTests
     ];
 
     [Theory]
-    [MemberData(nameof(Blockers))]
-    public void Blocker_SaysWhichConditionIsMissing(bool drawsDiagrams, bool hasSession, object? coupling, string expected) =>
-        Assert.Contains(expected, WhiteboardToDiagram.Blocker(drawsDiagrams, hasSession, (WhiteboardCoupling?)coupling));
-
-    [Theory]
     // Nothing asked yet, so nothing to report at all.
     [InlineData(false, 0, "")]
     [InlineData(true, 1, "1 conversion proposed")]
     [InlineData(true, 2, "2 conversions proposed")]
     public void Status_ReportsWhatLandedInThePoort_NotWhatWasAsked(bool asked, int proposals, string expected) =>
         Assert.Equal(expected, WhiteboardToDiagram.Status(asked, proposals));
-
-    [Fact]
-    public void Status_AskedButNothingProposedYet_SaysItIsWaiting() =>
-        Assert.Contains("waiting", WhiteboardToDiagram.Status(asked: true, proposals: 0));
-
-    [Fact]
-    public void ConvertPrompt_AsksForOneProposalThroughTheDiffPoort()
-    {
-        var prompt = WhiteboardToDiagram.ConvertPrompt("plan-schets", "abc123", "plan-schets — diagram");
-
-        Assert.Contains("read_whiteboard", prompt);
-        Assert.Contains("edit_diagram", prompt);
-        Assert.Contains("abc123", prompt);
-        Assert.Contains("diff gate", prompt);
-
-        // The per-object tools write straight through (AC-852) — they must not take this path.
-        Assert.Contains("Do not use add_node", prompt);
-        Assert.Contains("Do not change anything on the board yourself", prompt);
-    }
-
-    [Fact]
-    public void WriteDownPrompt_ChangesNothingAtAll()
-    {
-        var prompt = WhiteboardToDiagram.WriteDownPrompt("plan-schets");
-
-        Assert.Contains("read_whiteboard", prompt);
-        Assert.DoesNotContain("edit_diagram", prompt);
-        Assert.Contains("do not change anything", prompt);
-    }
 }

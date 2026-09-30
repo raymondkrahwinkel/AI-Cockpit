@@ -16,7 +16,6 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
         return envelope ?? throw new InvalidOperationException("Test setup produced a null envelope.");
     }
 
-
     [Fact]
     public void Create_ThenUnwrapWithPassword_RecoversTheSameDataKey()
     {

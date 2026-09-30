@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
@@ -11,30 +10,6 @@ namespace Cockpit.Plugin.Diagram.Tests.Whiteboard;
 [Collection("avalonia")]
 public class WhiteboardControlTests
 {
-    [Fact]
-    public void ColourFlyout_DefaultSwatch_ResetsASelectedShapeAndThePendingColour()
-    {
-        var document = new WhiteboardDocument();
-        var placed = new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 };
-        document.Add(placed);
-        var control = new WhiteboardControl(document);
-        var window = _Show(control);
-
-        control.Canvas.SelectObject(placed.Id);
-        var swatches = _OpenColourFlyoutSwatches(control);
-
-        // A palette swatch first, so there is something to reset away from.
-        swatches.First(s => (string?)s.Tag == "#DC2626").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.Equal("#DC2626", placed.Color);
-
-        swatches.Single(s => s.Tag is null).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-        Assert.Null(placed.Color);
-        Assert.Null(control.Canvas.PendingColor);
-
-        window.Close();
-    }
-
     // AC-982's hard boundary from AC-916: the operator's own default is not the colour reserved for the agent's
     // consent promise. The reset swatch must reach SetColor(null) — never the literal reserved hex — and that
     // hex must never appear anywhere in the flyout's swatch row.

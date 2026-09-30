@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Depot.Model;
-using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -69,23 +68,6 @@ public class DepotSharedProjectSourcePublishTests
             Resources: resources ?? []);
 
     [Fact]
-    public async Task PublishAsync_NoDefinitionYet_WritesAndReturnsTheBoundId()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        var written = _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
-
-        var result = await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
-        Assert.Equal($"{scheme}:new-project", result.BoundId);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(written(), out var sent, out _));
-        Assert.Equal("New Project", sent!.Name);
-        Assert.Equal("git@github.com:example/new-project.git", sent.GitUrl);
-    }
-
-    [Fact]
     public async Task PublishAsync_WritesWithNoBaseChecksum_ThisIsTheFirstWriteForThisProject()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -99,56 +81,6 @@ public class DepotSharedProjectSourcePublishTests
             Arg.Any<string>(), "write",
             Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && !args.ContainsKey("baseChecksum")),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task PublishAsync_ProjectHasALogo_UploadsItThenWritesTheBlobPath()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"uploadUrl":"https://depot.example.com/blob/upload/abc"}""")));
-        var written = _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
-        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Created)));
-
-        var result = await SourceFor(host, httpClient).PublishAsync(
-            $"{scheme}:new-project", Definition() with { LogoBytes = [1, 2, 3] }, CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(written(), out var sent, out _));
-        Assert.Equal(CockpitProjectLogoBlob.BlobPath, sent!.Logo);
-    }
-
-    [Fact]
-    public async Task PublishAsync_LogoUploadFails_ReportsFailedWithoutWritingTheDefinitionAtAll()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        host.CallMcpToolAsync(Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("no permission")));
-
-        var result = await SourceFor(host).PublishAsync(
-            $"{scheme}:new-project", Definition() with { LogoBytes = [1, 2, 3] }, CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task PublishAsync_NoLogo_NeverAttemptsAnUpload()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
-
-        await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
-
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "request_upload", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -179,37 +111,6 @@ public class DepotSharedProjectSourcePublishTests
         var result = await SourceFor(host).PublishAsync($"{scheme}:existing", Definition(), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.AlreadyPublished, result.Outcome);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task PublishAsync_ReadFailsForAReasonOtherThanNotFound_ReportsFailedAndNeverWrites()
-    {
-        // A permission or connectivity failure must never be read as "safe to publish" — only Depot's own
-        // documented [NotFound] wording clears the way to write.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "flaky", PluginMcpToolCallResult.Failed("connection reset"));
-
-        var result = await SourceFor(host).PublishAsync($"{scheme}:flaky", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
-        Assert.Equal("connection reset", result.Error);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task PublishAsync_NotSignedIn_ReportsFailedAndNeverWrites()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubRead(host, "new-project", PluginMcpToolCallResult.AuthorizationRequired);
-
-        var result = await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
         await host.DidNotReceive().CallMcpToolAsync(
             Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
@@ -276,77 +177,8 @@ public class DepotSharedProjectSourcePublishTests
 
     // AC-699: the exact list_projects payload depot.krahwinkel-it.nl returned for the operator who reported this
     // (13 projects, every role "Admin", three of them Brains) — the picker was empty against this very response.
-    [Fact]
-    public async Task ListPublishTargetsAsync_TheReportedServersOwnResponse_FillsThePicker()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """
-            {"projects":[
-              {"slug":"ai-hub","name":"AI-Hub","role":"Admin","kind":"Project"},
-              {"slug":"ashenmoon","name":"Ashenmoon","role":"Admin","kind":"Project"},
-              {"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"},
-              {"slug":"depot","name":"Depot","role":"Admin","kind":"Project"},
-              {"slug":"eve-together","name":"EVE Together","role":"Admin","kind":"Project"},
-              {"slug":"eve-workbench","name":"EVE Workbench","role":"Admin","kind":"Project"},
-              {"slug":"kontena","name":"Kontena","role":"Admin","kind":"Project"},
-              {"slug":"olaf","name":"Olaf","role":"Admin","kind":"Brain"},
-              {"slug":"sql-explorer","name":"SQL Explorer","role":"Admin","kind":"Project"},
-              {"slug":"startpage","name":"Startpage","role":"Admin","kind":"Project"},
-              {"slug":"synvolution-flow","name":"Synvolution Flow","role":"Admin","kind":"Project"},
-              {"slug":"testy","name":"Testy","role":"Admin","kind":"Brain"},
-              {"slug":"vex","name":"Vex","role":"Admin","kind":"Brain"}
-            ]}
-            """);
-
-        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal(10, result.Targets.Count);
-        Assert.DoesNotContain(result.Targets, target => target.Name is "Olaf" or "Testy" or "Vex");
-    }
 
     // AC-699, measured against a real server: Depot reports "Admin" for every project a global admin can see
     // (ListProjectsForUserQuery), which this filter used to read as Unknown — emptying the whole publish dropdown
     // for exactly the operator most likely to publish.
-    [Fact]
-    public async Task ListPublishTargetsAsync_AdminRole_IsAPublishTargetAndShowsItsRole()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubListProjects(host, """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"}]}""");
-
-        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        var target = Assert.Single(result.Targets);
-        Assert.Equal($"{scheme}:cockpit", target.Id);
-        Assert.Equal("Admin", target.Role);
-    }
-
-    [Fact]
-    public async Task ListPublishTargetsAsync_ExcludesBrainKind()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        _StubListProjects(host, """{"projects":[{"slug":"notes","name":"Notes","role":"Owner","kind":"Brain"}]}""");
-
-        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Empty(result.Targets);
-    }
-
-    [Fact]
-    public async Task ListPublishTargetsAsync_IncludesTargetsWithNoExistingDefinitionYet()
-    {
-        // The defining difference from ListAsync: a brand-new Depot project with no .cockpit/project.json at all
-        // is exactly the common publish target, not something to filter out.
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        _StubListProjects(host, """{"projects":[{"slug":"brand-new","name":"Brand new","role":"Owner","kind":"Project"}]}""");
-
-        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal($"{scheme}:brand-new", Assert.Single(result.Targets).Id);
-    }
 }

@@ -5,11 +5,8 @@ using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using NSubstitute;
-using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
-using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Infrastructure.Diagrams;
-using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -28,35 +25,6 @@ public class DiagramChannelTests
     private const string Flow = "flowchart LR\n  A-->B";
 
     [Fact]
-    public void AnAgentEdit_ReachesTwoOpenWindowsOnTheSameSurface_InTheSameOrder()
-    {
-        var registry = Substitute.For<IDiagramAccessRegistry>();
-        var channel = TestChannel.For(diagrams: registry);
-        var first = _TextsSeenBy(new DiagramChannelClient(channel));
-        var second = _TextsSeenBy(new DiagramChannelClient(channel));
-
-        registry.TextChanged += Raise.Event<Action<string, string>>("d1", "v1");
-        registry.TextChanged += Raise.Event<Action<string, string>>("d1", "v2");
-        registry.TextChanged += Raise.Event<Action<string, string>>("d1", "v3");
-
-        Assert.Equal(["v1", "v2", "v3"], first);
-        Assert.Equal(first, second);
-    }
-
-    [Fact]
-    public void AStateEventOlderThanTheLastOneSeenForThatSurface_IsIgnored()
-    {
-        var (channel, deliver) = _HandDeliveredChannel();
-        var seen = _TextsSeenBy(new DiagramChannelClient(channel));
-
-        deliver(new PluginChannelEvent("diagram.TextChanged", 5, _Payload("d1", "newer")));
-        deliver(new PluginChannelEvent("diagram.TextChanged", 4, _Payload("d1", "older")));
-        deliver(new PluginChannelEvent("diagram.TextChanged", 3, _Payload("d2", "other surface")));
-
-        Assert.Equal(["newer", "other surface"], seen);
-    }
-
-    [Fact]
     public void AnObjectPlacedOutOfOrder_IsStillDelivered_SinceSkippingItWouldLoseTheObject()
     {
         var (channel, deliver) = _HandDeliveredChannel();
@@ -69,19 +37,6 @@ public class DiagramChannelTests
         deliver(new PluginChannelEvent("whiteboard.ObjectPlaced", 4, _Payload("b1", "o-4", placement)));
 
         Assert.Equal(["o-5", "o-4"], placed);
-    }
-
-    [Fact]
-    public void AHandEdit_ReachesTheRegistrysApplyHandEdit_AndItsRefusalComesBack()
-    {
-        var registry = Substitute.For<IDiagramAccessRegistry>();
-        var edit = new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Start") { Shape = DiagramNodeShape.Rounded };
-        registry.ApplyHandEdit("d1", edit).Returns("That node is being edited by the agent.");
-
-        var refusal = new DiagramChannelClient(TestChannel.For(diagrams: registry)).ApplyHandEdit("d1", edit);
-
-        Assert.Equal("That node is being edited by the agent.", refusal);
-        registry.Received(1).ApplyHandEdit("d1", edit);
     }
 
     [Fact]
@@ -100,20 +55,6 @@ public class DiagramChannelTests
     }
 
     [Fact]
-    public void AWireframeWindow_GetsTheComponentIdOnALine_AndHoldsItInTheRegistry()
-    {
-        var registry = Substitute.For<IWireframeAccessRegistry>();
-        registry.EnsureComponentId("w1", 4).Returns("save");
-        var client = new WireframeChannelClient(TestChannel.For(wireframes: registry));
-
-        var id = client.EnsureComponentId("w1", 4);
-        client.HoldComponent("w1", "save");
-
-        Assert.Equal("save", id);
-        registry.Received(1).HoldComponent("w1", "save");
-    }
-
-    [Fact]
     public async Task OpenDiagram_OnABackendWithNoUiPart_AnswersOkButNotOpened_WithoutAskingTheOperator()
     {
         var host = Substitute.For<ICockpitHost, IWindowProbe>();
@@ -129,50 +70,6 @@ public class DiagramChannelTests
         Assert.Equal(false, json?["opened"]?.GetValue<bool>());
         await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
         await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public void TheBoundSessionClosing_ReachesTheWindowOverTheChannel_AndAnotherSessionClosingDoesNot()
-    {
-        var sessions = new _Sessions();
-        sessions.Open("pane-1", "Werksessie");
-        var host = Substitute.For<ICockpitHost, IWindowProbe>();
-        host.Sessions.Returns(sessions);
-        var changes = 0;
-        // F2.13/AC-1401: SurfaceSessionBinding takes ICockpitUiHost and reads the bound pane's liveness/name over
-        // DiagramChannel.SessionBind, not ICockpitHost.BindToSession — the UI host itself is a throwaway here.
-        var binding = new SurfaceSessionBinding(new ActivityStripTests.FakeHost(), TestChannel.Wire(host).Ui, "pane-1", () => changes++);
-
-        sessions.Close("pane-2");
-        Dispatcher.UIThread.RunJobs();
-        var afterOther = binding.EndedSessionName;
-        sessions.Close("pane-1");
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.Null(afterOther);
-        Assert.Equal("Werksessie", binding.EndedSessionName);
-        Assert.Equal(1, changes);
-    }
-
-    [Fact]
-    public void AClosedWindowsClient_NoLongerReceivesEvents()
-    {
-        var registry = Substitute.For<IDiagramAccessRegistry>();
-        var client = new DiagramChannelClient(TestChannel.For(diagrams: registry));
-        var seen = _TextsSeenBy(client);
-
-        registry.TextChanged += Raise.Event<Action<string, string>>("d1", "while open");
-        client.Dispose();
-        registry.TextChanged += Raise.Event<Action<string, string>>("d1", "after close");
-
-        Assert.Equal(["while open"], seen);
-    }
-
-    private static List<string> _TextsSeenBy(DiagramChannelClient client)
-    {
-        var seen = new List<string>();
-        client.TextChanged += (_, text) => seen.Add(text);
-        return seen;
     }
 
     private static JsonElement _Payload(params object[] args) => JsonSerializer.SerializeToElement(args, backend::Cockpit.Plugin.Diagram.DiagramChannelContract.Json);

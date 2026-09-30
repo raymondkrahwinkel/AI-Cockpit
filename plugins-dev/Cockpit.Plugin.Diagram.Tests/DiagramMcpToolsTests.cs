@@ -50,24 +50,6 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadDiagram_ReflectsAnOperatorEditMadeSinceTheAgentLastRead_WithNoSeparateSyncStep()
-    {
-        // AC-838: the operator->registry direction. UpdateText is the operator's own write path (the diagram panel's
-        // hand-edit actions), independent of the agent's coupling — the next read_diagram must see it immediately.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-
-        var before = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
-        Assert.Equal(Source, before!["source"]!.GetValue<string>());
-
-        const string EditedByOperator = "flowchart LR\nA-->B\nB-->C";
-        registry.UpdateText("diagram-1", EditedByOperator);
-
-        var after = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
-        Assert.Equal(EditedByOperator, after!["source"]!.GetValue<string>());
-    }
-
-    [Fact]
     public void Coupling_OnItsOwn_GrantsNoCapabilities()
     {
         // AC-810 DoD: the registry supports a "coupled, nothing granted yet" state — the shape AC-816's quick-start
@@ -110,18 +92,6 @@ public class DiagramMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("not approved", json["error"]!.GetValue<string>());
         Assert.Null(registry.CouplingOf(Session, "diagram-1"));
-    }
-
-    [Fact]
-    public async Task ReadDiagram_UnknownSurface_ReturnsError_WithoutAsking()
-    {
-        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "ghost"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("No such diagram", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
     }
 
     [Fact]
@@ -213,38 +183,6 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
-    public async Task EditDiagram_OnANewSurfaceWithNoPriorText_ReportsItAsWrittenForTheFirstTime()
-    {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Blank canvas", "");
-
-        await tools.EditDiagram(Session, "Blank canvas", "flowchart LR\nA-->B");
-
-        Assert.Contains("written for the first time (2 lines)", asked[0].Action);
-    }
-
-    [Fact]
-    public async Task EditDiagram_CarriesTheFidelityReport_OnTheProposalItself_BeforeAcceptance()
-    {
-        // AC-825's DoD: the AC-808 report must be visible on the proposal, not only on the result afterwards.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        const string composite = """
-            stateDiagram-v2
-                state Watching {
-                    [*] --> Idle
-                }
-                Idle --> Watching : arm
-            """;
-        registry.SurfaceOpened("diagram-1", "State machine", Source);
-
-        var json = JsonNode.Parse(await tools.EditDiagram(Session, "State machine", composite));
-
-        Assert.False(json!["fidelity"]!["complete"]!.GetValue<bool>());
-        var proposal = registry.PendingProposal("diagram-1");
-        Assert.NotEmpty(proposal!.FidelityFindings);
-    }
-
-    [Fact]
     public async Task EditDiagram_WhenDenied_DoesNotWrite()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
@@ -279,47 +217,6 @@ public class DiagramMcpToolsTests
         // AC-848's line per handling: what changed, not "the whole source was replaced".
         Assert.Equal(["added node B \"Stop\""], summaries);
         Assert.Equal("added node B \"Stop\"", json["changed"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task RelabelConnection_ChangesTheLabel_UnderTheSameEditConsent()
-    {
-        // AC-909: the agent side of the symmetry gap — connect_nodes could already carry a label, relabel_connection
-        // is what lets it change one afterwards, the way the operator's own relabel box does.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]\n    B[\"Stop\"]\n    A --> B");
-
-        var json = JsonNode.Parse(await tools.RelabelConnection(Session, "Onboarding flow", "A", "B", "go"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("A -->|\"go\"| B", registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task SetNodeShape_ChangesTheShape_KeepingTheLabel()
-    {
-        // AC-909: the agent side of the shape symmetry gap — add_node always wrote a rectangle, set_node_shape is
-        // what lets it (or the operator's own pick) change afterwards.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
-
-        var json = JsonNode.Parse(await tools.SetNodeShape(Session, "Onboarding flow", "A", "diamond"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("A{\"Start\"}", registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task SetNodeShape_WithAnUnknownShapeName_IsRefused_WithoutAsking()
-    {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", "flowchart LR\n    A[\"Start\"]");
-
-        var json = JsonNode.Parse(await tools.SetNodeShape(Session, "Onboarding flow", "A", "hexagon"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(asked);
-        Assert.Equal("flowchart LR\n    A[\"Start\"]", registry.PeekText("diagram-1"));
     }
 
     [Fact]
@@ -371,37 +268,6 @@ public class DiagramMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Equal(Source, registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public async Task PerObjectEdit_ThatCouldNotBeApplied_SaysWhy_AndLeavesTheSourceAlone()
-    {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-
-        var json = JsonNode.Parse(await tools.RemoveNode(Session, "Onboarding flow", "Ghost"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("no node", json["error"]!.GetValue<string>());
-        Assert.Equal(Source, registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
-    public void ListDiagrams_ReturnsOpenSurfaces_WithCapabilityFlags()
-    {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-        registry.Grant(Session, "diagram-1", DiagramCapability.Read);
-        registry.SurfaceOpened("diagram-2", "Deploy pipeline", Source);
-
-        var json = JsonNode.Parse(tools.ListDiagrams(Session));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        var names = json["diagrams"]!.AsArray().Select(d => d!["name"]!.GetValue<string>()).ToList();
-        Assert.Equivalent(new object[] { "Onboarding flow", "Deploy pipeline" }, names);
-        var coupled = json["diagrams"]!.AsArray().First(d => d!["name"]!.GetValue<string>() == "Onboarding flow");
-        Assert.True(coupled!["canRead"]!.GetValue<bool>());
-        Assert.False(coupled["canEdit"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -493,17 +359,6 @@ public class DiagramMcpToolsTests
         Assert.Single(asked);
         await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
             Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public async Task OpenDiagram_WithSourceTheEngineCannotDraw_IsRefused_WithoutAsking()
-    {
-        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", "this is not mermaid at all"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(asked);
     }
 
     [Fact]

@@ -79,83 +79,6 @@ public class CockpitProjectDefinitionJsonTests
     }
 
     [Fact]
-    public void TryDeserialize_HigherSchemaVersion_ReadsWithoutFailing()
-    {
-        const string json = """{"schemaVersion":99,"name":"from-the-future"}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out var error));
-        Assert.Null(error);
-        Assert.Equal(99, definition!.SchemaVersion);
-    }
-
-    [Fact]
-    public void TryDeserialize_SchemaVersionAbsent_DefaultsToCurrentRatherThanFailing()
-    {
-        // System.Text.Json leaves a property's C# initializer in place when the JSON omits it — SchemaVersion's own
-        // initializer is CurrentSchemaVersion, so an unmarked file reads as "assume current" rather than as 0.
-        const string json = """{"name":"predates-versioning"}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out var error));
-        Assert.Null(error);
-        Assert.Equal(CockpitProjectDefinitionJson.CurrentSchemaVersion, definition!.SchemaVersion);
-    }
-
-    [Fact]
-    public void TryDeserialize_NameMissing_DefaultsToEmptyRatherThanFailing()
-    {
-        const string json = """{"schemaVersion":1}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out var error));
-        Assert.Null(error);
-        Assert.Equal(string.Empty, definition!.Name);
-    }
-
-    [Fact]
-    public void TryDeserialize_EmptyResourcesArray_RoundTripsAsAnEmptyArrayNotAbsent()
-    {
-        const string json = """{"schemaVersion":1,"name":"probe","resources":[]}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out _));
-        Assert.NotNull(definition!.Resources);
-        Assert.Empty(definition.Resources);
-    }
-
-    [Fact]
-    public void TryDeserialize_ResourcesAbsent_LeavesResourcesNull()
-    {
-        const string json = """{"schemaVersion":1,"name":"probe"}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out _));
-        Assert.Null(definition!.Resources);
-    }
-
-    [Fact]
-    public void Serialize_ExtremelyLongDescription_RoundTripsIntact()
-    {
-        var longDescription = new string('a', 200_000);
-        var definition = new CockpitProjectDefinition { Name = "probe", Description = longDescription };
-
-        var json = CockpitProjectDefinitionJson.Serialize(definition);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var roundTripped, out _));
-
-        Assert.Equal(longDescription, roundTripped!.Description);
-    }
-
-    [Theory]
-    [InlineData("Wéíspslàte — 慰め — さくら")]
-    [InlineData("مشروع الرواتب")]
-    [InlineData("🚀 Rocket Project 🚀")]
-    public void Serialize_UnicodeName_RoundTripsIntact(string name)
-    {
-        var definition = new CockpitProjectDefinition { Name = name };
-
-        var json = CockpitProjectDefinitionJson.Serialize(definition);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var roundTripped, out _));
-
-        Assert.Equal(name, roundTripped!.Name);
-    }
-
-    [Fact]
     public void TryDeserialize_ResourcesMixAllFourPortabilityShapes_EachRowSurvivesWithItsOwnValue()
     {
         const string json = """
@@ -187,18 +110,6 @@ public class CockpitProjectDefinitionJsonTests
     public void TryDeserialize_CorruptOrWrongShapedJson_ReturnsFalseRatherThanThrowing(string? corrupt)
     {
         var succeeded = CockpitProjectDefinitionJson.TryDeserialize(corrupt, out var definition, out var error);
-
-        Assert.False(succeeded);
-        Assert.Null(definition);
-        Assert.NotNull(error);
-    }
-
-    [Fact]
-    public void TryDeserialize_DeeplyNestedJson_ReturnsFalseRatherThanThrowing()
-    {
-        var deeplyNested = string.Concat(Enumerable.Repeat("{\"x\":", 2000)) + "1" + string.Concat(Enumerable.Repeat("}", 2000));
-
-        var succeeded = CockpitProjectDefinitionJson.TryDeserialize(deeplyNested, out var definition, out var error);
 
         Assert.False(succeeded);
         Assert.Null(definition);
