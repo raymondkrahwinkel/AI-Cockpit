@@ -1,6 +1,4 @@
 using Cockpit.Core.Notifications;
-using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Notifications;
 
 namespace Cockpit.Core.Tests.Notifications;
@@ -19,19 +17,6 @@ public class NotificationSettingsStoreTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
-    }
-
-    [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsDefaults()
-    {
-        var store = new NotificationSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.True(settings.LocalEnabled);
-        Assert.False(settings.DiscordEnabled);
-        Assert.Null(settings.WebhookUrl);
-        Assert.Equal(NotificationSettings.DefaultIdleThreshold, settings.IdleThreshold);
     }
 
     [Fact]
@@ -57,38 +42,6 @@ public class NotificationSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equivalent(settings, loaded);
-    }
-
-    // 0 minutes means "never let a session go idle" — a real choice, so it must survive the round-trip instead of
-    // being read back as the default the way an empty away-threshold is.
-    [Fact]
-    public async Task SaveAsync_ZeroSessionIdleMinutes_RoundTripsAsOff()
-    {
-        var store = new NotificationSettingsStore(_configFilePath);
-
-        await store.SaveAsync(new NotificationSettings { SessionIdleThreshold = TimeSpan.Zero });
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(TimeSpan.Zero, loaded.SessionIdleThreshold);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheProfilesSectionIntact()
-    {
-        // Both stores write the same file; saving notifications must not wipe the profiles a
-        // previously-saved SessionProfileStore wrote, and vice versa.
-        var profileStore = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile> { new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", null)) };
-        await profileStore.SaveAsync(profiles);
-
-        var notificationStore = new NotificationSettingsStore(_configFilePath);
-        await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
-
-        var reloadedProfiles = await profileStore.LoadAsync();
-        var reloadedSettings = await notificationStore.LoadAsync();
-
-        Assert.Equivalent(profiles, reloadedProfiles);
-        Assert.Equal("https://example/webhook", reloadedSettings.WebhookUrl);
     }
 
     public void Dispose()

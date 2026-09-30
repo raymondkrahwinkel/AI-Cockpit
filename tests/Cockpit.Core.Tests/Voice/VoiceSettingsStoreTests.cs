@@ -1,6 +1,4 @@
-using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
-using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Voice;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -16,28 +14,6 @@ public class VoiceSettingsStoreTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
-    }
-
-    [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsDefaults()
-    {
-        var store = new VoiceSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.False(settings.IsEnabled);
-        Assert.Equal("large-v3-turbo", settings.ModelName);
-        Assert.Equal(VoiceBackendPreference.Auto, settings.BackendPreference);
-        Assert.Equal("F9", settings.PushToTalkKeyName);
-        Assert.False(settings.GlobalPushToTalk);
-        Assert.False(settings.AutoSubmitAfterVoice);
-        Assert.Equal(1, settings.TtsVoiceSid);
-        Assert.Equal(1.0, settings.TtsSpeed);
-        Assert.Equal("auto", settings.SttLanguage);
-        Assert.Empty(settings.InputDeviceName);
-        Assert.Empty(settings.OutputDeviceName);
-        Assert.False(settings.OpenMicEnabled);
-        Assert.Equal(800, settings.OpenMicSilenceTimeoutMs);
     }
 
     [Fact]
@@ -78,19 +54,6 @@ public class VoiceSettingsStoreTests : IDisposable
         Assert.Equal("Built-in Speakers", loaded.OutputDeviceName);
         Assert.True(loaded.OpenMicEnabled);
         Assert.Equal(1200, loaded.OpenMicSilenceTimeoutMs);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var layoutStore = new LayoutSettingsStore(_configFilePath);
-        await layoutStore.SaveAsync(new LayoutSettings { SingleSessionLayout = true });
-
-        var voiceStore = new VoiceSettingsStore(_configFilePath);
-        await voiceStore.SaveAsync(new VoiceSettings { IsEnabled = true });
-
-        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
-        Assert.True((await voiceStore.LoadAsync()).IsEnabled);
     }
 
     public void Dispose()

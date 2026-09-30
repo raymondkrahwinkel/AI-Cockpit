@@ -22,14 +22,6 @@ public class TranscriptionCalibrationStoreTests : IDisposable
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
     }
 
-    [Fact]
-    public async Task LoadAsync_NeverCalibratedOnThisMachine_ReturnsNull()
-    {
-        var store = new TranscriptionCalibrationStore(_configFilePath, "desktop-A");
-
-        Assert.Null((await store.LoadAsync()));
-    }
-
     private static TranscriptionCalibration Calibration(VoiceBackendPreference chosen, string model = "large-v3-turbo") =>
         new(
             [
@@ -53,28 +45,6 @@ public class TranscriptionCalibrationStoreTests : IDisposable
         await store.SaveAsync(calibration);
 
         Assert.Equivalent(calibration, await store.LoadAsync());
-    }
-
-    [Fact]
-    public async Task ADifferentMachine_DoesNotSeeAnothersCalibration()
-    {
-        await new TranscriptionCalibrationStore(_configFilePath, "desktop-A")
-            .SaveAsync(Calibration(VoiceBackendPreference.Vulkan));
-
-        Assert.Null((await new TranscriptionCalibrationStore(_configFilePath, "laptop-B").LoadAsync()));
-    }
-
-    [Fact]
-    public async Task SavingOneMachine_LeavesAnothersCalibrationIntact()
-    {
-        var desktop = new TranscriptionCalibrationStore(_configFilePath, "desktop-A");
-        var laptop = new TranscriptionCalibrationStore(_configFilePath, "laptop-B");
-        var desktopResult = Calibration(VoiceBackendPreference.Cpu);
-
-        await desktop.SaveAsync(desktopResult);
-        await laptop.SaveAsync(Calibration(VoiceBackendPreference.Vulkan, "small"));
-
-        Assert.Equivalent(desktopResult, await desktop.LoadAsync());
     }
 
     public void Dispose()

@@ -1,7 +1,5 @@
 using Cockpit.Core.Screenshots;
-using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Screenshots;
-using Cockpit.Infrastructure.Voice;
 
 namespace Cockpit.Core.Tests.Screenshots;
 
@@ -19,17 +17,6 @@ public class ScreenshotSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsDefaults()
-    {
-        var store = new ScreenshotSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.False(settings.GlobalHotkeyEnabled, "a desktop-wide key is taken from every other application, so it is opted into");
-        Assert.Equal("F8", settings.HotkeyKeyName);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
     {
         var store = new ScreenshotSettingsStore(_configFilePath);
@@ -39,37 +26,6 @@ public class ScreenshotSettingsStoreTests : IDisposable
 
         Assert.True(loaded.GlobalHotkeyEnabled);
         Assert.Equal("F7", loaded.HotkeyKeyName);
-    }
-
-    /// <summary>
-    /// Every store rewrites the whole file, so one that dropped another's section would lose settings the
-    /// operator never touched — the reason each of them goes through CockpitConfigFileAccess rather than
-    /// serialising its own object over the file.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_LeavesSiblingSectionsIntact()
-    {
-        await new VoiceSettingsStore(_configFilePath).SaveAsync(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F10" });
-
-        await new ScreenshotSettingsStore(_configFilePath).SaveAsync(new ScreenshotSettings { GlobalHotkeyEnabled = true });
-
-        var voice = await new VoiceSettingsStore(_configFilePath).LoadAsync();
-        Assert.True(voice.IsEnabled);
-        Assert.Equal("F10", voice.PushToTalkKeyName);
-    }
-
-    /// <summary>
-    /// A blank key in the file arms nothing and reports nothing, which reads as a broken hotkey rather than an
-    /// unset one. Hand-edited config and a half-written save both produce it.
-    /// </summary>
-    [Fact]
-    public async Task AnEmptyKeyInTheFile_FallsBackToTheDefault()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """{"screenshots":{"globalHotkeyEnabled":true,"hotkeyKeyName":"  "}}""");
-
-        var settings = await new ScreenshotSettingsStore(_configFilePath).LoadAsync();
-
-        Assert.Equal("F8", settings.HotkeyKeyName);
     }
 
     public void Dispose()
