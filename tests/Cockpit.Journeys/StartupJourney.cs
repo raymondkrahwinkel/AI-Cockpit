@@ -75,7 +75,7 @@ public sealed class StartupJourney
             return Task.CompletedTask;
         });
         var window = await opened.Task.WaitAsync(Until.Ceiling);
-        Assert.Equal(steps.Count, HeadlessAvalonia.Run(() => ((FirstRunWizardViewModel)window.DataContext!).StepBar.Count(item => !item.NotBuiltYet)));
+        Assert.Equal(steps.Count, HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext).StepBar.Count(item => !item.NotBuiltYet)));
         await HeadlessAvalonia.RunAsync(() =>
         {
             window.Close();
