@@ -16,6 +16,11 @@ public sealed class BackendApiClient : IDisposable
 
     public BackendApiClient(Uri baseAddress, string key, string fingerprint, TimeProvider time)
     {
+        if (!string.Equals(baseAddress.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The backend API base address must use HTTPS.", nameof(baseAddress));
+        }
+
         _time = time;
         _http = new HttpClient(NodeCertificatePin.Require(fingerprint))
         {
@@ -47,9 +52,13 @@ public sealed class BackendApiClient : IDisposable
                 {
                     moved = await events.MoveNextAsync().ConfigureAwait(false);
                 }
-                catch (BackendApiException)
+                catch (BackendApiException exception) when (exception.Status is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
                 {
                     throw;
+                }
+                catch (BackendApiException)
+                {
+                    break;
                 }
                 catch (Exception exception) when (exception is HttpRequestException or IOException)
                 {
@@ -188,12 +197,17 @@ public sealed class BackendApiClient : IDisposable
         {
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
-            if (document.RootElement.TryGetProperty("error", out var error) && error.GetString() is { } parsedCode)
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String
+                && error.GetString() is { } parsedCode)
             {
                 code = parsedCode;
             }
 
-            if (document.RootElement.TryGetProperty("error_description", out var errorDescription)
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error_description", out var errorDescription)
+                && errorDescription.ValueKind == JsonValueKind.String
                 && errorDescription.GetString() is { } parsedDescription)
             {
                 description = parsedDescription;

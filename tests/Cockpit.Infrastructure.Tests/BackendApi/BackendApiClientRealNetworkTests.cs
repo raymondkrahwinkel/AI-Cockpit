@@ -37,12 +37,17 @@ public sealed class BackendApiClientRealNetworkTests
         using var client = server.Client();
 
         var identity = await client.WhoAmIAsync();
+        var strangeError = await Assert.ThrowsAsync<BackendApiException>(() =>
+            client.GetAsync<JsonElement>("api/v1/strange-error"));
         using var wrongPin = new BackendApiClient(server.BaseAddress, server.Key, new string('0', 64), TimeProvider.System);
         await Assert.ThrowsAsync<HttpRequestException>(() => wrongPin.WhoAmIAsync());
+        Assert.Throws<ArgumentException>(() =>
+            new BackendApiClient(new Uri("http://127.0.0.1"), server.Key, server.Fingerprint, TimeProvider.System));
 
         Assert.Equal(server.KeyPrefix, identity.KeyPrefix);
         Assert.Equal("operate", identity.Capability);
-        Assert.Equal(1, server.Requests);
+        Assert.Equal((HttpStatusCode)StatusCodes.Status418ImATeapot, strangeError.Status);
+        Assert.Equal(2, server.Requests);
     }
 
     [Fact]
@@ -83,19 +88,21 @@ public sealed class BackendApiClientRealNetworkTests
     }
 
     [Fact]
-    public async Task StreamEventsAsync_WaitsForTheTimeProviderBeforeReconnecting()
+    public async Task StreamEventsAsync_AServiceUnavailableResponseWaitsForBackoffBeforeReconnecting()
     {
         var clock = new _Clock();
-        await using var server = await _Server.StartAsync(_LogMode.DropImmediately);
+        await using var server = await _Server.StartAsync(_LogMode.ServiceUnavailableOnce);
         using var client = server.Client(clock);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var events = client.StreamEventsAsync(null, stop.Token).GetAsyncEnumerator(stop.Token);
         var next = events.MoveNextAsync().AsTask();
 
         await clock.Waiting.WaitAsync(stop.Token);
-        Assert.Equal(1, server.Log.Calls);
+        Assert.Equal(1, server.Requests);
+        Assert.Equal(0, server.Log.Calls);
         clock.Advance();
-        await _UntilAsync(() => server.Log.Calls == 2, stop.Token);
+        await _UntilAsync(() => server.Log.Calls == 1, stop.Token);
+        Assert.Equal(2, server.Requests);
         stop.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => next);
     }
@@ -114,10 +121,11 @@ public sealed class BackendApiClientRealNetworkTests
         serverClock.Advance();
         await Task.Delay(TimeSpan.FromMilliseconds(100), stop.Token);
         Assert.False(next.IsCompleted);
-        server.Log.Publish(9);
+        server.Log.Publish(9, "reset");
 
         Assert.True(await next);
         Assert.Equal(9, events.Current.Seq);
+        Assert.Equal("reset", events.Current.Kind);
     }
 
     private static async Task<IReadOnlyList<BackendEvent>> _ReadAsync(
@@ -153,7 +161,7 @@ public sealed class BackendApiClientRealNetworkTests
     {
         Wait,
         BreakAfterThree,
-        DropImmediately,
+        ServiceUnavailableOnce,
     }
 
     private sealed class _Log(_LogMode mode) : IBackendEventLog
@@ -174,12 +182,12 @@ public sealed class BackendApiClientRealNetworkTests
             return mode switch
             {
                 _LogMode.BreakAfterThree => _BreakingAsync(call, cancellationToken),
-                _LogMode.DropImmediately => _DroppingAsync(cancellationToken),
                 _ => _events.Reader.ReadAllAsync(cancellationToken),
             };
         }
 
-        public void Publish(long seq) => _events.Writer.TryWrite(_Event(seq));
+        public void Publish(long seq, string kind) =>
+            _events.Writer.TryWrite(_Event(seq) with { Kind = kind });
 
         private static async IAsyncEnumerable<BackendEvent> _BreakingAsync(
             int call,
@@ -200,16 +208,6 @@ public sealed class BackendApiClientRealNetworkTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
 
-        private static async IAsyncEnumerable<BackendEvent> _DroppingAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            await Task.Yield();
-            cancellationToken.ThrowIfCancellationRequested();
-            throw new IOException("The test server broke the stream.");
-#pragma warning disable CS0162
-            yield break;
-#pragma warning restore CS0162
-        }
     }
 
     private sealed class _Clock : TimeProvider
@@ -284,6 +282,8 @@ public sealed class BackendApiClientRealNetworkTests
 
         public string KeyPrefix { get; }
 
+        public string Fingerprint => _certificate.Fingerprint;
+
         public int Requests => _requests;
 
         public int UnauthorizedRequests => _unauthorizedRequests;
@@ -321,9 +321,19 @@ public sealed class BackendApiClientRealNetworkTests
                 options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate.Value)));
             var app = builder.Build();
             var server = new _Server(directory, certificate, services, app, verifier, log, new Uri("https://127.0.0.1"), issued.Secret, issued.Key.Prefix);
+            var returnedServiceUnavailable = 0;
             app.Use(async (context, next) =>
             {
                 Interlocked.Increment(ref server._requests);
+                if (mode == _LogMode.ServiceUnavailableOnce
+                    && context.Request.Path == "/api/v1/events"
+                    && Interlocked.Exchange(ref returnedServiceUnavailable, 1) == 0)
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    await context.Response.WriteAsync("{\"error\":\"unavailable\",\"error_description\":\"Try again.\"}");
+                    return;
+                }
+
                 await next();
                 if (context.Response.StatusCode == StatusCodes.Status401Unauthorized)
                 {
@@ -337,6 +347,7 @@ public sealed class BackendApiClientRealNetworkTests
                 _ => ValueTask.FromResult(true),
                 new NodeSharedSecret(),
                 verifier);
+            app.MapGet("/api/v1/strange-error", () => Results.Text("[]", "application/json", statusCode: StatusCodes.Status418ImATeapot));
             BackendApiRoutes.Map(app, services);
             await app.StartAsync();
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.Single()
