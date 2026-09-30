@@ -76,13 +76,21 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
     }
 
     [Fact]
-    public async Task SendUserMessage_AfterADroppedConnection_RetriesWithoutRerunningTheTool_AndTheNextTurnSeesTheToolResult()
+    public async Task SendUserMessage_AfterADroppedConnection_RetriesWithoutRerunningTheTool_AndLaterTurnsSeeTheToolResult_TrimmedOnceTwoTurnsOld()
     {
         var sent = new List<List<ChatMessage>>();
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"]);
+        var sentResults = new List<string?>();
+        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"], result: new string('x', 2000));
         var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent.Add([.. messages])), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"));
+        chatClient.GetStreamingResponseAsync(
+                Arg.Do<IEnumerable<ChatMessage>>(messages =>
+                {
+                    sent.Add([.. messages]);
+                    sentResults.Add(messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().SingleOrDefault()?.Result?.ToString());
+                }),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"), _Stream("third turn. [turn complete]"));
         var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
         await _StartWithToolsetAsync(driver, toolset);
 
@@ -90,17 +98,23 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         var first = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
         await driver.SendUserMessageAsync("and now?");
         await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+        await driver.SendUserMessageAsync("and then?");
+        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
 
         // AC-1431 criterion 3: the transport failure is retried into a successful turn, without running the tool twice.
         Assert.False(Assert.Single(first.OfType<PluginTurnCompleted>()).IsError);
         Assert.Single(toolset.Calls);
 
         // Criterion 1: the second turn carries the first turn's call and its result, the call first.
-        var history = sent[^1];
+        var history = sent[3];
         var call = history.FindIndex(message => message.Role == ChatRole.Assistant && message.Contents.OfType<FunctionCallContent>().Any(content => content.CallId == "call_set_status"));
         var result = history.FindIndex(message => message.Role == ChatRole.Tool && message.Contents.OfType<FunctionResultContent>().Any(content => content.CallId == "call_set_status"));
         Assert.InRange(call, 0, result - 1);
         Assert.Equal(["system", "user", "assistant", "tool", "assistant", "user"], history.Select(message => message.Role.Value));
+
+        // The previous turn's result rides along whole; two turns on, only its first 1500 characters and a note do.
+        Assert.Equal(2000, sentResults[3]?.Length);
+        Assert.Equal(new string('x', 1500) + "\n[truncated by cockpit: 2000 chars]", sentResults[4]);
     }
 
     [Fact]
@@ -136,7 +150,7 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
 
     // A toolset that records what it was asked to run. Its descriptors carry a real schema, because the schema
     // is what the model client builds its function definitions from — a broken one would fail at the wire, not here.
-    private sealed class FakeToolset(IReadOnlyList<string> tools, IReadOnlyList<string> reachable) : IPluginToolset
+    private sealed class FakeToolset(IReadOnlyList<string> tools, IReadOnlyList<string> reachable, string result = "done") : IPluginToolset
     {
         public List<(string Name, string ArgumentsJson)> Calls { get; } = [];
 
@@ -148,7 +162,7 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         public Task<string> InvokeAsync(string name, string argumentsJson, CancellationToken cancellationToken = default)
         {
             Calls.Add((name, argumentsJson));
-            return Task.FromResult("done");
+            return Task.FromResult(result);
         }
     }
 

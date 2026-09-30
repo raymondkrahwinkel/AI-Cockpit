@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,6 +32,12 @@ internal static class ChatTurnLoop
         "(cockpit) Your reply ended without a tool call and without " + CompletionMarker + ". "
         + "Carry out the step you announced now, or finish and end with " + CompletionMarker + ".";
 
+    // ponytail: a fixed character cap on tool results older than the previous turn keeps the resent history from
+    // growing without end; no token count and no summarising, so a long session can still reach the context limit.
+    internal const int MaxOldToolResultChars = 1500;
+
+    private const string TruncationNote = "[truncated by cockpit: ";
+
     private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
 
     internal static void ConfigureToolLoop(FunctionInvokingChatClient client) => client.MaximumIterationsPerRequest = MaxToolIterations;
@@ -50,6 +57,7 @@ internal static class ChatTurnLoop
     internal static async Task<ChatTurnOutcome> RunAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, Action<string> onText, ILogger? logger, CancellationToken cancellationToken)
     {
         logger ??= NullLogger.Instance;
+        _TrimOldToolResults(history);
         var turnText = new StringBuilder();
         var toolRounds = 0;
 
@@ -144,6 +152,34 @@ internal static class ChatTurnLoop
         }
 
         return messages.Count(message => message.Role == ChatRole.Tool);
+    }
+
+    // Shortens the tool results of every turn before the previous one; the call and its result both stay, only the
+    // result's text gets shorter. A turn starts at a user message that is not a continuation nudge.
+    private static void _TrimOldToolResults(List<ChatMessage> history)
+    {
+        var turnStarts = history.Select((message, index) => (message, index))
+            .Where(entry => entry.message.Role == ChatRole.User && entry.message.Text != ContinuationNudge)
+            .Select(entry => entry.index)
+            .ToList();
+        if (turnStarts.Count < 3)
+        {
+            return;
+        }
+
+        foreach (var result in history.Take(turnStarts[^2]).SelectMany(message => message.Contents).OfType<FunctionResultContent>())
+        {
+            var text = result.Result switch
+            {
+                string value => value,
+                JsonElement json => json.GetRawText(),
+                _ => null,
+            };
+            if (text is not null && text.Length > MaxOldToolResultChars && !text.Contains(TruncationNote, StringComparison.Ordinal))
+            {
+                result.Result = $"{text[..MaxOldToolResultChars]}\n{TruncationNote}{text.Length} chars]";
+            }
+        }
     }
 
     // A connection that dropped mid-stream ("Unable to read data from the transport connection") surfaces as an
