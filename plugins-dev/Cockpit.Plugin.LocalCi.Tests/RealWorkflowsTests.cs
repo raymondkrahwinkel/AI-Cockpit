@@ -25,7 +25,7 @@ public class RealWorkflowsTests
 
         Assert.Equal(
             [
-                "changes", "build", "plugins", "plugin-versions",
+                "changes", "build", "journeys", "plugins", "plugin-versions",
                 "xmldoc-scope", "comment-length", "duplicate-test-bodies", "descendant-selector-scope",
                 "store-index-upsert",
             ],
