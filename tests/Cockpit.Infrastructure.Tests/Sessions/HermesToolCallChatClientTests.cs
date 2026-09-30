@@ -108,7 +108,8 @@ public class HermesToolCallChatClientTests
         // tool result is fed back — answers with plain text. The shim + UseFunctionInvocation must run the tool exactly
         // as they would a natively-structured call. Red before the shim: the text landed in the assistant bubble and
         // the turn ended "success" with the tool never run.
-        // The answer closes with the end-of-turn marker, so the continuation net (AC-1431) leaves the turn as it is.
+        // The answer closes with the end-of-turn marker, so the continuation net (AC-1431) leaves the turn as it is,
+        // and the marker never reaches the operator.
         List<ChatMessage> lastSent = [];
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => lastSent = [.. messages]), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
@@ -127,7 +128,7 @@ public class HermesToolCallChatClientTests
 
         Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
         Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
-        Assert.Equal("done [turn complete]", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal("done", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
 
         // AC-1431: the next turn carries the shim-made call and its result as one pair under the same call id.

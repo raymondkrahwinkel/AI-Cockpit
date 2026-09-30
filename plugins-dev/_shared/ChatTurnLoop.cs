@@ -85,7 +85,7 @@ internal static class ChatTurnLoop
 
     private static async Task<RoundResult> _RunRoundAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, StringBuilder turnText, Action<string> onText, ILogger logger, CancellationToken cancellationToken)
     {
-        var roundText = new StringBuilder();
+        var relay = new TextRelay(turnText, onText);
         var toolRounds = 0;
 
         for (var attempt = 0; ; attempt++)
@@ -96,38 +96,22 @@ internal static class ChatTurnLoop
                 await foreach (var update in agent.GetStreamingResponseAsync(history, options, cancellationToken).ConfigureAwait(false))
                 {
                     updates.Add(update);
-                    _Emit(update.Text, roundText, turnText, onText);
+                    relay.Add(update.Text);
                 }
 
+                relay.Flush();
                 toolRounds += _Append(history, updates, complete: true);
-                return new RoundResult(roundText.ToString(), updates.LastOrDefault(update => update.FinishReason is not null)?.FinishReason, toolRounds);
+                return new RoundResult(relay.Raw.ToString(), updates.LastOrDefault(update => update.FinishReason is not null)?.FinishReason, toolRounds);
             }
             catch (Exception ex) when (attempt < MaxTransportRetries && !cancellationToken.IsCancellationRequested && _IsTransportFailure(ex))
             {
                 // Keep the tool rounds that finished, so the retry does not run them a second time.
                 logger.LogWarning(ex, "Chat turn lost its connection; retrying ({Attempt}/{Max}).", attempt + 1, MaxTransportRetries);
                 toolRounds += _Append(history, updates, complete: false);
+                relay.DropHeld();
                 await Task.Delay(RetryBaseDelay * (attempt + 1), cancellationToken).ConfigureAwait(false);
             }
         }
-    }
-
-    private static void _Emit(string? delta, StringBuilder roundText, StringBuilder turnText, Action<string> onText)
-    {
-        if (string.IsNullOrEmpty(delta))
-        {
-            return;
-        }
-
-        // A continuation round's text starts a new paragraph instead of running on from the previous round.
-        if (roundText.Length == 0 && turnText.Length > 0)
-        {
-            delta = "\n\n" + delta;
-        }
-
-        roundText.Append(delta);
-        turnText.Append(delta);
-        onText(delta);
     }
 
     // Appends the messages of one round in the order the function-invocation loop produced them and returns how many
@@ -195,6 +179,75 @@ internal static class ChatTurnLoop
         }
 
         return false;
+    }
+
+    // Streams a round's text to the UI without the completion marker: that belongs to the model's own history, not
+    // to the operator. A tail that could still turn into the marker (or the whitespace before it) is held until the
+    // next chunk or the end of the round decides. Raw keeps the unfiltered text the continuation net reads.
+    private sealed class TextRelay(StringBuilder turnText, Action<string> onText)
+    {
+        private readonly StringBuilder _held = new();
+        private bool _emitted;
+
+        public StringBuilder Raw { get; } = new();
+
+        public void Add(string? delta)
+        {
+            if (string.IsNullOrEmpty(delta))
+            {
+                return;
+            }
+
+            Raw.Append(delta);
+            _held.Append(delta);
+            _Release(final: false);
+        }
+
+        public void Flush() => _Release(final: true);
+
+        public void DropHeld() => _held.Clear();
+
+        private void _Release(bool final)
+        {
+            var text = _held.ToString();
+            var markerAt = text.IndexOf(CompletionMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerAt >= 0)
+            {
+                text = string.Concat(text.AsSpan(0, markerAt).TrimEnd(), text.AsSpan(markerAt + CompletionMarker.Length));
+            }
+
+            var hold = final ? 0 : _HeldTail(text);
+            _held.Clear().Append(text, text.Length - hold, hold);
+            var release = text[..^hold];
+            if (release.Length == 0)
+            {
+                return;
+            }
+
+            // A continuation round's text starts a new paragraph instead of running on from the previous round.
+            if (!_emitted && turnText.Length > 0)
+            {
+                release = "\n\n" + release;
+            }
+
+            _emitted = true;
+            turnText.Append(release);
+            onText(release);
+        }
+
+        // The length of the text's end that may still be the start of the marker, plus the whitespace before it.
+        private static int _HeldTail(string text)
+        {
+            var prefix = Enumerable.Range(1, CompletionMarker.Length - 1).Reverse()
+                .FirstOrDefault(length => text.EndsWith(CompletionMarker[..length], StringComparison.OrdinalIgnoreCase));
+            var start = text.Length - prefix;
+            while (start > 0 && char.IsWhiteSpace(text[start - 1]))
+            {
+                start--;
+            }
+
+            return text.Length - start;
+        }
     }
 
     private sealed record RoundResult(string Text, ChatFinishReason? FinishReason, int ToolRounds);
