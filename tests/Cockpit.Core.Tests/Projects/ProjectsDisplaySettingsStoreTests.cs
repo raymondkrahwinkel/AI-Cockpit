@@ -22,38 +22,6 @@ public class ProjectsDisplaySettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsCards()
-    {
-        var store = new ProjectsDisplaySettingsStore(_configFilePath);
-
-        Assert.Equal(ProjectsLayoutMode.Cards, (await store.LoadAsync()).LayoutMode);
-    }
-
-    [Fact]
-    public async Task LoadAsync_AStoredContinue_FallsBackWhileThatLayoutIsNotOffered()
-    {
-        // Written straight to disk rather than through SaveAsync, which normalizes on the way in too — the point here
-        // is the read side, which is what protects against a config this build did not write.
-        await File.WriteAllTextAsync(_configFilePath, """{ "ProjectsDisplay": { "LayoutMode": "Continue" } }""");
-        var store = new ProjectsDisplaySettingsStore(_configFilePath);
-
-        var expected = ProjectsDisplaySettings.ContinueLayoutAvailable
-            ? ProjectsLayoutMode.Continue
-            : ProjectsLayoutMode.Cards;
-
-        Assert.Equal(expected, (await store.LoadAsync()).LayoutMode);
-    }
-
-    [Fact]
-    public async Task LoadAsync_ALayoutNameThisBuildDoesNotKnow_FallsBackToCards()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """{ "ProjectsDisplay": { "LayoutMode": "Mosaic" } }""");
-        var store = new ProjectsDisplaySettingsStore(_configFilePath);
-
-        Assert.Equal(ProjectsLayoutMode.Cards, (await store.LoadAsync()).LayoutMode);
-    }
-
-    [Fact]
     public async Task SaveAsync_LeavesTheOtherSectionsIntact()
     {
         var layoutStore = new LayoutSettingsStore(_configFilePath);

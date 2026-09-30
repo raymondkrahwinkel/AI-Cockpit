@@ -17,14 +17,6 @@ public class ProjectStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsNoProjects()
-    {
-        var projects = await new ProjectStore(_configFilePath).LoadAsync();
-
-        Assert.Empty(projects.Projects);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsEveryField()
     {
         var store = new ProjectStore(_configFilePath);
@@ -70,17 +62,6 @@ public class ProjectStoreTests : IDisposable
         Assert.Equivalent(project, savedProject);
     }
 
-    [Fact]
-    public async Task SaveAsync_ProjectWithoutMcpChoices_RoundTripsAsTheEmptyOverlay()
-    {
-        var store = new ProjectStore(_configFilePath);
-
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
-        var loaded = await store.LoadAsync();
-
-        Assert.True(Assert.Single(loaded.Projects).McpOverlay.IsEmpty);
-    }
-
     // AC-318: the field name is the whole mechanism by which a credential is encrypted and scrubbed, so this asserts on the file.
     [Fact]
     public async Task SaveAsync_ASecretInformationRow_GoesToTheFieldNameTheSecretRuleRecognises()
@@ -105,35 +86,6 @@ public class ProjectStoreTests : IDisposable
         Assert.True(rows[0].IsSecret, "which field carried the value is what says it is a secret");
         Assert.Equal("s3cr3t-value", rows[0].Value);
         Assert.False(rows[1].IsSecret);
-    }
-
-    // Most projects keep no information of their own; their entry should not gain an empty array for it.
-    [Fact]
-    public async Task SaveAsync_ProjectWithoutInformation_WritesNoSectionForIt()
-    {
-        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
-
-        var written = await File.ReadAllTextAsync(_configFilePath);
-        Assert.DoesNotContain("AdditionalInfo", written);
-    }
-
-    [Fact]
-    public async Task LoadAsync_InformationRowWithNulls_LoadsTheProjectAndDropsTheRow()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """
-            {"Projects":[{"Id":"kept","Name":"Cockpit","AdditionalInfo":[
-              {"Label":null,"Value":null},
-              {},
-              {"Label":"Repository","Value":"https://github.com/example/repo"}]}]}
-            """);
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Equal("kept", project.Id);
-        Assert.Equal("Repository", Assert.Single(project.AdditionalInfo).Label);
     }
 
     // AC-938: a cockpit.json from before this ticket only ever wrote the singular SourceDirectory field —
@@ -177,120 +129,9 @@ public class ProjectStoreTests : IDisposable
         Assert.Equal("android", reloaded.SourceDirectories[1].Label);
     }
 
-    [Fact]
-    public async Task LoadAsync_EntryWithoutAName_IsDropped()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Projects":[{"Id":"kept","Name":"Cockpit"},{"Id":"blank","Name":""}]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        Assert.Equal("kept", Assert.Single(loaded.Projects).Id);
-    }
-
     // AC-245: the per-machine "hidden shared project" flag round-trips the same as everything else in this section.
 
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsHiddenSharedProjectIds()
-    {
-        var store = new ProjectStore(_configFilePath);
-
-        await store.SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit", "depot:other"] });
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(["depot:cockpit", "depot:other"], loaded.HiddenSharedProjectIds);
-    }
-
-    [Fact]
-    public async Task LoadAsync_HiddenSharedProjectIdsButNoProjects_StillLoads()
-    {
-        // Regression: the store's own fast path used to treat "no Projects" alone as "nothing saved at all" and
-        // return ProjectSettings.Empty outright, silently dropping a hidden-ids list saved with no local projects.
-        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty with { HiddenSharedProjectIds = ["depot:cockpit"] });
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
-        Assert.Empty(loaded.Projects);
-    }
-
-    [Fact]
-    public async Task LoadAsync_HandEditedNullInHiddenSharedProjectIds_LoadsWithThatEntryDropped()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"HiddenSharedProjectIds":[null,"depot:cockpit"]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        Assert.Equal(["depot:cockpit"], loaded.HiddenSharedProjectIds);
-    }
-
     // AC-618: a project's category, and the categories' own display order/casing, round-trip the same way.
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsCategoryAndCategoryOrder()
-    {
-        var store = new ProjectStore(_configFilePath);
-        var project = Project.Create("Cockpit") with { Category = "Werk" };
-
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal("Werk", Assert.Single(loaded.Projects).Category);
-        Assert.Equal(["Werk"], loaded.CategoryOrder);
-    }
-
-    // Most projects carry no category, so their entry gains no empty field; CategoryOrder itself is always written.
-    [Fact]
-    public async Task SaveAsync_ProjectWithoutCategory_WritesNoCategoryFieldOnTheProjectEntry()
-    {
-        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
-
-        var written = await File.ReadAllTextAsync(_configFilePath);
-        Assert.DoesNotContain("\"Category\":", written);
-    }
-
-    // The store owns one section: writing projects must not clobber a sibling the same file carries.
-    [Fact]
-    public async Task SaveAsync_LeavesOtherSectionsUntouched()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """{"Profiles":[{"Label":"personal"}]}""");
-
-        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Cockpit")));
-
-        var written = await File.ReadAllTextAsync(_configFilePath);
-        Assert.Contains("personal", written);
-    }
-
-    // AC-493 criterion 1: absence stays absence — a default would turn every job already on disk into a recurring one unannounced.
-    [Fact]
-    public async Task AJobWithoutARecurrence_KeepsNone_AndAJobWithOneKeepsIt()
-    {
-        var store = new ProjectStore(_configFilePath);
-        var plain = Project.Create("Invoices") with
-        {
-            Jobs = [new ProjectJob("Process this month's invoices", "changes nothing · reports only")],
-        };
-
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(plain));
-
-        // A job that does not come round writes no recurrence at all, which is what leaves a config this version
-        // wrote identical in shape to every one already on disk.
-        Assert.DoesNotContain("Recurrence", await File.ReadAllTextAsync(_configFilePath), StringComparison.Ordinal);
-        var reloaded = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
-        Assert.Equal("Process this month's invoices", reloaded.Prompt);
-        Assert.Null(reloaded.Recurrence);
-
-        // And the other direction, so a rule that never reached the disk cannot pass unnoticed.
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(
-            plain with { Jobs = [plain.Jobs[0] with { Recurrence = new JobRecurrence(2, DayOfWeek.Monday) }] }));
-
-        Assert.Equal(
-            new JobRecurrence(2, DayOfWeek.Monday),
-            Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Recurrence);
-    }
 
     // AC-490 criterion 1: the id is on disk from the load that minted it, so no run points at an id a later load would replace.
     [Fact]

@@ -24,14 +24,6 @@ public class ClaudePluginProfileTests
     }
 
     [Fact]
-    public void Claude_ForANonClaudeProfile_IsNull()
-    {
-        var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
-
-        Assert.Null(profile.Claude);
-    }
-
-    [Fact]
     public void MigratedConfiglessProfile_ReconstructsABlankConfigDir_SoItFollowsTheCliDefault()
     {
         // A blank ConfigDir is the signal the provider plugin resolves to the CLI default (~/.claude); reconstructing

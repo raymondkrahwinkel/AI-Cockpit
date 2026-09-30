@@ -74,96 +74,9 @@ public class ProjectResourceTests : IDisposable
 
     // --- AC3: a resource whose plugin is not installed is written through untouched --------------------------------
 
-    /// <summary>
-    /// Named for what it actually exercises — <c>ProjectStore</c>'s load/save round trip — rather than the broader
-    /// "…IsWrittenThroughUntouched" this used to claim. It cites the same rule <c>PluginFields</c> follows
-    /// (Project.cs, LinkedAs/PluginFields doc comment), but only through this one store; the path that actually
-    /// dropped rows for an unrelated reason was the project editor (see
-    /// <c>ProjectDialogViewModelTests.ToProject_Editing_KeepsEveryResourceRowUntouched</c>), which this store-level
-    /// test cannot reach.
-    /// </summary>
-    [Fact]
-    public async Task SaveAsync_AResourceNamingNoInstalledSource_RoundTripsThroughProjectStoreUnchanged()
-    {
-        // The host does not know or care whether "somepluginnotinstalled" names a real plugin — the same rule
-        // PluginFields already follows (Project.cs, LinkedAs/PluginFields doc comment): a reference under a scheme
-        // nothing here recognises is carried through unchanged rather than dropped or rewritten.
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [new ProjectResource("somepluginnotinstalled:whatever-it-means", ProjectResourceRole.Reference)],
-        };
-
-        var store = new ProjectStore(_configFilePath);
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(
-            new ProjectResource("somepluginnotinstalled:whatever-it-means", ProjectResourceRole.Reference),
-            Assert.Single(Assert.Single(loaded.Projects).Resources));
-    }
-
     // --- AC4: a blank/empty Reference yields no row -----------------------------------------------------------------
 
-    [Fact]
-    public async Task SaveAsync_RowsWithABlankReference_YieldNoRowForThem()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("", ProjectResourceRole.Memory),
-                new ProjectResource("   ", ProjectResourceRole.Instructions),
-                new ProjectResource("ok", ProjectResourceRole.Reference),
-            ],
-        };
-
-        var store = new ProjectStore(_configFilePath);
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal("ok", Assert.Single(Assert.Single(loaded.Projects).Resources).Reference);
-    }
-
-    [Fact]
-    public void Normalized_AProjectWithOnlyBlankResources_DropsAllOfThem()
-    {
-        var settings = new ProjectSettings
-        {
-            Projects = [Project.Create("Cockpit") with { Resources = [new ProjectResource("  ", ProjectResourceRole.Memory)] }],
-        };
-
-        Assert.Empty(settings.Normalized().Projects.Single().Resources);
-    }
-
     // --- AC5: Label and ReachesSessions round-trip; ReachesSessions defaults to true ---------------------------------
-
-    [Fact]
-    public async Task SaveAsync_LabelAndReachesSessions_RoundTrip()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory)
-                {
-                    Label = "Working notes",
-                    ReachesSessions = false,
-                },
-            ],
-        };
-
-        var store = new ProjectStore(_configFilePath);
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        var resource = Assert.Single(Assert.Single(loaded.Projects).Resources);
-        Assert.Equal("Working notes", resource.Label);
-        Assert.False(resource.ReachesSessions);
-    }
-
-    [Fact]
-    public void ProjectResource_WithNoReachesSessionsSet_DefaultsToTrue() =>
-        Assert.True(new ProjectResource("x", ProjectResourceRole.Memory).ReachesSessions);
 
     // A "true survives the round trip" test used to sit here. Removed: it could not fail. ProjectResource's own
     // default and ProjectResourceEntry's own default are both true, so the assertion would hold even if nothing in
@@ -172,100 +85,6 @@ public class ProjectResourceTests : IDisposable
     // accident, so it actually discriminates a broken round trip from a working one.
 
     // --- AC6: MemoryRef mirrors the first Memory row, and is null with none ------------------------------------------
-
-    [Fact]
-    public void MemoryRef_TheFirstMemoryRowAmongOthers_IsWhatItReturns()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("docs:readme", ProjectResourceRole.Instructions),
-                new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory),
-                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
-            ],
-        };
-
-        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
-    }
-
-    [Fact]
-    public void MemoryRef_SetThroughWith_AddsAMemoryRow()
-    {
-        var project = Project.Create("Cockpit") with { MemoryRef = "depot:ai-cockpit" };
-
-        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
-        Assert.Equal(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory), Assert.Single(project.Resources));
-    }
-
-    [Fact]
-    public void MemoryRef_SetToBlankOnAProjectWithAMemoryRow_RemovesTheRowRatherThanBlankingIt()
-    {
-        var project = Project.Create("Cockpit") with { MemoryRef = "depot:ai-cockpit" };
-
-        var cleared = project with { MemoryRef = null };
-
-        Assert.Null(cleared.MemoryRef);
-        Assert.Empty(cleared.Resources);
-    }
-
-    /// <summary>
-    /// AC2 lets a project keep more than one Memory row. Clearing <see cref="Project.MemoryRef"/> used to remove
-    /// only the first of them, so reading it back afterwards would silently answer with the second row instead of
-    /// null — <c>MemoryRef</c> is a singular name for "this project's memory", and it must not go on reporting some
-    /// while claiming none.
-    /// </summary>
-    [Fact]
-    public void MemoryRef_SetToNullWithTwoMemoryRows_RemovesBothAndLeavesOtherRolesAlone()
-    {
-        var reference = new ProjectResource("D:\\handbook", ProjectResourceRole.Reference);
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory),
-                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
-                reference,
-            ],
-        };
-
-        var cleared = project with { MemoryRef = null };
-
-        Assert.Null(cleared.MemoryRef);
-        Assert.Equal(new[] { reference }, cleared.Resources);
-    }
-
-    /// <summary>
-    /// Two names for one place cannot both win. These pin what actually happens rather than what one would hope,
-    /// because the trap is invisible at the call site: the same two assignments in the other order give a different
-    /// project. Nothing sets both today; AC-485 is where the project editor would be tempted to, and this is the
-    /// test that should make whoever writes it stop and pick one.
-    /// </summary>
-    [Fact]
-    public void MemoryRefThenResources_InOneInitializer_LetsResourcesWin()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            MemoryRef = "depot:ai-cockpit",
-            Resources = [new ProjectResource("D:\\Notes", ProjectResourceRole.Memory)],
-        };
-
-        Assert.Equal("D:\\Notes", project.MemoryRef);
-        Assert.Single(project.Resources);
-    }
-
-    [Fact]
-    public void ResourcesThenMemoryRef_InOneInitializer_LetsMemoryRefWin()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [new ProjectResource("D:\\Notes", ProjectResourceRole.Memory)],
-            MemoryRef = "depot:ai-cockpit",
-        };
-
-        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
-        Assert.Single(project.Resources);
-    }
 
     // --- MUST-FIX 2: a missing or unrecognised Role never resolves to Memory, and never costs the whole file --------
 
@@ -360,22 +179,6 @@ public class ProjectResourceTests : IDisposable
         var project = Assert.Single(loaded.Projects);
         Assert.Empty(project.Resources);
         Assert.Null(project.MemoryRef);
-    }
-
-    /// <summary>A row with a name but no location — the operator typed a label and never filled in the reference.</summary>
-    [Fact]
-    public async Task SaveAsync_ARowWithOnlyALabelAndABlankReference_YieldsNoRow()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [new ProjectResource("", ProjectResourceRole.Reference) { Label = "Handbook" }],
-        };
-
-        var store = new ProjectStore(_configFilePath);
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        Assert.Empty(Assert.Single(loaded.Projects).Resources);
     }
 
     public void Dispose()

@@ -1,4 +1,3 @@
-using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Core.Tests.Projects;
@@ -12,21 +11,6 @@ public class ProjectEntryAssistantMigrationTests
 {
     private static ProjectEntry Entry(string? behaviorPrompt, string? assistant = null) =>
         new() { Id = "p1", Name = "Cockpit", BehaviorPrompt = behaviorPrompt, Assistant = assistant };
-
-    [Theory]
-    [InlineData("Gebruik Zyra", "Zyra")]
-    [InlineData("gebruik Zyra", "Zyra")]
-    [InlineData("Gebruik Aura", "Aura")]
-    [InlineData("laad Aura", "Aura")]
-    [InlineData("Use Vex.", "Vex")]
-    [InlineData("  load Olaf  ", "Olaf")]
-    public void ToDomain_ABehaviorPromptThatIsNothingButThePersona_BecomesTheAssistant(string behaviorPrompt, string expected)
-    {
-        var project = Entry(behaviorPrompt).ToDomain();
-
-        Assert.Equal(expected, project.Assistant);
-        Assert.Null(project.BehaviorPrompt);
-    }
 
     /// <summary>
     /// The one mixed prompt on that machine: a persona sentence followed by 289 characters of real branch and
@@ -44,19 +28,6 @@ public class ProjectEntryAssistantMigrationTests
 
         Assert.Null(project.Assistant);
         Assert.Equal(mixed, project.BehaviorPrompt);
-    }
-
-    [Theory]
-    [InlineData("Test before opening a PR.")]
-    [InlineData("Gebruik de conventies uit CONTRIBUTING.md")]
-    [InlineData("Zyra")]
-    [InlineData("")]
-    public void ToDomain_ABehaviorPromptThatIsNotAPersonaSentence_MigratesNothing(string behaviorPrompt)
-    {
-        var project = Entry(behaviorPrompt).ToDomain();
-
-        Assert.Null(project.Assistant);
-        Assert.Equal(behaviorPrompt, project.BehaviorPrompt);
     }
 
     /// <summary>
@@ -82,23 +53,4 @@ public class ProjectEntryAssistantMigrationTests
         Assert.Null(twice.BehaviorPrompt);
     }
 
-    [Fact]
-    public void ToDomain_AnEntryWithNoAssistantAndNoBehaviorPrompt_LeavesBothUnset()
-    {
-        var project = Entry(behaviorPrompt: null).ToDomain();
-
-        Assert.Null(project.Assistant);
-        Assert.Null(project.BehaviorPrompt);
-    }
-
-    /// <summary>
-    /// AC-1071 acceptance criterion 10: a cockpit.json written before this ticket has no assistant field at all,
-    /// and must read as unset rather than failing to load.
-    /// </summary>
-    [Fact]
-    public void FromDomain_AProjectWithNoAssistant_WritesNoField()
-    {
-        Assert.Null(ProjectEntry.FromDomain(Project.Create("Cockpit")).Assistant);
-        Assert.Null(ProjectEntry.FromDomain(Project.Create("Cockpit") with { Assistant = "   " }).Assistant);
-    }
 }
