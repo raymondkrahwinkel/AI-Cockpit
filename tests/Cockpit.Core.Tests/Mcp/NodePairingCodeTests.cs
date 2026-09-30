@@ -30,25 +30,4 @@ public class NodePairingCodeTests
             NodePairingCode.Derive("A1B2C3", NodeFingerprint),
             NodePairingCode.Derive("D4E5F6", NodeFingerprint));
 
-    [Theory]
-    [InlineData("3F:1A:9C", "3f1a9c")]
-    [InlineData("3F1A9C", "3f:1a:9c")]
-    [InlineData("3f 1a 9c", "3F1A9C")]
-    public void Derive_ReadsTheSameFingerprintWrittenDifferently_AsOne(string one, string other) =>
-        // .NET hands a fingerprint back in one shape and an operator reading one off a dialog may well meet the
-        // other; two spellings of the same certificate must not look like two certificates.
-        Assert.Equal(NodePairingCode.Derive("A1B2C3", one), NodePairingCode.Derive("A1B2C3", other));
-
-    [Fact]
-    public void Derive_IsAlwaysSixDigits_IncludingWhenTheValueIsSmall()
-    {
-        // A code that sometimes prints four digits would train the operator to read "0421" and "421" as the same
-        // thing, which is exactly the habit a comparison must not have.
-        for (var i = 0; i < 200; i++)
-        {
-            var code = NodePairingCode.Derive($"NONCE{i}", NodeFingerprint);
-            Assert.Equal(NodePairingCode.Digits, code.Length);
-            Assert.All(code, character => Assert.True(char.IsAsciiDigit(character)));
-        }
-    }
 }

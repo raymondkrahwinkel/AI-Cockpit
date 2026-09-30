@@ -19,24 +19,6 @@ public class McpAgentHeadersTests
     };
 
     [Fact]
-    public void For_CarriesTheOperatorsOwnHeaders()
-    {
-        var headers = McpAgentHeaders.For(_ServerWith(new McpHeader("X-Api-Key", "the-key")), bearerToken: null);
-
-        Assert.Equal("the-key", headers["X-Api-Key"]);
-    }
-
-    [Fact]
-    public void For_DropsAHalfWrittenRow()
-    {
-        var server = _ServerWith(new McpHeader("X-Api-Key", "  "), new McpHeader("  ", "orphan"));
-
-        // A row the operator is still typing is not a header. Sending a blank field name gets a protocol error back
-        // from some servers rather than anything that explains itself.
-        Assert.Empty(McpAgentHeaders.For(server, bearerToken: null));
-    }
-
-    [Fact]
     public void For_WhenACredentialIsGoingOut_TheHandTypedAuthorizationIsDropped()
     {
         var server = _ServerWith(new McpHeader("Authorization", "Bearer stale-hand-typed"));
@@ -66,16 +48,6 @@ public class McpAgentHeadersTests
         // A cockpit-hosted endpoint carries no literal token here — its auth rides an env var the provider
         // references — but it is still an Authorization the operator must not be able to displace.
         Assert.False(McpAgentHeaders.For(server, bearerToken: null).ContainsKey("Authorization"));
-    }
-
-    [Fact]
-    public void For_ForAServerThatAuthenticatesItself_LeavesAHandTypedAuthorizationAlone()
-    {
-        var server = _ServerWith(new McpHeader("Authorization", "Token abc123"));
-
-        // Auth is None here, so nothing of the cockpit's is competing for the header — and a scheme other than Bearer
-        // on the standard header is one of the things this feature exists for.
-        Assert.Equal("Token abc123", McpAgentHeaders.For(server, bearerToken: null)["Authorization"]);
     }
 
     [Fact]

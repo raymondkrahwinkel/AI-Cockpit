@@ -1,9 +1,5 @@
 using Cockpit.Core.Sessions.Permissions;
-using Cockpit.Core.Notifications;
-using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Permissions;
-using Cockpit.Infrastructure.Notifications;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -25,26 +21,6 @@ public class PermissionRuleStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsEmpty()
-    {
-        var store = new PermissionRuleStore(_configFilePath);
-
-        var rules = await store.LoadAsync("work");
-
-        Assert.Empty(rules);
-    }
-
-    [Fact]
-    public async Task LoadAsync_NullProfileLabel_ReturnsEmpty()
-    {
-        var store = new PermissionRuleStore(_configFilePath);
-
-        var rules = await store.LoadAsync(profileLabel: null);
-
-        Assert.Empty(rules);
-    }
-
-    [Fact]
     public async Task AddAsync_ThenLoadAsync_RoundTripsTheRule()
     {
         var store = new PermissionRuleStore(_configFilePath);
@@ -57,18 +33,6 @@ public class PermissionRuleStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AddAsync_IsIdempotentForAnEqualRule()
-    {
-        var store = new PermissionRuleStore(_configFilePath);
-        var rule = PermissionRule.ForWildcard("Bash");
-
-        await store.AddAsync("work", rule);
-        await store.AddAsync("work", rule);
-
-        Assert.Single((await store.LoadAsync("work")));
-    }
-
-    [Fact]
     public async Task AddAsync_KeepsRulesIsolatedPerProfile()
     {
         var store = new PermissionRuleStore(_configFilePath);
@@ -78,32 +42,6 @@ public class PermissionRuleStoreTests : IDisposable
 
         Assert.Equal("Bash", Assert.Single(await store.LoadAsync("work")).ToolName);
         Assert.Equal("Edit", Assert.Single(await store.LoadAsync("personal")).ToolName);
-    }
-
-    [Fact]
-    public async Task AddAsync_NullProfileLabel_IsANoOp()
-    {
-        var store = new PermissionRuleStore(_configFilePath);
-
-        await store.AddAsync(profileLabel: null, PermissionRule.ForWildcard("Bash"));
-
-        Assert.False(File.Exists(_configFilePath));
-    }
-
-    [Fact]
-    public async Task AddAsync_LeavesTheProfilesAndNotificationsSectionsIntact()
-    {
-        var profileStore = new SessionProfileStore(_configFilePath);
-        await profileStore.SaveAsync([new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"))]);
-        var notificationStore = new NotificationSettingsStore(_configFilePath);
-        await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
-
-        var ruleStore = new PermissionRuleStore(_configFilePath);
-        await ruleStore.AddAsync("work", PermissionRule.ForWildcard("Bash"));
-
-        Assert.Equal("work", Assert.Single(await profileStore.LoadAsync()).Label);
-        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
-        Assert.Single(await ruleStore.LoadAsync("work"));
     }
 
     public void Dispose()

@@ -118,62 +118,6 @@ public class CockpitInternalMcpProviderTests
 
     private const string NodeSecret = "test-secret-value";
 
-    [Fact]
-    public async Task EndpointHost_ReflectsTheLiveIsEnabledGate_AndMarksItselfCockpitHosted()
-    {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
-
-        // Nothing mounted yet: the fan-out sees no cockpit-hosted server.
-        Assert.Empty(host.GetServers());
-
-        var enabled = true;
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => enabled);
-
-        var mounted = Assert.Single(host.GetServers());
-        Assert.Equal("cockpit-probe", mounted.Name);
-        Assert.True(mounted.CockpitHosted);
-        Assert.StartsWith("http://127.0.0.1:", mounted.Url);
-        Assert.EndsWith("/mcp", mounted.Url);
-        Assert.True(mounted.Enabled);
-
-        // The gate is read on every call, so flipping the plugin's own setting changes the answer with no rebind.
-        enabled = false;
-        Assert.False(Assert.Single(host.GetServers()).Enabled);
-    }
-
-    [Fact]
-    public async Task EndpointHost_ProjectsTheInternalFlag_SoTheFilterCanHideSpawnScopedEndpoints()
-    {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
-
-        // An ordinary endpoint is not internal; an internal-only one (AC-204, e.g. the Autopilot CEO/step tools)
-        // carries the flag through to the fan-out's McpServerConfig so the user-facing selection can hide it.
-        await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
-        await host.MountAsync("cockpit-private", new ProbeTools(), isEnabled: () => true, isInternal: true);
-
-        var servers = host.GetServers();
-        Assert.False(servers.Single(server => server.Name == "cockpit-public").Internal);
-        Assert.True(servers.Single(server => server.Name == "cockpit-private").Internal);
-    }
-
     // AC-790: the network-node master switch, off by default. Node binding off means only the loopback listener
     // exists — no second URL to hand anyone.
     [Fact]

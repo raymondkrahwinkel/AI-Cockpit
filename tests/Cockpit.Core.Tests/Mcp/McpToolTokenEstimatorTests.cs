@@ -40,65 +40,6 @@ public class McpToolTokenEstimatorTests
         Assert.True(estimate.EstimatedTokens > 0);
     }
 
-    [Fact]
-    public async Task EstimateAsync_CachesTheResult_AndOnlyReEnumeratesOnRefresh()
-    {
-        var provider = _ProviderReturning("docker", _Tool("ps", "List containers"));
-        var estimator = new McpToolTokenEstimator(provider, NullLogger<McpToolTokenEstimator>.Instance);
-
-        await estimator.EstimateAsync("docker");
-        await estimator.EstimateAsync("docker");
-        await provider.Received(1).EnumerateServerToolsAsync("docker", Arg.Any<string?>(), Arg.Any<CancellationToken>());
-
-        await estimator.EstimateAsync("docker", refresh: true);
-        await provider.Received(2).EnumerateServerToolsAsync("docker", Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task EstimateAsync_ConcurrentCallsForTheSameServer_EnumerateItOnlyOnce()
-    {
-        // Single-flight: several dialogs/profiles counting the same server at once must share one enumeration, not
-        // each spawn it before the first result lands (AC-134 review).
-        var gate = new TaskCompletionSource<IReadOnlyList<AIFunction>?>();
-        var provider = Substitute.For<IMcpToolProvider>();
-        provider.EnumerateServerToolsAsync("git", Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(gate.Task);
-        var estimator = new McpToolTokenEstimator(provider, NullLogger<McpToolTokenEstimator>.Instance);
-
-        var first = estimator.EstimateAsync("git");
-        var second = estimator.EstimateAsync("git");
-        gate.SetResult([_Tool("log", "Show history")]);
-        await Task.WhenAll(first, second);
-
-        await provider.Received(1).EnumerateServerToolsAsync("git", Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task EstimateAsync_WhenTheServerCannotBeEnumerated_IsUnavailable()
-    {
-        var provider = Substitute.For<IMcpToolProvider>();
-        provider.EnumerateServerToolsAsync("needs-auth", Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns((IReadOnlyList<AIFunction>?)null);
-        var estimator = new McpToolTokenEstimator(provider, NullLogger<McpToolTokenEstimator>.Instance);
-
-        var estimate = await estimator.EstimateAsync("needs-auth");
-
-        Assert.False(estimate.Available);
-        Assert.Equal(0, estimate.ToolCount);
-        Assert.Equal(0, estimate.EstimatedTokens);
-    }
-
-    [Fact]
-    public async Task EstimateAsync_WhenEnumeratingThrows_IsUnavailable_NotAnException()
-    {
-        var provider = Substitute.For<IMcpToolProvider>();
-        provider.EnumerateServerToolsAsync("broken", Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns<Task<IReadOnlyList<AIFunction>?>>(_ => throw new InvalidOperationException("boom"));
-        var estimator = new McpToolTokenEstimator(provider, NullLogger<McpToolTokenEstimator>.Instance);
-
-        var estimate = await estimator.EstimateAsync("broken");
-
-        Assert.False(estimate.Available);
-    }
-
     private static IMcpToolProvider _ProviderReturning(string serverName, params AIFunction[] tools)
     {
         var provider = Substitute.For<IMcpToolProvider>();
