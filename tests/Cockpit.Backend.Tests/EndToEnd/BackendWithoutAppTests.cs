@@ -144,7 +144,7 @@ public sealed class BackendWithoutAppTests : IDisposable
         var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = Profile, prompt = "hello" });
         var paneId = started["paneId"]?.GetValue<string>() ?? "";
         var answer = await admin.StreamEventsAsync(0, timeout.Token)
-            .FirstAsync(evt => evt.Kind == "row" && evt.PaneId == paneId && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
+            .FirstAsync(evt => _RowOf(evt) == paneId && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
         var refused = await Assert.ThrowsAsync<BackendApiException>(() => outsider.GetAsync<JsonObject>($"api/v1/sessions/{paneId}/transcript"));
         // A second start as the marker: its registration is announced to every key, while the first pane is still live.
         await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = Profile });
@@ -153,7 +153,7 @@ public sealed class BackendWithoutAppTests : IDisposable
             .ToListAsync(timeout.Token);
 
         Assert.Equal(HttpStatusCode.NotFound, refused.Status);
-        Assert.DoesNotContain(seenByTheOutsider, evt => evt.PaneId == paneId);
+        Assert.DoesNotContain(seenByTheOutsider, evt => _RowOf(evt) == paneId);
     }
 
     // The counter-proof: the bootstrap's own launcher registration gone, and the endpoint that starts sessions takes the
@@ -202,6 +202,10 @@ public sealed class BackendWithoutAppTests : IDisposable
 
         Assert.Equal(typeof(CockpitBackend).Assembly, services.GetRequiredService(seam).GetType().Assembly);
     }
+
+    // The pane a row event belongs to, from its data: an SSE frame has no pane of its own.
+    private static string? _RowOf(Cockpit.Core.Abstractions.Events.BackendEvent evt) =>
+        evt.Kind == "row" && evt.Data.TryGetProperty("PaneId", out var pane) ? pane.GetString() : null;
 
     // The bootstrap key as a container hands it over: a file named by the environment, read once and then forgotten.
     private async Task _CaptureTheBootstrapKeyAsync()

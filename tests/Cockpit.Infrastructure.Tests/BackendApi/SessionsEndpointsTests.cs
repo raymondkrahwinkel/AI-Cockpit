@@ -116,7 +116,7 @@ public sealed class SessionsEndpointsTests
 
     // Criterion 6 (corrected): two upserts whose seqs were drawn in one order reach the log in the other, as two threads
     // racing for its gate do. The event ids still only rise, so a resume after the last one misses nothing, and each
-    // row carries its upsert's own seq in the data. A registry change is announced first.
+    // row carries its upsert's own seq and its pane in the data. A registry change is announced first.
     [Fact]
     public async Task TheBridge_GivesRowsRisingIds_AndKeepsTheUpsertsSeqInTheData()
     {
@@ -140,7 +140,7 @@ public sealed class SessionsEndpointsTests
         Assert.Equal(["sessions-changed", "row", "row"], events.Select(evt => evt.Kind));
         Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
         Assert.Equal(3, events.Select(evt => evt.Seq).Distinct().Count());
-        Assert.Equal([second.Seq, first.Seq], events.Skip(1).Select(evt => evt.Data.GetProperty("Seq").GetInt64()));
+        Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
     }
 
     private static TranscriptRowUpsert _Upsert(long seq, string id) =>

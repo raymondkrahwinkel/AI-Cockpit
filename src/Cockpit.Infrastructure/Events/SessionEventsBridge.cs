@@ -59,7 +59,8 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
             {
                 var paneId = handle.PaneId;
                 // The event id is the log's own, drawn inside its gate so it only ever rises; the upsert's seq rides in the data.
-                Action<TranscriptRowUpsert> onRow = upsert => log.Append("row", paneId, upsert);
+                // So does the pane: an SSE frame carries no pane id, and a reader must know whose row it is.
+                Action<TranscriptRowUpsert> onRow = upsert => log.Append("row", paneId, new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
                 handle.RowUpserted += onRow;
                 _watched[handle] = onRow;
             }
