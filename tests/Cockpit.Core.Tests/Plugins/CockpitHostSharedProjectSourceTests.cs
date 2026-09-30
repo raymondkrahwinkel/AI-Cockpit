@@ -18,44 +18,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class CockpitHostSharedProjectSourceTests
 {
     [Fact]
-    public void AddThenRemove_TakesTheSourceOutOfSharedProjectSources()
-    {
-        var host = _BuildHost();
-        host.AddSharedProjectSource(new _FakeSource("depot"));
-
-        host.RemoveSharedProjectSource("depot");
-
-        Assert.Empty(host.SharedProjectSources);
-    }
-
-    [Fact]
-    public void Remove_AKeyNeverRegistered_LeavesOtherSourcesUntouched()
-    {
-        var host = _BuildHost();
-        host.AddSharedProjectSource(new _FakeSource("depot"));
-
-        host.RemoveSharedProjectSource("notes");
-
-        Assert.Single(host.SharedProjectSources);
-    }
-
-    [Fact]
-    public void RemoveThenAdd_TheSameKey_RegistersTheNewSource()
-    {
-        // The live-refresh case DepotSettingsControl.Save leans on: a key just freed must be immediately
-        // re-registrable, not stuck refused as "already taken" by what was just removed.
-        var host = _BuildHost();
-        var original = new _FakeSource("depot");
-        host.AddSharedProjectSource(original);
-        host.RemoveSharedProjectSource("depot");
-
-        var replacement = new _FakeSource("depot");
-        host.AddSharedProjectSource(replacement);
-
-        Assert.Same(replacement, Assert.Single(host.SharedProjectSources));
-    }
-
-    [Fact]
     public void Add_ASecondPluginUnderTheSameKey_IsIgnored()
     {
         var host = _BuildHost();

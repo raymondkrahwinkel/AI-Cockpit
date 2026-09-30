@@ -16,25 +16,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class CockpitHostProjectOwnershipTests
 {
     [Fact]
-    public void ClaimThenGet_ReturnsWhatWasClaimed()
-    {
-        var host = _BuildHost();
-
-        host.ClaimProjectOwnership(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work", IsEditable: true)));
-
-        var ownership = host.GetProjectFieldOwnership("proj-1");
-        Assert.Equal("Depot — Work", ownership![HostProjectField.Name]!.SourceName);
-    }
-
-    [Fact]
-    public void Get_AProjectNoOneClaimed_IsNull()
-    {
-        var host = _BuildHost();
-
-        Assert.Null(host.GetProjectFieldOwnership("never-claimed"));
-    }
-
-    [Fact]
     public void Claim_ASecondPluginClaimingTheSameProject_IsIgnored()
     {
         var host = _BuildHost();

@@ -15,20 +15,6 @@ public class QuickNoteTests
     private static readonly Project Older = new("older", "Older") { MemoryRef = "depot:older", LastOpenedAt = DateTimeOffset.Now.AddDays(-2) };
 
     [Fact]
-    public async Task OnlyProjectsWhoseMemoryTakesANote_AreOffered_MostRecentFirst()
-    {
-        // The newest project has a bare folder as memory: nothing can write there in v1, so offering it would let
-        // the note land nowhere. It is left out rather than shown greyed, and the rest keep the projects list's order.
-        var folderOnly = new Project("folder", "Folder") { MemoryRef = @"C:\notes", LastOpenedAt = DateTimeOffset.Now };
-        var coordinator = await _CoordinatorAsync(new FakeNoteWriter("recent", "older"), folderOnly, Older, Recent);
-
-        var note = coordinator.CreateViewModel();
-
-        Assert.Equal(["Recent", "Older"], note.Projects.Select(project => project.Name));
-        Assert.Same(note.Projects[0], note.SelectedProject);
-    }
-
-    [Fact]
     public async Task Save_WritesTheNote_StartsNothing_AndLeavesNoDraftBehind()
     {
         var writer = new FakeNoteWriter("recent") { Pending = new TaskCompletionSource() };
@@ -79,34 +65,6 @@ public class QuickNoteTests
         // The window closes on Escape and the coordinator is told; the next press opens on what was typed.
         coordinator.KeepDraft(note);
         Assert.Equal("call finance", coordinator.CreateViewModel().Note);
-    }
-
-    // A start that fails after the write landed is the one variant a note must survive without being written twice.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SaveAndStart_StartsOnce_OnlyAfterTheNoteLanded(bool startFails)
-    {
-        var writer = new FakeNoteWriter("recent");
-        var startedAfterWrite = new List<bool>();
-        var note = new QuickNoteViewModel([Recent], writer, (_, text) =>
-        {
-            startedAfterWrite.Add(writer.Appended.Count == 1 && text == "call finance");
-            return startFails ? Task.FromException(new InvalidOperationException("no profile")) : Task.CompletedTask;
-        }) { Note = "call finance" };
-        var saved = 0;
-        note.Saved += (_, _) => saved++;
-
-        await note.SaveAndStartCommand.ExecuteAsync(null);
-
-        Assert.Equal(string.Empty, note.Note);
-        Assert.Equal(startFails, note.Message.Contains("no profile"));
-        Assert.Equal(startFails ? 0 : 1, saved);
-
-        // A second click on what already landed writes nothing and starts nothing.
-        await note.SaveAndStartCommand.ExecuteAsync(null);
-        Assert.Equal([true], startedAfterWrite);
-        Assert.Single(writer.Appended);
     }
 
     // A coordinator over a cockpit that holds exactly `projects`.

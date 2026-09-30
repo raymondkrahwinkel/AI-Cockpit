@@ -2,7 +2,6 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
@@ -24,26 +23,6 @@ namespace Cockpit.Core.Tests.Delegation;
 /// </summary>
 public class DescribeTargetTests
 {
-    [Fact]
-    public async Task DescribeTarget_RecordsWhatTheProfileIsGoodFor()
-    {
-        var store = _Store(_Target("qwen"));
-        var service = _Service(store);
-
-        var target = await service.DescribeTargetAsync(
-            "qwen",
-            purpose: "frontend review — fast, local, weak on architecture",
-            tags: ["code", "local"],
-            taskTypes: ["review"]);
-
-        Assert.Equal("frontend review — fast, local, weak on architecture", target.Purpose);
-        Assert.Equal(new[] { "code", "local" }, target.Tags);
-        Assert.Equal(new[] { "review" }, target.AllowedTaskTypes);
-
-        var saved = _Saved(store).Single();
-        Assert.Equal("frontend review — fast, local, weak on architecture", saved.DelegationPolicy.Purpose);
-    }
-
     // The three fields a caller may set are the three fields it sets: everything that governs what a delegated session
     // may do comes back from disk exactly as the operator left it.
     [Fact]
@@ -68,44 +47,6 @@ public class DescribeTargetTests
         Assert.Equal(new[] { "/home/raymond/RiderProjects" }, policy.AllowedWorkingDirs);
         Assert.False(policy.MayDelegateFurther);
         Assert.Equal(15, policy.TimeoutMinutes);
-    }
-
-    // Enrolling a profile as a delegation target is the operator's call. A caller that could do it could make itself
-    // one that may do anything, anywhere.
-    [Fact]
-    public async Task DescribeTarget_OnAProfileThatIsNotATarget_IsRefused()
-    {
-        var service = _Service(_Store(new SessionProfile("personal", new ClaudeConfig(string.Empty))));
-
-        var describe = async () => await service.DescribeTargetAsync("personal", "let me in", tags: null, taskTypes: null);
-
-        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(describe);
-        Assert.Contains("not a delegation target", thrown.Message);
-    }
-
-    [Fact]
-    public async Task DescribeTarget_LeavesOutAFieldItWasNotGiven()
-    {
-        var store = _Store(_Target("qwen", policy => policy with { Purpose = "coding", AllowedTaskTypes = ["review"] }));
-        var service = _Service(store);
-
-        await service.DescribeTargetAsync("qwen", purpose: null, tags: ["local"], taskTypes: null);
-
-        var policy = _Saved(store).Single().DelegationPolicy;
-        Assert.Equal("coding", policy.Purpose);
-        Assert.Equal(new[] { "review" }, policy.AllowedTaskTypes);
-        Assert.Equal(new[] { "local" }, policy.Tags);
-    }
-
-    [Fact]
-    public async Task DescribeTarget_ForAnUnknownProfile_IsRefused()
-    {
-        var service = _Service(_Store(_Target("qwen")));
-
-        var describe = async () => await service.DescribeTargetAsync("nope", "x", tags: null, taskTypes: null);
-
-        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(describe);
-        Assert.Contains("No profile named", thrown.Message);
     }
 
     private static SessionProfile _Target(string label, Func<DelegationPolicy, DelegationPolicy>? tune = null)

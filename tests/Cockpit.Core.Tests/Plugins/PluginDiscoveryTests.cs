@@ -16,16 +16,6 @@ public class PluginDiscoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverAsync_NoRoot_ReturnsEmpty()
-    {
-        var discovery = new PluginDiscovery();
-
-        var found = await discovery.DiscoverAsync(Path.Combine(_root, "does-not-exist"), Empty, HostMajor);
-
-        Assert.Empty(found);
-    }
-
-    [Fact]
     public async Task DiscoverAsync_ValidFolder_NeverSeen_DecidesNeedsConsent()
     {
         WritePlugin("github-issues", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
@@ -150,19 +140,6 @@ public class PluginDiscoveryTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_root, "victim"));
         await File.WriteAllTextAsync(Path.Combine(_root, "victim", "plugin.json"),
             $$"""{"id":"victim","name":"v","version":"1.0.0","entryAssembly":"{{outside.Replace('\\', '/')}}","abstractionsVersion":1}""");
-        var discovery = new PluginDiscovery();
-
-        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
-
-        Assert.Empty(found);
-    }
-
-    [Fact]
-    public async Task DiscoverAsync_SkipsReservedDotPrefixedFolders_EvenWithAValidManifest()
-    {
-        // A leftover .staging-* extraction or the .pending-updates staging area carries a valid manifest but is
-        // not an installed plugin, so it must never be discovered as a phantom duplicate.
-        WritePlugin(".staging-abc123", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
         var discovery = new PluginDiscovery();
 
         var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);

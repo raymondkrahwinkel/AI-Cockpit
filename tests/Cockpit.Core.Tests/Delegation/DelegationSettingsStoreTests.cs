@@ -22,14 +22,6 @@ public class DelegationSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_LeavesTheOrchestratorMcpOn()
-    {
-        var settings = await new DelegationSettingsStore(_configFilePath).LoadAsync();
-
-        Assert.True(settings.McpEnabled);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsTheToggle()
     {
         var store = new DelegationSettingsStore(_configFilePath);

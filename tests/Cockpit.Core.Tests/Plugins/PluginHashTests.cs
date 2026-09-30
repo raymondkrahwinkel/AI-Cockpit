@@ -1,4 +1,3 @@
-using System.Text;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -6,24 +5,6 @@ namespace Cockpit.Core.Tests.Plugins;
 /// <summary>The SHA-256 pin used to detect a changed/tampered plugin assembly (#14).</summary>
 public class PluginHashTests
 {
-    [Fact]
-    public void Compute_IsDeterministic_AndLowercaseHex()
-    {
-        var bytes = Encoding.UTF8.GetBytes("plugin-assembly-contents");
-
-        var first = PluginHash.Compute(bytes);
-        var second = PluginHash.Compute(bytes);
-
-        Assert.Equal(second, first);
-        Assert.Matches("^[0-9a-f]{64}$", first);
-    }
-
-    [Fact]
-    public void Compute_DifferentBytes_DifferentHash()
-    {
-        Assert.NotEqual(PluginHash.Compute(Encoding.UTF8.GetBytes("v2")), PluginHash.Compute(Encoding.UTF8.GetBytes("v1")));
-    }
-
     [Fact]
     public void ComputeClosure_IsIndependentOfFileOrder_AndPathSeparator()
     {

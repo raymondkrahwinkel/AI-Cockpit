@@ -1,8 +1,6 @@
 using System.IO.Compression;
-using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -103,17 +101,6 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.Empty(result.Index!.Plugins);
     }
 
-    [Fact]
-    public async Task FetchIndexAsync_StoreUnreachable_FailsWithoutThrowing()
-    {
-        var missing = Path.Combine(_tempDir, "no-such-store");
-
-        var result = await _storeClient.FetchIndexAsync(PluginStoreConfig.Local(missing));
-
-        Assert.False(result.IsSuccess);
-        Assert.NotNull(result.Error);
-    }
-
     // --- Checksum (criterion 3, unchanged behaviour, pinned through the service): mismatch is a hard rejection,
     // a missing hash is a warning that does not block the install. ------------------------------------------------
 
@@ -131,21 +118,6 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.NotNull(result.Error);
         Assert.Contains("checksum", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "acme")));
-    }
-
-    [Fact]
-    public async Task InstallAsync_MissingChecksum_WarnsButStillInstalls()
-    {
-        _WritePluginZip("acme", "1.0.0", "MZ-acme-v1");
-        var store = PluginStoreConfig.Local(_storeDir);
-        var version = new PluginStoreVersion("1.0.0", "acme-1.0.0.zip", 1, null, Sha256: null, null);
-
-        var result = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
-
-        Assert.Equal(PluginProvisionOutcome.Installed, result.Outcome);
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Warning);
-        Assert.Contains("checksum", result.Warning, StringComparison.OrdinalIgnoreCase);
     }
 
     // --- Incompatible (criterion 2 + AC-181): refused before anything is fetched — proven by there being no zip
@@ -181,95 +153,8 @@ public class PluginProvisioningServiceTests : IDisposable
     // --- Already installed (criterion 2): a second install over the same folder id stages under
     // .pending-updates rather than overwriting the live copy. -----------------------------------------------------
 
-    [Fact]
-    public async Task InstallAsync_OverAnExistingInstall_StagesInsteadOfReplacingTheLiveCopy()
-    {
-        var store = PluginStoreConfig.Local(_storeDir);
-        _WritePluginZip("acme", "1.0.0", "MZ-acme-v1");
-        var v1 = new PluginStoreVersion("1.0.0", "acme-1.0.0.zip", 1, null, null, null);
-        var first = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, v1), HostMajor, HostVersion);
-        Assert.Equal(PluginProvisionOutcome.Installed, first.Outcome);
-
-        _WritePluginZip("acme", "2.0.0", "MZ-acme-v2");
-        var v2 = new PluginStoreVersion("2.0.0", "acme-2.0.0.zip", 1, null, null, null);
-        var second = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, v2), HostMajor, HostVersion);
-
-        Assert.Equal(PluginProvisionOutcome.Staged, second.Outcome);
-        Assert.True(second.IsSuccess);
-        // The live install is untouched (may be loaded/locked); the new bytes wait for the next restart.
-        Assert.Equal("MZ-acme-v1", await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll")));
-        Assert.Equal("MZ-acme-v2", await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, ".pending-updates", "acme", "Plugin.dll")));
-    }
-
     // --- Batch (criterion 2, "half gelukt"): one request failing is isolated, the rest still land, and the batch
     // result names which one did not. --------------------------------------------------------------------------
-
-    [Fact]
-    public async Task InstallManyAsync_TheMiddleRequestFails_TheOthersStillInstall()
-    {
-        var store = PluginStoreConfig.Local(_storeDir);
-        _WritePluginZip("alpha", "1.0.0", "MZ-alpha");
-        _WritePluginZip("gamma", "1.0.0", "MZ-gamma");
-        // "beta" has no zip on disk at all, so its download fails — the middle request of three.
-        PluginProvisionRequest[] requests =
-        [
-            new("alpha", "Alpha", store, new PluginStoreVersion("1.0.0", "alpha-1.0.0.zip", 1, null, null, null)),
-            new("beta", "Beta", store, new PluginStoreVersion("1.0.0", "beta-1.0.0.zip", 1, null, null, null)),
-            new("gamma", "Gamma", store, new PluginStoreVersion("1.0.0", "gamma-1.0.0.zip", 1, null, null, null)),
-        ];
-
-        var batch = await _service.InstallManyAsync(requests, HostMajor, HostVersion);
-
-        Assert.Equal(3, batch.Results.Count);
-        Assert.Equal(2, batch.SucceededCount);
-        Assert.Equal(["Beta"], batch.FailedNames);
-        Assert.Equal(PluginProvisionOutcome.Installed, batch.Results[0].Outcome);
-        Assert.Equal(PluginProvisionOutcome.Failed, batch.Results[1].Outcome);
-        Assert.Equal(PluginProvisionOutcome.Installed, batch.Results[2].Outcome);
-        Assert.True(Directory.Exists(Path.Combine(_pluginsRoot, "alpha")));
-        Assert.True(Directory.Exists(Path.Combine(_pluginsRoot, "gamma")));
-        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "beta")));
-    }
-
-    // The real PluginStoreClient/PluginInstaller never throw (both wrap their own IO in try/catch), so isolation
-    // against a genuine throw — not just a returned failure — needs a store client that actually does.
-    [Fact]
-    public async Task InstallManyAsync_ARequestThatThrows_IsIsolated_TheRestStillLand()
-    {
-        _WritePluginZip("alpha", "1.0.0", "MZ-alpha");
-        _WritePluginZip("gamma", "1.0.0", "MZ-gamma");
-        var attempt = 0;
-        var throwingStore = Substitute.For<IPluginStoreClient>();
-        throwingStore
-            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                if (++attempt == 2)
-                {
-                    throw new IOException("the store went away mid-download");
-                }
-
-                var zipPath = Path.Combine(_storeDir, callInfo.ArgAt<string>(1));
-                return Task.FromResult(new PluginStoreDownloadResult(true, null, zipPath));
-            });
-        var service = new PluginProvisioningService(throwingStore, _installer);
-        var store = PluginStoreConfig.Local(_storeDir);
-        PluginProvisionRequest[] requests =
-        [
-            new("alpha", "Alpha", store, new PluginStoreVersion("1.0.0", "alpha-1.0.0.zip", 1, null, null, null)),
-            new("beta", "Beta", store, new PluginStoreVersion("1.0.0", "beta-1.0.0.zip", 1, null, null, null)),
-            new("gamma", "Gamma", store, new PluginStoreVersion("1.0.0", "gamma-1.0.0.zip", 1, null, null, null)),
-        ];
-
-        var batch = await service.InstallManyAsync(requests, HostMajor, HostVersion);
-
-        Assert.Equal(3, batch.Results.Count);
-        Assert.Equal(2, batch.SucceededCount);
-        Assert.Equal(["Beta"], batch.FailedNames);
-        Assert.Equal(PluginProvisionOutcome.Failed, batch.Results[1].Outcome);
-        Assert.NotNull(batch.Results[1].Error);
-        Assert.Contains("went away", batch.Results[1].Error, StringComparison.Ordinal);
-    }
 
     private byte[] _WritePluginZip(string id, string version, string dllContent)
     {

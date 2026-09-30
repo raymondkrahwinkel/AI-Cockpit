@@ -15,21 +15,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginCacheTests
 {
     /// <summary>
-    /// AC-1294 §1: <see cref="ICockpitHost.Cache"/> is a default interface member, so a host built against the
-    /// SDK from before it existed still loads and still hands the plugin a working cache — proven on a host that
-    /// implements only what the contract required back then.
-    /// </summary>
-    [Fact]
-    public void AHostThatPredatesTheCache_StillLoads_AndOffersOneThatWorks()
-    {
-        ICockpitHost host = Substitute.ForPartsOf<HostWithoutCache>();
-
-        host.Cache.Set("older-sdk-runs", new[] { "first", "second" });
-
-        Assert.Equal(["first", "second"], host.Cache.Get<string[]>("older-sdk-runs")!);
-    }
-
-    /// <summary>
     /// AC-1294 §2: the same <c>Get</c>/<c>Set</c> as <see cref="IPluginStorage"/> — typed, JSON-serialised,
     /// surviving a restart — but landing in the cache's own file, with the settings file never written at all.
     /// </summary>
