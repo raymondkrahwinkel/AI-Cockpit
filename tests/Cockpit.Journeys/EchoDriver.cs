@@ -25,11 +25,14 @@ public sealed class EchoDriver : ISessionDriver
 
     public SessionProfile? Profile { get; private set; }
 
+    public string? WorkingDirectory { get; private set; }
+
     public IAsyncEnumerable<SessionEvent> Events => _EchoAsync();
 
     public Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
+        WorkingDirectory = workingDirectory;
         return Task.CompletedTask;
     }
 

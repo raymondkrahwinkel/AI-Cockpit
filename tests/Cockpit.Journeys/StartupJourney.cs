@@ -2,8 +2,6 @@ using Avalonia.Headless;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
-using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -15,7 +13,7 @@ using Cockpit.Infrastructure.Sessions;
 namespace Cockpit.Journeys;
 
 // J1, the first thing every day: the cockpit starts with every bundled plugin, refuses one built for another contract
-// and shows its main window. Program's own desktop composition, so a registration taken out there turns this red.
+// and shows its main window. Program's composition and App's plugin phase, UI parts included; no copy of either.
 [Collection(JourneyCollection.Alone)]
 public sealed class StartupJourney
 {
@@ -33,16 +31,11 @@ public sealed class StartupJourney
         await using var cockpit = JourneyHost.Desktop(_InstallAPluginForContractTwo);
         var services = cockpit.Services;
 
-        cockpit.Backend.Start();
-        cockpit.Backend.InitializePlugins();
-        cockpit.Backend.StartPlanners();
+        await cockpit.StartDesktopAsync();
         var rendered = HeadlessAvalonia.Run(() =>
         {
-            var window = new MainWindow { DataContext = services.GetRequiredService<CockpitViewModel>() };
-            window.Show();
             Dispatcher.UIThread.RunJobs();
-            using var frame = window.CaptureRenderedFrame();
-            window.Close();
+            using var frame = cockpit.Window.CaptureRenderedFrame();
             return frame?.PixelSize;
         });
 

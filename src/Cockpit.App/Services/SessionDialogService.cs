@@ -116,7 +116,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         // AC-297: topmost window, not always the main one — a plugin's own window (e.g. an issue dialog's
         // "New session" button) would otherwise open this behind itself if owned by the main window.
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return null;
         }
@@ -479,7 +479,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null)
     {
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return;
         }
@@ -493,6 +493,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return dialog;
         });
     }
+
+    // AC-1422: the desktop lifetime's windows by default. A headless host gets no lifetime from Avalonia once it is set
+    // up, so it names its main window here instead.
+    internal Func<Window?> OwnerWindow { get; set; } = _ActiveOwnerWindow;
 
     // Most dialogs hardcode MainWindow as owner. The store dialog can itself sit below another window
     // (Options → Store), so it and anything it opens (plugin consent) need the topmost active window
@@ -611,7 +615,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         // AC-456: active window, not always MainWindow, matching the folder picker below — the picker belongs
         // to the window (e.g. the store dialog) it was opened from, not the main window.
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return null;
         }
@@ -630,7 +634,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         // The active window, not always MainWindow: the picker is launched from the Manage-stores dialog, itself
         // an owned modal over the store surface, so it must attach to that stack rather than behind it.
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return null;
         }
@@ -648,7 +652,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         // Uses the active window, not always MainWindow: an install/update triggered from the plugin store
         // dialog (itself opened over Options) must show consent over that dialog stack, not behind it.
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return false;
         }
@@ -742,7 +746,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")
     {
         // Owner is the topmost window so the confirm sits over whatever dialog triggered it (e.g. the store).
-        if (_ActiveOwnerWindow() is not { } owner)
+        if (OwnerWindow() is not { } owner)
         {
             return false;
         }

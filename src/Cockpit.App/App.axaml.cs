@@ -438,7 +438,7 @@ public partial class App : Application
 
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
-        _InitializePlugins();
+        InitializePlugins();
 
         // AC-237: reopen the companion window if it was left open, now that plugins have had their chance to
         // register a tool — the first paint this way already shows them instead of an empty card. AC-1343:
@@ -532,8 +532,8 @@ public partial class App : Application
 
     // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopBackendHost per plugin carrying the
     // built service provider, the cockpit as the contribution sink, the shared actions and its own storage slice;
-    // then the UI parts.
-    private void _InitializePlugins()
+    // then the UI parts. AC-1422: internal so the journeys run this phase itself, the plugins' UI parts included.
+    internal void InitializePlugins()
     {
         if (Program.Services.GetService<PluginManager>() is null)
         {

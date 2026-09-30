@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
+    <ProjectReference Include="..\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->
