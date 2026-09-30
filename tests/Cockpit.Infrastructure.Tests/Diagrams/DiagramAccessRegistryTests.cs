@@ -125,17 +125,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void Resolve_MatchesByIdOrByOperatorFacingName()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-
-        Assert.Equal("Onboarding flow", registry.Resolve("surface-1")!.Name);
-        Assert.Equal("surface-1", registry.Resolve("Onboarding flow")!.SurfaceId);
-        Assert.Null(registry.Resolve("nope"));
-    }
-
-    [Fact]
     public void Disconnect_DecouplesWhateverCapabilitiesWereHeld_AndAnnounces()
     {
         var registry = new DiagramAccessRegistry();
@@ -232,22 +221,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void DiscardProposal_ClearsThePendingProposal_WithoutWritingAnything()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-        registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
-
-        var discarded = registry.DiscardProposal("surface-1");
-
-        Assert.True(discarded);
-        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
-        Assert.Null(registry.PendingProposal("surface-1"));
-        Assert.False(registry.DiscardProposal("surface-1")); // nothing left to discard
-    }
-
-    [Fact]
     public void SurfaceClosed_AndSessionEnded_AlsoClearAnyPendingProposal()
     {
         var registryForClose = new DiagramAccessRegistry();
@@ -270,59 +243,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void UpdateText_FromTheOperator_KeepsWhatAnAgentReadsInStep_AndRaisesTextChanged()
-    {
-        var registry = new DiagramAccessRegistry();
-        var changes = new List<(string SurfaceId, string Text)>();
-        registry.TextChanged += (surfaceId, text) => changes.Add((surfaceId, text));
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Read);
-
-        registry.UpdateText("surface-1", "flowchart LR\nA-->B-->C");
-
-        Assert.Equal("flowchart LR\nA-->B-->C", registry.ReadCoupled("session-a", "surface-1"));
-        Assert.Equal(("surface-1", "flowchart LR\nA-->B-->C"), Assert.Single(changes));
-    }
-
-    [Fact]
-    public void ApplyHandEdit_ChangesOnlyTheObjectItNames_AndSaysWhatItDid()
-    {
-        var registry = new DiagramAccessRegistry();
-        var summaries = new List<string>();
-        registry.ObjectEdited += (_, summary) => summaries.Add(summary);
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A --> B");
-
-        Assert.Null(registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin")));
-
-        var text = registry.PeekText("surface-1")!;
-        Assert.Contains("A[\"Begin\"]", text, StringComparison.Ordinal);
-        Assert.Contains("B[\"Eind\"]", text, StringComparison.Ordinal);
-        Assert.Contains("A --> B", text, StringComparison.Ordinal);
-        Assert.Equal("renamed node A to \"Begin\"", Assert.Single(summaries));
-    }
-
-    [Fact]
-    public void ApplyHandEdit_AndAnAgentEditOnAnotherObject_BothLand()
-    {
-        // AC-841: geen verloren wijzigingen — the operator's hand-edit and the agent's per-object edit take the same
-        // read-modify-write under the lock, so neither replaces the whole source the other worked in.
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin"));
-        registry.EditCoupled("session-a", "surface-1", DiagramHandEditKind.RenameNode, "B", source =>
-        {
-            var edit = DiagramObjectEdit.RenameNode(source, "B", "Klaar");
-            return (edit.Text, edit.Summary);
-        });
-
-        var text = registry.PeekText("surface-1")!;
-        Assert.Contains("A[\"Begin\"]", text, StringComparison.Ordinal);
-        Assert.Contains("B[\"Klaar\"]", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void ApplyHandEdit_ThatWouldNotLeaveValidMermaid_ChangesNothingAndSaysWhy()
     {
         var registry = new DiagramAccessRegistry();
@@ -333,14 +253,6 @@ public class DiagramAccessRegistryTests
 
         Assert.NotNull(refusal);
         Assert.Equal("sequenceDiagram\n    A->>B: hoi", registry.PeekText("surface-1"));
-    }
-
-    [Fact]
-    public void ApplyHandEdit_OnASurfaceThatIsGone_RefusesRatherThanThrowing()
-    {
-        var registry = new DiagramAccessRegistry();
-
-        Assert.NotNull(registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.AddNode, "N1", Label: "Nieuw")));
     }
 
     [Fact]

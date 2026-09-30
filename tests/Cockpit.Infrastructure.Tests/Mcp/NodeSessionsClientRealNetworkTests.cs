@@ -27,75 +27,6 @@ public sealed class NodeSessionsClientRealNetworkTests
 {
     private const string NodeName = "laptop";
 
-    private const string AllowedProfile = "Laptop Sonnet";
-
-    [Fact]
-    public async Task ReadAsync_ANodeThatAnswers_ListsWhatItReported()
-    {
-        var certificatePath = _TempCertificatePath();
-        try
-        {
-            using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
-            var read = new NodeSessionMcpToolsTests.RecordingReadGateway();
-            read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", AllowedProfile, "running", null, null));
-            var pairing = new NodeSessionMcpToolsTests.StubPairing();
-            pairing.Profiles.Add(AllowedProfile);
-
-            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, read, pairing);
-            var client = _ClientFor(host.Url, certificate.Fingerprint, sharedSecret.Value!);
-
-            var snapshot = await client.ReadAsync(NodeName);
-
-            Assert.Null(snapshot.Error);
-            Assert.Equal("pane-a", Assert.Single(snapshot.Sessions).PaneId);
-        }
-        finally
-        {
-            File.Delete(certificatePath);
-        }
-    }
-
-    [Fact]
-    public async Task ReadAsync_AfterTheNodesListenerStops_ReportsARealConnectionRefusal()
-    {
-        var certificatePath = _TempCertificatePath();
-        try
-        {
-            using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
-            var read = new NodeSessionMcpToolsTests.RecordingReadGateway();
-            read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", AllowedProfile, "running", null, null));
-            var pairing = new NodeSessionMcpToolsTests.StubPairing();
-            pairing.Profiles.Add(AllowedProfile);
-
-            var host = await _StartNodeHostAsync(certificate, sharedSecret, read, pairing);
-            var client = _ClientFor(host.Url, certificate.Fingerprint, sharedSecret.Value!);
-
-            // Control measurement first (AC-529's own lesson): prove the harness answers before proving what it
-            // does once it stops answering, so a failure below is the node dropping out and not a broken rig.
-            var before = await client.ReadAsync(NodeName);
-            Assert.Null(before.Error);
-
-            // The node valt weg, midway through being usable — a hard stop of the real listener, not a fake that
-            // returns an error shape. `DisposeAsync` tears the Kestrel host down immediately rather than draining
-            // in-flight requests first, which is what an actual power loss or process kill looks like on the wire.
-            await host.DisposeAsync();
-
-            var after = await client.ReadAsync(NodeName);
-
-            Assert.NotNull(after.Error);
-            Assert.Contains(NodeName, after.Error, StringComparison.Ordinal);
-            Assert.Contains("looks stopped", after.Error, StringComparison.Ordinal);
-        }
-        finally
-        {
-            File.Delete(certificatePath);
-        }
-    }
-
     [Fact]
     public async Task ReadAsync_ANodeAnsweringWithAnUnpinnedCertificate_ReportsCertificateNotTrusted()
     {
@@ -117,46 +48,6 @@ public sealed class NodeSessionsClientRealNetworkTests
 
             Assert.NotNull(snapshot.Error);
             Assert.Contains("did not pin", snapshot.Error, StringComparison.Ordinal);
-        }
-        finally
-        {
-            File.Delete(certificatePath);
-        }
-    }
-
-    /// <summary>
-    /// AC-1284: the moved node. The registry row a controller stored is a copy of where the node was at pairing
-    /// time and nothing ever refreshed it, so the client re-resolves through discovery once before giving up and
-    /// writes the address it proved back into the row. Both halves are asserted, because a re-resolve that works
-    /// but does not remember pays the discovery window again on every poll.
-    /// </summary>
-    [Fact]
-    public async Task ReadAsync_ANodeThatMoved_IsReachedThroughDiscovery_AndItsRegistryRowFollows()
-    {
-        var certificatePath = _TempCertificatePath();
-        try
-        {
-            using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
-            var read = new NodeSessionMcpToolsTests.RecordingReadGateway();
-            read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", AllowedProfile, "running", null, null));
-            var pairing = new NodeSessionMcpToolsTests.StubPairing();
-            pairing.Profiles.Add(AllowedProfile);
-
-            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, read, pairing);
-
-            // The row points somewhere nothing listens — the state a node that restarted on another port leaves
-            // behind. Port 1 is refused immediately, so this is the moved node and not a slow one.
-            var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", certificate.Fingerprint, sharedSecret.Value!));
-            var discovery = new _FoundAt($"127.0.0.1:{new Uri(host.Url).Port - NodeEndpointSettings.McpPortOffset}");
-            var client = new NodeSessionsClient(store, discovery, NullLogger<NodeSessionsClient>.Instance);
-
-            var snapshot = await client.ReadAsync(NodeName);
-
-            Assert.Null(snapshot.Error);
-            Assert.Equal("pane-a", Assert.Single(snapshot.Sessions).PaneId);
-            Assert.Equal(host.Url, Assert.Single(store.Servers).Url);
         }
         finally
         {

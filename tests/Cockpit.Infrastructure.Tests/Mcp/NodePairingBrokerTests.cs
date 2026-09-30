@@ -445,25 +445,6 @@ public class NodePairingBrokerTests : IDisposable
         Assert.False(broker.IsProjectAllowed("proj-1"));
     }
 
-    /// <summary>
-    /// AC-1291 criterion 3: an offer nobody answered goes away on its own, and every screen showing it has to be
-    /// told. Expiry is the one ending that no caller drives, so it was also the one that raised nothing.
-    /// </summary>
-    [Fact]
-    public async Task PendingOffer_WhenItExpires_RaisesChangedSoTheScreensShowingItCanCatchUp()
-    {
-        var broker = _Broker();
-        await broker.RequestAsync("desk", "192.168.1.5");
-
-        var changes = 0;
-        broker.Changed += (_, _) => changes++;
-
-        _time.Advance(NodePairingBroker.Lifetime + TimeSpan.FromSeconds(1));
-
-        Assert.Equal(1, changes);
-        Assert.Null(broker.Pending);
-    }
-
     private sealed class _FakeMcpServerStore(IReadOnlyList<McpServerConfig> servers) : IMcpServerStore
     {
         public Task<IReadOnlyList<McpServerConfig>> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(servers);

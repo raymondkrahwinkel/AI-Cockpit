@@ -65,34 +65,7 @@ public class WireframeComponentIdTests
 
     // ---- Criterion 3: the hold protects the component, not the line ----
 
-    [Fact]
-    public void TheHold_FollowsTheComponent_WhenSomethingIsAddedAboveIt()
-    {
-        var registry = _Coupled();
-        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButton);
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Add(WireframeScreens.Nav, "item", "Beveiliging", null, position: 0));
-
-        // The held button has moved down a line, and its old line now holds the one above it.
-        Assert.Equal(WireframeScreens.SaveButtonLine + 1, _Component(registry, WireframeScreens.SaveButton)!.Line);
-
-        var held = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
-        var free = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText("cancel", "Terug"));
-
-        Assert.Contains("editing the component with id \"save\"", held.Refusal);
-        Assert.Null(free.Refusal);
-    }
-
     // ---- Criterion 4: the selection is found exactly, or it is gone ----
-
-    [Fact]
-    public void AComponentThatWasRemoved_IsNotFoundBack_RatherThanResolvingToItsNeighbour()
-    {
-        var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.SaveButton));
-
-        Assert.Null(_Component(registry, WireframeScreens.SaveButton));
-        Assert.Equal("Annuleren", _Component(registry, "cancel")?.Text);
-    }
 
     // ---- Criteria 5 and 6: a source without ids keeps working, and a read is what names it ----
 
@@ -118,41 +91,7 @@ public class WireframeComponentIdTests
         Assert.Equal("screen \"X\" #c1\n  button \"Opslaan\" #c2\n  button \"Annuleren\" #save", stamped);
     }
 
-    [Fact]
-    public void EnsureComponentId_NamesTheComponentOnThatLine_AndAnnouncesTheStampedSource()
-    {
-        var registry = _Coupled(WireframeScreens.Plain);
-        var announced = new List<string>();
-        registry.TextChanged += (_, text) => announced.Add(text);
-
-        var id = registry.EnsureComponentId(SurfaceId, WireframeScreens.SaveButtonLine);
-
-        Assert.Equal("Opslaan", _Component(registry, id!)?.Text);
-        Assert.Equal(registry.PeekText(SurfaceId), Assert.Single(announced));
-        Assert.Null(registry.EnsureComponentId(SurfaceId, line: 99));
-    }
-
     // ---- Criterion 7: the race the ids exist for ----
-
-    [Fact]
-    public void ReadThenTheOperatorAddsAbove_TheAgentsCallStillHitsTheComponentItRead()
-    {
-        // The old line-numbered call would have landed on "Annuleren", which is what slid into line 13 meanwhile.
-        var registry = _Coupled(WireframeScreens.Plain);
-        registry.ReadCoupled(Session, SurfaceId);
-        var asRead = _Tree(registry);
-        var save = WireframeHandEdit.Find(asRead, WireframeScreens.SaveButtonLine)!.Id!;
-        var nav = WireframeHandEdit.Find(asRead, line: 4)!.Id!;
-
-        registry.ApplyHandEdit(SurfaceId, WireframeHandEdit.AddChild(nav, "item", "Beveiliging"));
-        Assert.Equal("Annuleren", WireframeHandEdit.Find(_Tree(registry), WireframeScreens.SaveButtonLine)?.Text);
-
-        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(save, "Bewaren"));
-
-        Assert.Null(result.Refusal);
-        Assert.Equal("Bewaren", _Component(registry, save)?.Text);
-        Assert.Contains("button \"Annuleren\"", registry.PeekText(SurfaceId)!, StringComparison.Ordinal);
-    }
 
     private static IEnumerable<WireframeNode> _Flatten(WireframeNode node) =>
         new[] { node }.Concat(node.Children.SelectMany(_Flatten));

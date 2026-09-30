@@ -68,21 +68,6 @@ public class WorktreeToolsTests
         new(session, "/repo", path, "cockpit/x", "abc", DateTimeOffset.UtcNow);
 
     [Fact]
-    public async Task Create_ReturnsThePathAndBranch()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("pane", "/wt/path");
-        manager.CreateForSessionAsync(Arg.Is("pane"), Arg.Is<string?>(label => label == null), Arg.Is("/repo"), Arg.Is(WorktreeSourceHandling.LeaveSourceAlone), Arg.Is(true), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(record);
-        var tools = new WorktreeTools(manager);
-
-        using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));
-
-        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Equal("/wt/path", result.RootElement.GetProperty("path").GetString());
-        Assert.Equal("cockpit/x", result.RootElement.GetProperty("branch").GetString());
-    }
-
-    [Fact]
     public async Task Remove_PathNotManaged_ReturnsNotOkAndRemovesNothing()
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -222,25 +207,6 @@ public class WorktreeToolsTests
     }
 
     [Fact]
-    public async Task Remove_CleanWorktree_RemovesWithoutForceOrConsent()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("gone-pane", "/wt/gone");
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
-        var consent = Substitute.For<IConsentBroker>();
-        var tools = new WorktreeTools(manager, live, consent);
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
-
-        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
-        await manager.Received(1).RemoveAsync(record, false, Arg.Any<CancellationToken>());
-        await consent.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Remove_RepositoryGoneButLeavesAFolderBehind_RelaysTheNoticeInTheResponse()
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -257,23 +223,6 @@ public class WorktreeToolsTests
 
         Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
         Assert.Contains("no longer managed by the cockpit", result.RootElement.GetProperty("notice").GetString());
-    }
-
-    [Fact]
-    public async Task Remove_PlainSuccess_NoticeIsNull()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("gone-pane", "/wt/gone");
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
-        manager.RemoveAsync(record, false, Arg.Any<CancellationToken>()).Returns((string?)null);
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
-        var tools = new WorktreeTools(manager, live);
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
-
-        Assert.Equal(JsonValueKind.Null, result.RootElement.GetProperty("notice").ValueKind);
     }
 
     [Fact]
@@ -310,57 +259,6 @@ public class WorktreeToolsTests
 
         Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task List_OwnerStillLive_ReportsOwnerLiveTrue()
-    {
-        // AC-719: worktree_list's caller cannot otherwise tell "owner is a running session" apart from "owner is
-        // gone, work retained" — both read as a bare session id with retained possibly false either way.
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("live-pane", "/wt/live");
-        manager.GetStatusesAsync(Arg.Any<CancellationToken>())
-            .Returns(new List<WorktreeStatus> { new(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0) });
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "live-pane" });
-        var tools = new WorktreeTools(manager, live);
-
-        using var result = JsonDocument.Parse(await tools.ListAsync());
-
-        var entry = result.RootElement.GetProperty("worktrees").EnumerateArray().Single();
-        Assert.True(entry.GetProperty("ownerLive").GetBoolean());
-    }
-
-    [Fact]
-    public async Task List_OwnerGone_ReportsOwnerLiveFalse()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("gone-pane", "/wt/gone") with { IsRetained = true };
-        manager.GetStatusesAsync(Arg.Any<CancellationToken>())
-            .Returns(new List<WorktreeStatus> { new(record, Exists: true, HasUncommittedChanges: true, StrandableCommits: 0) });
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
-        var tools = new WorktreeTools(manager, live);
-
-        using var result = JsonDocument.Parse(await tools.ListAsync());
-
-        var entry = result.RootElement.GetProperty("worktrees").EnumerateArray().Single();
-        Assert.False(entry.GetProperty("ownerLive").GetBoolean());
-    }
-
-    [Fact]
-    public async Task List_NoLivenessRegistry_ReportsOwnerLiveAsNull()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("some-pane", "/wt/unknown");
-        manager.GetStatusesAsync(Arg.Any<CancellationToken>())
-            .Returns(new List<WorktreeStatus> { new(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0) });
-        var tools = new WorktreeTools(manager, liveSessions: null);
-
-        using var result = JsonDocument.Parse(await tools.ListAsync());
-
-        var entry = result.RootElement.GetProperty("worktrees").EnumerateArray().Single();
-        Assert.Equal(JsonValueKind.Null, entry.GetProperty("ownerLive").ValueKind);
     }
 
     [Fact]

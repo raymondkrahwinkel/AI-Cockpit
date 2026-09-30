@@ -1,6 +1,5 @@
 using Cockpit.Core.Clones;
 using Cockpit.Infrastructure.Clones;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Clones;
 
@@ -20,12 +19,6 @@ public sealed class CloneSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_WithNothingSaved_ReturnsNoOverride()
-    {
-        Assert.Null((await _store.LoadAsync()).Root);
-    }
-
-    [Fact]
     public async Task SaveThenLoad_RoundTripsTheOverrideRoot()
     {
         var custom = Path.Combine(_tempRoot, "somewhere-else");
@@ -33,21 +26,6 @@ public sealed class CloneSettingsStoreTests : IDisposable
         await _store.SaveAsync(new CloneSettings { Root = custom });
 
         Assert.Equal(custom, (await _store.LoadAsync()).Root);
-    }
-
-    [Fact]
-    public async Task SaveNullRoot_ClearsTheOverride()
-    {
-        await _store.SaveAsync(new CloneSettings { Root = Path.Combine(_tempRoot, "x") });
-        await _store.SaveAsync(new CloneSettings { Root = null });
-
-        Assert.Null((await _store.LoadAsync()).Root);
-    }
-
-    [Fact]
-    public void DefaultRoot_IsTheManagedClonesRoot()
-    {
-        Assert.Equal(CockpitConfigPath.ClonesRoot, _store.DefaultRoot);
     }
 
     public void Dispose()

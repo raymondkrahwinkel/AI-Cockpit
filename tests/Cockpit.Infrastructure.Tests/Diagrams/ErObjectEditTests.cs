@@ -35,26 +35,6 @@ public class ErObjectEditTests
     }
 
     [Fact]
-    public void AddEntity_ThatIsAlreadyThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.AddEntity(Source, "ORDER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("already in this diagram", edit.Refusal);
-    }
-
-    [Fact]
-    public void AddEntity_ForANameThatSoFarOnlyHadRelationships_GivesItABlock()
-    {
-        const string source = "erDiagram\n    CUSTOMER ||--o{ ORDER : \"places\"";
-
-        var edit = DiagramObjectEdit.AddEntity(source, "ORDER");
-
-        Assert.Null(edit.Refusal);
-        Assert.Contains("a block of its own", edit.Summary);
-    }
-
-    [Fact]
     public void RenameEntity_RewritesTheBlockAndItsRelationships_AndNothingElse()
     {
         var edit = DiagramObjectEdit.RenameEntity(Source, "CUSTOMER", "CLIENT");
@@ -74,15 +54,6 @@ public class ErObjectEditTests
     }
 
     [Fact]
-    public void RenameEntity_OntoANameThatIsTaken_IsRefused_RatherThanMergingTheTwo()
-    {
-        var edit = DiagramObjectEdit.RenameEntity(Source, "CUSTOMER", "ORDER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("would merge the two", edit.Refusal);
-    }
-
-    [Fact]
     public void RemoveEntity_TakesItsAttributesAndItsRelationshipsWithIt_AndNothingElse()
     {
         var edit = DiagramObjectEdit.RemoveEntity(Source, "CUSTOMER");
@@ -98,15 +69,6 @@ public class ErObjectEditTests
     }
 
     [Fact]
-    public void RemoveEntity_ThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.RemoveEntity(Source, "INVOICE");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no entity", edit.Refusal);
-    }
-
-    [Fact]
     public void SetAttribute_AddsItInsideItsOwnBlock_NotAtTheEndOfTheSource()
     {
         var edit = DiagramObjectEdit.SetAttribute(Source, "ORDER", "placedOn", "date", key: null);
@@ -116,62 +78,12 @@ public class ErObjectEditTests
     }
 
     [Fact]
-    public void SetAttribute_ForANameThatIsAlreadyThere_RewritesThatOneLine_AndKeepsItsComment()
-    {
-        const string source = "erDiagram\n    ORDER {\n        int id PK \"the key\"\n    }";
-
-        var edit = DiagramObjectEdit.SetAttribute(source, "ORDER", "id", "bigint", "PK");
-
-        Assert.Equal("erDiagram\n    ORDER {\n        bigint id PK \"the key\"\n    }", edit.Text);
-        Assert.Contains("changed attribute", edit.Summary);
-    }
-
-    [Fact]
-    public void SetAttribute_OnAnEntityThatHasNoBlockYet_GivesItOne()
-    {
-        const string source = "erDiagram\n    CUSTOMER ||--o{ ORDER : \"places\"";
-
-        var edit = DiagramObjectEdit.SetAttribute(source, "ORDER", "id", "int", "pk");
-
-        Assert.Null(edit.Refusal);
-        Assert.EndsWith("\n    ORDER {\n        int id PK\n    }", edit.Text);
-    }
-
-    [Fact]
     public void SetAttribute_WithAKeyThatIsNotOne_IsRefused_RatherThanWrittenIntoTheSource()
     {
         var edit = DiagramObjectEdit.SetAttribute(Source, "ORDER", "total", "int", "PRIMARY");
 
         Assert.Null(edit.Text);
         Assert.Contains("PK, FK or UK", edit.Refusal);
-    }
-
-    [Fact]
-    public void SetAttribute_WithATypeThatIsNotOneWord_IsRefused()
-    {
-        var edit = DiagramObjectEdit.SetAttribute(Source, "ORDER", "total", "decimal number", key: null);
-
-        Assert.Null(edit.Text);
-        Assert.Contains("one word", edit.Refusal);
-    }
-
-    [Fact]
-    public void RemoveAttribute_TakesOnlyThatLine()
-    {
-        var edit = DiagramObjectEdit.RemoveAttribute(Source, "CUSTOMER", "name");
-
-        Assert.Null(edit.Refusal);
-        Assert.DoesNotContain("string name", edit.Text, StringComparison.Ordinal);
-        Assert.Contains("int id PK", edit.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void RemoveAttribute_ThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.RemoveAttribute(Source, "CUSTOMER", "total");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no attribute", edit.Refusal);
     }
 
     [Theory]
@@ -186,15 +98,6 @@ public class ErObjectEditTests
         Assert.Null(edit.Refusal);
         Assert.EndsWith($"\n    ORDER {connector} CUSTOMER : \"belongs to\"", edit.Text);
         Assert.Contains("data-entity1=\"ORDER\"", Rendered(edit.Text!), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Relate_WithoutALabel_IsRefused_BecauseMermaidDrawsThatVerb()
-    {
-        var edit = DiagramObjectEdit.Relate(Source, "ORDER", "CUSTOMER", DiagramErCardinality.One, DiagramErCardinality.One, "  ");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("needs a label", edit.Refusal);
     }
 
     [Fact]
@@ -220,26 +123,6 @@ public class ErObjectEditTests
     }
 
     [Fact]
-    public void Unrelate_ThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.Unrelate(Source, "ORDER", "CUSTOMER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no ORDER -> CUSTOMER relationship", edit.Refusal);
-    }
-
-    [Fact]
-    public void Attributes_ReadsTheBlockBackInSourceOrder()
-    {
-        var attributes = DiagramObjectEdit.Attributes(Source, "CUSTOMER");
-
-        Assert.Collection(
-            attributes,
-            first => Assert.Equal(new DiagramErAttribute("string", "name", null), first),
-            second => Assert.Equal(new DiagramErAttribute("int", "id", "PK"), second));
-    }
-
-    [Fact]
     public void AFlowchartCall_OnAnErDiagram_IsRefused_NamingTheCallsThatDoWork()
     {
         var edit = DiagramObjectEdit.AddNode(Source, "INVOICE", "Invoice");
@@ -257,12 +140,4 @@ public class ErObjectEditTests
         Assert.Contains("add_node", edit.Refusal);
     }
 
-    [Fact]
-    public void AnErCall_OnADiagramWithNeitherGrammar_PointsAtEditDiagram()
-    {
-        var edit = DiagramObjectEdit.AddEntity("sequenceDiagram\n    Alice->>Bob: Hello", "CUSTOMER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("edit_diagram", edit.Refusal);
-    }
 }

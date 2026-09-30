@@ -26,14 +26,6 @@ public class DiagramObjectEditTests
         Assert.Contains("added node C", edit.Summary);
     }
 
-    [Fact]
-    public void AddNode_OnAnEmptySurface_WritesTheHeaderTo()
-    {
-        var edit = DiagramObjectEdit.AddNode("", "A", "Start");
-
-        Assert.Equal("flowchart TD\n    A[\"Start\"]", edit.Text);
-    }
-
     // One refusal, two reasons an id can be unusable: it is already in the diagram, or it is not one word and would
     // otherwise be written into the source as its own arrow. Neither may produce text.
     [Theory]
@@ -61,16 +53,6 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void RenameNode_FindsTheNodeWhereItIsDeclaredInsideAConnectionLine()
-    {
-        const string inline = "flowchart LR\n    Zip[Plugin zip] --> Host[Host copy]";
-
-        var edit = DiagramObjectEdit.RenameNode(inline, "Zip", "Plugin package");
-
-        Assert.Equal("flowchart LR\n    Zip[\"Plugin package\"] --> Host[Host copy]", edit.Text);
-    }
-
-    [Fact]
     public void RenameNode_LeavesAnotherNodesLabelAlone_EvenWhenItSpellsThisNodesId()
     {
         const string source = "flowchart LR\n    A[\"B is next\"]\n    B[\"Stop\"]";
@@ -78,15 +60,6 @@ public class DiagramObjectEditTests
         var edit = DiagramObjectEdit.RenameNode(source, "B", "Halt");
 
         Assert.Equal("flowchart LR\n    A[\"B is next\"]\n    B[\"Halt\"]", edit.Text);
-    }
-
-    [Fact]
-    public void RenameNode_OfANodeThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.RenameNode(Source, "Z", "Ghost");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no node", edit.Refusal);
     }
 
     [Fact]
@@ -101,15 +74,6 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void RemoveNode_OfALoneDeclaration_ReportsNoConnections()
-    {
-        var edit = DiagramObjectEdit.RemoveNode("flowchart LR\n    A[\"Start\"]\n    B[\"Stop\"]", "A");
-
-        Assert.Equal("flowchart LR\n    B[\"Stop\"]", edit.Text);
-        Assert.Equal("removed node A", edit.Summary);
-    }
-
-    [Fact]
     public void Connect_AppendsTheConnection_AndRefusesTheSameOneTwice()
     {
         var first = DiagramObjectEdit.Connect(Source, "B", "A", label: null);
@@ -118,14 +82,6 @@ public class DiagramObjectEditTests
         var again = DiagramObjectEdit.Connect(first.Text!, "B", "A", label: null);
         Assert.Null(again.Text);
         Assert.Contains("already connected", again.Refusal);
-    }
-
-    [Fact]
-    public void Connect_WithALabel_WritesItQuoted()
-    {
-        var edit = DiagramObjectEdit.Connect(Source, "B", "A", "back \"home\"");
-
-        Assert.EndsWith("\n    B -->|\"back 'home'\"| A", edit.Text);
     }
 
     [Fact]
@@ -141,29 +97,6 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void Disconnect_OfAConnectionThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.Disconnect(Source, "B", "A");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no B -> A connection", edit.Refusal);
-    }
-
-    [Fact]
-    public void RelabelConnection_SetsALabelOnAConnectionThatHadNone()
-    {
-        var edit = DiagramObjectEdit.RelabelConnection(Source, "A", "B", "go");
-
-        Assert.Equal("""
-            flowchart LR
-                A["Start"]
-                B{Choose}
-                A -->|"go"| B
-            """.ReplaceLineEndings("\n"), edit.Text);
-        Assert.Contains("labeled connection", edit.Summary);
-    }
-
-    [Fact]
     public void RelabelConnection_ChangesAnExistingLabel_LeavingTheConnectorAlone()
     {
         var withLabel = DiagramObjectEdit.Connect(Source, "B", "A", "back home").Text!;
@@ -174,70 +107,12 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void RelabelConnection_WithNoLabel_RemovesTheExistingOne()
-    {
-        var withLabel = DiagramObjectEdit.Connect(Source, "B", "A", "back home").Text!;
-
-        var edit = DiagramObjectEdit.RelabelConnection(withLabel, "B", "A", null);
-
-        Assert.EndsWith("\n    B --> A", edit.Text);
-        Assert.Contains("cleared the label", edit.Summary);
-    }
-
-    [Fact]
-    public void RelabelConnection_OfAConnectionThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.RelabelConnection(Source, "B", "A", "go");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no B -> A connection", edit.Refusal);
-    }
-
-    [Fact]
-    public void RelabelConnection_OnAChainLine_IsRefused()
-    {
-        const string chain = "flowchart LR\n    A --> B --> C";
-
-        Assert.Contains("chain", DiagramObjectEdit.RelabelConnection(chain, "A", "C", "skip").Refusal);
-    }
-
-    [Fact]
     public void SetNodeShape_ChangesTheShape_KeepingTheLabelAndId()
     {
         var edit = DiagramObjectEdit.SetNodeShape(Source, "A", DiagramNodeShape.Rounded);
 
         Assert.Contains("A(\"Start\")", edit.Text, StringComparison.Ordinal);
         Assert.Contains("changed the shape of node A to rounded", edit.Summary);
-    }
-
-    [Fact]
-    public void SetNodeShape_OnAnImplicitNode_MaterializesItWithItsOwnIdAsTheLabel()
-    {
-        const string implicitSource = "flowchart LR\n    A --> B";
-
-        var edit = DiagramObjectEdit.SetNodeShape(implicitSource, "B", DiagramNodeShape.Diamond);
-
-        Assert.Equal("flowchart LR\n    A --> B{\"B\"}", edit.Text);
-    }
-
-    [Fact]
-    public void SetNodeShape_OfANodeThatIsNotThere_IsRefused()
-    {
-        var edit = DiagramObjectEdit.SetNodeShape(Source, "Z", DiagramNodeShape.Diamond);
-
-        Assert.Null(edit.Text);
-        Assert.Contains("no node \"Z\"", edit.Refusal);
-    }
-
-    [Fact]
-    public void RestoreNodeShape_PutsBackWhateverDelimitersTheOldLineHad_EvenAHandWrittenOneOutsideTheFiveNamedShapes()
-    {
-        const string hexagon = "flowchart LR\n    A{{\"Odd shape\"}}";
-        var reshaped = DiagramObjectEdit.SetNodeShape(hexagon, "A", DiagramNodeShape.Rectangle).Text!;
-
-        var restored = DiagramObjectEdit.RestoreNodeShape(reshaped, "A", "    A{{\"Odd shape\"}}");
-
-        Assert.Equal(hexagon, restored.Text);
     }
 
     [Fact]

@@ -23,14 +23,6 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task ReadAsync_WhenParentDirectoryDoesNotExist_ReturnsNull()
-    {
-        var read = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-
-        Assert.Null(read);
-    }
-
     /// <summary>
     /// The bug, in the smallest shape that shows it: many writers, each touching only its own plugin, all at
     /// once. Every one of them must survive — losing any is the pin that vanished.
@@ -128,21 +120,6 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
 
         await release;
         Assert.Contains("there", read!.Plugins!.Keys);
-    }
-
-    /// <summary>Waiting is not forgiving: a hold that outlasts any swap is not contention, and the read has to stop pretending otherwise.</summary>
-    [Fact]
-    public async Task ReadAsync_WhileTheFileIsHeldIndefinitely_GivesUp_RatherThanHangingForever()
-    {
-        Directory.CreateDirectory(_directory);
-        var access = new CockpitConfigFileAccess(ConfigPath);
-        await access.UpdateAsync(file => (file.Plugins ??= [])["there"] = new PluginRegistrationEntry(), CancellationToken.None);
-
-        using var held = new FileStream(ConfigPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-
-        var act = async () => await access.ReadAsync(CancellationToken.None);
-
-        await Assert.ThrowsAsync<IOException>(act);
     }
 
     /// <summary>

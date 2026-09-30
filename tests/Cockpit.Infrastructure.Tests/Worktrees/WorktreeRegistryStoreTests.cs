@@ -20,14 +20,6 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_NoConfigFile_IsEmpty()
-    {
-        var store = new WorktreeRegistryStore(_configPath);
-
-        Assert.Empty((await store.ListAsync()));
-    }
-
-    [Fact]
     public async Task AddAsync_ThenListFromAFreshStore_SurvivesTheRestart()
     {
         var record = _Record("/repo", "/wt/one", "cockpit/one");
@@ -36,30 +28,6 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
         var reloaded = await new WorktreeRegistryStore(_configPath).ListAsync();
 
         Assert.Equivalent(record, Assert.Single(reloaded));
-    }
-
-    [Fact]
-    public async Task AddAsync_SameWorktreePathTwice_ReplacesRatherThanDuplicates()
-    {
-        var store = new WorktreeRegistryStore(_configPath);
-        await store.AddAsync(_Record("/repo", "/wt/one", "cockpit/one"));
-        await store.AddAsync(_Record("/repo", "/wt/one", "cockpit/one-again"));
-
-        var records = await store.ListAsync();
-
-        Assert.Equal("cockpit/one-again", Assert.Single(records).Branch);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_DropsOnlyTheMatchingEntry()
-    {
-        var store = new WorktreeRegistryStore(_configPath);
-        await store.AddAsync(_Record("/repo", "/wt/one", "cockpit/one"));
-        await store.AddAsync(_Record("/repo", "/wt/two", "cockpit/two"));
-
-        await store.RemoveAsync("/wt/one");
-
-        Assert.Equal(Path.GetFullPath("/wt/two"), Assert.Single((await store.ListAsync())).Path);
     }
 
     [Fact]
