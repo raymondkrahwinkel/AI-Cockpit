@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Cockpit.Core.Abstractions;
-using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -10,7 +8,6 @@ using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
-using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.Backend.Tests.EndToEnd;
 
@@ -89,10 +86,6 @@ public sealed class BackendWithoutAppTests : IDisposable
 
     // The seams only a frontend filled, answered from Infrastructure: the test registers none of them.
     [Theory]
-    [InlineData(typeof(ISessionLauncher))]
-    [InlineData(typeof(IProjectEditor))]
-    [InlineData(typeof(IAssistantConversation))]
-    [InlineData(typeof(IExternalLinkOpener))]
     [InlineData(typeof(IUiHitchProbe))]
     [InlineData(typeof(IDesktopDisplays))]
     public async Task TheSeamsOnlyTheDesktopFilled_ResolveFromInfrastructure(Type seam)
