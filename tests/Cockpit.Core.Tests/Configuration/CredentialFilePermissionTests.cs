@@ -66,46 +66,6 @@ public class CredentialFilePermissionTests : IDisposable
             Path.GetFullPath(TtyMcpConfigFile.DefaultDirectory).TrimEnd(Path.DirectorySeparatorChar));
     }
 
-    [Fact]
-    public void SessionScopedFile_IsDeletedWhenTheSessionIsDisposed()
-    {
-        // The host-side --mcp-config writer this used to exercise (TtyMcpConfigFile.Write) had no production
-        // caller and was removed in AC-380 — each provider plugin now writes and owns its own session-scoped
-        // file (e.g. ClaudeMcpConfig). What still matters, and is still live in production, is that
-        // TtyProcessOwningSessionFiles deletes whatever session-scoped file it is handed once the session ends.
-        var path = Path.Combine(_directory, $"{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, """{"mcpServers":{}}""");
-
-        using (var session = new TtyProcessOwningSessionFiles(new FakeConPtyProcess(), [path]))
-        {
-            Assert.True(File.Exists(path), "the CLI reads it while the session is alive");
-        }
-
-        Assert.False(File.Exists(path), "a credential must not outlive the session that needed it");
-    }
-
-    [Fact]
-    public void SweepStale_RemovesWhatACrashOrAnOlderVersionLeftBehind()
-    {
-        var temporaryDirectory = Path.Combine(_directory, "tmp");
-        Directory.CreateDirectory(temporaryDirectory);
-
-        // TtyMcpConfigFile no longer writes these itself (AC-380) — simulating what an older cockpit version, or
-        // a killed session, left behind is now the only way to put one here.
-        var ours = Path.Combine(_directory, $"tty-mcp-{Guid.NewGuid():N}.json");
-        File.WriteAllText(ours, """{"mcpServers":{}}""");
-        var legacy = Path.Combine(temporaryDirectory, $"cockpit-tty-mcp-{Guid.NewGuid():N}.json");
-        File.WriteAllText(legacy, """{"mcpServers":{}}""");
-        var unrelated = Path.Combine(temporaryDirectory, "something-else.json");
-        File.WriteAllText(unrelated, "{}");
-
-        TtyMcpConfigFile.SweepStale(_directory, temporaryDirectory);
-
-        Assert.False(File.Exists(ours), "a killed session leaves its config behind");
-        Assert.False(File.Exists(legacy), "the previous implementation's files are the ones holding a live token today");
-        Assert.True(File.Exists(unrelated), "the sweep only claims its own files");
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_directory))

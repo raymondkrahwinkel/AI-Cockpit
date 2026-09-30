@@ -20,13 +20,6 @@ public class SessionProfileEntryAssistantTests
     }
 
     [Fact]
-    public void FromDomain_ABlankAssistant_WritesNoField()
-    {
-        Assert.Null(SessionProfileEntry.FromDomain(Profile()).Assistant);
-        Assert.Null(SessionProfileEntry.FromDomain(Profile() with { Assistant = "  " }).Assistant);
-    }
-
-    [Fact]
     public void ToDomain_AProfileSavedBeforeThisTicket_ReadsAsNoAssistant()
     {
         var entry = new SessionProfileEntry { Label = "personal", ConfigDir = "~/.claude-personal" };

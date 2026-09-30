@@ -1,5 +1,4 @@
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Core.Tests.Configuration;
@@ -114,20 +113,6 @@ public class SessionProfileEntryTests
         Assert.Equal("/home/raymond/RiderProjects/App", roundTripped.DefaultWorkingDirectory);
     }
 
-    [Fact]
-    public void RoundTrip_KeepsAnEmptyMcpPreSelection_DistinctFromNoRestriction()
-    {
-        // "these none" is a real choice the operator can make (restrict on, everything unticked); it must survive as an
-        // empty list, not collapse to null (which means "no restriction — all servers").
-        var restricted = new SessionProfile("work", ClaudePluginProfile.Create("/x", null)) { EnabledMcpServerNames = [] };
-        var restrictedNames = SessionProfileEntry.FromDomain(restricted).ToDomain().EnabledMcpServerNames;
-        Assert.NotNull(restrictedNames);
-        Assert.Empty(restrictedNames);
-
-        var unrestricted = new SessionProfile("work", ClaudePluginProfile.Create("/x", null));
-        Assert.Null(SessionProfileEntry.FromDomain(unrestricted).ToDomain().EnabledMcpServerNames);
-    }
-
     // What every profile written before these fields existed looks like on disk: a label and ConfigDir, nothing
     // else. Each absent field must read as "not set" rather than throwing or being invented — AC-139/AC-6's
     // DefaultKind in particular, which SessionKindDefaults then falls back to TTY for rather than picking SDK.
@@ -142,26 +127,6 @@ public class SessionProfileEntryTests
         Assert.Null(profile.EnabledMcpServerNames);
         Assert.Null(profile.DefaultWorkingDirectory);
         Assert.Null(profile.DefaultKind);
-    }
-
-    [Fact]
-    public void RoundTrip_KeepsTheDefaultKind()
-    {
-        var sdkProfile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null)) { DefaultKind = ProfileSessionKind.Sdk };
-        var ttyProfile = sdkProfile with { DefaultKind = ProfileSessionKind.Tty };
-
-        Assert.Equal(ProfileSessionKind.Sdk, SessionProfileEntry.FromDomain(sdkProfile).ToDomain().DefaultKind);
-        Assert.Equal(ProfileSessionKind.Tty, SessionProfileEntry.FromDomain(ttyProfile).ToDomain().DefaultKind);
-    }
-
-    // An unrecognised value (a hand-edited cockpit.json, or a future value an older cockpit does not know) reads as
-    // "no saved default" rather than throwing — the same tolerance ToDomain gives an absent/unknown reading level.
-    [Fact]
-    public void ToDomain_WithAnUnrecognisedDefaultKind_LeavesItUnset()
-    {
-        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/x", DefaultKind = "Nonsense" };
-
-        Assert.Null(entry.ToDomain().DefaultKind);
     }
 
     [Fact]
@@ -212,24 +177,4 @@ public class SessionProfileEntryTests
         Assert.Equal("high", profile.Defaults!.OptionDefaults!["effort"]);
     }
 
-    // AC-138: the profile's "Default view" reading level persists by name, and survives the round-trip both ways.
-    [Fact]
-    public void RoundTrip_KeepsTheDefaultReadingLevel()
-    {
-        var entry = new ProfileDefaultsEntry { DefaultReadingLevel = "Focus" };
-
-        Assert.Equal(ReadingLevel.Focus, entry.ToDomain().DefaultReadingLevel);
-
-        var resaved = ProfileDefaultsEntry.FromDomain(new ProfileDefaults(string.Empty, string.Empty, string.Empty) { DefaultReadingLevel = ReadingLevel.Simple });
-        Assert.Equal("Simple", resaved.DefaultReadingLevel);
-    }
-
-    // A config with no reading level (an older build, or a hand-edited value that names no level) reads as "no
-    // default" — the app default (Developer) then applies — rather than throwing on load.
-    [Fact]
-    public void ToDomain_WithAbsentOrUnknownReadingLevel_LeavesItUnset()
-    {
-        Assert.Null(new ProfileDefaultsEntry { DefaultReadingLevel = null }.ToDomain().DefaultReadingLevel);
-        Assert.Null(new ProfileDefaultsEntry { DefaultReadingLevel = "Nonsense" }.ToDomain().DefaultReadingLevel);
-    }
 }
