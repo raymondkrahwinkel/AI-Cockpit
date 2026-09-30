@@ -2,7 +2,9 @@ using Avalonia.Headless;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
+using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.ViewTests;
+using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Voice;
@@ -56,6 +58,30 @@ public sealed class StartupJourney
             [typeof(IUiHitchProbe), typeof(IDesktopDisplays), typeof(IExternalLinkOpener)],
             seam => Assert.Equal(typeof(Program).Assembly, services.GetRequiredService(seam).GetType().Assembly));
         Assert.NotNull(rendered);
+
+        // What the operator reaches from the window: the backup and update buttons are live, and Help's "Run setup
+        // again" opens the wizard with the steps a first run walks, the provider step among them.
+        var cockpitViewModel = cockpit.Cockpit;
+        Assert.True(HeadlessAvalonia.Run(() => cockpitViewModel.CanBackUp && cockpitViewModel.CanBackUpAssistantMemory && cockpitViewModel.CanCheckForUpdates));
+        var steps = services.GetServices<IFirstRunWizardStep>().Select(step => step.GetType()).ToList();
+        Assert.Subset(steps.ToHashSet(), new HashSet<Type> { typeof(WelcomeStep), typeof(WorkKindStep), typeof(RestoreStep), typeof(ProviderStep) });
+
+        var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+        Task setup = Task.CompletedTask;
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            setup = cockpitViewModel.RunSetupAgainCommand.ExecuteAsync(null);
+            return Task.CompletedTask;
+        });
+        var window = await opened.Task.WaitAsync(Until.Ceiling);
+        Assert.Equal(steps.Count, HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext).StepBar.Count(item => !item.NotBuiltYet)));
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            window.Close();
+            return Task.CompletedTask;
+        });
+        await setup.WaitAsync(Until.Ceiling);
     }
 
     // Installed as the store would leave it; its contract is refused before its assembly is ever read.

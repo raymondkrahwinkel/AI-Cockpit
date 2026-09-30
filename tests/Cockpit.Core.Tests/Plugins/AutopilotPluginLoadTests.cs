@@ -9,7 +9,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-// AC-1398: Autopilot's backend part names no UI type, so a backend without a window loads it (BackendPluginStartupTests),
+// AC-1398: Autopilot's backend part names no UI type, so a backend without a window loads it (journey J1),
 // and its UI part is a separate entry type in the same assembly. The desktop activates that UI part from the assembly
 // the backend part already loaded, and it registers the workspace. Mirrors ClockPluginLoadTests.
 public class AutopilotPluginLoadTests
