@@ -19,54 +19,35 @@ public class PluginManifestTests
         }
         """;
 
-    [Fact]
-    public void TryParse_ValidManifest_ParsesAllFields()
-    {
-        var parsed = PluginManifest.TryParse(Valid, out var manifest, out var error);
-
-        Assert.True(parsed);
-        Assert.Null(error);
-        Assert.NotNull(manifest);
-        Assert.Equal("github-issues", manifest!.Id);
-        Assert.Equal("GitHub Issues", manifest.Name);
-        Assert.Equal("1.0.0", manifest.Version);
-        Assert.Equal("Cockpit.Plugin.GitHubIssues.dll", manifest.EntryAssembly);
-        Assert.Equal(1, manifest.AbstractionsVersion);
-        Assert.Equal("Cockpit.Plugin.GitHubIssues.Plugin", manifest.EntryType);
-        Assert.Equal("Show open issues", manifest.Description);
-        Assert.Equal("Raymond", manifest.Author);
-    }
-
-    [Fact]
-    public void TryParse_OnlyRequiredFields_LeavesOptionalsNull()
-    {
-        var json = """{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll","abstractionsVersion":1}""";
-
-        Assert.True(PluginManifest.TryParse(json, out var manifest, out _));
-        Assert.Null(manifest!.EntryType);
-        Assert.Null(manifest.MinHostVersion);
-        Assert.Null(manifest.Description);
-        Assert.Null(manifest.Author);
-    }
-
-    [Fact]
-    public void TryParse_MissingRequiredField_FailsWithError()
-    {
-        var json = """{"id":"x","name":"X","version":"1.0.0","abstractionsVersion":1}""";
-
-        Assert.False(PluginManifest.TryParse(json, out var manifest, out var error));
-        Assert.Null(manifest);
-        Assert.Contains("'entryAssembly' and 'uiAssembly'", error);
-    }
+    private const string OnlyRequired = """{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll","abstractionsVersion":1}""";
 
     // AC-1389: a plugin that is only a UI part (a clock) names no backend assembly.
-    [Fact]
-    public void TryParse_UiAssemblyWithoutEntryAssembly_Parses()
-    {
-        var json = """{"id":"clock","name":"Clock","version":"1.0.0","uiAssembly":"Clock.dll","uiEntryType":"Clock.Ui","abstractionsVersion":2}""";
+    private const string UiOnly = """{"id":"clock","name":"Clock","version":"1.0.0","uiAssembly":"Clock.dll","uiEntryType":"Clock.Ui","abstractionsVersion":2}""";
 
+    // Every field, then only the required ones (optionals stay null), then a UI-only part.
+    [Theory]
+    [InlineData(Valid, "github-issues", "GitHub Issues", "1.0.0", "Cockpit.Plugin.GitHubIssues.dll", 1, "Cockpit.Plugin.GitHubIssues.Plugin", "12.0.0", "Show open issues", "Raymond", null, null)]
+    [InlineData(OnlyRequired, "x", "X", "1.0.0", "X.dll", 1, null, null, null, null, null, null)]
+    [InlineData(UiOnly, "clock", "Clock", "1.0.0", null, 2, null, null, null, null, "Clock.dll", "Clock.Ui")]
+    public void TryParse_ReadsEveryFieldOfAManifest_AndLeavesTheOptionalOnesNull(
+        string json, string id, string name, string version, string? entryAssembly, int abstractionsVersion,
+        string? entryType, string? minHostVersion, string? description, string? author, string? uiAssembly, string? uiEntryType)
+    {
         Assert.True(PluginManifest.TryParse(json, out var manifest, out var error), error);
-        Assert.Equal((null, "Clock.dll", "Clock.Ui"), (manifest?.EntryAssembly, manifest?.UiAssembly, manifest?.UiEntryType));
+        Assert.Equal(
+            (id, name, version, entryAssembly, abstractionsVersion, entryType, minHostVersion, description, author, uiAssembly, uiEntryType),
+            (manifest?.Id, manifest?.Name, manifest?.Version, manifest?.EntryAssembly, manifest?.AbstractionsVersion, manifest?.EntryType, manifest?.MinHostVersion, manifest?.Description, manifest?.Author, manifest?.UiAssembly, manifest?.UiEntryType));
+    }
+
+    [Theory]
+    [InlineData("""{"id":"x","name":"X","version":"1.0.0","abstractionsVersion":1}""", "'entryAssembly' and 'uiAssembly'")]
+    [InlineData("""{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll"}""", "abstractionsVersion")]
+    [InlineData("{ not json", "Invalid JSON")]
+    public void TryParse_ARefusedManifest_FailsWithItsReason_AndDoesNotThrow(string json, string expectedError)
+    {
+        Assert.False(PluginManifest.TryParse(json, out var manifest, out var error));
+        Assert.Null(manifest);
+        Assert.Contains(expectedError, error);
     }
 
     // AC-1389 counter-proof: the manifests in the repository still parse and name an assembly to load. Since AC-1390
@@ -92,22 +73,5 @@ public class PluginManifestTests
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal));
-    }
-
-    [Fact]
-    public void TryParse_MissingAbstractionsVersion_Fails()
-    {
-        var json = """{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll"}""";
-
-        Assert.False(PluginManifest.TryParse(json, out _, out var error));
-        Assert.Contains("abstractionsVersion", error);
-    }
-
-    [Fact]
-    public void TryParse_InvalidJson_FailsWithoutThrowing()
-    {
-        Assert.False(PluginManifest.TryParse("{ not json", out var manifest, out var error));
-        Assert.Null(manifest);
-        Assert.StartsWith("Invalid JSON", error);
     }
 }
