@@ -1,0 +1,143 @@
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Events;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
+using NSubstitute;
+
+namespace Cockpit.Infrastructure.Tests.BackendApi;
+
+// AC-1386's acceptance on the real door (`BackendApiDoorTests._Door`): the session routes over HTTPS with connect keys,
+// on the recording gateways the node tool tests use, so what a route reaches is what the node tools would reach.
+public sealed class SessionsEndpointsTests
+{
+    // The labels `NodeSessionMcpToolsTests.StubProfileStore` and `RecordingReadGateway` know.
+    private const string Profile = "Laptop Sonnet";
+
+    private const string Project = "project-allowed";
+
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+
+    private static readonly ConnectKeyScope OneProject = new() { AllowAllProjects = false, AllowedProjectIds = [Project] };
+
+    // Criterion 2: a start outside the key's projects is a 403 that names the scope; inside it, a 201 with the pane.
+    [Theory]
+    [InlineData("project-elsewhere", HttpStatusCode.Forbidden, "The scope of this connect key does not include the project")]
+    [InlineData(Project, HttpStatusCode.Created, "\"paneId\":\"pane-new\"")]
+    public async Task StartingASession_IsHeldToTheKeysProjects(string project, HttpStatusCode expected, string bodyPart)
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var verifier = await door.StartAsync();
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+
+        var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, JsonSerializer.Serialize(new { profile = Profile, projectId = project }));
+
+        Assert.Equal(expected, answer.Status);
+        Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
+    }
+
+    // Criterion 3: answering a permission prompt takes the mayAnswerPermissions grant.
+    [Theory]
+    [InlineData(false, HttpStatusCode.Forbidden)]
+    [InlineData(true, HttpStatusCode.OK)]
+    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, HttpStatusCode expected)
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var verifier = await door.StartAsync();
+        door.ReadGateway.Sessions.Add(_Row("pane-in", Project));
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions });
+
+        var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, """{"allow":true}""");
+
+        Assert.Equal(expected, answer.Status);
+    }
+
+    // Seeing is reaching: a pane outside the key's projects is not found on any route, and no gateway call reaches it.
+    [Theory]
+    [InlineData("GET", "/api/v1/sessions/pane-out/transcript", null)]
+    [InlineData("POST", "/api/v1/sessions/pane-out/prompt", """{"text":"go"}""")]
+    [InlineData("DELETE", "/api/v1/sessions/pane-out", null)]
+    [InlineData("POST", "/api/v1/sessions/pane-out/permissions/tool-1", """{"allow":true}""")]
+    public async Task APaneOutsideTheScope_IsNotFound(string method, string path, string? body)
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var verifier = await door.StartAsync();
+        door.ReadGateway.Sessions.Add(_Row("pane-out", "project-elsewhere"));
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+
+        var answer = await door.SendAsync(new HttpMethod(method), path, key.Secret, body);
+
+        Assert.Equal(HttpStatusCode.NotFound, answer.Status);
+        Assert.DoesNotContain(door.AgentGateway.Calls, call => call.Contains("pane-out", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheSessionList_ShowsOnlyTheKeysSessions()
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var verifier = await door.StartAsync();
+        door.ReadGateway.Sessions.Add(_Row("pane-in", Project));
+        door.ReadGateway.Sessions.Add(_Row("pane-out", "project-elsewhere"));
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+
+        var answer = await door.SendAsync(HttpMethod.Get, "/api/v1/sessions", key.Secret);
+        var panes = (JsonNode.Parse(answer.Body)?["sessions"]?.AsArray() ?? []).Select(session => session?["paneId"]?.GetValue<string>());
+
+        Assert.Equal(["pane-in"], panes);
+    }
+
+    // Criterion 4: a prompt to the assistant over the API reaches it, is audited and leaves the assistant free; the same
+    // holdsAssistant key on the MCP door does take the line.
+    [Fact]
+    public async Task APromptToTheAssistant_IsAuditedAndNeverHoldsIt_WhereTheSameKeyOnTheMcpDoorDoes()
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var verifier = await door.StartAsync();
+        var assistant = Substitute.For<ISessionHandle>();
+        assistant.PaneId.Returns("assistant-pane");
+        assistant.SubmitPromptWhenReadyAsync("hello").Returns(true);
+        door.Sessions.RegisterAssistant(assistant);
+        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true);
+
+        var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/assistant/prompt", holding.Secret, """{"text":"hello"}""");
+        var afterApi = door.Presence.Current;
+        using var mcp = await door.InitializeMcpAsync(holding.Secret);
+
+        Assert.Equal(new BackendApiDoorTests._Answer(HttpStatusCode.OK, """{"paneId":"assistant-pane","delivered":true}"""), answer);
+        Assert.Null(afterApi);
+        Assert.Equal("holding", door.Presence.Current?.Name);
+        Assert.Contains("api:assistant_prompt", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
+    }
+
+    // Criterion 6 and the registry's own event: a row goes on the log under the upsert's own seq, and a pane arriving
+    // is announced.
+    [Fact]
+    public async Task TheBridge_LogsARowUnderItsOwnSeq_AndAnnouncesARegistryChange()
+    {
+        var registry = new SessionRegistry();
+        var log = new BackendEventLog();
+        var bridge = new SessionEventsBridge(registry, log);
+        await bridge.StartAsync(CancellationToken.None);
+        var session = Substitute.For<ISessionHandle>();
+        session.PaneId.Returns("pane-a");
+        var upsert = new TranscriptRowUpsert(9_000_000, 1, new TranscriptSnapshotEntry("row-1", "AssistantText", "hi", null, null, null, null, false, DateTimeOffset.UnixEpoch));
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var read = log.ReadFromAsync(0, stop.Token).Take(2).ToListAsync(stop.Token);
+
+        registry.Register(session);
+        session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(upsert);
+        var events = await read;
+        await bridge.StopAsync(CancellationToken.None);
+
+        Assert.Equal(["sessions-changed", "row"], events.Select(evt => evt.Kind));
+        Assert.Equal((9_000_000L, "pane-a"), (events[1].Seq, events[1].PaneId));
+    }
+
+    private static AssistantSessionRow _Row(string paneId, string project) =>
+        new(paneId, paneId, Profile, "", null, null, ProjectId: project);
+}

@@ -10,12 +10,14 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
@@ -180,11 +182,11 @@ public sealed class BackendApiDoorTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    private sealed record _Answer(HttpStatusCode Status, string Body);
+    internal sealed record _Answer(HttpStatusCode Status, string Body);
 
     // One node in a temp directory: cockpit.json, the audit trail and the certificate, and once started the real
     // endpoint host with cockpit-node on loopback and on an HTTPS port of its own.
-    private sealed class _Door : IAsyncDisposable
+    internal sealed class _Door : IAsyncDisposable
     {
         private readonly NodeSelfSignedCertificate _certificate;
         private readonly HttpClient _http;
@@ -220,6 +222,12 @@ public sealed class BackendApiDoorTests
 
         public NodeControllerPresence Presence { get; } = new();
 
+        public NodeSessionMcpToolsTests.RecordingReadGateway ReadGateway { get; } = new();
+
+        public NodeSessionMcpToolsTests.RecordingAgentGateway AgentGateway { get; } = new();
+
+        public SessionRegistry Sessions { get; } = new();
+
         public string NodeBase { get; private set; } = "";
 
         public string LoopbackBase { get; private set; } = "";
@@ -244,8 +252,9 @@ public sealed class BackendApiDoorTests
             mounts.Grant(SessionPane, ["cockpit-node"]);
 
             var services = new ServiceCollection();
-            services.AddSingleton<IAssistantReadGateway>(new NodeSessionMcpToolsTests.RecordingReadGateway());
-            services.AddSingleton<IAssistantAgentGateway>(new NodeSessionMcpToolsTests.RecordingAgentGateway());
+            services.AddSingleton<IAssistantReadGateway>(ReadGateway);
+            services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
+            services.AddSingleton<ISessionRegistry>(Sessions);
             services.AddSingleton(broker);
             var editor = Substitute.For<IProjectEditor>();
             editor.FindProjectAsync("project-a").Returns(new Project("project-a", "Project A")
@@ -281,6 +290,15 @@ public sealed class BackendApiDoorTests
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            using var response = await _http.SendAsync(request);
+            return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        public async Task<_Answer> SendAsync(HttpMethod method, string path, string bearer, string? json = null)
+        {
+            using var request = new HttpRequestMessage(method, NodeBase + path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            request.Content = json is null ? null : new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
         }
