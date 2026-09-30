@@ -1,0 +1,210 @@
+using System.Globalization;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using Cockpit.Core.Abstractions.Events;
+using Cockpit.Infrastructure.Mcp;
+
+namespace Cockpit.Infrastructure.BackendApi;
+
+public sealed class BackendApiClient : IDisposable
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private readonly HttpClient _http;
+    private readonly TimeProvider _time;
+
+    public BackendApiClient(Uri baseAddress, string key, string fingerprint, TimeProvider time)
+    {
+        _time = time;
+        _http = new HttpClient(NodeCertificatePin.Require(fingerprint))
+        {
+            BaseAddress = baseAddress,
+        };
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+    }
+
+    public Task<BackendWhoAmI> WhoAmIAsync() => GetAsync<BackendWhoAmI>("api/v1/whoami");
+
+    public Task<T> GetAsync<T>(string path) => _SendAsync<T>(HttpMethod.Get, path, null, CancellationToken.None);
+
+    public Task<T> SendAsync<T>(HttpMethod method, string path, object? body) =>
+        _SendAsync<T>(method, path, body, CancellationToken.None);
+
+    public async IAsyncEnumerable<BackendEvent> StreamEventsAsync(
+        long? afterSeq,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var cursor = afterSeq;
+        var backoff = TimeSpan.FromSeconds(1);
+        while (true)
+        {
+            await using var events = _ReadConnectionAsync(cursor, cancellationToken).GetAsyncEnumerator(cancellationToken);
+            while (true)
+            {
+                bool moved;
+                try
+                {
+                    moved = await events.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (BackendApiException)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or IOException)
+                {
+                    break;
+                }
+
+                if (!moved)
+                {
+                    break;
+                }
+
+                var evt = events.Current;
+                cursor = evt.Seq;
+                backoff = TimeSpan.FromSeconds(1);
+                yield return evt;
+            }
+
+            await Task.Delay(backoff, _time, cancellationToken).ConfigureAwait(false);
+            backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 30));
+        }
+    }
+
+    public void Dispose() => _http.Dispose();
+
+    private async Task<T> _SendAsync<T>(
+        HttpMethod method,
+        string path,
+        object? body,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body, options: Json);
+        }
+
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        var value = await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken).ConfigureAwait(false);
+        return value is null ? throw new JsonException("The backend API returned an empty JSON response.") : value;
+    }
+
+    private async IAsyncEnumerable<BackendEvent> _ReadConnectionAsync(
+        long? cursor,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/events");
+        if (cursor is { } lastEventId)
+        {
+            request.Headers.TryAddWithoutValidation("Last-Event-ID", lastEventId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        using var response = await _http.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+        string? id = null;
+        string? kind = null;
+        var data = new List<string>();
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            if (line.Length == 0)
+            {
+                var evt = _Frame(id, kind, data);
+                id = null;
+                kind = null;
+                data.Clear();
+                if (evt is { } frame)
+                {
+                    yield return frame;
+                }
+
+                continue;
+            }
+
+            if (line[0] == ':')
+            {
+                continue;
+            }
+
+            var separator = line.IndexOf(':');
+            var field = separator < 0 ? line : line[..separator];
+            var value = separator < 0 ? "" : line[(separator + 1)..].TrimStart(' ');
+            switch (field)
+            {
+                case "id":
+                    id = value;
+                    break;
+                case "event":
+                    kind = value;
+                    break;
+                case "data":
+                    data.Add(value);
+                    break;
+            }
+        }
+    }
+
+    private static BackendEvent? _Frame(string? id, string? kind, IReadOnlyList<string> data)
+    {
+        if (!long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var seq)
+            || string.IsNullOrEmpty(kind)
+            || data.Count == 0)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(string.Join('\n', data));
+        var payload = document.RootElement.Clone();
+        var paneId = payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("paneId", out var pane)
+            && pane.ValueKind == JsonValueKind.String
+                ? pane.GetString()
+                : null;
+        return new BackendEvent(seq, kind, paneId, payload);
+    }
+
+    private static async Task<BackendApiException> _ErrorAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var code = response.ReasonPhrase ?? "http_error";
+        var description = code;
+        try
+        {
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            if (document.RootElement.TryGetProperty("error", out var error) && error.GetString() is { } parsedCode)
+            {
+                code = parsedCode;
+            }
+
+            if (document.RootElement.TryGetProperty("error_description", out var errorDescription)
+                && errorDescription.GetString() is { } parsedDescription)
+            {
+                description = parsedDescription;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return new BackendApiException(response.StatusCode, code, description);
+    }
+}
+
+public sealed record BackendWhoAmI(string KeyPrefix, string Label, string Capability, string Node, int ApiVersion);
