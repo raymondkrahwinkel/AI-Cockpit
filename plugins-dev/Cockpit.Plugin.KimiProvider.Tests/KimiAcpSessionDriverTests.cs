@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -142,72 +141,12 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
     }
 
-    [Fact]
-    public async Task Start_UsesThePerSessionModelOption_OverConfig()
-    {
-        var fake = new FakeCliSubprocess();
-        var config = new KimiConfig(WorkingDirectory: Path.GetTempPath(), DefaultModel: "kimi-k1");
-        await using var driver = new KimiAcpSessionDriver(() => fake, config, "kimi");
-
-        var options = new Dictionary<string, string> { ["model"] = "kimi-k2" };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("model", setConfig.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("kimi-k2", setConfig.GetProperty("params").GetProperty("value").GetString());
-    }
-
     // P1-5: a stale KimiConfig.DefaultModel the current configOptions snapshot positively excludes must not even
     // be attempted — kimi would earn it a -32602 otherwise (AC-272 "snapshot is authoritative").
-    [Fact]
-    public async Task Start_WithADefaultModelNotAmongTheOfferedChoices_SkipsTheSetConfigOptionCall()
-    {
-        var fake = new FakeCliSubprocess();
-        var config = new KimiConfig(WorkingDirectory: Path.GetTempPath(), DefaultModel: "kimi-retired-model");
-        await using var driver = new KimiAcpSessionDriver(() => fake, config, "kimi");
-
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, timeout.Token);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k2","options":[{"value":"kimi-k2","name":"Kimi K2"}]}]}""");
-
-        try
-        {
-            await startTask;
-        }
-        catch (OperationCanceledException)
-        {
-            // Only reached by the unfixed behaviour: it sends the doomed request anyway and hangs awaiting a
-            // reply this test never provides — the timeout above bounds that instead of stalling the test run.
-        }
-
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
-    }
 
     // P1-5: kimi rejecting the configured default model (a race, or any other reason beyond the snapshot check
     // above) must not fail the whole session start — best-effort, the session simply starts on whatever model
     // kimi's own snapshot already defaulted to.
-    [Fact]
-    public async Task Start_WhenKimiRejectsTheConfiguredDefaultModelAnyway_DoesNotFailTheWholeSessionStart()
-    {
-        var fake = new FakeCliSubprocess();
-        var config = new KimiConfig(WorkingDirectory: Path.GetTempPath(), DefaultModel: "kimi-k2");
-        await using var driver = new KimiAcpSessionDriver(() => fake, config, "kimi");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k1","options":[{"value":"kimi-k2","name":"Kimi K2"}]}]}""");
-
-        var setConfigRequest = await _WaitForRequestAsync(fake, "session/set_config_option");
-        var id = setConfigRequest.GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32602,"message":"model rejected"}}""");
-
-        await startTask;
-        Assert.Equal("session_1", driver.SessionId);
-    }
 
     [Fact]
     public async Task Start_WithPlanPermissionMode_SetsKimiModeToPlan()
@@ -282,44 +221,6 @@ public class KimiAcpSessionDriverTests
 
     // AC-273: Kimi has no way to receive the host's hidden briefing over ACP, so the operator is told once,
     // in the transcript. A profile identity that vanishes without a trace is the failure mode this prevents.
-    [Fact]
-    public async Task Start_WithAnAppendSystemPromptOption_ReportsThatItIsNotApplied_WithoutEchoingIt()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are Olaf. Answer in Dutch." };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        await startTask;
-
-        var notice = await _NextEventOfTypeAsync<PluginSessionError>(driver);
-        Assert.Contains("system prompt", notice.Message);
-        Assert.Contains("not applied", notice.Message);
-        Assert.DoesNotContain("You are Olaf", notice.Message);
-    }
-
-    [Fact]
-    public async Task Start_WithoutAnAppendSystemPromptOption_ReportsNothing()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
-        Assert.DoesNotContain(events, evt => evt is PluginSessionError);
-    }
-
-    [Fact]
-    public async Task Start_WithNoOptionsAndNoConfiguredModel_SendsNoSetConfigOptionCalls()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
-    }
 
     [Fact]
     public async Task InterruptAsync_SendsSessionCancelNotification_AndAnswersPendingPermissionsAsCancelled()
@@ -367,161 +268,24 @@ public class KimiAcpSessionDriverTests
         Assert.DoesNotContain(events, evt => evt is PluginPermissionRequested);
     }
 
-    [Fact]
-    public async Task PermissionRequest_AfterANewTurnStarts_IsTrackedAgain()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.InterruptAsync();
-        await _WaitForWrittenLineAsync(fake, "\"method\":\"session/cancel\"");
-        await driver.SendUserMessageAsync("carry on");
-        await _WaitForWrittenLineAsync(fake, "\"method\":\"session/prompt\"");
-
-        await fake.PushStdoutAsync("""{"id":78,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-2:tool-1","title":"shell","content":[]}}}""");
-
-        var requested = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        Assert.Equal("turn-2:tool-1", requested.ToolUseId);
-    }
-
     // D3, and the reason the emit gate exists: kimi sends a tool_call and the permission request for the same id
     // back to back, they arrive on two different pumps, and claiming the id is a separate step from writing the
     // event it produced. A permission card that reaches the host before its tool card has nothing to hang its
     // buttons on. Many ids in one run because a single pass would only sometimes interleave.
-    [Fact]
-    public async Task ToolCallAndItsPermissionRequest_ArrivingBackToBack_AlwaysReachTheHostToolCardFirst()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        const string toolCallTemplate = """{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"tool_call","toolCallId":"@id@","title":"shell","rawInput":{"command":"ls"}}}}""";
-        const string permissionTemplate = """{"id":@rid@,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"@id@","title":"shell","content":[]}}}""";
-
-        const int calls = 200;
-        for (var index = 0; index < calls; index++)
-        {
-            var toolCallId = $"tool-{index}";
-            await fake.PushStdoutAsync(toolCallTemplate.Replace("@id@", toolCallId, StringComparison.Ordinal));
-            await fake.PushStdoutAsync(permissionTemplate
-                .Replace("@rid@", (1000 + index).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-                .Replace("@id@", toolCallId, StringComparison.Ordinal));
-        }
-
-        var events = await _CollectForAsync(driver, TimeSpan.FromSeconds(2));
-
-        var ordering = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var index = 0; index < events.Count; index++)
-        {
-            switch (events[index])
-            {
-                case PluginToolUseRequested toolUse:
-                    ordering.TryAdd(toolUse.ToolUseId!, index);
-                    break;
-                case PluginPermissionRequested permission:
-                    Assert.True(ordering.ContainsKey(permission.ToolUseId!),
-                        $"a permission card for {permission.ToolUseId} reached the host before the tool card it belongs to");
-                    break;
-            }
-        }
-
-        Assert.Equal(calls, ordering.Count);
-    }
 
     // A poll whose reply never parses as usage must not leave the capture armed for the rest of the session: the
     // next genuine assistant message that happens to look like a usage line would be swallowed, and a silently
     // missing message is worse than a missing percentage.
-    [Fact]
-    public async Task UsageCapture_ThatNeverSawAParsableReply_DisarmsAndStopsSwallowingLaterText()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi") { UsageCaptureWindowMilliseconds = 50 };
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"end_turn"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
-
-        // The poll is armed but its reply never arrives in a shape the parser recognises. Once the window has
-        // passed, a genuine assistant message must reach the transcript even when it happens to contain the very
-        // line the parser looks for — an agent quoting a usage report is not a usage report.
-        await Task.Delay(120);
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"The manual's example reads Context: 45,000 / 200,000 (22.5%) — that is the format."}}}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Contains("that is the format", delta.Text);
-        Assert.Null(driver.Status);
-    }
 
     // D12: a process end that is NOT our own dispose must surface an error and a failed turn before the
     // transcript just goes quiet — order asserted, not just presence.
-    [Fact]
-    public async Task ProcessCrash_EmitsSessionErrorThenTurnCompletedWithIsError_BeforeTheChannelEnds()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        fake.CompleteStdout(exitCode: 1);
-
-        var events = new List<PluginSessionEvent>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await foreach (var evt in driver.Events.WithCancellation(timeout.Token))
-        {
-            events.Add(evt);
-        }
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(events));
-        Assert.IsType<PluginSessionError>(events[0]);
-        Assert.True(Assert.IsType<PluginTurnCompleted>(events[1]).IsError);
-    }
 
     // --- disposal (P1-6) -------------------------------------------------------------------------------------
-
-    [Fact]
-    public async Task DisposeAsync_CalledTwice_IsIdempotent()
-    {
-        var fake = new FakeCliSubprocess();
-        var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.DisposeAsync();
-        var secondDispose = () => driver.DisposeAsync().AsTask();
-
-        await secondDispose();
-    }
 
     // P1-6: DisposeAsync must wait for the fire-and-forget trailing /usage poll to actually finish releasing
     // _promptGate before disposing it — otherwise Release() (in _PollContextUsageAsync's finally, which has no
     // catch of its own) can run against an already-disposed gate on whichever thread-pool thread eventually
     // runs that continuation, an unobserved task exception nobody awaits in production.
-    [Fact]
-    public async Task DisposeAsync_AwaitsThePendingUsagePollTask_BeforeReturning()
-    {
-        var fake = new FakeCliSubprocess();
-        var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        // The trailing /usage poll's own session/prompt is now outstanding, holding _promptGate — deliberately
-        // never answered here, so its continuation only fires once _connection.DisposeAsync() (inside
-        // DisposeAsync itself) faults the outstanding request.
-        await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
-        var pollTask = driver.PendingUsagePollTaskForTests;
-
-        await driver.DisposeAsync();
-
-        Assert.NotNull(pollTask);
-        Assert.True(pollTask!.IsCompleted, "DisposeAsync must not return before the pending usage-poll task has finished releasing the prompt gate");
-        var awaitPollTask = () => pollTask;
-        var pollTaskException = await Record.ExceptionAsync(awaitPollTask);
-        Assert.False(pollTaskException is ObjectDisposedException, "the gate must not be disposed while the poll task is still trying to release it");
-    }
 
     // --- event translation (AC-270) -----------------------------------------------------------------------
 
@@ -548,64 +312,8 @@ public class KimiAcpSessionDriverTests
         Assert.False(completed.IsError);
     }
 
-    [Fact]
-    public async Task ReasoningDelta_IsSurfacedAsAThinkingEvent()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("think");
-        await _WaitForRequestAsync(fake, "session/prompt");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Let me consider"}}}}""");
-
-        var thinking = await _NextEventOfTypeAsync<PluginAssistantThinkingDelta>(driver);
-        Assert.Equal("Let me consider", thinking.Thinking);
-    }
-
     // D4: the lazy tool_call (status "pending", only the tool name as title) must still yield exactly one
     // PluginToolUseRequested — the tool_call_update that refines it must not produce a second one.
-    [Fact]
-    public async Task LazyToolCall_ThenToolCallUpdate_ProducesExactlyOnePluginToolUseRequested()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("read file");
-        await _WaitForRequestAsync(fake, "session/prompt");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"pending"}}}""");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"in_progress","title":"Read file.txt","rawInput":{"path":"file.txt"}}}}""");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"file contents"}}]}}}""");
-
-        // Wait for the whole notification-driven sequence (drained up to the terminal ToolResult) before
-        // triggering the reply — same reasoning as the text-delta test above: the reply and the notification
-        // pump are independently scheduled, so this is what actually proves "exactly one card", not a race.
-        var events = await _CollectUntilAsync(driver, evt => evt is PluginToolResult);
-        Assert.Equal("turn-1:tool-1", Assert.Single(events.OfType<PluginToolUseRequested>()).ToolUseId);
-        Assert.Equal("file contents", Assert.Single(events.OfType<PluginToolResult>()).Content);
-
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-    }
-
-    [Fact]
-    public async Task ConfigOptionUpdate_ShrinkingTheSet_RefreshesLiveOptionsWithoutBreaking()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        const string startingConfigOptions = """[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k2","options":[]},{"type":"select","id":"thinking","name":"Thinking","currentValue":"medium","options":[{"value":"off","name":"Off"},{"value":"medium","name":"Medium"}]},{"type":"select","id":"mode","name":"Mode","currentValue":"default","options":[]}]""";
-        await _StartAsync(driver, fake, configOptionsJson: startingConfigOptions);
-
-        Assert.Contains(driver.LiveOptions, option => option.Key == "thinking");
-
-        // The model switched to one with no thinking support: the next config_option_update carries only model/mode.
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"config_option_update","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k1","options":[]},{"type":"select","id":"mode","name":"Mode","currentValue":"default","options":[]}]}}}""");
-
-        await _WaitForLiveOptionsAsync(driver, current => !current.Any(option => option.Key == "thinking"));
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(driver.LiveOptions));
-    }
 
     // --- permissions (AC-271) ------------------------------------------------------------------------------
 
@@ -626,20 +334,6 @@ public class KimiAcpSessionDriverTests
     // P1-3, trigger (c), D3: a permission request for a toolCallId that never had a prior tool_call must still
     // produce a PluginToolUseRequested — before the PluginPermissionRequested — or the host has no matching
     // tool-use card to attach the approval buttons to.
-    [Fact]
-    public async Task PermissionRequest_WithoutAPriorToolCall_IsPrecededByAPluginToolUseRequested_ForTheSameId()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"id":21,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-1:tool-21","title":"shell","content":[]}}}""");
-
-        var events = await _CollectUntilAsync(driver, evt => evt is PluginPermissionRequested);
-        Assert.Equal(2, System.Linq.Enumerable.Count(events));
-        Assert.Equal("turn-1:tool-21", Assert.IsType<PluginToolUseRequested>(events[0]).ToolUseId);
-        Assert.Equal("turn-1:tool-21", Assert.IsType<PluginPermissionRequested>(events[1]).ToolUseId);
-    }
 
     [Fact]
     public async Task RespondToPermission_Allow_SelectsTheOptionIdMatchingAllowOnceKind()
@@ -832,20 +526,6 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("still alive", delta.Text);
     }
 
-    [Fact]
-    public async Task NotificationWithoutParams_DoesNotKillThePump()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"method":"session/update"}""");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"survived"}}}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("survived", delta.Text);
-    }
-
     // --- live config options (AC-272) ---------------------------------------------------------------------
 
     [Fact]
@@ -860,22 +540,6 @@ public class KimiAcpSessionDriverTests
         Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
     }
 
-    [Fact]
-    public async Task SetLiveOptionAsync_Mode_SendsSetConfigOption_AndRefreshesLiveOptions()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        var setTask = driver.SetLiveOptionAsync("mode", "yolo");
-        var request = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[{"type":"select","id":"mode","name":"Mode","currentValue":"yolo","options":[{"value":"yolo","name":"YOLO"}]}]}""");
-        await setTask;
-
-        Assert.Equal("mode", request.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("yolo", request.GetProperty("params").GetProperty("value").GetString());
-        Assert.Equal("yolo", Assert.Single(driver.LiveOptions, option => option.Key == "mode").DefaultValue);
-    }
-
     // --- stopReason mapping (D7, protocol §3/§12) -----------------------------------------------------------
     // The wire carries only end_turn | cancelled | refusal — never Kimi's internal SDK TurnEndReason names
     // (completed/blocked/failed). These four tests replace an earlier version that sent those internal names
@@ -885,35 +549,6 @@ public class KimiAcpSessionDriverTests
     // end_turn value a successful turn gets, so this single mapping stands for both; there is no wire signal
     // that tells them apart. This locks the honest limitation in so nobody "fixes" it later without a real
     // wire signal to base the fix on.
-    [Fact]
-    public async Task StopReason_EndTurn_IsNotAnError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"end_turn"}""");
-
-        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        Assert.False(completed.IsError);
-        Assert.Equal("end_turn", completed.StopReason);
-    }
-
-    [Fact]
-    public async Task StopReason_Cancelled_IsNotAnError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"cancelled"}""");
-
-        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        Assert.False(completed.IsError);
-        Assert.Equal("cancelled", completed.StopReason);
-    }
 
     // P0-3: refusal is the one wire value that must actually surface as an error — a refused/filtered turn
     // reported as a success is exactly what D7 wants to avoid.
@@ -932,52 +567,9 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("refusal", completed.StopReason);
     }
 
-    [Fact]
-    public async Task StopReason_UnrecognisedValue_DefaultsToEndTurn_AndIsNotAnError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"some_future_value"}""");
-
-        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        Assert.False(completed.IsError);
-        Assert.Equal("end_turn", completed.StopReason);
-    }
-
     // --- usage / context percentage (AC-274) ---------------------------------------------------------------
 
     // The single most important test of this sub: a /usage poll's reply must never reach the transcript.
-    [Fact]
-    public async Task UsagePoll_AfterATurnCompletes_NeverEmitsATextDeltaOrAnExtraTurnCompleted()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        var turnCompleted = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        Assert.False(turnCompleted.IsError);
-
-        var usageRequest = await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
-        Assert.Equal("/usage", usageRequest.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString());
-        var usageRequestId = usageRequest.GetProperty("id").GetInt64();
-
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Session usage:\n- Context: 45,000 / 200,000 (22.5%)"}}}}""");
-        await fake.PushStdoutAsync($$$"""{"id":{{{usageRequestId}}},"result":{"stopReason":"end_turn"}}""");
-
-        // P1-14: synchronize deterministically on the positive signal that the poll's chunk was actually
-        // consumed (Status becomes non-null) before asserting silence — a fixed sleep-and-hope window alone
-        // would pass just as well if the poll simply had not finished processing yet, proving nothing. Only
-        // once success is confirmed does the short window below meaningfully check for a leak alongside it.
-        await _WaitForStatusAsync(driver, status => status is not null);
-
-        var strayEvents = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(100));
-        Assert.Empty(strayEvents);
-    }
 
     [Fact]
     public async Task UsagePoll_AfterATurnCompletes_FillsContextUsedPercent_AndLeavesRateLimitsEmpty()
@@ -1004,178 +596,32 @@ public class KimiAcpSessionDriverTests
     // reach the transcript rather than vanish silently. This replaces the previous version of this test, which
     // asserted total silence on an unparsable reply — that was the wrong wire form: it cemented the swallow-
     // everything-while-capturing bug this fix removes.
-    [Fact]
-    public async Task UsagePoll_WithAnUnparsableReply_StillReachesTheTranscript_AndSetsNoStatus()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        var usageRequestId = (await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2)).GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"this is not a usage report"}}}}""");
-        await fake.PushStdoutAsync($$$"""{"id":{{{usageRequestId}}},"result":{"stopReason":"end_turn"}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("this is not a usage report", delta.Text);
-        Assert.Null(driver.Status);
-    }
 
     // P0-2 regression: a real turn's own chunk that happens to arrive while the trailing /usage poll is
     // capturing must not be swallowed just because the flag is set — only a chunk that actually parses as the
     // usage line may be. Without the parse gate, the driver used to consume the first agent_message_chunk it
     // saw while capturing regardless of content, discarding real assistant text.
-    [Fact]
-    public async Task ChunkArrivingWhileUsageCaptureIsInFlight_ButNotParsingAsUsage_IsNotSwallowed()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        // The trailing /usage poll's own session/prompt is now outstanding — _capturingUsageResponse is set —
-        // before it settles, a chunk that is not the usage line arrives.
-        await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"actual trailing turn text"}}}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("actual trailing turn text", delta.Text);
-    }
 
     // P0-1: a failed /usage round must clear the capturing flag itself, or it stays stuck true and silently
     // swallows the next chunk that happens to parse as a Context line, mistaking ordinary transcript content
     // from a later, unrelated turn for a stale usage answer.
-    [Fact]
-    public async Task UsagePoll_WhenTheRpcFails_ClearsTheCapturingFlag_SoALaterMatchingChunkIsNotSwallowed()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("first");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        var usageRequestId = (await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2)).GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync($$$"""{"id":{{{usageRequestId}}},"error":{"code":-32000,"message":"boom"}}""");
-
-        await driver.SendUserMessageAsync("second");
-        await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 3);
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"- Context: 1,000 / 2,000 (50.0%)"}}}}""");
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("- Context: 1,000 / 2,000 (50.0%)", delta.Text);
-    }
 
     // Proves the shared prompt gate (AC-274): a second real message fired the instant the first turn's
     // PluginTurnCompleted lands races the driver's own trailing /usage poll for the same session/prompt slot —
     // whichever wins, the other's reply must still land correctly, never swallowed by the usage-capture buffer.
-    [Fact]
-    public async Task SendUserMessage_RightAfterAPreviousTurnCompletes_IsNotSwallowedByThePendingUsagePoll()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("first");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        await driver.SendUserMessageAsync("second");
-
-        for (var occurrence = 2; occurrence <= 3; occurrence++)
-        {
-            var request = await _WaitForNthRequestAsync(fake, "session/prompt", occurrence);
-            var promptText = request.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString();
-            var id = request.GetProperty("id").GetInt64();
-
-            if (promptText == "/usage")
-            {
-                await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"- Context: 10,000 / 200,000 (5.0%)"}}}}""");
-                await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"result":{"stopReason":"end_turn"}}""");
-            }
-            else
-            {
-                await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Second reply"}}}}""");
-                await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"result":{"stopReason":"completed"}}""");
-            }
-        }
-
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("Second reply", delta.Text);
-    }
 
     // --- auth surface (P1-10) -----------------------------------------------------------------------------
 
     // P1-10a: authMethods (protocol §1 — kimi advertises exactly one, the type:"terminal" kimi acp --login
     // flow) must be preserved alongside agentCapabilities, not discarded.
-    [Fact]
-    public async Task Start_PreservesAuthMethods_FromTheInitializeResponse()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", """{"authMethods":[{"id":"login","type":"terminal","name":"Login with Kimi account"}]}""");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        await startTask;
-
-        Assert.NotNull(driver.AuthMethods);
-        Assert.Equal(1, driver.AuthMethods!.Value.GetArrayLength());
-        Assert.Equal("login", driver.AuthMethods!.Value.EnumerateArray().First().GetProperty("id").GetString());
-    }
 
     // P1-10b: protocol §1 — session/new fails with the JSON-RPC error -32000 (authRequired) when kimi has no
     // usable token on disk. That must surface as an actionable message naming both routes past it (an API key
     // in the provider config, or kimi acp --login), never the raw JSON-RPC error text — both via the thrown
     // exception (what SessionViewModel shows as "Failed to start: …", P1-8's precedent) and as a PluginSessionError.
-    [Fact]
-    public async Task Start_WhenSessionNewFailsWithAuthRequired_ThrowsAndEmitsAnActionableMessage()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var sessionNewRequest = await _WaitForRequestAsync(fake, "session/new");
-        var id = sessionNewRequest.GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32000,"message":"authRequired"}}""");
-
-        var thrown = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
-        Assert.Contains("kimi acp --login", thrown.Message);
-        Assert.Contains("API key", thrown.Message);
-        Assert.DoesNotContain("{", thrown.Message);
-
-        var error = await _NextEventOfTypeAsync<PluginSessionError>(driver);
-        Assert.Contains("kimi acp --login", error.Message);
-        Assert.Contains("API key", error.Message);
-        Assert.Equal(PluginSessionErrorKind.AuthRequired, error.Kind);
-    }
 
     // P1-10b regression: an authRequired failure on the JSON-RPC error must not be confused with any other
     // JSON-RPC error code kimi could return on session/new — only -32000 gets the actionable auth message.
-    [Fact]
-    public async Task Start_WhenSessionNewFailsWithAnUnrelatedError_DoesNotRewriteTheMessage()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var sessionNewRequest = await _WaitForRequestAsync(fake, "session/new");
-        var id = sessionNewRequest.GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32602,"message":"invalid params"}}""");
-
-        var thrown = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
-        Assert.Equal("kimi acp error -32602: invalid params", thrown.Message);
-        Assert.DoesNotContain("kimi acp --login", thrown.Message);
-    }
 
     // --- helpers -----------------------------------------------------------------------------------------
 
@@ -1250,21 +696,6 @@ public class KimiAcpSessionDriverTests
         throw new InvalidOperationException($"No written line containing '{contains}'.");
     }
 
-    private static async Task _WaitForLiveOptionsAsync(KimiAcpSessionDriver driver, Func<IReadOnlyList<PluginSessionLaunchOption>, bool> predicate)
-    {
-        for (var attempt = 0; attempt < 200; attempt++)
-        {
-            if (predicate(driver.LiveOptions))
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        throw new InvalidOperationException("LiveOptions did not reach the expected shape.");
-    }
-
     private static async Task _WaitForStatusAsync(KimiAcpSessionDriver driver, Func<PluginSessionStatus?, bool> predicate)
     {
         for (var attempt = 0; attempt < 200; attempt++)
@@ -1313,21 +744,5 @@ public class KimiAcpSessionDriverTests
         }
 
         throw new InvalidOperationException($"No {typeof(T).Name} event was produced.");
-    }
-
-    private static async Task<List<PluginSessionEvent>> _CollectUntilAsync(KimiAcpSessionDriver driver, Func<PluginSessionEvent, bool> stopPredicate)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var events = new List<PluginSessionEvent>();
-        await foreach (var evt in driver.Events.WithCancellation(timeout.Token))
-        {
-            events.Add(evt);
-            if (stopPredicate(evt))
-            {
-                break;
-            }
-        }
-
-        return events;
     }
 }

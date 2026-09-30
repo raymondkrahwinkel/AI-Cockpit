@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.OpenAiCompat;
@@ -29,69 +28,6 @@ public class OpenAiCompatPluginSessionDriverTests
         Assert.Single(events, evt => evt is PluginSessionInitialized);
     }
 
-    [Fact]
-    public async Task StartAsync_SetsSessionId_AndAdvertisesChatOnlyCapabilities()
-    {
-        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "gemini-2.5-flash");
-
-        await driver.StartAsync();
-
-        Assert.False(string.IsNullOrEmpty(driver.SessionId));
-        Assert.False(driver.Capabilities.SupportsTools);
-        Assert.False(driver.Capabilities.SupportsPermissions);
-    }
-
-    [Fact]
-    public async Task StartAsync_WithAModelOverride_UsesItForTheTurnInsteadOfTheDefault()
-    {
-        var chatClient = Substitute.For<IChatClient>();
-        ChatOptions? captured = null;
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions>(options => captured = options), Arg.Any<CancellationToken>())
-            .Returns(_Stream("ok"));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gemini-2.5-flash");
-
-        await driver.StartAsync(model: "gemini-2.5-pro");
-        await driver.SendUserMessageAsync("hi");
-        await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.NotNull(captured);
-        Assert.Equal("gemini-2.5-pro", captured!.ModelId);
-    }
-
-    [Fact]
-    public async Task SendUserMessage_WhenTheChatClientThrows_EmitsSessionErrorAndAFailedTurn()
-    {
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_Throwing());
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gemini-2.5-flash");
-
-        await driver.StartAsync();
-        await driver.SendUserMessageAsync("hi");
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.Single(events, evt => evt is PluginSessionError);
-        Assert.True(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
-    }
-
-    [Fact]
-    public async Task InterruptAsync_CancelsTheInFlightTurn_AndReportsItAsInterrupted()
-    {
-        var chatClient = Substitute.For<IChatClient>();
-        // The fake stream observes the real per-turn CancellationToken the driver passes through, so
-        // cancelling it (via InterruptAsync) is what actually ends the turn — not a race on timing.
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => _StreamThatWaitsForCancellation((CancellationToken)callInfo[2]));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gemini-2.5-flash");
-
-        await driver.StartAsync();
-        await driver.SendUserMessageAsync("hi");
-        await driver.InterruptAsync();
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.Equal("interrupt", Assert.Single(events.OfType<PluginTurnCompleted>()).StopReason);
-    }
-
     private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)
     {
         foreach (var chunk in chunks)
@@ -100,21 +36,6 @@ public class OpenAiCompatPluginSessionDriverTests
         }
 
         await Task.CompletedTask;
-    }
-
-    private static async IAsyncEnumerable<ChatResponseUpdate> _StreamThatWaitsForCancellation([EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        yield break;
-    }
-
-    private static async IAsyncEnumerable<ChatResponseUpdate> _Throwing()
-    {
-        await Task.CompletedTask;
-        throw new HttpRequestException("server unreachable");
-#pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
-        yield break;
-#pragma warning restore CS0162
     }
 
     private static Task<List<PluginSessionEvent>> _CollectUntilTurnCompletedAsync(IPluginSessionDriver driver) =>

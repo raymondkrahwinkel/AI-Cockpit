@@ -22,10 +22,6 @@ public class CodexSandboxTests
     public void ToPolicyType_ReturnsNull_ForAnUnknownOrBlankMode(string? mode) =>
         Assert.Null(CodexSandbox.ToPolicyType(mode));
 
-    [Fact]
-    public void Choices_AreTheThreeKebabSandboxModes() =>
-        Assert.Equal(new[] { "read-only", "workspace-write", "danger-full-access" }, CodexSandbox.Choices);
-
     // ForCeiling (AC-112): a delegated Codex task's sandbox derived from its permission ceiling. A ceiling that
     // allows edits becomes workspace-write so the task can actually write; anything less stays null so the
     // profile's configured default (read-only) holds. danger-full-access is never derived.

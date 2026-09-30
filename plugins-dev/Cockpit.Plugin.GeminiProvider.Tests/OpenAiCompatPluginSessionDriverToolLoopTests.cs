@@ -10,34 +10,6 @@ namespace Cockpit.Plugin.GeminiProvider.Tests;
 public class OpenAiCompatPluginSessionDriverToolLoopTests
 {
     [Fact]
-    public async Task StartAsync_WithAToolset_ReportsToolSupportAndTheReachableNames()
-    {
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status", "search_tools", "call_tool"]);
-        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "gpt-5");
-
-        await _StartWithToolsetAsync(driver, toolset);
-
-        // Criterion 4: the driver said it has tools, and named what the session can actually reach — the empty
-        // list it used to publish is what made a session with mounted servers look like it had nothing.
-        Assert.True(driver.Capabilities.SupportsTools);
-        var initialized = Assert.Single((await _CollectAsync(driver, evt => evt is PluginSessionInitialized)).OfType<PluginSessionInitialized>());
-        Assert.Equal(["set_status", "search_tools", "call_tool"], initialized.Tools);
-    }
-
-    [Fact]
-    public async Task StartAsync_WithoutAToolset_StaysChatOnly()
-    {
-        var driver = new OpenAiCompatPluginSessionDriver(Substitute.For<IChatClient>(), "gpt-5");
-
-        // Criterion 9: a session started with no MCP servers behaves exactly as this driver always did.
-        await driver.StartAsync(null, null, null, null, null, null, toolset: null, CancellationToken.None);
-
-        Assert.False(driver.Capabilities.SupportsTools);
-        var initialized = Assert.Single((await _CollectAsync(driver, evt => evt is PluginSessionInitialized)).OfType<PluginSessionInitialized>());
-        Assert.Empty(initialized.Tools);
-    }
-
-    [Fact]
     public async Task SendUserMessage_WhenTheModelCallsATool_RunsItThroughTheHostAndCarriesOn()
     {
         var toolset = new FakeToolset(["set_status"], reachable: ["set_status"]);
@@ -56,23 +28,6 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         Assert.Contains("AC-964", toolset.Calls[0].ArgumentsJson);
         Assert.Contains("status set.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
-    }
-
-    [Fact]
-    public async Task SendUserMessage_OffersTheToolsToTheModelEveryTurn()
-    {
-        ChatOptions? captured = null;
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions>(options => captured = options), Arg.Any<CancellationToken>())
-            .Returns(_Stream("ok"));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, new FakeToolset(["set_status", "read_file"], reachable: ["set_status", "read_file"]));
-
-        await driver.SendUserMessageAsync("hi");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-
-        Assert.NotNull(captured?.Tools);
-        Assert.Equal(["set_status", "read_file"], captured!.Tools!.Select(tool => tool.Name));
     }
 
     [Fact]

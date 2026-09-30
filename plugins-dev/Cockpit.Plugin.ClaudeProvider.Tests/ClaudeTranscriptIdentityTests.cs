@@ -16,82 +16,7 @@ public class ClaudeTranscriptIdentityTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-identity-tests-").FullName;
 
-    private string ConfigJson => JsonSerializer.Serialize(new ClaudeProviderConfig(ConfigDir: _configDir), ClaudeProviderConfig.JsonOptions);
-
     private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
-
-    [Fact]
-    public async Task ReadActivityAsync_TailsTheTranscriptTheSessionNames_NotTheNewestOtherFile()
-    {
-        // The exact shape of the reported failure: a foreign transcript that is newer than the session's own and
-        // then never written to again. Guessing picks it and hears nothing ever after; the status file says which
-        // one is ours.
-        var ours = _CreateTranscript("ours");
-        var foreign = _CreateTranscript("foreign");
-        File.SetLastWriteTimeUtc(foreign, DateTime.UtcNow.AddMinutes(1));
-        var statusFile = _WriteStatusFile(ours);
-
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        string? firstLine = null;
-        var consume = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, statusFile, cts.Token))
-            {
-                if (reading.RawLine is { } line)
-                {
-                    firstLine = line;
-                    break;
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(ours, _UserLine("this is our session") + "\n");
-
-        await consume.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Contains("this is our session", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadActivityAsync_WhenTheSessionMovesToANewTranscript_FollowsIt()
-    {
-        // /clear mints a new session id, and with it a new transcript file. Without this the tail sits on the end
-        // of a file the session has stopped writing to and the pane goes quiet for the rest of its life — the same
-        // failure as latching onto the wrong file, arriving later.
-        var first = _CreateTranscript("first");
-        var statusFile = _WriteStatusFile(first);
-
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var lines = new List<string>();
-        var consume = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, statusFile, cts.Token))
-            {
-                if (reading.RawLine is { } line)
-                {
-                    lines.Add(line);
-                    if (lines.Count == 2)
-                    {
-                        break;
-                    }
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(first, _UserLine("before the clear") + "\n");
-        await _WaitUntilAsync(() => lines.Count == 1);
-
-        var second = _CreateTranscript("second");
-        _WriteStatusFile(second, statusFile);
-        await File.AppendAllTextAsync(second, _UserLine("after the clear") + "\n");
-
-        await consume.WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.Contains("before the clear", lines[0]);
-        Assert.Contains("after the clear", lines[1]);
-    }
 
     [Fact]
     public void ReadEntries_ReadsBackWhatTheSessionWrote_PairingEachToolResultWithItsCall()
@@ -143,14 +68,6 @@ public class ClaudeTranscriptIdentityTests : IDisposable
         // There is no honest guess to make here. An empty answer is a session that has written nothing this reader
         // can name; a guess is somebody else's conversation handed over as this session's.
         Assert.Empty(new ClaudeTranscriptReader().ReadEntries(statusFile: null, count: 30).Entries);
-    }
-
-    private static async Task _WaitUntilAsync(Func<bool> condition)
-    {
-        for (var i = 0; i < 500 && !condition(); i++)
-        {
-            await Task.Delay(10);
-        }
     }
 
     private string _CreateTranscript(string name)

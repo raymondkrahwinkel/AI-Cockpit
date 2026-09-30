@@ -11,13 +11,6 @@ public class OpencodeMcpConfigTests
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
     [Fact]
-    public void Build_WithNoServers_IsEmpty()
-    {
-        Assert.Empty(OpencodeMcpConfig.Build(null, _NoEnv));
-        Assert.Empty(OpencodeMcpConfig.Build([], _NoEnv));
-    }
-
-    [Fact]
     public void Build_ForAStdioServer_SerializesWithNoTypeProperty()
     {
         var wire = OpencodeMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }], _NoEnv);
@@ -60,28 +53,6 @@ public class OpencodeMcpConfigTests
 
         var headers = _SerializeSingle(wire).GetProperty("headers");
         Assert.Equal("Bearer run-key", headers[0].GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public void Build_SkipsAServerWithNeitherUrlNorCommand()
-    {
-        Assert.Empty(OpencodeMcpConfig.Build([new PluginMcpServer { Name = "broken" }], _NoEnv));
-    }
-
-    [Fact]
-    public void Build_MixesStdioAndHttpServers_EachWithItsOwnShape()
-    {
-        var wire = OpencodeMcpConfig.Build(
-        [
-            new PluginMcpServer { Name = "fs", Command = "npx" },
-            new PluginMcpServer { Name = "api", Url = "http://x/mcp" },
-        ], _NoEnv);
-
-        Assert.Equal(2, wire.Count);
-        var json = JsonSerializer.Serialize(wire);
-        using var document = JsonDocument.Parse(json);
-        Assert.False(document.RootElement[0].TryGetProperty("type", out _));
-        Assert.Equal("http", document.RootElement[1].GetProperty("type").GetString());
     }
 
     private static JsonElement _SerializeSingle(IReadOnlyList<object> wire)

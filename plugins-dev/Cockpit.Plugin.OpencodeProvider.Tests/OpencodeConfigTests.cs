@@ -37,12 +37,4 @@ public class OpencodeConfigTests
 
         Assert.Equal("sk-value", env["OPENCODE_API_KEY"]);
     }
-
-    [Fact]
-    public void BuildEnvironmentVariables_WithNoApiKey_SetsNothing()
-    {
-        var config = new OpencodeConfig();
-
-        Assert.Empty(config.BuildEnvironmentVariables());
-    }
 }

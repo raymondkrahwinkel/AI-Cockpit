@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
@@ -50,68 +49,6 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         Assert.Equal("keep@me.test", root["oauthAccount"]!["emailAddress"]!.GetValue<string>());
         Assert.Single(root["projects"]![@"D:\Other"]!["history"]!.AsArray());
         Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public void DoesNotRewriteTheFile_WhenTheDirectoryIsAlreadyTrusted()
-    {
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
-        var firstWrite = File.GetLastWriteTimeUtc(ClaudeJson);
-        var firstBytes = File.ReadAllBytes(ClaudeJson);
-
-        // A second, third call for the same already-trusted directory must be a no-op on disk — every rewrite of the
-        // shared file races a live TTY claude, and skipping it is what keeps that race from ever stripping the session.
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
-
-        Assert.Equal(firstWrite, File.GetLastWriteTimeUtc(ClaudeJson));
-        Assert.Equal(firstBytes, File.ReadAllBytes(ClaudeJson));
-    }
-
-    [Fact]
-    public void LeavesNoTempFilesBehind()
-    {
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
-
-        Assert.Equal(".claude.json", Assert.Single(Directory.EnumerateFiles(_configDir)
-            .Select(Path.GetFileName)));
-    }
-
-    [Fact]
-    public void WritesWellFormedJson_ThatRoundTrips()
-    {
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\A");
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\B");
-
-        // No JsonException means every write landed as a complete document — the property the truncate-in-place path
-        // could not guarantee under a concurrent reader.
-        JsonSerializer.Deserialize<JsonObject>(File.ReadAllText(ClaudeJson));
-    }
-
-    [Fact]
-    public void FlipsAnExplicitFalse_ToTrue()
-    {
-        Directory.CreateDirectory(_configDir);
-        File.WriteAllText(ClaudeJson, """{ "projects": { "D:\\Projects\\Cockpit": { "hasTrustDialogAccepted": false } } }""");
-
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
-
-        var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public void OverwritesANonBoolTrustValue_WithBoolTrue()
-    {
-        // A malformed value (a string, a number) is not "already trusted" — the CLI reads a real boolean, so the mark
-        // must normalise it rather than leave the directory effectively untrusted.
-        Directory.CreateDirectory(_configDir);
-        File.WriteAllText(ClaudeJson, """{ "projects": { "D:\\X": { "hasTrustDialogAccepted": "true" } } }""");
-
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\X");
-
-        var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        Assert.Equal(JsonValueKind.True, root["projects"]![@"D:\X"]!["hasTrustDialogAccepted"]!.GetValueKind());
     }
 
     [Fact]

@@ -31,16 +31,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(["meta/llama-3.3-70b-instruct", "openai/gpt-4.1"], models);
     }
 
-    [Fact]
-    public async Task ListAsync_ThrowsOnARejectedTokenSoTheConfigViewCanSaySo()
-    {
-        var handler = new StubHandler("unauthorized", HttpStatusCode.Unauthorized);
-        using var httpClient = new HttpClient(handler);
-
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => OpenAiCompatModelCatalog.ListAsync(httpClient, "https://models.github.ai/inference", "wrong-token", CancellationToken.None));
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

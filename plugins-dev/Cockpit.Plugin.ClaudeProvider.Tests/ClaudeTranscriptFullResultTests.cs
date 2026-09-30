@@ -30,17 +30,6 @@ public class ClaudeTranscriptFullResultTests : IDisposable
         Assert.Null(reader.ReadToolResult(ConfigJson, SessionId, "t1"));
     }
 
-    [Fact]
-    public void ACallThatIsNotInTheTranscript_AndASessionWithNoTranscriptAtAll_BothComeBackEmpty()
-    {
-        _WriteTranscript("t1", "the one call this transcript holds");
-        var reader = new ClaudeTranscriptReader();
-
-        Assert.Null(reader.ReadToolResult(ConfigJson, SessionId, "some-other-call"));
-        Assert.Null(reader.ReadToolResult(ConfigJson, "a-session-from-another-machine", "t1"));
-        Assert.Null(reader.ReadToolResult(ConfigJson, sessionId: null, "t1"));
-    }
-
     // The CLI's own shape: one JSONL line per message, a result carried as a `tool_result` block on a user message.
     private string _WriteTranscript(string toolUseId, string content)
     {

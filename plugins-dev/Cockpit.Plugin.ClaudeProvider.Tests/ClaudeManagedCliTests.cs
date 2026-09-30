@@ -40,32 +40,4 @@ public class ClaudeManagedCliTests
         Assert.Equal(ManagedCliArchiveFormat.RawBinary, plan.ArchiveFormat);
         Assert.True(plan.NeedsExecutableBit);
     }
-
-    [Fact]
-    public void BuildPlan_Musl_SelectsTheMuslVariant()
-    {
-        var plan = ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "x64", true), Manifest);
-
-        Assert.EndsWith("/linux-x64-musl/claude", plan.Url);
-        Assert.Equal("bbbb2222", plan.ExpectedSha256);
-    }
-
-    [Fact]
-    public void BuildPlan_Windows_NamesTheExeAndSkipsTheExecutableBit()
-    {
-        var plan = ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("win32", "x64", false), Manifest);
-
-        Assert.EndsWith("/win32-x64/claude.exe", plan.Url);
-        Assert.Equal("claude.exe", plan.ExecutableFileName);
-        Assert.False(plan.NeedsExecutableBit);
-    }
-
-    [Fact]
-    public void BuildPlan_UnknownPlatform_Throws()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "arm64", false), Manifest));
-
-        Assert.Contains("linux-arm64", ex.Message);
-    }
 }

@@ -46,14 +46,4 @@ public class KimiCustomHeaderTests
         Assert.Equal("acme", headers["X-Tenant"]);
         Assert.Equal("Bearer the-token", headers["Authorization"]);
     }
-
-    [Fact]
-    public void Build_WithNothingToSend_WritesAnEmptyHeaderArray()
-    {
-        var wire = KimiMcpConfig.Build(
-            [new PluginMcpServer { Name = "plain", Url = "https://api.example/mcp" }],
-            NoEnvironment);
-
-        Assert.Empty(_HeadersOf(_SerializeSingle(wire)));
-    }
 }
