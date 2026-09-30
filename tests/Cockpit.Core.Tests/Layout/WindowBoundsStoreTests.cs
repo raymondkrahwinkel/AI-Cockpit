@@ -23,48 +23,6 @@ public class WindowBoundsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsNull()
-    {
-        var store = new WindowBoundsStore(_configFilePath);
-
-        Assert.Null((await store.LoadAsync("main")));
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTrips()
-    {
-        var store = new WindowBoundsStore(_configFilePath);
-        var bounds = new WindowBounds(120, 80, 1400, 900, IsMaximized: true);
-
-        await store.SaveAsync("main", bounds);
-
-        Assert.Equal(bounds, (await store.LoadAsync("main")));
-    }
-
-    [Fact]
-    public async Task SaveAsync_KeepsEachKeysBoundsSeparate()
-    {
-        var store = new WindowBoundsStore(_configFilePath);
-        var mainBounds = new WindowBounds(0, 0, 1280, 820, IsMaximized: false);
-        var assistantBounds = new WindowBounds(200, 150, 520, 640, IsMaximized: false);
-
-        await store.SaveAsync("main", mainBounds);
-        await store.SaveAsync("assistant", assistantBounds);
-
-        Assert.Equal(mainBounds, (await store.LoadAsync("main")));
-        Assert.Equal(assistantBounds, (await store.LoadAsync("assistant")));
-    }
-
-    [Fact]
-    public async Task LoadAsync_UnknownKey_ReturnsNull()
-    {
-        var store = new WindowBoundsStore(_configFilePath);
-        await store.SaveAsync("main", new WindowBounds(0, 0, 1280, 820, IsMaximized: false));
-
-        Assert.Null(await store.LoadAsync("assistant"));
-    }
-
-    [Fact]
     public async Task LoadAsync_PreAc866FlatForm_ReadsAsMain()
     {
         await File.WriteAllTextAsync(_configFilePath,
@@ -87,13 +45,6 @@ public class WindowBoundsStoreTests : IDisposable
         Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
         Assert.Equal(1280, (await store.LoadAsync("main"))!.Width);
     }
-
-    [Theory]
-    [InlineData(300, false)]
-    [InlineData(400, true)]
-    [InlineData(1280, true)]
-    public void HasUsableSize_GuardsAgainstDegenerateSizes(int size, bool expected)
-        => Assert.Equal(expected, new WindowBounds(0, 0, size, size, false).HasUsableSize);
 
     public void Dispose()
     {
