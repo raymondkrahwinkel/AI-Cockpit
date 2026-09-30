@@ -58,7 +58,8 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
             foreach (var handle in live.Where(handle => !_watched.ContainsKey(handle)))
             {
                 var paneId = handle.PaneId;
-                Action<TranscriptRowUpsert> onRow = upsert => log.Append("row", paneId, upsert, upsert.Seq);
+                // The event id is the log's own, drawn inside its gate so it only ever rises; the upsert's seq rides in the data.
+                Action<TranscriptRowUpsert> onRow = upsert => log.Append("row", paneId, upsert);
                 handle.RowUpserted += onRow;
                 _watched[handle] = onRow;
             }

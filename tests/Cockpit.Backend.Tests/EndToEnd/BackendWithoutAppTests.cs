@@ -119,8 +119,8 @@ public sealed class BackendWithoutAppTests : IDisposable
         Assert.Null(driver.ContextAtSend);
     }
 
-    // AC-1386 criteria 1 and 6: a session started over the backend API answers, and its row reaches the event stream
-    // under the upsert's own seq. The counter-proof: a key whose scope lacks the profile gets a 404 on the pane and
+    // AC-1386 criterion 1: a session started over the backend API answers, and its row reaches the event stream.
+    // The counter-proof: a key whose scope lacks the profile gets a 404 on the pane and
     // never sees its rows, though it does see the next session's arrival that follows them.
     [Fact]
     public async Task ASessionStartedOverTheApi_StreamsItsAnswer_OnlyToAKeyThatMaySeeIt()
@@ -152,7 +152,6 @@ public sealed class BackendWithoutAppTests : IDisposable
             .TakeWhile(evt => evt.Kind != "sessions-changed" || evt.Seq < answer.Seq)
             .ToListAsync(timeout.Token);
 
-        Assert.Equal(answer.Data.GetProperty("Seq").GetInt64(), answer.Seq);
         Assert.Equal(HttpStatusCode.NotFound, refused.Status);
         Assert.DoesNotContain(seenByTheOutsider, evt => evt.PaneId == paneId);
     }

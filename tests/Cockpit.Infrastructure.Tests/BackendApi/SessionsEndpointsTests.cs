@@ -114,10 +114,11 @@ public sealed class SessionsEndpointsTests
         Assert.Contains("api:assistant_prompt", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
     }
 
-    // Criterion 6 and the registry's own event: a row goes on the log under the upsert's own seq, and a pane arriving
-    // is announced.
+    // Criterion 6 (corrected): two upserts whose seqs were drawn in one order reach the log in the other, as two threads
+    // racing for its gate do. The event ids still only rise, so a resume after the last one misses nothing, and each
+    // row carries its upsert's own seq in the data. A registry change is announced first.
     [Fact]
-    public async Task TheBridge_LogsARowUnderItsOwnSeq_AndAnnouncesARegistryChange()
+    public async Task TheBridge_GivesRowsRisingIds_AndKeepsTheUpsertsSeqInTheData()
     {
         var registry = new SessionRegistry();
         var log = new BackendEventLog();
@@ -125,18 +126,25 @@ public sealed class SessionsEndpointsTests
         await bridge.StartAsync(CancellationToken.None);
         var session = Substitute.For<ISessionHandle>();
         session.PaneId.Returns("pane-a");
-        var upsert = new TranscriptRowUpsert(9_000_000, 1, new TranscriptSnapshotEntry("row-1", "AssistantText", "hi", null, null, null, null, false, DateTimeOffset.UnixEpoch));
+        var first = _Upsert(SessionEventSequence.Next(), "row-1");
+        var second = _Upsert(SessionEventSequence.Next(), "row-2");
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var read = log.ReadFromAsync(0, stop.Token).Take(2).ToListAsync(stop.Token);
+        var read = log.ReadFromAsync(0, stop.Token).Take(3).ToListAsync(stop.Token);
 
         registry.Register(session);
-        session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(upsert);
+        session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(second);
+        session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(first);
         var events = await read;
         await bridge.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["sessions-changed", "row"], events.Select(evt => evt.Kind));
-        Assert.Equal((9_000_000L, "pane-a"), (events[1].Seq, events[1].PaneId));
+        Assert.Equal(["sessions-changed", "row", "row"], events.Select(evt => evt.Kind));
+        Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
+        Assert.Equal(3, events.Select(evt => evt.Seq).Distinct().Count());
+        Assert.Equal([second.Seq, first.Seq], events.Skip(1).Select(evt => evt.Data.GetProperty("Seq").GetInt64()));
     }
+
+    private static TranscriptRowUpsert _Upsert(long seq, string id) =>
+        new(seq, 1, new TranscriptSnapshotEntry(id, "AssistantText", "hi", null, null, null, null, false, DateTimeOffset.UnixEpoch));
 
     private static AssistantSessionRow _Row(string paneId, string project) =>
         new(paneId, paneId, Profile, "", null, null, ProjectId: project);
