@@ -108,11 +108,14 @@ public class HermesToolCallChatClientTests
         // tool result is fed back — answers with plain text. The shim + UseFunctionInvocation must run the tool exactly
         // as they would a natively-structured call. Red before the shim: the text landed in the assistant bubble and
         // the turn ended "success" with the tool never run.
+        // The answer closes with the end-of-turn marker, so the continuation net (AC-1431) leaves the turn as it is.
+        List<ChatMessage> lastSent = [];
         var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => lastSent = [.. messages]), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(
                 _Stream("<function=echo> <parameter=text> hi </parameter> </function> </tool_call>"),
-                _Stream("done"));
+                _Stream("done [turn complete]"),
+                _Stream("again [turn complete]"));
         var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
         var driver = _CreateDriver(chatClient, echo);
 
@@ -124,8 +127,14 @@ public class HermesToolCallChatClientTests
 
         Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
         Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
-        Assert.Equal("done", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal("done [turn complete]", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
+
+        // AC-1431: the next turn carries the shim-made call and its result as one pair under the same call id.
+        await driver.SendUserMessageAsync("and now?");
+        await _CollectUntilTurnCompletedAsync(driver);
+        var call = Assert.Single(lastSent.SelectMany(message => message.Contents).OfType<FunctionCallContent>());
+        Assert.Equal(call.CallId, Assert.Single(lastSent.SelectMany(message => message.Contents).OfType<FunctionResultContent>()).CallId);
     }
 
     [Fact]
