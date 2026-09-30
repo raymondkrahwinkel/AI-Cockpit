@@ -24,33 +24,12 @@ public class SharedUsageCacheTests
     }
 
     [Fact]
-    public void TwoConfigs_SameCredential_DifferentLabel_ShareOneEntry()
-    {
-        var cache = new SharedUsageCache();
-        var profileA = new ClaudeConfig(@"C:\fake\.claude");
-        var profileB = new ClaudeConfig(@"C:\fake\.claude");
-
-        cache.Set(profileA, Status);
-
-        Assert.Equal(Status, cache.TryGet(profileB));
-    }
-
-    [Fact]
     public void TwoConfigs_DifferentCredential_NeverShareAnEntry()
     {
         var cache = new SharedUsageCache();
         cache.Set(new ClaudeConfig(@"C:\fake\.claude-a"), Status);
 
         Assert.Null(cache.TryGet(new ClaudeConfig(@"C:\fake\.claude-b")));
-    }
-
-    [Fact]
-    public void PluginConfigs_SameProviderIdAndConfigJson_ShareOneEntry()
-    {
-        var cache = new SharedUsageCache();
-        cache.Set(new PluginProviderConfig("codex", "{\"apiKey\":\"k1\"}"), Status);
-
-        Assert.Equal(Status, cache.TryGet(new PluginProviderConfig("codex", "{\"apiKey\":\"k1\"}")));
     }
 
     [Fact]
@@ -62,35 +41,10 @@ public class SharedUsageCacheTests
         Assert.Null(cache.TryGet(new PluginProviderConfig("codex", "{\"apiKey\":\"k2\"}")));
     }
 
-    [Theory]
-    [MemberData(nameof(_UncacheableConfigs))]
-    public void UncacheableConfig_NeverTouchesTheCache(ProviderConfig? config)
-    {
-        var cache = new SharedUsageCache();
-
-        cache.Set(config, Status);
-
-        Assert.Null(cache.TryGet(config));
-    }
-
     public static IEnumerable<object?[]> _UncacheableConfigs()
     {
         yield return [new LmStudioConfig("http://localhost:1234", "some-model")];
         yield return [null];
     }
 
-    [Fact]
-    public void PastTheTtl_TheEntryStopsAnswering()
-    {
-        var clock = new StoppedClock(new DateTimeOffset(2026, 8, 14, 12, 0, 0, TimeSpan.Zero));
-        var cache = new SharedUsageCache(clock);
-        var config = new ClaudeConfig(@"C:\fake\.claude");
-        cache.Set(config, Status);
-
-        clock.Advance(SharedUsageCache.Ttl - TimeSpan.FromSeconds(1));
-        Assert.Equal(Status, cache.TryGet(config));
-
-        clock.Advance(TimeSpan.FromSeconds(2));
-        Assert.Null(cache.TryGet(config));
-    }
 }

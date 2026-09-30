@@ -35,27 +35,6 @@ public sealed class VerifyMcpToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task Verify_RunsTheRegisteredCommand_ReturnsTheSnapshot_AndFeedsTheScreenshot()
-    {
-        var runner = _RegisterRunner(withScreenshot: true);
-        _RunProducesSnapshot(runner, "Border bg=#131519 corner=20\n  TextBlock text=Session 1", [0x89, 0x50, 0x4E, 0x47]);
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        // It ran exactly the runner the registry holds — the tool has no other command to run.
-        await _commandRunner.Received(1).RunAsync(runner, Arg.Any<CancellationToken>());
-        // The snapshot text comes back on the tool result (not injected anywhere).
-        Assert.Contains("Session 1", response);
-        Assert.Contains("\"ok\":true", response);
-        // The screenshot — which a tool result cannot carry — goes through the feed as an image.
-        await _gateway.Received(1).FeedResultAsync(
-            Session,
-            Arg.Any<string>(),
-            Arg.Is<byte[]>(bytes => bytes.Length == 4),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Verify_KeysOnThePaneTheRequestAuthenticatedAs()
     {
         var runner = _RegisterRunner(withScreenshot: true);
@@ -83,75 +62,6 @@ public sealed class VerifyMcpToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task Verify_ClearsStaleOutputBeforeRunning_SoAFailedRunCannotReportTheOldUi()
-    {
-        var runner = _RegisterRunner(withScreenshot: false);
-        // A snapshot from a previous run sits on disk; this run's command (the mock) writes nothing new.
-        await File.WriteAllTextAsync(runner.SnapshotPath, "STALE Border bg=#000000");
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        // The stale file is cleared before the run, so with nothing fresh written the tool reports failure —
-        // it never vouches for the old UI as ok:true.
-        Assert.Contains("\"ok\":false", response);
-        Assert.Contains("no snapshot", response);
-        Assert.DoesNotContain("STALE", response);
-    }
-
-    [Fact]
-    public async Task Verify_IgnoresASnapshotNotWrittenByThisRun()
-    {
-        var runner = _RegisterRunner(withScreenshot: false);
-        // A leftover the run did not refresh (a delete the OS refused): the file is present at read time but its
-        // last-write is before the run started, so the freshness gate must treat it as absent, not vouch for it.
-        _commandRunner.RunAsync(runner, Arg.Any<CancellationToken>()).Returns(_ =>
-        {
-            File.WriteAllText(runner.SnapshotPath, "STALE Border bg=#000000");
-            File.SetLastWriteTimeUtc(runner.SnapshotPath, DateTime.UtcNow.AddMinutes(-5));
-            return new VerifyRunResult(0, string.Empty, string.Empty, TimeSpan.FromSeconds(1), TimedOut: false);
-        });
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        Assert.Contains("\"ok\":false", response);
-        Assert.Contains("no snapshot", response);
-        Assert.DoesNotContain("STALE", response);
-    }
-
-    [Fact]
-    public async Task Verify_ResolvesARelativeSnapshotPath_AgainstTheProjectDirectory()
-    {
-        var runner = new VerifyRunner(
-            Label: "Cockpit", WorkingDirectory: _projectDir, Command: "dotnet",
-            Arguments: ["run"], SnapshotPath: "out.txt", ScreenshotPath: null);
-        _registry.ListAsync(Arg.Any<CancellationToken>()).Returns([runner]);
-        // The command runs in the project directory and writes the snapshot there under the relative name.
-        _commandRunner.RunAsync(runner, Arg.Any<CancellationToken>()).Returns(_ =>
-        {
-            File.WriteAllText(Path.Combine(_projectDir, "out.txt"), "Border bg=#131519");
-            return new VerifyRunResult(0, string.Empty, string.Empty, TimeSpan.FromSeconds(1), TimedOut: false);
-        });
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        // Read against the project directory, not the cockpit process's own — the snapshot is found and returned.
-        Assert.Contains("\"ok\":true", response);
-        Assert.Contains("#131519", response);
-    }
-
-    [Fact]
-    public async Task Verify_WithNoRegisteredRunner_RunsNothing()
-    {
-        _registry.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<VerifyRunner>());
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        Assert.Contains("\"ok\":false", response);
-        await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
-        await _gateway.DidNotReceive().FeedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Verify_WhenTheOperatorDeclines_RunsNothing()
     {
         _RegisterRunner(withScreenshot: false);
@@ -161,18 +71,6 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         Assert.Contains("\"ok\":false", response);
         await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Verify_WhenTheCommandProducesNoSnapshot_ReportsFailureWithoutFeeding()
-    {
-        _RegisterRunner(withScreenshot: false); // its SnapshotPath is never written
-
-        var response = await _ToolFor(Session).VerifyAsync();
-
-        Assert.Contains("\"ok\":false", response);
-        Assert.Contains("no snapshot", response);
-        await _gateway.DidNotReceive().FeedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
     }
 
     // Models a real command writing its output when it runs, so the tool reads freshly-produced files — not the

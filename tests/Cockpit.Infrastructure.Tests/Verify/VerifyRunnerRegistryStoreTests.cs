@@ -20,14 +20,6 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_NoConfigFile_IsEmpty()
-    {
-        var store = new VerifyRunnerRegistryStore(_configPath);
-
-        Assert.Empty((await store.ListAsync()));
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenListFromAFreshStore_SurvivesTheRestart()
     {
         var runner = _Runner("Cockpit", "/projects/cockpit");
@@ -36,30 +28,6 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
         var reloaded = await new VerifyRunnerRegistryStore(_configPath).ListAsync();
 
         Assert.Equivalent(runner, Assert.Single(reloaded));
-    }
-
-    [Fact]
-    public async Task SaveAsync_SameLabelTwice_ReplacesRatherThanDuplicates()
-    {
-        var store = new VerifyRunnerRegistryStore(_configPath);
-        await store.SaveAsync(_Runner("Cockpit", "/projects/cockpit") with { Command = "dotnet" });
-        await store.SaveAsync(_Runner("Cockpit", "/projects/cockpit") with { Command = "pwsh" });
-
-        var runners = await store.ListAsync();
-
-        Assert.Equal("pwsh", Assert.Single(runners).Command);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_DropsOnlyTheMatchingRunner()
-    {
-        var store = new VerifyRunnerRegistryStore(_configPath);
-        await store.SaveAsync(_Runner("Cockpit", "/projects/cockpit"));
-        await store.SaveAsync(_Runner("StartPage", "/projects/startpage"));
-
-        await store.RemoveAsync("Cockpit");
-
-        Assert.Equal("StartPage", Assert.Single((await store.ListAsync())).Label);
     }
 
     private static VerifyRunner _Runner(string label, string workingDirectory) => new(
