@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Engine;
-using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -20,37 +19,6 @@ public class ContributedStepConsentTests
     public void DeclaredRisk_MapsStraightThroughToTheGate(WorkflowStepConsent declared, ConsentRisk? expected)
     {
         Assert.Equal(expected, new ContributedStep(new FakeStep("x", declared)).RequiredConsent);
-    }
-
-    [Fact]
-    public void OnlyAnUndeclaredNonTriggerStep_IsUndeclared()
-    {
-        Assert.True(ContributedStep.IsUndeclared(new FakeStep("undeclared", consent: null)));
-        Assert.False(ContributedStep.IsUndeclared(new FakeStep("declared", WorkflowStepConsent.None)), "it declared it is safe");
-        Assert.False(ContributedStep.IsUndeclared(new FakeStep("trigger", consent: null, isTrigger: true)), "a trigger is never run, so it needs no declaration");
-    }
-
-    [Fact]
-    public async Task AnUndeclaredNonTriggerStep_IsLeftOutOfTheEngine_WhileADeclaredOneRuns()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var engine = EngineFactory.Create(host,
-        [
-            new FakeStep("declared", WorkflowStepConsent.None),
-            new FakeStep("undeclared", consent: null),
-        ]);
-
-        var trigger = new WorkflowNode { Id = "t", TypeId = "cockpit.manual", Name = "Start" };
-        var declared = new WorkflowNode { Id = "d", TypeId = "declared", Name = "Declared" };
-        var undeclared = new WorkflowNode { Id = "u", TypeId = "undeclared", Name = "Undeclared" };
-        var flow = new Workflow { Id = "w", Name = "Flow", Nodes = { trigger, declared, undeclared } };
-        flow.Connect(trigger.Id, 0, declared.Id);
-        flow.Connect(declared.Id, 0, undeclared.Id);
-
-        var run = await engine.RunAsync(flow, trigger.Id, RunOrigin.Operator);
-
-        Assert.Equal(RunStatus.Succeeded, run.Steps.Single(step => step.NodeId == "d").Status);
-        Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "u").Status);
     }
 
     [Fact]

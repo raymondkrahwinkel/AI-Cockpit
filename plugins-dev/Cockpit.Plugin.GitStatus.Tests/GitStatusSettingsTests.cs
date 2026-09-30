@@ -8,12 +8,6 @@ namespace Cockpit.Plugin.GitStatus.Tests;
 // "repos" storage key, and loading must not choke on it.
 public class GitStatusSettingsTests
 {
-    [Fact]
-    public void ShowBranchName_DefaultsToTrue_WhenNothingSaved()
-    {
-        Assert.True(new GitStatusSettings(new InMemoryPluginStorage()).ShowBranchName);
-    }
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

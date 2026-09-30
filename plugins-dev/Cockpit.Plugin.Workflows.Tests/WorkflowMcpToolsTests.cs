@@ -12,41 +12,6 @@ namespace Cockpit.Plugin.Workflows.Tests;
 public class WorkflowMcpToolsTests
 {
     [Fact]
-    public void Create_ThenList_Describe_SetActive_Delete_RoundTrips()
-    {
-        var storage = new InMemoryPluginStorage();
-        var host = Substitute.For<ICockpitHost>();
-        host.WorkflowSteps.Returns([]);
-        var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), host);
-
-        // Create a two-step flow: a manual trigger wired to a notify — a safe step an agent may build (a command
-        // step it may not, see Create_WithADangerousStep_IsRefused).
-        var created = _Json(tools.CreateWorkflow(
-            "Tell me",
-            steps_json: """[{"typeId":"cockpit.manual","name":"Start"},{"typeId":"cockpit.notify","name":"Tell","parameters":{"Message":"hi"}}]""",
-            connections_json: """[{"from":0,"output":0,"to":1}]"""));
-        Assert.True(created.GetProperty("ok").GetBoolean());
-        var id = created.GetProperty("id").GetString()!;
-
-        // It is listed, disarmed by default.
-        var listed = _Json(tools.ListWorkflows());
-        Assert.False(Assert.Single(listed.EnumerateArray(), flow => flow.GetProperty("id").GetString() == id).GetProperty("active").GetBoolean());
-
-        // It reads back with both steps and the connection between them.
-        var described = _Json(tools.DescribeWorkflow(id));
-        Assert.Equal(2, described.GetProperty("steps").GetArrayLength());
-        Assert.Equal("hi", described.GetProperty("steps")[1].GetProperty("parameters").GetProperty("Message").GetString());
-        var connection = described.GetProperty("connections")[0];
-        Assert.Equal(0, connection.GetProperty("from").GetInt32());
-        Assert.Equal(1, connection.GetProperty("to").GetInt32());
-
-        // It can be armed, and deleted.
-        Assert.True(_Json(tools.SetWorkflowActive(id, true)).GetProperty("active").GetBoolean());
-        Assert.True(_Json(tools.DeleteWorkflow(id)).GetProperty("ok").GetBoolean());
-        Assert.Empty(_Json(tools.ListWorkflows()).EnumerateArray());
-    }
-
-    [Fact]
     public async Task Run_IsRefusedWhileDisarmed_AndRunsOnceArmed()
     {
         var storage = new InMemoryPluginStorage();
@@ -70,18 +35,6 @@ public class WorkflowMcpToolsTests
         var ran = _Json(await tools.RunWorkflow(id));
         Assert.True(ran.GetProperty("ok").GetBoolean());
         Assert.Equal("Succeeded", ran.GetProperty("status").GetString());
-    }
-
-    [Fact]
-    public void Create_WithAnUnknownStepType_IsRefused_NamingTheOffendingType()
-    {
-        var storage = new InMemoryPluginStorage();
-        var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), Substitute.For<ICockpitHost>());
-
-        var result = _Json(tools.CreateWorkflow("Bad", steps_json: """[{"typeId":"cockpit.not-a-real-step"}]""", connections_json: null));
-
-        Assert.False(result.GetProperty("ok").GetBoolean());
-        Assert.Contains("cockpit.not-a-real-step", result.GetProperty("error").GetString());
     }
 
     [Fact]

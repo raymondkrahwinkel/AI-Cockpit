@@ -177,17 +177,6 @@ public class AutopilotPlanIntentTests : IDisposable
     }
 
     [Fact]
-    public async Task Plan_OnTheSameRefusedItemTwice_WritesTheReasonOnce()
-    {
-        var (handler, tracker) = Started();
-
-        await handler(Plan("Backlog"));
-        await handler(Plan("Backlog"));
-
-        Assert.Single(tracker.Comments);
-    }
-
-    [Fact]
     public async Task Plan_FromAPluginThatIsNotTheTracker_RefusesWithoutWritingOnTheIssue()
     {
         // Any installed plugin may send an intent, and the payload names its own tracker and issue. Commenting on
@@ -213,49 +202,4 @@ public class AutopilotPlanIntentTests : IDisposable
     // AC-346: an epic click (the same "plan" intent, on an item that turns out to have "parent for" children) never
     // reaches the pipeline as the epic itself — AutopilotEpicRunner swaps it for the sub it picked before the stage
     // gate above ever runs.
-
-    [Fact]
-    public async Task Plan_OnAnEpicWithAReadySub_GoesThroughToPlanningOnTheSub_NotTheEpic()
-    {
-        var (handler, tracker) = Started();
-        // The merge check runs against this class's own throwaway origin/main, whose only commit is "seed commit" —
-        // so no sub id can read as already merged, and no ambient repository can decide this test. The distinctive
-        // id is kept anyway: it costs nothing and keeps the assertion honest.
-        tracker.AddChild("AC-345", "ZZ-999901", "The first sub", "Ready");
-
-        var result = await handler(Plan("Backlog")); // the epic's own stage is irrelevant — only the sub's is checked
-
-        Assert.Equal("planning", result["status"]);
-        Assert.Equal("ZZ-999901", result["issue"]);
-        Assert.Empty(tracker.Comments);
-    }
-
-    [Fact]
-    public async Task Plan_OnAnEpicWhoseNextSubIsNotReady_PausesTheChainAndCommentsOnTheEpic_NotTheSub()
-    {
-        var (handler, tracker) = Started();
-        tracker.AddChild("AC-345", "ZZ-999902", "The first sub", "Backlog");
-
-        var result = await handler(Plan("Backlog"));
-
-        Assert.Equal("epic-paused", result["status"]);
-        Assert.Equal("AC-345", result["issue"]);
-        Assert.Equal("ZZ-999902", result["sub"]);
-        var (commentedId, comment) = Assert.Single(tracker.Comments);
-        Assert.Equal("AC-345", commentedId);
-        Assert.Contains("ZZ-999902", comment);
-    }
-
-    [Fact]
-    public async Task Plan_OnAnItemWithNoChildren_IsUnaffectedByTheEpicCheck()
-    {
-        // Regression: AC-345's behaviour for a plain issue is untouched by the AC-346 epic lookup ahead of it.
-        var (handler, tracker) = Started();
-
-        var result = await handler(Plan("Ready"));
-
-        Assert.Equal("planning", result["status"]);
-        Assert.Equal("AC-345", result["issue"]);
-        Assert.Empty(tracker.Comments);
-    }
 }

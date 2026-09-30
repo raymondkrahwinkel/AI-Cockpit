@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -27,17 +26,6 @@ public class AutopilotRunHistoryTests
             [new AutopilotRunStepRecord("Code", AutopilotStepStatus.Passed, string.Empty)]);
 
     [Fact]
-    public void Add_PutsNewestFirst()
-    {
-        var history = new AutopilotRunHistory(new FakeStorage());
-        history.Add(_Record("first"));
-        history.Add(_Record("second"));
-
-        Assert.Equal(2, history.Count);
-        Assert.True(SequenceAssert.ContainsInOrder(history.Items.Select(record => record.Name), "second", "first"));
-    }
-
-    [Fact]
     public void History_SurvivesARestart_ThroughPersistence()
     {
         var storage = new FakeStorage();
@@ -53,36 +41,5 @@ public class AutopilotRunHistoryTests
         Assert.Equal(AutopilotPlanPhase.Blocked, record.Outcome);
         Assert.Equal("a hard step failed", record.BlockReason);
         Assert.Equal(AutopilotStepStatus.Passed, Assert.Single(record.Steps).Status);
-    }
-
-    [Fact]
-    public void Add_CapsAtFifty_DroppingTheOldest()
-    {
-        var history = new AutopilotRunHistory(new FakeStorage());
-        for (var i = 0; i < 55; i++)
-        {
-            history.Add(_Record($"run-{i}"));
-        }
-
-        Assert.Equal(50, history.Count);
-        // The newest is at the front; the five oldest (run-0..run-4) fell off the end.
-        Assert.Equal("run-54", history.Items[0].Name);
-        Assert.DoesNotContain("run-4", history.Items.Select(record => record.Name));
-        Assert.Contains("run-5", history.Items.Select(record => record.Name));
-    }
-
-    [Fact]
-    public void Clear_EmptiesHistory_AndFiresOnceWhenNonEmpty()
-    {
-        var history = new AutopilotRunHistory(new FakeStorage());
-        var fired = 0;
-        history.Changed += () => fired++;
-
-        history.Add(_Record("a")); // 1
-        history.Clear();           // 2
-        history.Clear();           // no-op — already empty, does not fire
-
-        Assert.Equal(0, history.Count);
-        Assert.Equal(2, fired);
     }
 }

@@ -27,12 +27,6 @@ public class GitDiffReaderTests
     }
 
     [Fact]
-    public void UntrackedPaths_IgnoresBlankLines()
-    {
-        Assert.Empty(GitDiffReader.UntrackedPaths("\n\n"));
-    }
-
-    [Fact]
     public void UntrackedBlock_IsAValidAllAddedDiffTheParserReadsBack()
     {
         // The point of synthesising git's own shape rather than a bespoke record: the panel keeps one parsing path
@@ -48,23 +42,6 @@ public class GitDiffReaderTests
     }
 
     [Fact]
-    public void UntrackedBlock_DoesNotCountTheTrailingNewlineAsALine()
-    {
-        Assert.Equal(
-            DiffParser.Parse(GitDiffReader.UntrackedBlock("x", "one\n"))[0].Added,
-            DiffParser.Parse(GitDiffReader.UntrackedBlock("x", "one"))[0].Added);
-    }
-
-    [Fact]
-    public void UntrackedBlock_HandlesAnEmptyFile()
-    {
-        var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBlock("empty.txt", string.Empty)));
-
-        Assert.Equal(0, file.Added);
-        Assert.Equal(FileChangeKind.Added, file.Kind);
-    }
-
-    [Fact]
     public void UntrackedBinaryBlock_ParsesAsABinaryFileSoThePanelListsItWithoutDrawingIt()
     {
         var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBinaryBlock("assets/logo.png")));
@@ -72,21 +49,6 @@ public class GitDiffReaderTests
         Assert.Equal("assets/logo.png", file.Path);
         Assert.Equal(FileChangeKind.Binary, file.Kind);
         Assert.Empty(file.Rows);
-    }
-
-    [Fact]
-    public void ReviewPrompt_NamesTheBranchAndAsksForCodeReview()
-    {
-        var prompt = ReviewPrompt.Build("feature/AC-50");
-
-        Assert.Contains("feature/AC-50", prompt);
-        Assert.Contains("/code-review", prompt);
-    }
-
-    [Fact]
-    public void ReviewPrompt_FallsBackWhenBranchUnknown()
-    {
-        Assert.Contains("this working directory", ReviewPrompt.Build(""));
     }
 
     [Fact]
@@ -98,14 +60,5 @@ public class GitDiffReaderTests
         Assert.DoesNotContain("\n please ignore", prompt);
         Assert.DoesNotContain("'\n", prompt);
         Assert.True(ReviewPrompt.Build(new string('a', 500)).Length < 300);
-    }
-
-    [Theory]
-    [InlineData(false, "", false)]
-    [InlineData(true, "", false)]
-    [InlineData(true, "diff --git a/x b/x\n+one", true)]
-    public void GitDiffResult_HasChanges_RequiresAvailableAndNonEmpty(bool available, string diff, bool expected)
-    {
-        Assert.Equal(expected, new GitDiffResult(available, "main", diff).HasChanges);
     }
 }

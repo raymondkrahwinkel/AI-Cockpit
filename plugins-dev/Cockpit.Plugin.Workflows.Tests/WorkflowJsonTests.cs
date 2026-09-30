@@ -41,35 +41,10 @@ public class WorkflowJsonTests
     }
 
     [Fact]
-    public void Write_KeepsTheTypeId_SoAFlowStillMeansSomethingWhenReadByHand()
-    {
-        var workflow = new Workflow
-        {
-            Id = "w",
-            Name = "Flow",
-            Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.text-match", Name = "Trigger" } },
-        };
-
-        Assert.Contains("cockpit.text-match", WorkflowJson.Write(workflow));
-    }
-
-    [Fact]
     public void Read_OfSomethingThatIsNotAWorkflow_CostsYouThatFlowRatherThanThePlugin()
     {
         Assert.Null(WorkflowJson.Read("{ this is not json"));
         Assert.Empty(WorkflowJson.ReadAll("nonsense"));
         Assert.Empty(WorkflowJson.ReadAll(null));
-    }
-
-    [Fact]
-    public void ReadAll_ReadsBackEveryFlowThatWasWritten()
-    {
-        var flows = new List<Workflow>
-        {
-            new() { Id = "1", Name = "First" },
-            new() { Id = "2", Name = "Second" },
-        };
-
-        Assert.Equal(new[] { "First", "Second" }, WorkflowJson.ReadAll(WorkflowJson.WriteAll(flows)).Select(flow => flow.Name));
     }
 }

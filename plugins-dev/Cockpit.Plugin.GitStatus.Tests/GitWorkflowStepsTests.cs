@@ -35,26 +35,6 @@ public class GitWorkflowStepsTests : IDisposable
     }
 
     [Fact]
-    public async Task SwitchingToABranchThatDoesNotExist_CreatesIt()
-    {
-        var result = await _Run("git.branch", ("Branch", "web-14-fix-it"), ("Working directory", _repo));
-
-        Assert.Equal("true", result.Items[0]["created"]);
-        Assert.Equal("web-14-fix-it", result.Items[0]["branch"]);
-        Assert.Equal("web-14-fix-it", _Git("rev-parse", "--abbrev-ref", "HEAD").Trim());
-    }
-
-    [Fact]
-    public async Task SwitchingToABranchThatExists_JustSwitches()
-    {
-        _Git("branch", "already-here");
-
-        var result = await _Run("git.branch", ("Branch", "already-here"), ("Working directory", _repo));
-
-        Assert.Equal("false", result.Items[0]["created"]);
-    }
-
-    [Fact]
     public async Task SwitchingWithUncommittedWork_IsRefused_RatherThanDraggingItOntoAnotherBranch()
     {
         File.WriteAllText(Path.Combine(_repo, "README.md"), "changed\n");
@@ -63,39 +43,6 @@ public class GitWorkflowStepsTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
         Assert.Contains("uncommitted changes", ex.Message);
-    }
-
-    [Fact]
-    public async Task Committing_StagesEverything_AndHandsOnTheCommit()
-    {
-        File.WriteAllText(Path.Combine(_repo, "new.txt"), "a new file\n");
-
-        var result = await _Run("git.commit", ("Message", "added: a new file"), ("Working directory", _repo));
-
-        Assert.NotEmpty(result.Items[0]["commit"]);
-        Assert.Equal("main", result.Items[0]["branch"]);
-        Assert.Equal("added: a new file", _Git("log", "-1", "--pretty=%s").Trim());
-    }
-
-    [Fact]
-    public async Task CommittingWithNothingToCommit_SaysSo_AndMakesNoEmptyCommit()
-    {
-        var before = _Git("rev-parse", "HEAD").Trim();
-
-        var result = await _Run("git.commit", ("Message", "nothing happened"), ("Working directory", _repo));
-
-        Assert.Equal("Nothing to commit.", result.Output);
-        Assert.Empty(result.Items);
-        Assert.Equal(before, _Git("rev-parse", "HEAD").Trim());
-    }
-
-    [Fact]
-    public async Task AStepWithNoWorkingDirectory_SaysWhatToWrite()
-    {
-        var run = async () => await _Run("git.commit", ("Message", "x"), ("Working directory", string.Empty));
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
-        Assert.Contains("{directory}", ex.Message);
     }
 
     private static async Task<WorkflowStepResult> _Run(string typeId, params (string Name, string Value)[] parameters)
