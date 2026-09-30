@@ -24,12 +24,12 @@ namespace Cockpit.App.ViewTests;
 public class WhiteboardCollabWindowTests
 {
     [Fact]
-    public void OpeningTwoWhiteboardsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.Run(() =>
+    public Task OpeningTwoWhiteboardsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
 
-        host.InvokeWhiteboardAction();
-        host.InvokeWhiteboardAction();
+        await host.InvokeWhiteboardActionAsync();
+        await host.InvokeWhiteboardActionAsync();
 
         Assert.Equal(2, host.Windows.Count);
         Assert.NotEqual(host.Windows[0].Key, host.Windows[1].Key);
@@ -44,10 +44,10 @@ public class WhiteboardCollabWindowTests
     });
 
     [Fact]
-    public void WhenTheBoundSessionEnds_TheCouplingGoesAndTheWindowStaysWithAnExplanation() => HeadlessAvalonia.Run(() =>
+    public Task WhenTheBoundSessionEnds_TheCouplingGoesAndTheWindowStaysWithAnExplanation() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeWhiteboardAction();
+        await host.InvokeWhiteboardActionAsync();
         var content = host.Windows[0].Content;
         _Show(content);
 
@@ -61,11 +61,11 @@ public class WhiteboardCollabWindowTests
     });
 
     [Fact]
-    public void InvitingWithoutConsent_LeavesNoAccess_ApprovingGrantsRead() => HeadlessAvalonia.Run(() =>
+    public Task InvitingWithoutConsent_LeavesNoAccess_ApprovingGrantsRead() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
         host.ConsentOutcome = ConsentOutcome.Denied;
-        host.InvokeWhiteboardAction();
+        await host.InvokeWhiteboardActionAsync();
         var content = host.Windows[0].Content;
         _Show(content);
 
@@ -84,14 +84,14 @@ public class WhiteboardCollabWindowTests
     });
 
     [Fact]
-    public void InvokingWithNoActiveSession_StillOpensTheBoard_WithNoAgentOnIt() => HeadlessAvalonia.Run(() =>
+    public Task InvokingWithNoActiveSession_StillOpensTheBoard_WithNoAgentOnIt() => HeadlessAvalonia.RunAsync(async () =>
     {
         // W-2/AC-843 replaced AC-842's "no session, no window, a toast" with the diagram's quick-start shape: the
         // board opens on its name alone, and "no agent on this board" is a state the window itself draws.
         var (plugin, host) = _StartPlugin();
         host.Surfaces.ActivePaneId = null;
 
-        host.InvokeWhiteboardAction();
+        await host.InvokeWhiteboardActionAsync();
 
         var opened = Assert.Single(host.Windows);
         _Show(opened.Content);
@@ -99,10 +99,10 @@ public class WhiteboardCollabWindowTests
     });
 
     [Fact]
-    public void DisconnectFromTheBoard_DropsTheCoupling() => HeadlessAvalonia.Run(() =>
+    public Task DisconnectFromTheBoard_DropsTheCoupling() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
-        host.InvokeWhiteboardAction();
+        await host.InvokeWhiteboardActionAsync();
         var content = host.Windows[0].Content;
         _Show(content);
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
@@ -214,9 +214,9 @@ public class WhiteboardCollabWindowTests
 
         // AC-896's two-stage path: "Whiteboards" opens the list dialog, "New whiteboard" in its header opens the
         // quick-start (W-2/AC-843) — standing in for an operator clicking through both.
-        public void InvokeWhiteboardAction()
+        public async Task InvokeWhiteboardActionAsync()
         {
-            Surfaces.ToolbarActions.Single(action => action.Title == "Whiteboards").OnInvoke().GetAwaiter().GetResult();
+            await Surfaces.ToolbarActions.Single(action => action.Title == "Whiteboards").OnInvoke();
 
             // UserControl.Content only materialises into the visual tree once templated — shown, here, the same
             // way a document window's content already has to be for its own button lookups to find anything.
@@ -260,7 +260,7 @@ public class WhiteboardCollabWindowTests
 
             if (singleInstanceKey == "whiteboard.list")
             {
-                // Not a document window — Windows means document windows only (InvokeWhiteboardAction clicks through it).
+                // Not a document window — Windows means document windows only (InvokeWhiteboardActionAsync clicks through it).
                 _listDialogContent = content;
                 return Task.CompletedTask;
             }

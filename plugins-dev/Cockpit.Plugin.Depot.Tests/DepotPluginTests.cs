@@ -1,5 +1,6 @@
 extern alias UiAsm;
 
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
@@ -456,7 +457,7 @@ public class DepotPluginTests
         Assert.NotNull(family.ConfigureAsync);
         await family.ConfigureAsync!(CancellationToken.None);
 
-        await host.Received(1).ShowSettingsAsync();
+        host.Channel.Received(1).Publish("open-settings", Arg.Any<JsonElement>());
     }
 
     [Fact]
@@ -476,6 +477,6 @@ public class DepotPluginTests
         await configureAsync(CancellationToken.None);
         await configureAsync(CancellationToken.None);
 
-        await host.Received(2).ShowSettingsAsync();
+        host.Channel.Received(2).Publish("open-settings", Arg.Any<JsonElement>());
     }
 }

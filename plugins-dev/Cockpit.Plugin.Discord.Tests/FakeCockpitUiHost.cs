@@ -39,6 +39,12 @@ internal sealed class FakeCockpitUiHost : ICockpitUiHost
         remove { }
     }
 
+    public event EventHandler? ActiveSessionUsageChanged
+    {
+        add { }
+        remove { }
+    }
+
     public void AddSettings(Func<Control> createView)
     {
     }

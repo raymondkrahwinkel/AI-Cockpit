@@ -1246,7 +1246,6 @@ public class AutopilotRunCoordinatorTests
     private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)
     {
         var session = Substitute.For<IEmbeddedSession>();
-        session.View.Returns(_ => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view."));
         session.PaneId.Returns(paneId);
         session.CloseAsync().Returns(Task.CompletedTask);
         // A live session's Completion has not fired; a never-completing task models that, so the coordinator waits on

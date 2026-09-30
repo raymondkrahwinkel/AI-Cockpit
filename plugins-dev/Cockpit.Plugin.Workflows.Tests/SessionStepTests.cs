@@ -28,7 +28,6 @@ public class SessionStepTests
         await host.Received(1).InsertIntoSessionAsync("pane-2", "hello");
         await host.DidNotReceive().InsertIntoSessionAsync(Arg.Is<string>(pane => pane != "pane-2"), Arg.Any<string>());
         await host.DidNotReceive().SendToSessionAsync(Arg.Any<string>(), Arg.Any<string>());
-        await host.Actions.DidNotReceive().InjectIntoActiveSessionAsync(Arg.Any<string>());
     }
 
     // The counter-proof: a step that names no live session fails with the reason, and no session is touched — apart
@@ -50,8 +49,6 @@ public class SessionStepTests
         Assert.Contains(reason, run.Steps[^1].Note);
         await host.DidNotReceive().InsertIntoSessionAsync(Arg.Is<string>(pane => pane != "pane-3"), Arg.Any<string>());
         await host.DidNotReceive().SetSessionStatuslineAsync(Arg.Any<string>(), Arg.Any<string>());
-        await host.Actions.DidNotReceive().InjectIntoActiveSessionAsync(Arg.Any<string>());
-        await host.Actions.DidNotReceive().SetActiveSessionStatusAsync(Arg.Any<string?>(), Arg.Any<string?>());
     }
 
     // Acceptance 3: a flow that starts a session and then injects into it reaches the session it started.
@@ -79,7 +76,6 @@ public class SessionStepTests
         Assert.Equal(RunStatus.Succeeded, run.Status);
         await host.Received(1).SetSessionStatuslineAsync("pane-2", "AC-1399");
         await host.Received(1).SetSessionNameAsync("pane-2", "Workflows");
-        await host.Actions.DidNotReceive().SetActiveSessionStatusAsync(Arg.Any<string?>(), Arg.Any<string?>());
     }
 
     // AC-1419: a pane that closed before it took the label, or between the label and the name, fails the step and names
@@ -106,7 +102,6 @@ public class SessionStepTests
     private static ICockpitHost _Host()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.Actions.HasActiveSession.Returns(true);
         host.Sessions.OpenSessions.Returns(
         [
             new OpenCockpitSession("pane-1", "webshop"),

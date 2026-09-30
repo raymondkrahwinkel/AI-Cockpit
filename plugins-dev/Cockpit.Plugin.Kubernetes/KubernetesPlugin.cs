@@ -61,9 +61,13 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         // The open tunnels appear in the status bar with an operator-only Kill (AC-82).
         host.AddSupervisedActivityProvider(portForwards);
 
-        // A settings save may have changed a cluster's kubeconfig or context; drop the cached clients so the next
-        // call rebuilds from the new config.
-        host.OnSettingsSaved(connections.InvalidateAll);
+        // A settings save may have changed a cluster's kubeconfig or context; the UI part says so over the channel,
+        // and the cached clients are dropped so the next call rebuilds from the new config.
+        _handlers.Add(host.Channel.Handle(KubernetesChannel.SettingsSaved, (_, _) =>
+        {
+            connections.InvalidateAll();
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, KubernetesChannel.Json));
+        }));
 
         // What the settings view (UI/ClusterRowControl, UI/KubernetesSettingsControl) asks over the channel — it
         // never references ClusterRegistration/KubernetesSettings or the KubernetesClient package directly.

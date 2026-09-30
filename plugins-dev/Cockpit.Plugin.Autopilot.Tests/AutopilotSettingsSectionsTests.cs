@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -61,8 +62,9 @@ public class AutopilotSettingsSectionsTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        var uiHost = Substitute.For<ICockpitUiHost>();
+        uiHost.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
-        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, new AutopilotTemplateStore(storage));
+        return new AutopilotSettingsControl(new AutopilotSettings(storage), host, uiHost, new AutopilotTemplateStore(storage));
     }
 }

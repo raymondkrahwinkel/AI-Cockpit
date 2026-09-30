@@ -1,6 +1,3 @@
-using Cockpit.Plugins.Abstractions.Sessions;
-using NSubstitute;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // Where a run works (AC-174): the operator's chosen folder wins, else the active session's directory, else the
@@ -25,7 +22,7 @@ public class AutopilotWorkingDirectoryTests
     [MemberData(nameof(Preferences))]
     public void Resolve_PrefersTheChosenFolder_ThenTheActiveSession_ThenTheCockpitsOwn(
         string? activeSession, string? chosen, string expected) =>
-        Assert.Equal(expected, AutopilotWorkingDirectory.Resolve(_Context(activeSession), chosen));
+        Assert.Equal(expected, AutopilotWorkingDirectory.Resolve(activeSession, chosen));
 
     [Fact]
     public void Resolve_AnswersAnAbsolutePath_EvenWhenItWasGivenARelativeOne()
@@ -36,18 +33,11 @@ public class AutopilotWorkingDirectoryTests
         var relative = Path.Combine(".", "a", "..", "b");
         var expected = Path.Combine(Directory.GetCurrentDirectory(), "b");
 
-        var chosen = AutopilotWorkingDirectory.Resolve(_Context(null), relative);
-        var session = AutopilotWorkingDirectory.Resolve(_Context(relative), null);
+        var chosen = AutopilotWorkingDirectory.Resolve(null, relative);
+        var session = AutopilotWorkingDirectory.Resolve(relative, null);
 
         Assert.True(Path.IsPathFullyQualified(chosen));
         Assert.Equal(expected, chosen);
         Assert.Equal(expected, session);
-    }
-
-    private static ICockpitSessionObserver _Context(string? activeSessionDirectory)
-    {
-        var sessions = Substitute.For<ICockpitSessionObserver>();
-        sessions.ActiveSessionWorkingDirectory.Returns(activeSessionDirectory);
-        return sessions;
     }
 }

@@ -263,6 +263,8 @@ public class ActivityStripTests
 
         public event EventHandler? ActiveSessionChanged { add { } remove { } }
 
+        public event EventHandler? ActiveSessionUsageChanged { add { } remove { } }
+
         public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
             Toasts.Add(message);
 

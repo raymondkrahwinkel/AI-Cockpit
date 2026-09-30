@@ -116,7 +116,7 @@ public class DiagramChannelTests
     [Fact]
     public async Task OpenDiagram_OnABackendWithNoUiPart_AnswersOkButNotOpened_WithoutAskingTheOperator()
     {
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var registry = new DiagramAccessRegistry();
         var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage());
@@ -136,7 +136,7 @@ public class DiagramChannelTests
     {
         var sessions = new _Sessions();
         sessions.Open("pane-1", "Werksessie");
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.Sessions.Returns(sessions);
         var changes = 0;
         // F2.13/AC-1401: SurfaceSessionBinding takes ICockpitUiHost and reads the bound pane's liveness/name over

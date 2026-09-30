@@ -26,7 +26,7 @@ public class WhiteboardMcpToolsTests
     {
         var registry = new WhiteboardAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
@@ -78,7 +78,7 @@ public class WhiteboardMcpToolsTests
         var registry = new WhiteboardAccessRegistry();
         var asked = new List<ConsentRequest>();
         var approve = false;
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(_ => new ConsentDecision(approve ? ConsentOutcome.Approved : ConsentOutcome.Denied));
@@ -297,7 +297,7 @@ public class WhiteboardMcpToolsTests
     {
         var registry = new WhiteboardAccessRegistry();
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ =>
@@ -369,7 +369,7 @@ public class WhiteboardMcpToolsTests
     {
         // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
         var registry = new WhiteboardAccessRegistry();
-        var host = Substitute.For<ICockpitHost>();
+        var host = Substitute.For<ICockpitHost, IWindowProbe>();
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()) { SkipWhiteboardConsent = true };
         var tools = new WhiteboardMcpTools(host, registry, settings, TestChannel.Desktop(host, whiteboards: registry));

@@ -59,6 +59,8 @@ public class SurfaceSessionBindingTests
 
         public event EventHandler? ActiveSessionChanged { add { } remove { } }
 
+        public event EventHandler? ActiveSessionUsageChanged { add { } remove { } }
+
         public void AddSettings(Func<Control> createView)
         {
         }

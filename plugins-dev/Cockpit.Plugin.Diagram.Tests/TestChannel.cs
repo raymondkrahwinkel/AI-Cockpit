@@ -26,7 +26,7 @@ internal static class TestChannel
         IDiagramAccessRegistry? diagrams = null,
         IWhiteboardAccessRegistry? whiteboards = null,
         IWireframeAccessRegistry? wireframes = null) =>
-        Wire(Substitute.For<ICockpitHost>(), diagrams, whiteboards, wireframes).Ui;
+        Wire(Substitute.For<ICockpitHost, IWindowProbe>(), diagrams, whiteboards, wireframes).Ui;
 
     public static DiagramChannelClient Diagram(IDiagramAccessRegistry registry) => new(For(diagrams: registry));
 

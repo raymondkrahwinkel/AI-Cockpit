@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Material.Icons;
+using Cockpit.Plugin.Kubernetes.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -12,6 +14,10 @@ public sealed class KubernetesUi : ICockpitPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         host.AddSettings(() => new KubernetesSettingsControl(host));
+
+        // The callback is synchronous, so it blocks on the in-process channel.
+        host.OnSettingsSaved(() =>
+            host.Channel.InvokeAsync(KubernetesChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, KubernetesChannel.Json)).GetAwaiter().GetResult());
         host.AddToolbarAction(new ToolbarAction("Kubernetes settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Threading;
 using Material.Icons;
 using Cockpit.Plugins.Abstractions;
@@ -22,6 +23,12 @@ public sealed class AutopilotUi : ICockpitPluginUi
         // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
         // a profile set. A triggered run still opens straight into planning via the backend's "plan" intent.
         host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync(AutopilotChannel.PlanWorkspaceId));
+
+        // The backend has no selected session; the directory of the one this window has selected is what its epic
+        // merge check runs git in, so it is told on every change.
+        void ReportActiveDirectory() => _ = host.Channel.InvokeAsync(AutopilotChannel.ActiveDirectory, JsonSerializer.SerializeToElement(host.ActiveSessionWorkingDirectory ?? string.Empty));
+        host.ActiveSessionChanged += (_, _) => ReportActiveDirectory();
+        ReportActiveDirectory();
 
         // What the backend part wants shown arrives as events, since it has no window of its own.
         host.Channel.Subscribe(AutopilotChannel.OpenPlan, evt => host.OpenWorkspaceAsync(AutopilotChannel.PlanWorkspaceId));
@@ -54,4 +61,7 @@ internal static class AutopilotChannel
     public const string OpenPlan = "open-plan";
 
     public const string OpenSettings = "open-settings";
+
+    // Action, payload the selected session's working directory or an empty string: UI part to backend part.
+    public const string ActiveDirectory = "active-directory";
 }

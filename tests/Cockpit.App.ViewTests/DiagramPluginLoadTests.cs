@@ -22,7 +22,7 @@ namespace Cockpit.App.ViewTests;
 public class DiagramPluginLoadTests
 {
     [Fact]
-    public void ActivatesAndContributes_WithNoAvaloniaFamilyAssemblyInThePluginsOwnContext() => HeadlessAvalonia.Run(() =>
+    public Task ActivatesAndContributes_WithNoAvaloniaFamilyAssemblyInThePluginsOwnContext() => HeadlessAvalonia.RunAsync(async () =>
     {
         var folder = _LocatePluginOutput();
         Assert.NotNull(folder);
@@ -59,7 +59,7 @@ public class DiagramPluginLoadTests
 
         // AC-826/AC-850: "Diagrams" opens a dialog, not a workspace; its body builds against a host with no
         // linked project (default GetProjectMemoryRowsAsync).
-        host.Surfaces.ToolbarActions[0].OnInvoke().GetAwaiter().GetResult();
+        await host.Surfaces.ToolbarActions[0].OnInvoke();
         var listDialog = Assert.Single(host.Dialogs, d => d.Key == "diagram.list");
         Assert.IsAssignableFrom<Control>(listDialog.Content);
 
@@ -85,7 +85,7 @@ public class DiagramPluginLoadTests
         // AC-836/AC-842/AC-896: same two-stage path for the whiteboard surface — no IWhiteboardAccessRegistry in
         // this host's services, the "no host to fall through to" case the panel has to survive. The toolbar action
         // opens the list, "New whiteboard" opens a window bound to the active session.
-        host.Surfaces.ToolbarActions[1].OnInvoke().GetAwaiter().GetResult();
+        await host.Surfaces.ToolbarActions[1].OnInvoke();
         var whiteboardListDialog = Assert.Single(host.Dialogs, d => d.Key == "whiteboard.list");
         var whiteboardListWindow = new Window { Content = whiteboardListDialog.Content };
         whiteboardListWindow.Show();

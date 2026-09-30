@@ -21,6 +21,8 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     // the channel. One plugin instance per load context, so one value.
     internal static AutopilotParts? Parts { get; private set; }
 
+    private readonly List<IDisposable> _handlers = [];
+
     public void ConfigureServices(IServiceCollection services)
     {
     }
@@ -28,6 +30,14 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var settings = new AutopilotSettings(host.Storage);
+
+        // The directory of the session the window has selected, as its UI part last reported it.
+        string? activeDirectory = null;
+        _handlers.Add(host.Channel.Handle(AutopilotChannel.ActiveDirectory, (payload, _) =>
+        {
+            activeDirectory = payload.ValueKind is JsonValueKind.String ? payload.GetString() : null;
+            return Task.FromResult(JsonSerializer.SerializeToElement(true));
+        }));
 
         // The planning controller (AC-174): the CEO's live draft during one planning round. Planning is decoupled
         // from executing — a frozen plan goes to the run queue and runs execute on their own controllers — so the
@@ -89,10 +99,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             if (!string.IsNullOrWhiteSpace(run.IssueId) && string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase)
                 && host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase)) is { } provider)
             {
-                // The repository the merge check runs git in (AC-346 review): not known yet here, and the backend has
-                // no active session, so this is the cockpit's launch directory. If that is not a repository, AutopilotEpicRunner
+                // The repository the merge check runs git in (AC-346 review): not known yet here, so this is the
+                // selected session's directory when the UI part reported one, else the cockpit's own. If that is not a repository, AutopilotEpicRunner
                 // turns the unknown merge status into a paused chain with a comment, not a silent restart.
-                var repositoryDirectory = Directory.GetCurrentDirectory();
+                var repositoryDirectory = activeDirectory is { Length: > 0 } active ? active : Directory.GetCurrentDirectory();
 
                 // AC-1337: the same collection branch the run itself will fork its worktree from and publish
                 // against — this epic's derived branch unless the operator opted back into v1 (direct to main).
@@ -160,6 +170,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
     }
 
     // The backend has no window: what it wants shown goes to the UI part as an event on the plugin's own channel.
