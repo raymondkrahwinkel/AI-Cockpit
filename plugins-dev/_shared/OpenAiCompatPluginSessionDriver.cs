@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.OpenAiCompat;
@@ -15,7 +16,7 @@ namespace Cockpit.Plugins.OpenAiCompat;
 // AC-1344: `networkTimeout` mirrors the factory's own `OpenAIClientOptions.NetworkTimeout`, so a timeout
 // that still fires can name the configured number. Optional — only Gemini/OpenAI passes one; the sibling
 // factories that don't get an un-numbered message instead of a guessed one.
-internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null) : IPluginSessionDriver
+internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private readonly List<ChatMessage> _history = [];
@@ -53,19 +54,24 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         }
 
         _sessionId = Guid.NewGuid().ToString();
-        _agent = new ChatClientBuilder(chatClient).UseFunctionInvocation().Build();
+        _agent = new ChatClientBuilder(chatClient).UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop).Build();
         _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = _reachableToolNames });
         return Task.CompletedTask;
     }
 
-    // AC-180: the hidden per-session system prompt, seeded once at the front of this driver's own history.
+    // AC-180: the hidden per-session system prompt, seeded once at the front of this driver's own history, with
+    // the end-of-turn convention the continuation net reads once tools are offered (AC-1431).
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
-        if (options is not null
-            && options.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var appendSystemPrompt)
-            && !string.IsNullOrWhiteSpace(appendSystemPrompt))
+        var appendSystemPrompt = options is not null
+            && options.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+                ? value.Trim()
+                : null;
+        var systemPrompt = ChatTurnLoop.WithCompletionConvention(appendSystemPrompt, toolsOffered: _tools.Count > 0);
+        if (systemPrompt is not null)
         {
-            _history.Add(new ChatMessage(ChatRole.System, appendSystemPrompt.Trim()));
+            _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
         }
 
         return StartAsync(model, cancellationToken);
@@ -107,17 +113,18 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
         try
         {
-            await foreach (var update in (_agent ?? chatClient).GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
-            {
-                var delta = update.Text;
-                if (!string.IsNullOrEmpty(delta))
+            await ChatTurnLoop.RunAsync(
+                _agent ?? chatClient,
+                _history,
+                options,
+                delta =>
                 {
                     assistant.Append(delta);
                     _events.Publish(new PluginAssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
-                }
-            }
+                },
+                logger,
+                cancellationToken).ConfigureAwait(false);
 
-            _history.Add(new ChatMessage(ChatRole.Assistant, assistant.ToString()));
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
         }
         catch (OperationCanceledException)

@@ -744,6 +744,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: OpenAI-compatible sessions (Gemini/OpenAI gateways such as Hetzner Inference, Grok, OpenRouter, GitHub
+  Models, Ollama, LM Studio) no longer end their turn after a step or two and forget what they did: the next turn
+  now sees the previous turn's tool calls and results, a turn that stops on an announced step is nudged on at most
+  twice, a connection dropped mid-turn is retried, and the tool loop has an explicit bound.
 - fixed: the YouTrack attach tool, handed a file path, now checks it against the working folder of the session
   that called it rather than the one currently selected in the window, so an agent can no longer attach a file
   from another session's folder, and one working in the background can attach from its own.

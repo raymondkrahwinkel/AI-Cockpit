@@ -11,7 +11,7 @@ plugins-dev/Cockpit.Plugin.Diagram.Tests	365
 plugins-dev/Cockpit.Plugin.Discord.Tests	47
 plugins-dev/Cockpit.Plugin.Docker.Tests	38
 plugins-dev/Cockpit.Plugin.FanOut.Tests	23
-plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	16
+plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	18
 plugins-dev/Cockpit.Plugin.GitHubActions.Tests	11
 plugins-dev/Cockpit.Plugin.GitHubIssues.Tests	122
 plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	11

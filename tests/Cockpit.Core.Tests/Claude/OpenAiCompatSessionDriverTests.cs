@@ -413,11 +413,12 @@ public class OpenAiCompatSessionDriverTests
     [Fact]
     public async Task LocalToolCall_SurfacesToolUseAndResult_ThroughTheFunctionInvocationLoop()
     {
-        // The model asks to call "echo" on its first streamed response, then (after the tool result is fed
-        // back) answers with plain text — the exact shape UseFunctionInvocation drives for a local model.
+        // The model calls "echo", then answers with plain text — the shape UseFunctionInvocation drives for a local
+        // model. The answer ends with the end-of-turn marker split over two chunks: the continuation net (AC-1431)
+        // leaves the turn alone, and the marker never reaches the operator.
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done [turn ", "complete]"));
         var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
         var driver = _CreateDriver(chatClient, echo);
 

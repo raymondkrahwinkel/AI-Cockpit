@@ -84,6 +84,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1431: the OpenAI-compatible turn loop (history, continuation net, transport retry) is one source file
+         shared with the provider plugins' driver, so the host's Ollama/LM Studio sessions run the same loop. -->
+    <Compile Include="..\..\plugins-dev\_shared\ChatTurnLoop.cs" Link="Sessions\ChatTurnLoop.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <!-- #45: the plugin-provider driver adapter (PluginSessionDriverAdapter) and registry live here, so
          Infrastructure needs the shared plugin-contract types (IPluginSessionDriver, SessionProviderRegistration)
