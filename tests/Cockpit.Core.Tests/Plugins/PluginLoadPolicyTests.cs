@@ -10,12 +10,20 @@ public class PluginLoadPolicyTests
     private static PluginManifest Manifest(int abstractionsVersion = HostMajor) =>
         new("x", "X", "1.0.0", "X.dll", abstractionsVersion, null, null, null, null);
 
-    [Fact]
-    public void Decide_AbstractionsMajorMismatch_IsRefused_EvenWhenEnabledAndMatchingHash()
+    // Version gate first, then consent/enabled/hash. `enabled` null is a plugin that was never seen; the hash compares
+    // case-insensitively (hex).
+    [Theory]
+    [InlineData(2, true, "abc", "abc", PluginLoadDecision.AbstractionsMajorMismatch)]
+    [InlineData(HostMajor, null, null, "abc", PluginLoadDecision.NeedsConsent)]
+    [InlineData(HostMajor, false, "abc", "abc", PluginLoadDecision.Disabled)]
+    [InlineData(HostMajor, true, "old-hash", "new-hash", PluginLoadDecision.NeedsConsent)]
+    [InlineData(HostMajor, true, "ABC", "abc", PluginLoadDecision.Load)]
+    public void Decide_FollowsTheVersionGate_ThenTheConsentEnabledAndHashState(
+        int builtFor, bool? enabled, string? pinned, string current, PluginLoadDecision expected)
     {
-        var saved = new PluginRegistration(Enabled: true, PinnedSha256: "abc");
+        PluginRegistration? saved = enabled is null ? null : new PluginRegistration(Enabled: enabled.Value, PinnedSha256: pinned ?? string.Empty);
 
-        Assert.Equal(PluginLoadDecision.AbstractionsMajorMismatch, PluginLoadPolicy.Decide(Manifest(abstractionsVersion: 2), HostMajor, saved, "abc"));
+        Assert.Equal(expected, PluginLoadPolicy.Decide(Manifest(builtFor), HostMajor, saved, current));
     }
 
     // AC-1402: contract 3 is the first the plugin SDK ships without Avalonia. A plugin built for 2 is refused, with the
@@ -35,36 +43,5 @@ public class PluginLoadPolicyTests
             new Version(0, 46, 0));
 
         Assert.Equal((expectedDecision, expectedReason), (decision, reason));
-    }
-
-    [Fact]
-    public void Decide_NeverSeen_NeedsConsent()
-    {
-        Assert.Equal(PluginLoadDecision.NeedsConsent, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved: null, "abc"));
-    }
-
-    [Fact]
-    public void Decide_Disabled_IsSkipped()
-    {
-        var saved = new PluginRegistration(Enabled: false, PinnedSha256: "abc");
-
-        Assert.Equal(PluginLoadDecision.Disabled, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc"));
-    }
-
-    [Fact]
-    public void Decide_EnabledButHashChanged_NeedsConsentAgain()
-    {
-        var saved = new PluginRegistration(Enabled: true, PinnedSha256: "old-hash");
-
-        Assert.Equal(PluginLoadDecision.NeedsConsent, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "new-hash"));
-    }
-
-    [Fact]
-    public void Decide_EnabledAndHashMatches_Loads()
-    {
-        var saved = new PluginRegistration(Enabled: true, PinnedSha256: "ABC");
-
-        // Hash comparison is case-insensitive (hex).
-        Assert.Equal(PluginLoadDecision.Load, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc"));
     }
 }

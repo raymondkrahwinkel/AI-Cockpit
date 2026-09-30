@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -10,50 +10,19 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class PermissionPromptResponseTests
 {
-    [Fact]
-    public void Serialize_Allow_EchoesProposedInputAsUpdatedInput()
+    // Allow echoes the proposed input as updatedInput (or uses a rewrite of it, or an empty object when the proposal is
+    // not JSON); deny carries behavior and message and no updatedInput. Compared whole, so a stray extra field fails too.
+    [Theory]
+    [InlineData("allow", null, """{"file_path":"a.txt","content":"hi"}""", """{"behavior":"allow","updatedInput":{"file_path":"a.txt","content":"hi"}}""")]
+    [InlineData("allow", """{"file_path":"safe.txt"}""", """{"file_path":"a.txt"}""", """{"behavior":"allow","updatedInput":{"file_path":"safe.txt"}}""")]
+    [InlineData("deny", "nope", "{}", """{"behavior":"deny","message":"nope"}""")]
+    [InlineData("allow", null, "not json", """{"behavior":"allow","updatedInput":{}}""")]
+    public void Serialize_WritesTheResponseClaudeExpects(string outcome, string? rewrittenOrMessage, string proposedInputJson, string expectedJson)
     {
-        var proposed = """{"file_path":"a.txt","content":"hi"}""";
+        var decision = outcome == "deny" ? PermissionDecision.Deny(rewrittenOrMessage ?? string.Empty) : PermissionDecision.Allow(rewrittenOrMessage);
 
-        var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(), proposed);
+        var json = PermissionPromptResponse.Serialize(decision, proposedInputJson);
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.Equal("allow", doc.RootElement.GetProperty("behavior").GetString());
-        Assert.Equal("a.txt", doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString());
-        Assert.Equal("hi", doc.RootElement.GetProperty("updatedInput").GetProperty("content").GetString());
-    }
-
-    [Fact]
-    public void Serialize_AllowWithRewrittenInput_UsesTheRewrittenInput()
-    {
-        var proposed = """{"file_path":"a.txt"}""";
-        var rewritten = """{"file_path":"safe.txt"}""";
-
-        var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(rewritten), proposed);
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.Equal("safe.txt", doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString());
-    }
-
-    [Fact]
-    public void Serialize_Deny_CarriesBehaviorAndMessage_AndNoUpdatedInput()
-    {
-        var json = PermissionPromptResponse.Serialize(PermissionDecision.Deny("nope"), proposedInputJson: "{}");
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.Equal("deny", doc.RootElement.GetProperty("behavior").GetString());
-        Assert.Equal("nope", doc.RootElement.GetProperty("message").GetString());
-        Assert.False(doc.RootElement.TryGetProperty("updatedInput", out _));
-    }
-
-    [Fact]
-    public void Serialize_AllowWithNonJsonProposedInput_FallsBackToEmptyObject()
-    {
-        var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(), proposedInputJson: "not json");
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.Equal("allow", doc.RootElement.GetProperty("behavior").GetString());
-        Assert.Equal(JsonValueKind.Object, doc.RootElement.GetProperty("updatedInput").ValueKind);
-        Assert.Empty(doc.RootElement.GetProperty("updatedInput").EnumerateObject());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expectedJson), JsonNode.Parse(json)), json);
     }
 }
