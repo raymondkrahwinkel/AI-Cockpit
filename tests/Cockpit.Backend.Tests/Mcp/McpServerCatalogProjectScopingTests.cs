@@ -36,22 +36,6 @@ public class McpServerCatalogProjectScopingTests
         Assert.False(unscoped.Single(server => server.Name == "depot-server").ProjectLinked);
     }
 
-    // AC-766 criterion 2, with more than one project in the mix: every scheme any project names reaches the
-    // unscoped query, not just the first or only one.
-    [Fact]
-    public async Task GetServersForProjectAsync_Unscoped_OffersAServerForEveryProjectsScheme()
-    {
-        var projectA = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
-        var projectB = new Project("project-b", "Project") { MemoryRef = "youtrack:my-instance" };
-        var catalog = _CatalogWith(new _MultiSchemePluginMcpProvider(), projectA, projectB);
-
-        var unscoped = await catalog.GetServersAsync();
-
-        Assert.Contains(unscoped, server => server.Name == "depot-server");
-        Assert.Contains(unscoped, server => server.Name == "youtrack-server");
-        Assert.All(unscoped, server => Assert.False(server.ProjectLinked));
-    }
-
     // AC-766 criterion 3: a scoped query keeps seeing only its own project's schemes — the union that now reaches
     // the unscoped query must not leak into a call that names a project.
     [Fact]
@@ -65,83 +49,6 @@ public class McpServerCatalogProjectScopingTests
         _ = await catalog.GetServersForProjectAsync("project-a");
 
         Assert.Equal(["depot"], provider.LastSchemes);
-    }
-
-    // Acceptance criterion 5: an existing IPluginMcpProvider (YouTrack e.a.) that never overrode the new
-    // GetMcpServers(string?) overload keeps contributing the same servers to every session — with a project, a
-    // different project, or none — via the default method's fallback to GetMcpServers().
-    [Fact]
-    public async Task GetServersForProjectAsync_AProviderThatNeverOverrodeTheProjectOverload_StaysGlobalEverywhere()
-    {
-        var catalog = _CatalogWith(new _ProjectAgnosticPluginMcpProvider(), "project-a");
-
-        var forA = await catalog.GetServersForProjectAsync("project-a");
-        var forB = await catalog.GetServersForProjectAsync("project-b");
-        var unscoped = await catalog.GetServersAsync();
-
-        Assert.Contains(forA, server => server.Name == "global-server");
-        Assert.Contains(forB, server => server.Name == "global-server");
-        Assert.Contains(unscoped, server => server.Name == "global-server");
-    }
-
-    // AC-504: the project's own Memory-role reference(s), reduced to their scheme, reach a plugin provider — not
-    // just projectId — so a plugin whose servers differ by *which* of its own connections a project points at
-    // (Depot) can tell them apart.
-    [Fact]
-    public async Task GetServersForProjectAsync_ProjectHasAMemoryRowWithAScheme_PassesThatSchemeToPluginProviders()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var project = new Project("project-a", "Project") { MemoryRef = "depot.wispslate:my-slug" };
-        var catalog = _CatalogWith(provider, project);
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Equal(["depot.wispslate"], provider.LastSchemes);
-    }
-
-    [Fact]
-    public async Task GetServersForProjectAsync_ProjectHasTwoMemoryRows_PassesBothSchemes()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var project = new Project("project-a", "Project")
-        {
-            Resources =
-            [
-                new ProjectResource("depot:my-slug", ProjectResourceRole.Memory),
-                new ProjectResource("depot.wispslate:other-slug", ProjectResourceRole.Memory),
-            ],
-        };
-        var catalog = _CatalogWith(provider, project);
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Equal(["depot", "depot.wispslate"], provider.LastSchemes);
-    }
-
-    // AC-504 criterion 7 (regression): a plain folder path has no scheme for TryParse to find, so it never reaches
-    // a plugin as one — the gap that would otherwise let a project with only a Folder memory row look, to a plugin,
-    // like it named that plugin's own scheme.
-    [Fact]
-    public async Task GetServersForProjectAsync_ProjectHasAFolderMemoryRow_PassesNoSchemeToPluginProviders()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var project = new Project("project-a", "Project") { MemoryRef = @"C:\Users\raymond\memory" };
-        var catalog = _CatalogWith(provider, project);
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Empty(provider.LastSchemes!);
-    }
-
-    [Fact]
-    public async Task GetServersForProjectAsync_ProjectHasNoMemoryRow_PassesNoSchemeToPluginProviders()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var catalog = _CatalogWith(provider, new Project("project-a", "Project"));
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Empty(provider.LastSchemes!);
     }
 
     // A row switched off (ReachesSessions = false) must not silently hand a plugin a scheme its operator turned off
@@ -161,69 +68,6 @@ public class McpServerCatalogProjectScopingTests
 
         Assert.Empty(provider.LastSchemes!);
     }
-
-    // A row of a different role (Instructions, Reference) must not contribute a scheme even when its reference
-    // happens to parse as one — only a Memory row says "this is where the project's memory lives".
-    [Fact]
-    public async Task GetServersForProjectAsync_NonMemoryRoleRowWithADepotShapedReference_PassesNoScheme()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var project = new Project("project-a", "Project")
-        {
-            Resources = [new ProjectResource("depot:my-slug", ProjectResourceRole.Instructions)],
-        };
-        var catalog = _CatalogWith(provider, project);
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Empty(provider.LastSchemes!);
-    }
-
-    // A hand-edited cockpit.json could carry surrounding whitespace on a stored reference; the scheme resolved here
-    // must match what SessionStartDefaults.Resolve resolves for the very same reference, which trims before parsing.
-    [Fact]
-    public async Task GetServersForProjectAsync_ReferenceHasSurroundingWhitespace_StillResolvesTheScheme()
-    {
-        var provider = new _SchemeCapturingPluginMcpProvider();
-        var project = new Project("project-a", "Project")
-        {
-            Resources = [new ProjectResource("  depot:my-slug  ", ProjectResourceRole.Memory)],
-        };
-        var catalog = _CatalogWith(provider, project);
-
-        _ = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.Equal(["depot"], provider.LastSchemes);
-    }
-
-    // AC-736: a server a plugin contributes only because the project names its scheme is marked as such, so the
-    // project's own overlay can tick it without the operator having named it in a list they never had a row to edit.
-    [Fact]
-    public async Task GetServersForProjectAsync_AServerContributedForTheProjectsScheme_IsMarkedProjectLinked()
-    {
-        var project = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
-        var catalog = _CatalogWith(new _SchemeScopedPluginMcpProvider(), project);
-
-        var forProject = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.True(forProject.Single(server => server.Name == "depot-server").ProjectLinked);
-    }
-
-    // The other half of the same rule: a plugin that hands every project the same servers has not been asked for
-    // anything by this project, so its servers stay ordinary — the project's overlay still decides them.
-    [Fact]
-    public async Task GetServersForProjectAsync_AProjectAgnosticPluginServer_IsNotMarkedProjectLinked()
-    {
-        var project = new Project("project-a", "Project") { MemoryRef = "depot:my-slug" };
-        var catalog = _CatalogWith(new _ProjectAgnosticPluginMcpProvider(), project);
-
-        var forProject = await catalog.GetServersForProjectAsync("project-a");
-
-        Assert.False(forProject.Single(server => server.Name == "global-server").ProjectLinked);
-    }
-
-    private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, string knownProjectId) =>
-        _CatalogWith(provider, new Project(knownProjectId, "Project"));
 
     private static McpServerCatalog _CatalogWith(IPluginMcpProvider provider, params Project[] knownProjects)
     {

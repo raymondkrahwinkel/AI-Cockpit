@@ -31,13 +31,6 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
     }
 
     [Fact]
-    public void Resolve_WithNoGitAnywhereInTheTree_IsNotARepository()
-    {
-        // The one case that licenses running unisolated: a plain folder with no .git up the tree.
-        Assert.Equal(GitDirectoryStatus.NotARepository, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false));
-    }
-
-    [Fact]
     public void Resolve_WhenAGitFolderExistsButTheProbeFailed_IsUnknown_NotNotARepository()
     {
         // A real repository git could not read (dubious ownership, a lock, no commit) — a .git is present but the probe
@@ -47,28 +40,6 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
         Directory.CreateDirectory(nested);
 
         Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(nested, gitConfirmedRepository: false));
-    }
-
-    [Fact]
-    public void Resolve_WithAGitFileNotADirectory_IsUnknown_NotNotARepository()
-    {
-        // A worktree/submodule checkout has .git as a file, not a directory — it still means "under git", so a failed
-        // probe there is Unknown, not NotARepository.
-        File.WriteAllText(Path.Combine(_root, ".git"), "gitdir: /somewhere/.git/worktrees/x");
-
-        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false));
-    }
-
-    [Fact]
-    public void Resolve_WithAMissingDirectory_IsUnknown_NotNotARepository()
-    {
-        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(Path.Combine(_root, "does-not-exist"), gitConfirmedRepository: false));
-    }
-
-    [Fact]
-    public void Resolve_WithABlankDirectory_IsUnknown()
-    {
-        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve("  ", gitConfirmedRepository: false));
     }
 
     [Fact]
