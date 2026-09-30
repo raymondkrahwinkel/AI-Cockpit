@@ -12,8 +12,7 @@ internal static class KubernetesChannel
 {
     // Payload: KubeconfigContextsRequest. Answers a KubeconfigContextsAnswer, or null when neither a kubeconfig
     // file nor pasted content resolves to anything.
-    // Payload: ignored. Told after the operator saves this plugin's settings, so the backend part drops its cached
-    // clients and the next call rebuilds them from the new kubeconfig or context.
+    // Payload: ignored. Told after the settings are saved, so the backend drops its cached clients and rebuilds them.
     public const string SettingsSaved = "settings-saved";
 
     public const string KubeconfigContexts = "kubeconfig-contexts";
