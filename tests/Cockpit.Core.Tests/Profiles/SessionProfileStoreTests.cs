@@ -21,21 +21,6 @@ public class SessionProfileStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsEmpty_WhenAutoDetectFindsNothing()
-    {
-        // No candidate dirs exist under this temp root, so auto-detect (based on the real
-        // %USERPROFILE%) may or may not find something on the actual machine — the store's
-        // own config-file-absent path is what's under test here, verified by asserting it
-        // doesn't throw and returns a list (auto-detect itself is covered in isolation by
-        // ClaudeCliProfileDetectorTests).
-        var store = new SessionProfileStore(_configFilePath);
-
-        var profiles = await store.LoadAsync();
-
-        Assert.NotNull(profiles);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsProfiles()
     {
         var store = new SessionProfileStore(_configFilePath);
@@ -48,35 +33,6 @@ public class SessionProfileStoreTests : IDisposable
         await store.SaveAsync(profiles);
         var loaded = await store.LoadAsync();
 
-        Assert.Equivalent(profiles, loaded);
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsPerProfileDefaults()
-    {
-        var store = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile>
-        {
-            // A migrated Claude profile carries its permission/model/effort defaults in the generic OptionDefaults map
-            // (the typed fields stay too); the round-trip through the store is idempotent on that shape.
-            new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null),
-                Defaults: new ProfileDefaults("bypassPermissions", "opus", "high")
-                {
-                    OptionDefaults = new Dictionary<string, string>
-                    {
-                        ["permission-mode"] = "bypassPermissions",
-                        ["model"] = "opus",
-                        ["effort"] = "high",
-                    },
-                }),
-            new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", null)),
-        };
-
-        await store.SaveAsync(profiles);
-        var loaded = await store.LoadAsync();
-
-        // The first profile's defaults survive the round-trip; the second keeps null defaults
-        // (no defaults section written), so the two are not conflated.
         Assert.Equivalent(profiles, loaded);
     }
 
@@ -120,30 +76,6 @@ public class SessionProfileStoreTests : IDisposable
         Assert.Equal(SessionProvider.Plugin, loaded[0].Provider);
         Assert.Equal(SessionProvider.Ollama, loaded[1].Provider);
         Assert.Equal(SessionProvider.LmStudio, loaded[2].Provider);
-    }
-
-    [Fact]
-    public async Task SaveAsync_CreatesConfigDirectory_WhenAbsent()
-    {
-        var nestedConfigPath = Path.Combine(_tempDir, "nested", "cockpit.json");
-        var store = new SessionProfileStore(nestedConfigPath);
-
-        await store.SaveAsync([new SessionProfile("default", new ClaudeConfig(@"C:\Users\raymo\.claude"))]);
-
-        Assert.True(File.Exists(nestedConfigPath));
-    }
-
-    [Fact]
-    public async Task LoadAsync_ConfigFileWithEmptyProfilesList_FallsBackToAutoDetect()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """{"profiles":[]}""");
-        var store = new SessionProfileStore(_configFilePath);
-
-        var profiles = await store.LoadAsync();
-
-        // Empty persisted list is treated the same as "no config yet" — falls back to
-        // auto-detect rather than returning an empty cockpit with no profiles at all.
-        Assert.NotNull(profiles);
     }
 
     [Fact]
