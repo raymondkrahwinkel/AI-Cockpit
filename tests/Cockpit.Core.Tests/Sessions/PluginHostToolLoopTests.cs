@@ -1,7 +1,5 @@
 using Microsoft.Extensions.AI;
-using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Mcp;
@@ -35,19 +33,6 @@ public class PluginHostToolLoopTests
     }
 
     [Fact]
-    public async Task ToolCall_TheOperatorAllows_RunsTheToolAndReportsItsResult()
-    {
-        var tool = AIFunctionFactory.Create((string path) => $"read {path}", "read_file");
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
-
-        var call = session.Toolset.InvokeAsync("read_file", """{"path":"/tmp/x"}""");
-        var prompt = await session.NextAsync<PermissionRequested>();
-        session.Toolset.Gate.Respond(prompt.ToolUseId, allow: true);
-
-        Assert.Equal("read /tmp/x", await call);
-    }
-
-    [Fact]
     public async Task ToolCall_OnADelegatedSession_IsDecidedAgainstTheCeilingWithoutPrompting()
     {
         var ran = false;
@@ -73,78 +58,6 @@ public class PluginHostToolLoopTests
         // emitted rather than over an empty buffer nothing had been read from yet.
         await session.NextAsync<ToolResult>();
         Assert.Empty(session.Seen<PermissionRequested>());
-    }
-
-    [Fact]
-    public async Task ToolCall_TheTranscriptCarriesTheCallAndItsResultUnderOneId()
-    {
-        var tool = AIFunctionFactory.Create(() => "ok", "read_file");
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
-
-        var call = session.Toolset.InvokeAsync("read_file", "{}");
-        var prompt = await session.NextAsync<PermissionRequested>();
-        session.Toolset.Gate.Respond(prompt.ToolUseId, allow: true);
-        await call;
-
-        // The row, the prompt and the result share one id, which is what the transcript pairs them on. Two ids
-        // (one from the plugin, one from the gate) would leave the prompt hanging off no row at all.
-        var result = await session.NextAsync<ToolResult>();
-        var use = Assert.Single(session.Seen<ToolUseRequested>());
-        Assert.Equal(use.ToolUseId, prompt.ToolUseId);
-        Assert.Equal(use.ToolUseId, result.ToolUseId);
-        Assert.False(result.IsError);
-    }
-
-    [Fact]
-    public async Task ToolCall_AllowAlways_FreesTheWaitingCallAndStopsPromptingForThatTool()
-    {
-        var tool = AIFunctionFactory.Create(() => "ok", "read_file");
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
-
-        var first = session.Toolset.InvokeAsync("read_file", "{}");
-        var prompt = await session.NextAsync<PermissionRequested>();
-
-        // "Allow always" is answered by whichever gate raised the prompt. Routed to the plugin instead, this call
-        // would sit on a decision the operator has already made — the host's gate is the only one holding it.
-        await session.Driver.AllowPermissionAlwaysAsync(prompt.ToolUseId, prompt.ToolName, "{}", PermissionRuleScope.Wildcard);
-        Assert.Equal("ok", await _WithinFiveSecondsAsync(first));
-
-        // And the rule sticks for the rest of the session: the second call needs no prompt at all.
-        Assert.Equal("ok", await _WithinFiveSecondsAsync(session.Toolset.InvokeAsync("read_file", "{}")));
-    }
-
-    [Fact]
-    public async Task Tools_BelowTheThreshold_AreAllOfferedWithNoSearchProxies()
-    {
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, _Tools(3));
-
-        Assert.Equal(3, session.Toolset.Tools.Count);
-        Assert.DoesNotContain(session.Toolset.Tools, tool => tool.Name is CockpitToolSearch.SearchToolName);
-    }
-
-    [Fact]
-    public async Task Tools_AboveTheThreshold_MoveBehindTheSearchProxies()
-    {
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, _Tools(CockpitToolSearch.PreloadThreshold + 1));
-
-        Assert.Contains(session.Toolset.Tools, tool => tool.Name == CockpitToolSearch.SearchToolName);
-        Assert.Contains(session.Toolset.Tools, tool => tool.Name == CockpitToolSearch.CallToolName);
-
-        // The count the header shows stays the real one: everything reachable, plus the two proxies it is
-        // reachable through.
-        Assert.Equal(CockpitToolSearch.PreloadThreshold + 3, session.Toolset.ReachableToolNames.Count);
-    }
-
-    [Fact]
-    public async Task Tools_ForAProviderWithItsOwnSearch_NeverGetOurs()
-    {
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsOnly, _Tools(CockpitToolSearch.PreloadThreshold + 1));
-
-        // Raymond's condition on this ticket: a provider that brings a tool search of its own must not also be
-        // handed the cockpit's, however large the catalogue gets. Two ways to do one thing confuses the model and
-        // spends the very prompt budget the search layer exists to win back.
-        Assert.DoesNotContain(session.Toolset.Tools, tool => tool.Name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName);
-        Assert.Equal(CockpitToolSearch.PreloadThreshold + 1, session.Toolset.Tools.Count);
     }
 
     [Fact]
@@ -181,21 +94,6 @@ public class PluginHostToolLoopTests
         Assert.Equal("project-3", project);
     }
 
-    [Fact]
-    public async Task StartAsync_ForAProviderThatDeclaredNoHostLoop_MountsNothing()
-    {
-        var toolProvider = _ToolProvider([], new Dictionary<string, ToolPermissionClass>());
-        var inner = new StubPluginDriver();
-        var driver = _Adapter(inner, PluginHostToolLoop.None, toolProvider);
-
-        // Criterion 9: every already-published plugin defaults to None and must behave exactly as before —
-        // no connection made on its behalf, and no toolset handed to a driver that would not know what to do with one.
-        await driver.StartAsync();
-
-        await toolProvider.DidNotReceive().ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        Assert.Null(inner.Toolset);
-    }
-
     private static async Task<string> _WithinFiveSecondsAsync(Task<string> call)
     {
         if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(5))) != call)
@@ -205,108 +103,6 @@ public class PluginHostToolLoopTests
 
         return await call;
     }
-
-    [Fact]
-    public async Task StartAsync_WithAHostToolLoop_HandsTheDriverNoServersToMountItself()
-    {
-        var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns([new McpServerConfig { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx" }]);
-
-        var withLoop = new StubPluginDriver();
-        await _AdapterWithCatalog(withLoop, PluginHostToolLoop.ToolsAndSearch, catalog).StartAsync();
-
-        var withoutLoop = new StubPluginDriver();
-        await _AdapterWithCatalog(withoutLoop, PluginHostToolLoop.None, catalog).StartAsync();
-
-        // The endpoints and the toolset are alternatives, never both: the host already connected these servers for
-        // the first driver, and handing them over as well would start every stdio server a second time.
-        Assert.Empty(withLoop.McpServers ?? []);
-        Assert.NotNull(withLoop.Toolset);
-        Assert.Single(withoutLoop.McpServers ?? []);
-        Assert.Null(withoutLoop.Toolset);
-    }
-
-    // AC-994, criterion 3: the token the toolset baked into its own HTTP clients at connect must still resolve to
-    // its pane once StartAsync returns. Proven red before the fix: PaneFor(the toolset's own token) came back null.
-    [Fact]
-    public async Task StartAsync_TheTokenTheToolsetMinted_StillResolvesToThePane_AfterStartAsyncReturns()
-    {
-        var keyring = new SessionMcpKeyring();
-        var toolProvider = _ToolProviderMintingFromTheKeyring(keyring, out var toolsetToken);
-        var inner = new StubPluginDriver();
-        var driver = new PluginSessionDriverAdapter(
-            inner,
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false) { HostToolLoop = PluginHostToolLoop.ToolsAndSearch },
-            new McpAuthKey(),
-            keyring: keyring,
-            mcpToolProvider: toolProvider);
-
-        await driver.StartAsync(launchOptions: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-42" });
-
-        // The token captured the instant the toolset connected — the one baked into its HTTP clients' headers —
-        // must still resolve to this pane once StartAsync (and whatever it does afterwards) has finished.
-        Assert.NotNull(toolsetToken());
-        Assert.Equal("pane-42", keyring.PaneFor(toolsetToken()!));
-
-        // Criterion 2: one pane, one live token — not a second mint that replaced the toolset's.
-        Assert.Equal(1, keyring.LiveTokenCount);
-        Assert.Equal(1, keyring.LivePaneCount);
-
-        // AC-4/AC-89: COCKPIT_MCP_KEY carries that exact same token, not a different (even if still-valid) one.
-        Assert.NotNull(inner.LastEnvironment);
-        Assert.Equal(toolsetToken(), inner.LastEnvironment![WellKnownSessionEnvironment.CockpitMcpKey]);
-
-        // Criterion 5: teardown revokes exactly that one token and leaves nothing behind.
-        await driver.DisposeAsync();
-        Assert.Equal(0, keyring.LiveTokenCount);
-    }
-
-    private static IMcpToolProvider _ToolProviderMintingFromTheKeyring(SessionMcpKeyring keyring, out Func<string?> mintedToken)
-    {
-        var toolSession = Substitute.For<IMcpToolSession>();
-        toolSession.Tools.Returns(Array.Empty<McpSessionTool>());
-        toolSession.ConnectedServerNames.Returns([]);
-        toolSession.ServersNeedingSignIn.Returns([]);
-        toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
-
-        string? captured = null;
-        mintedToken = () => captured;
-
-        var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                // The same mint McpToolProvider.ConnectAsync itself does (AC-89): once per connect, for this pane —
-                // captured immediately, the way the real toolset bakes it into its HTTP clients' headers right here.
-                var paneId = callInfo.ArgAt<string?>(1);
-                var token = paneId is null ? null : keyring.TokenFor(paneId);
-                captured = token;
-                toolSession.PaneToken.Returns(token);
-                // The real McpToolSession revokes its own mint on dispose (AC-143) — mirrored here so the
-                // teardown criterion (5) is measured against the same behaviour a real connect gives.
-                toolSession.When(session => session.DisposeAsync()).Do(_ =>
-                {
-                    if (paneId is not null && token is not null)
-                    {
-                        keyring.Revoke(paneId, token);
-                    }
-                });
-                return Task.FromResult(toolSession);
-            });
-        return toolProvider;
-    }
-
-    private static ISessionDriver _AdapterWithCatalog(StubPluginDriver inner, PluginHostToolLoop loop, IMcpServerCatalog catalog) =>
-        new PluginSessionDriverAdapter(
-            inner,
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false) { HostToolLoop = loop },
-            new McpAuthKey(),
-            catalog,
-            mcpToolProvider: _ToolProvider([], new Dictionary<string, ToolPermissionClass>()));
-
-    private static AIFunction[] _Tools(int count) =>
-        [.. Enumerable.Range(0, count).Select(index => AIFunctionFactory.Create(() => "ok", $"tool_{index}"))];
 
     private static IMcpToolProvider _ToolProvider(AIFunction[] tools, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
     {

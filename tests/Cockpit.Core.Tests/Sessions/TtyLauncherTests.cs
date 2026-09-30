@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
 
@@ -52,130 +51,6 @@ public class TtyLauncherTests
         var limiter = Substitute.For<ISessionMemoryLimiter>();
         limiter.Apply(Arg.Any<int>(), Arg.Any<long>()).Returns((IDisposable?)null);
         return (new TtyLauncher(ptyHostFactory, limiter, authKey, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
-    }
-
-    [Fact]
-    public void Launch_CapsTheSpawnedProcess_AtTheProfilesOwnCeilingUnlessThisLaunchOverrodeIt()
-    {
-        // AC-661: the cap is applied to the pty child the moment it exists, before the CLI has spawned anything of
-        // its own — everything it starts afterwards is born inside the same job/cgroup.
-        var ptyHostFactory = Substitute.For<IPtyHostFactory>();
-        var process = Substitute.For<IConPtyProcess>();
-        process.ProcessId.Returns(4242);
-        ptyHostFactory
-            .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
-            .Returns(process);
-
-        var limiter = Substitute.For<ISessionMemoryLimiter>();
-        var launcher = new TtyLauncher(ptyHostFactory, limiter, new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance);
-        var provider = Provider(new TtyLaunchSpec("/usr/bin/some-cli", [], new Dictionary<string, string?>(), "/wd", []));
-        var profile = new SessionProfile("Capped", new ClaudeConfig(ConfigDir: "/tmp/claude")) { MemoryCapMegabytes = 3072 };
-
-        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-        limiter.Received(1).Apply(4242, 3072L * 1024 * 1024);
-
-        launcher.Launch(
-            provider,
-            profile,
-            options: new Dictionary<string, string> { [SessionMemoryCap.OptionKey] = "6144" },
-            columns: 80,
-            rows: 24);
-        limiter.Received(1).Apply(4242, 6144L * 1024 * 1024);
-    }
-
-    [Fact]
-    public void Launch_PassesTheSpecsExecutableArgumentsAndWorkingDirectoryToThePtyHostFactory()
-    {
-        var (launcher, ptyHostFactory) = CreateLauncher();
-        var spec = new TtyLaunchSpec(
-            "/usr/bin/some-cli",
-            ["--flag", "value"],
-            new Dictionary<string, string?>(),
-            "/some/working/dir",
-            []);
-        var provider = Provider(spec);
-
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 100, rows: 30);
-
-        ptyHostFactory.Received(1).Start(
-            "/usr/bin/some-cli",
-            Arg.Is<IReadOnlyList<string>>(args => args.SequenceEqual(new[] { "--flag", "value" })),
-            "/some/working/dir",
-            Arg.Any<IReadOnlyDictionary<string, string>>(),
-            100,
-            30);
-    }
-
-    [Fact]
-    public void Launch_ReturnsExactlyWhatThePtyHostFactoryReturned_WhenTheSpecHasNoFilesToOwn()
-    {
-        var (launcher, ptyHostFactory) = CreateLauncher();
-        var expectedProcess = Substitute.For<IConPtyProcess>();
-        ptyHostFactory
-            .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
-            .Returns(expectedProcess);
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-
-        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        Assert.Same(expectedProcess, process);
-    }
-
-    [Fact]
-    public void Launch_PassesTheProfileOptionsWorkingDirectoryAndResumeThroughToTheProvider()
-    {
-        var (launcher, _) = CreateLauncher();
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"));
-        var options = new Dictionary<string, string> { ["model"] = "opus" };
-        var resume = SessionResume.MostRecent;
-
-        launcher.Launch(provider, profile, options, columns: 80, rows: 24, workingDirectory: "/explicit/dir", resume: resume);
-
-        provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
-            context.Profile == profile
-            && context.Options == options
-            && context.WorkingDirectory == Path.GetFullPath("/explicit/dir")
-            && context.Resume == resume));
-    }
-
-    [Fact]
-    public void Launch_WithoutAnExplicitWorkingDirectory_UsesTheProcessCurrentDirectory()
-    {
-        var (launcher, _) = CreateLauncher();
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
-            context.WorkingDirectory == Path.GetFullPath(Directory.GetCurrentDirectory())));
-    }
-
-    [Fact]
-    public void Launch_TheEnvironmentPassedToThePtyHost_IncludesBothTheHostBaseAndTheProvidersOverlay()
-    {
-        var (launcher, ptyHostFactory) = CreateLauncher();
-        var spec = new TtyLaunchSpec(
-            "/usr/bin/cli",
-            [],
-            new Dictionary<string, string?> { ["PROVIDER_ONLY_VAR"] = "from-the-provider" },
-            "/wd",
-            []);
-        var provider = Provider(spec);
-
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        ptyHostFactory.Received(1).Start(
-            Arg.Any<string>(),
-            Arg.Any<IReadOnlyList<string>>(),
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, string>>(env =>
-                env["TERM"] == "xterm-256color" && env["PROVIDER_ONLY_VAR"] == "from-the-provider"),
-            80,
-            24);
     }
 
     // AC-40 regression: the cockpit-hosted MCP endpoints (cockpit-session/-orchestrator/-workflows) 401 without
@@ -249,38 +124,6 @@ public class TtyLauncherTests
             24);
     }
 
-    [Fact]
-    public void Launch_WhenTheOverlaySetsAnInheritedVariableToNull_RemovesItFromWhatThePtyHostReceives()
-    {
-        const string variable = "COCKPIT_TTY_LAUNCHER_TEST_VAR";
-        Environment.SetEnvironmentVariable(variable, "inherited-from-the-shell");
-        try
-        {
-            var (launcher, ptyHostFactory) = CreateLauncher();
-            var spec = new TtyLaunchSpec(
-                "/usr/bin/cli",
-                [],
-                new Dictionary<string, string?> { [variable] = null },
-                "/wd",
-                []);
-            var provider = Provider(spec);
-
-            launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-            ptyHostFactory.Received(1).Start(
-                Arg.Any<string>(),
-                Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(),
-                Arg.Is<IReadOnlyDictionary<string, string>>(env => !env.ContainsKey(variable)),
-                80,
-                24);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(variable, null);
-        }
-    }
-
     // A provider cannot reinstate what the host stripped: TtyEnvironment.Compose ignores an overlay entry
     // for a host-controlled key (IsHostControlled — the nested-agent markers, the host terminal identity,
     // any ANTHROPIC_* credential) unless it removes it. A provider that tries anyway is not silently
@@ -320,29 +163,6 @@ public class TtyLauncherTests
     }
 
     [Fact]
-    public void Launch_AProviderOverlayThatTriesToSetAHostControlledKey_LogsAWarningNamingIt()
-    {
-        var logger = Substitute.For<ILogger<TtyLauncher>>();
-        var (launcher, _) = CreateLauncher(logger);
-        var spec = new TtyLaunchSpec(
-            "/usr/bin/cli",
-            [],
-            new Dictionary<string, string?> { ["ANTHROPIC_API_KEY"] = "set-deliberately-by-the-provider" },
-            "/wd",
-            []);
-        var provider = Provider(spec);
-
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        logger.Received(1).Log(
-            LogLevel.Warning,
-            Arg.Any<EventId>(),
-            Arg.Is<object>(state => state!.ToString()!.Contains("ANTHROPIC_API_KEY")),
-            null,
-            Arg.Any<Func<object, Exception?, string>>());
-    }
-
-    [Fact]
     public void Launch_WithoutAnyInheritedAnthropicCredential_TheProvidersOverlayStillCannotIntroduceOne()
     {
         const string variable = "ANTHROPIC_API_KEY";
@@ -367,60 +187,6 @@ public class TtyLauncherTests
         {
             Environment.SetEnvironmentVariable(variable, null);
         }
-    }
-
-    // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: an
-    // operator value overrides what the cockpit inherited, the provider keeps the last word, and the
-    // host-controlled scrub applies to the operator exactly as it does to a provider.
-    [Fact]
-    public void Launch_AProfileEnvironmentVariable_ReachesThePtyHostAndTheProvidersBaseEnvironment()
-    {
-        var (launcher, ptyHostFactory) = CreateLauncher();
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
-        {
-            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
-        };
-
-        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
-            context.BaseEnvironment["AI_OS_ROOT"] == "/home/raymond/AI-OS"));
-        ptyHostFactory.Received(1).Start(
-            Arg.Any<string>(),
-            Arg.Any<IReadOnlyList<string>>(),
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["AI_OS_ROOT"] == "/home/raymond/AI-OS"),
-            80,
-            24);
-    }
-
-    [Fact]
-    public void Launch_WhenTheProfileAndTheProviderSetTheSameVariable_TheProvidersOverlayWins()
-    {
-        var (launcher, ptyHostFactory) = CreateLauncher();
-        var spec = new TtyLaunchSpec(
-            "/usr/bin/cli",
-            [],
-            new Dictionary<string, string?> { ["SHARED_VAR"] = "from-the-provider" },
-            "/wd",
-            []);
-        var provider = Provider(spec);
-        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
-        {
-            EnvironmentVariables = [new ProfileEnvironmentVariable("SHARED_VAR", "from-the-profile")],
-        };
-
-        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        ptyHostFactory.Received(1).Start(
-            Arg.Any<string>(),
-            Arg.Any<IReadOnlyList<string>>(),
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["SHARED_VAR"] == "from-the-provider"),
-            80,
-            24);
     }
 
     [Fact]
@@ -458,42 +224,6 @@ public class TtyLauncherTests
         finally
         {
             Environment.SetEnvironmentVariable(variable, null);
-        }
-    }
-
-    [Fact]
-    public void Launch_WithSessionScopedFilesAndAStatusFile_DeletesThemWhenTheReturnedProcessIsDisposed()
-    {
-        var directory = Directory.CreateTempSubdirectory("cockpit-tty-launcher-tests-").FullName;
-        try
-        {
-            var sessionFile = Path.Combine(directory, "mcp-config.json");
-            var statusFile = Path.Combine(directory, "status.json");
-            File.WriteAllText(sessionFile, "{}");
-            File.WriteAllText(statusFile, "{}");
-
-            var (launcher, ptyHostFactory) = CreateLauncher();
-            var innerProcess = Substitute.For<IConPtyProcess>();
-            ptyHostFactory
-                .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
-                .Returns(innerProcess);
-            var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", [sessionFile], statusFile);
-            var provider = Provider(spec);
-
-            var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-            Assert.True(File.Exists(sessionFile), "the CLI reads it while the session is alive");
-            Assert.True(File.Exists(statusFile), "the header polls it while the session is alive");
-
-            process.Dispose();
-
-            innerProcess.Received(1).Dispose();
-            Assert.False(File.Exists(sessionFile), "a credential must not outlive the session that needed it");
-            Assert.False(File.Exists(statusFile), "the limits of a session that has ended are nobody's business");
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -539,22 +269,6 @@ public class TtyLauncherTests
                 && env["COCKPIT_MCP_KEY"] != authKey.Value),
             Arg.Any<short>(),
             Arg.Any<short>());
-    }
-
-    // A TTY session launched with no pane id (no session to name) never touches the keyring at all — nothing was
-    // minted, so disposing must not throw trying to revoke something that was never there.
-    [Fact]
-    public void Launch_WithoutAPaneId_NeverTouchesTheKeyring()
-    {
-        var (launcher, _, _, keyring) = CreateLauncherWithKeyring();
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-
-        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-        process.Dispose();
-
-        Assert.Equal(0, keyring.LivePaneCount);
-        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the

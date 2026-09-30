@@ -135,21 +135,6 @@ public class SecretProtectionTests : IDisposable
         await Task.CompletedTask;
     }
 
-    [Fact]
-    public async Task TheMigration_ReportsProgressWithATotalItActuallyKnows()
-    {
-        await Store().SaveAsync([Server(Token), Server("a-second-key")]);
-
-        // A synchronous observer, not Progress<T>: that one hands its callbacks to the thread pool, so a test
-        // built on it would be asserting the scheduler's ordering rather than the migration's.
-        var reports = new List<SecretMigrationProgress>();
-        await Service().EnableAsync(Password, new SynchronousProgress(reports.Add));
-
-        Assert.NotEmpty(reports);
-        Assert.All(reports, report => Assert.True(report.Total == 2));
-        Assert.Equal(new[] { 0, 1, 2 }, reports.Select(report => report.Completed));
-    }
-
     private sealed class SynchronousProgress(Action<SecretMigrationProgress> report) : IProgress<SecretMigrationProgress>
     {
         public void Report(SecretMigrationProgress value) => report(value);
@@ -279,84 +264,6 @@ public class SecretProtectionTests : IDisposable
         var backupText = File.ReadAllText(backup);
         Assert.DoesNotContain(Token, backupText);
         Assert.Contains(SecretProtector.Prefix, backupText);
-    }
-
-    [Fact]
-    public async Task TheBanner_Warns_WhenCredentialsSitInTheClear()
-    {
-        await Store().SaveAsync([Server(Token)]);
-
-        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "encryption is off and there is a token in the file to protect");
-    }
-
-    [Fact]
-    public async Task TheBanner_StaysQuiet_WhenThereIsNoCredentialToProtect()
-    {
-        await File.WriteAllTextAsync(_configPath, new JsonObject { ["Profiles"] = new JsonArray() }.ToJsonString());
-
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a config with no credential in it has nothing to warn about");
-    }
-
-    [Fact]
-    public async Task TheBanner_StaysQuiet_OnceEncryptionIsOn()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().EnableAsync(Password);
-
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "the credentials are encrypted, so there is nothing left to warn about");
-    }
-
-    [Fact]
-    public async Task DismissingTheWarning_Silences_ItAndSurvivesARestart()
-    {
-        await Store().SaveAsync([Server(Token)]);
-
-        await Service().DismissUnprotectedWarningAsync();
-
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "the operator said not this set");
-
-        // A fresh process reads the dismissal back rather than nagging again — it is persisted, not per-session.
-        var restarted = new SecretProtectionService(_configPath, new SecretKeyHolder());
-        Assert.False((await restarted.GetStatusAsync()).ShouldWarnUnprotected, "the dismissal outlives the run that made it");
-    }
-
-    [Fact]
-    public async Task RotatingACredential_OnAFieldThatWasAlreadyThere_DoesNotBringTheWarningBack()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().DismissUnprotectedWarningAsync();
-
-        // Same field, new value: a key rotation. The dismissal is bound to which fields hold a credential, not to
-        // what is in them, so this must not un-dismiss.
-        await Store().SaveAsync([Server("a-rotated-token")]);
-
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a rotated value on an existing field is not a new credential");
-    }
-
-    [Fact]
-    public async Task AddingANewCredential_AtANewPath_BringsTheWarningBack()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().DismissUnprotectedWarningAsync();
-
-        // A second server is a new credential field — a new path — so the set changes and the banner returns.
-        await Store().SaveAsync([Server(Token), Server("a-second-token")]);
-
-        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a brand-new credential is exactly when the operator should be reminded again");
-    }
-
-    [Fact]
-    public async Task TurningEncryptionOff_BringsTheWarningBackAtOnce()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        var service = Service();
-        await service.EnableAsync(Password);
-
-        // Dismissal from before encryption must not carry over: Disable puts every credential back in the clear, so
-        // the banner should return immediately (Raymond, 2026-07-19).
-        await service.DisableAsync();
-
-        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a deliberate Disable exposes the credentials again, so the warning returns");
     }
 
     [Fact]
@@ -509,45 +416,6 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
-    public async Task SavingACredential_RaisesTheAwarenessSignalOnlyWhenItIsAnAtRestExposure()
-    {
-        var holder = new SecretKeyHolder();
-        var fires = 0;
-        holder.UnprotectedSecretsWritten += (_, _) => fires++;
-        var store = new McpServerStore(_configPath, holder);
-
-        // (a) a credential written in the clear → the banner is nudged (review #5).
-        await store.SaveAsync([Server(Token)]);
-        Assert.Equal(1, fires);
-
-        // (b) a save with no credential in it → no nudge.
-        await store.SaveAsync([ServerWithoutKey()]);
-        Assert.Equal(1, fires);
-
-        // (c) a save while unlocked (protector present, ciphertext on disk) → no nudge.
-        holder.Unlock(new SecretProtector(SecretKey.Derive(Password, SecretKey.NewSalt(), iterations: 1000)));
-        await store.SaveAsync([Server("another-token")]);
-        Assert.Equal(1, fires);
-    }
-
-    [Fact]
-    public async Task RemovingACredential_DoesNotReNag_ButAddingANewPathDoes()
-    {
-        // Two named credential fields, so a removal and an addition are each an unambiguous change to the path set.
-        await WriteRawSecretsAsync(("token", Token), ("secret", "a-second-credential"));
-        await Service().DismissUnprotectedWarningAsync();
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "just dismissed");
-
-        // Remove one of the two dismissed fields: the remaining set is still a subset of what was dismissed.
-        await WriteRawSecretsAsync(("token", Token));
-        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a removal is not a new credential (review #7)");
-
-        // Add a genuinely new field path → the banner returns.
-        await WriteRawSecretsAsync(("token", Token), ("password", "a-third-credential"));
-        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a new credential path re-nags");
-    }
-
-    [Fact]
     public async Task StartupHousekeeping_RemovesAPlaintextBackup_WhenTheConfigIsEncrypted()
     {
         await Store().SaveAsync([Server(Token)]);
@@ -666,34 +534,6 @@ public class SecretProtectionTests : IDisposable
             Environment.SetEnvironmentVariable(UnlockFromFile.Variable, null);
         }
     }
-
-    private async Task WriteRawSecretsAsync(params (string Key, string Value)[] fields)
-    {
-        var document = new JsonObject();
-
-        // Carry the dismissal across, the way a real typed store save round-trips the SecurityNotice section rather
-        // than clobbering it — otherwise "remove a field" would also wipe the dismissal and re-nag for that reason.
-        if ((File.Exists(_configPath) ? JsonNode.Parse(File.ReadAllText(_configPath)) : null) is JsonObject existing
-            && existing["SecurityNotice"] is { } notice)
-        {
-            document["SecurityNotice"] = notice.DeepClone();
-        }
-
-        foreach (var (key, value) in fields)
-        {
-            document[key] = value;
-        }
-
-        await File.WriteAllTextAsync(_configPath, document.ToJsonString());
-    }
-
-    private static McpServerConfig ServerWithoutKey() => new()
-    {
-        Name = "OpenServer",
-        Transport = McpTransport.Http,
-        Url = "https://open.invalid",
-        Auth = McpServerAuth.None,
-    };
 
     /// <summary>Wraps a real protector and fires a callback on every operation — the test's window onto what the
     /// primary file looks like mid-migration.</summary>

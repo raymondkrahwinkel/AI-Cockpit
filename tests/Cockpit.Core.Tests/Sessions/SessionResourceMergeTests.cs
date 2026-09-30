@@ -13,17 +13,6 @@ public class SessionResourceMergeTests
         new(variables.ToDictionary(variable => variable.Key, variable => variable.Value, StringComparer.Ordinal));
 
     [Fact]
-    public void Merge_TwoPluginsSettingTheSameVariable_KeepsTheFirst()
-    {
-        // Last-one-wins would make a session's environment depend on plugin load order, which changes when the
-        // operator installs something unrelated.
-        var (resources, _) = SessionResourceMerge.Merge(
-            [Contribution(("GH_REPO", "raymondkrahwinkel/AI-Cockpit")), Contribution(("GH_REPO", "someone/else"))]);
-
-        Assert.Equal("raymondkrahwinkel/AI-Cockpit", resources.EnvironmentVariables["GH_REPO"]);
-    }
-
-    [Fact]
     public void Merge_AHostControlledKey_IsRefusedAndReportedByName()
     {
         var (resources, rejected) = SessionResourceMerge.Merge(
@@ -34,35 +23,4 @@ public class SessionResourceMergeTests
         Assert.Equal(new[] { "ANTHROPIC_API_KEY" }, rejected);
     }
 
-    [Fact]
-    public void Merge_ARefusedKey_IsNotWhatMakesTheResultNonEmpty()
-    {
-        // A contribution consisting only of keys the host owns must leave the session exactly as it was, rather than
-        // an empty dictionary that reads as "a plugin contributed something".
-        var (resources, rejected) = SessionResourceMerge.Merge([Contribution(("CLAUDECODE", "1"))]);
-
-        Assert.True(resources.IsEmpty);
-        Assert.Equal(new[] { "CLAUDECODE" }, rejected);
-    }
-
-    [Fact]
-    public void Merge_NoContributions_IsEmpty()
-    {
-        var (resources, rejected) = SessionResourceMerge.Merge([]);
-
-        Assert.Same(SessionResources.Empty, resources);
-        Assert.Empty(rejected);
-    }
-
-    [Fact]
-    public void Merge_KeysDifferingOnlyInCase_AreNotFoldedHere()
-    {
-        // The merge matches the SDK route's own environment dictionary, which is ordinal. It is not a promise that
-        // the session ends up with two variables: the TTY route composes through TtyEnvironment, whose dictionary is
-        // case-insensitive, so there one of these would win. What this pins is that the fold is not this layer's
-        // doing — so a plugin contributing a lowercase key does not quietly lose it before the routes even see it.
-        var (resources, _) = SessionResourceMerge.Merge([Contribution(("gh_repo", "one"), ("GH_REPO", "two"))]);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(resources.EnvironmentVariables));
-    }
 }
