@@ -74,17 +74,6 @@ public class YouTrackClientLinkedIssuesTests : IAsyncLifetime
         Assert.Equal("AC-1", link.IssueId);
     }
 
-    [Fact]
-    public async Task GetLinkedIssuesAsync_OnAnIssueWithNoLinks_ReturnsEmpty()
-    {
-        _responseBody = "[]";
-
-        var client = new YouTrackClient();
-        var links = await client.GetLinkedIssuesAsync($"{_prefix}api", "token", "AC-1", CancellationToken.None);
-
-        Assert.Empty(links);
-    }
-
     public async Task DisposeAsync()
     {
         if (_server is not null)

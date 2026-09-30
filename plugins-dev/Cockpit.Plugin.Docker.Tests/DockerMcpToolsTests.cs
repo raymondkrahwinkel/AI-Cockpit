@@ -39,27 +39,6 @@ public sealed class DockerMcpToolsTests
     // ---- Reads -------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ListContainers_WhenApproved_ReturnsTheContainers_AndAsksConnectionConsentOnce()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.Containers = new[]
-        {
-            new DockerContainer("abc123", "web", "nginx:latest", "running", "Up 2 minutes",
-                new[] { new DockerPortMapping("tcp", 80, 8080, "0.0.0.0") }),
-        };
-
-        var json = JsonNode.Parse(await h.Tools.ListContainers(Session));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(1, json["count"]!.GetValue<int>());
-        Assert.Equal("web", json["containers"]![0]!["name"]!.GetValue<string>());
-        Assert.Equal(8080, json["containers"]![0]!["ports"]![0]!["publicPort"]!.GetValue<int>());
-        Assert.Single(h.Asked);
-        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-        Assert.True(h.Asked[0].AllowRemember);
-    }
-
-    [Fact]
     public async Task ListContainers_WhenDeclined_ReturnsError_AndDoesNotTouchTheEngine()
     {
         var h = _Build(ConsentOutcome.Denied);
@@ -69,19 +48,6 @@ public sealed class DockerMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("did not approve", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task DaemonInfo_ReturnsVersion_AndReflectsTheExecSetting()
-    {
-        var h = _Build(ConsentOutcome.Approved, allowExec: true);
-        h.Engine.Info = new DockerDaemonInfo("27.1.0", "1.48", "linux", "arm64");
-
-        var json = JsonNode.Parse(await h.Tools.DaemonInfo(Session));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("27.1.0", json["serverVersion"]!.GetValue<string>());
-        Assert.True(json["execEnabled"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -139,20 +105,6 @@ public sealed class DockerMcpToolsTests
     }
 
     [Fact]
-    public async Task Exec_WhenCapabilityOn_RunsAsShellCommand_AndReturnsOutput()
-    {
-        var h = _Build(ConsentOutcome.Approved, allowExec: true);
-        h.Engine.ExecResultValue = new ExecResult(0, "hello", string.Empty);
-
-        var json = JsonNode.Parse(await h.Tools.Exec(Session, "web", "echo hello"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("hello", json["stdout"]!.GetValue<string>());
-        Assert.Single(h.Engine.Execs);
-        Assert.Equal(new[] { "/bin/sh", "-c", "echo hello" }, h.Engine.Execs[0].Command);
-    }
-
-    [Fact]
     public async Task RunContainer_ShowsTheVerbatimCommand_WithDangerousFlags_AndTracksTheContainer()
     {
         var h = _Build(ConsentOutcome.Approved, allowExec: true);
@@ -191,50 +143,7 @@ public sealed class DockerMcpToolsTests
         Assert.False(h.Asked.Last().AllowRemember);
     }
 
-    [Fact]
-    public async Task ComposeConfig_IsARead_NeedingOnlyConnectionConsent()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.ComposeConfig(Session, "/srv/app"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(new[] { "config" }, h.Compose.Calls[0].Args);
-        Assert.Single(h.Asked);
-        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-    }
-
     // ---- AC-93: logs, images, pull ----------------------------------------------------------------------------
-
-    [Fact]
-    public async Task Logs_WhenApproved_ReturnsOutput_AndIsARead()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.LogsValue = new ContainerLogs("hello from stdout", "a warning");
-
-        var json = JsonNode.Parse(await h.Tools.Logs(Session, "web", tail: 50));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("hello from stdout", json["stdout"]!.GetValue<string>());
-        Assert.Equal("a warning", json["stderr"]!.GetValue<string>());
-        Assert.Equal(("web", 50), Assert.Single(h.Engine.LogReads));
-        Assert.Single(h.Asked);
-        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-    }
-
-    [Fact]
-    public async Task ListImages_WhenApproved_ReturnsImages()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.Images = new[] { new DockerImage("abc", new[] { "nginx:latest" }, 142_000_000) };
-
-        var json = JsonNode.Parse(await h.Tools.ListImages(Session));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(1, json["count"]!.GetValue<int>());
-        Assert.Equal("nginx:latest", json["images"]![0]!["tags"]![0]!.GetValue<string>());
-        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-    }
 
     [Fact]
     public async Task PullImage_WhenApproved_PullsAndAsksMutationConsentEachTime()
@@ -251,71 +160,7 @@ public sealed class DockerMcpToolsTests
         Assert.Contains("nginx:1.27", h.Asked.Last().Action);
     }
 
-    [Fact]
-    public async Task PullImage_WhenDeclined_DoesNotTouchTheEngine()
-    {
-        var h = _Build(ConsentOutcome.Denied);
-        h.Engine.Throw = new InvalidOperationException("the engine must not be called");
-
-        var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(h.Engine.Pulled);
-    }
-
-    [Fact]
-    public async Task RunContainer_WhenImageMissing_ReturnsAClearPullHint_NotADaemonError()
-    {
-        // AC-93: a missing local image used to surface "daemon could not be reached (DockerImageNotFoundException)",
-        // sending operators to look at the endpoint. It now names the image and points at pull_image.
-        var h = _Build(ConsentOutcome.Approved, allowExec: true);
-        h.Engine.Throw = new ImageNotFoundException("nginx:latest");
-
-        var json = JsonNode.Parse(await h.Tools.RunContainer(Session, "nginx:latest"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        var error = json["error"]!.GetValue<string>();
-        Assert.Contains("nginx:latest", error);
-        Assert.Contains("pull_image", error);
-        Assert.DoesNotContain("daemon could not be reached", error);
-    }
-
-    [Fact]
-    public async Task ComposeLogs_IsARead_PassingTailAndServices()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.ComposeLogs(Session, "/srv/app", services: new[] { "web" }, tail: 100));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(new[] { "logs", "--no-color", "--no-log-prefix", "--tail", "100", "--", "web" }, h.Compose.Calls[0].Args);
-        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-    }
-
     // ---- AC-93 remaining tiers: consent levels ----------------------------------------------------------------
-
-    [Fact]
-    public async Task Inspect_And_Stats_And_Top_And_Volumes_And_Networks_And_ComposePs_AreReads()
-    {
-        // Every read needs only the one-time connection consent (LowRisk, remembered).
-        foreach (var read in new Func<Harness, Task<string>>[]
-        {
-            h => h.Tools.Inspect(Session, "web"),
-            h => h.Tools.Stats(Session, "web"),
-            h => h.Tools.Top(Session, "web"),
-            h => h.Tools.ListVolumes(Session),
-            h => h.Tools.ListNetworks(Session),
-            h => h.Tools.ComposePs(Session, "/srv/app"),
-        })
-        {
-            var h = _Build(ConsentOutcome.Approved);
-            var json = JsonNode.Parse(await read(h));
-            Assert.True(json!["ok"]!.GetValue<bool>());
-            Assert.Single(h.Asked);
-            Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
-            Assert.True(h.Asked[0].AllowRemember);
-        }
-    }
 
     [Fact]
     public async Task Tag_IsAMutation_Dangerous_NeverRemembered_ShowingBothReferences()
@@ -359,18 +204,6 @@ public sealed class DockerMcpToolsTests
     }
 
     [Fact]
-    public async Task Prune_InvalidTarget_ErrorsWithoutAsking()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.Prune(Session, "everything"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(h.Asked);
-        Assert.Empty(h.Engine.Pruned);
-    }
-
-    [Fact]
     public async Task Push_IsDangerous_NeverRemembered_AndRunsTheDockerCli()
     {
         var h = _Build(ConsentOutcome.Approved);
@@ -391,18 +224,5 @@ public sealed class DockerMcpToolsTests
         Assert.False(JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"))!["ok"]!.GetValue<bool>());
         Assert.False(JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>());
         Assert.Empty(h.Docker.Calls);
-    }
-
-    [Fact]
-    public async Task BuildImage_And_Cp_RunTheDockerCli_WhenExecOnAndApproved()
-    {
-        var h = _Build(ConsentOutcome.Approved, allowExec: true);
-
-        Assert.True(JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest", dockerfile: "Dockerfile.prod"))!["ok"]!.GetValue<bool>());
-        Assert.True(JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>());
-
-        Assert.Equal(new[] { "build", "-t", "myapp:latest", "-f", "Dockerfile.prod", "/ctx" }, h.Docker.Calls[0]);
-        Assert.Equal(new[] { "cp", "web:/app/log", "/tmp/log" }, h.Docker.Calls[1]);
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
     }
 }

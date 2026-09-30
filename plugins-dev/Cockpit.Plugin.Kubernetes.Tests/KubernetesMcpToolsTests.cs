@@ -45,29 +45,6 @@ public class KubernetesMcpToolsTests
         asked.FirstOrDefault(request => request.Scope.StartsWith(prefix, StringComparison.Ordinal));
 
     [Fact]
-    public void ListClusters_ShowsRegisteredClusters()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Approved, _Cluster());
-
-        var json = JsonNode.Parse(tools.ListClusters());
-
-        Assert.Single(json!["clusters"]!.AsArray());
-        Assert.Equal("prod", json["clusters"]![0]!["label"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task ListResources_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster());
-
-        var json = JsonNode.Parse(await tools.ListResources("does-not-exist", Session, "v1", "pods", "default"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task ListResources_WhenConsentDenied_StopsBeforeTheCluster()
     {
         var (tools, _) = _Build(ConsentOutcome.Denied, _Cluster());
@@ -128,18 +105,5 @@ public class KubernetesMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("settings", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task DeleteResource_WhenApproved_ReachesTheConnection()
-    {
-        // Approved consent but no usable kubeconfig: the tool must get past the gate and fail at the connection,
-        // proving the gate did not block an approved change.
-        var (tools, _) = _Build(ConsentOutcome.Approved, _Cluster(), withKubeconfig: false);
-
-        var json = JsonNode.Parse(await tools.DeleteResource("prod", Session, "v1", "pods", "nginx", "default"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
     }
 }

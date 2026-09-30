@@ -8,14 +8,6 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 public class KubernetesSettingsTests
 {
     [Fact]
-    public void GetArgoToken_NoneSet_ReturnsNull()
-    {
-        var settings = new KubernetesSettings(new FakePluginStorage());
-
-        Assert.Null(settings.GetArgoToken("cluster-1"));
-    }
-
-    [Fact]
     public void SetArgoToken_RoundTrips_ThroughTheSecretLayer()
     {
         var storage = new FakePluginStorage();

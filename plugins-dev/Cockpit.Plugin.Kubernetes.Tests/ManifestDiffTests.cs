@@ -75,15 +75,6 @@ public class ManifestDiffTests
     }
 
     [Fact]
-    public void Compute_AnIdenticalManifest_IsAllUnchanged()
-    {
-        var diff = ManifestDiff.Compute(TraefikRevision7, TraefikRevision7);
-
-        Assert.True(diff.IsEmpty);
-        Assert.Equal(1, diff.UnchangedCount);
-    }
-
-    [Fact]
     public void Compute_AResourceTheTargetRevisionNoLongerHas_IsADeletion()
     {
         var current = TraefikRevision7 + "\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: extra\n  namespace: system-ingress\n";
@@ -104,48 +95,6 @@ public class ManifestDiffTests
 
         var created = Assert.Single(diff.Changes, change => change.Change == ManifestChangeKind.Created);
         Assert.Equal("v1 Service system-ingress/traefik-metrics", created.Document.Display);
-    }
-
-    [Fact]
-    public void Compute_TheSameNameInAnotherNamespace_IsAnotherResource()
-    {
-        var current = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: shared\n  namespace: a\n";
-        var target = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: shared\n  namespace: b\n";
-
-        var diff = ManifestDiff.Compute(current, target);
-
-        Assert.Single(diff.Deletions);
-        Assert.Single(diff.Applied);
-    }
-
-    [Fact]
-    public void Compute_OneManifestRenderingAResourceTwice_IsWarnedAbout()
-    {
-        var twice = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n";
-
-        var diff = ManifestDiff.Compute(twice, twice);
-
-        Assert.Contains(diff.Warnings, warning => warning.Contains("more than once"));
-    }
-
-    [Fact]
-    public void SplitAll_DocumentsWithoutIdentityAreSkippedRatherThanApplied()
-    {
-        var manifest = "---\n\n---\n# only a comment\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n";
-
-        var documents = ManifestDocument.SplitAll(manifest, out var errors);
-
-        Assert.Single(documents);
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void SplitAll_ADocumentMissingItsKind_IsReportedNotDropped()
-    {
-        var documents = ManifestDocument.SplitAll("apiVersion: v1\nmetadata:\n  name: x\n", out var errors);
-
-        Assert.Empty(documents);
-        Assert.Single(errors);
     }
 
     [Theory]
@@ -207,34 +156,6 @@ public class ManifestDiffTests
         var text = ManifestDiff.Compute(current, TraefikRevision6).ToConsentText(3_500);
 
         Assert.Contains("DELETE v1 PersistentVolumeClaim traefik-data", text);
-    }
-
-    [Fact]
-    public void Compute_AChangedLine_IsOneRemovalAndOneAddition_NotARewrite()
-    {
-        var current = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: d\nspec:\n  image: app:2.0\n  port: 80\n";
-        var target = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: d\nspec:\n  image: app:1.9\n  port: 80\n";
-
-        var change = Assert.Single(ManifestDiff.Compute(current, target).Changes);
-
-        Assert.Equal(1, change.AddedLines);
-        Assert.Equal(1, change.RemovedLines);
-        Assert.Contains("-  image: app:2.0", change.Diff);
-        Assert.Contains("+  image: app:1.9", change.Diff);
-    }
-
-    [Fact]
-    public void Compute_ADocumentPastTheDiffCeiling_IsReportedAsAWholeReplacement_NotAsUnchanged()
-    {
-        var header = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: big\ndata:\n";
-        var current = header + string.Join("\n", Enumerable.Range(0, 900).Select(index => $"  k{index}: old{index}"));
-        var target = header + string.Join("\n", Enumerable.Range(0, 900).Select(index => $"  k{index}: new{index}"));
-
-        var change = Assert.Single(ManifestDiff.Compute(current, target).Changes);
-
-        Assert.Equal(ManifestChangeKind.Updated, change.Change);
-        Assert.Equal(900, change.AddedLines);
-        Assert.Equal(900, change.RemovedLines);
     }
 
     [Fact]

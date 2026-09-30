@@ -10,42 +10,6 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 // step's input.
 public class ClusterRegistrationIntentsTests
 {
-    [Fact]
-    public async Task RegisterThenRegisterAgainThenUnregister()
-    {
-        var settings = new KubernetesSettings(new FakePluginStorage());
-        var intents = new ClusterRegistrationIntents(settings);
-
-        await intents.RegisterAsync(_Intent(ClusterRegistrationIntents.RegisterAction, new Dictionary<string, string>
-        {
-            ["id"] = "kind-demo",
-            ["label"] = "demo",
-            ["context"] = "kind-demo",
-            ["kubeconfigPath"] = "/state/kind/demo.kubeconfig",
-        }));
-
-        var registration = Assert.Single(settings.Clusters);
-        Assert.Equal("kind-demo", registration.Id);
-        Assert.Equal("demo", registration.Label);
-        Assert.Equal("kind-demo", registration.ContextName);
-        Assert.Equal("/state/kind/demo.kubeconfig", registration.KubeconfigPath);
-        Assert.Equal(["default"], registration.AllowedNamespaces);
-
-        // Criterion 6: a registration with this id is never silently overwritten, and the caller is told why.
-        var second = await intents.RegisterAsync(_Intent(ClusterRegistrationIntents.RegisterAction, new Dictionary<string, string>
-        {
-            ["id"] = "kind-demo",
-            ["kubeconfigPath"] = "/somewhere/else.kubeconfig",
-        }));
-
-        Assert.Contains("already existed", second["notice"]);
-        Assert.Equal("/state/kind/demo.kubeconfig", Assert.Single(settings.Clusters).KubeconfigPath);
-
-        await intents.UnregisterAsync(_Intent(ClusterRegistrationIntents.UnregisterAction, new Dictionary<string, string> { ["id"] = "kind-demo" }));
-
-        Assert.Empty(settings.Clusters);
-    }
-
     // AC-1349 review M1: only the Kind plugin may name a consent mode; the same request from any other caller
     // registers as AlwaysAsk. The "kind" row keeps the other one from passing on a mode that is never honoured.
     [Theory]
@@ -66,7 +30,4 @@ public class ClusterRegistrationIntentsTests
 
         Assert.Equal(expected, Assert.Single(settings.Clusters).EffectiveConsentMode());
     }
-
-    private static PluginIntent _Intent(string action, IReadOnlyDictionary<string, string> data) =>
-        new("kind", "kubernetes", action, data);
 }

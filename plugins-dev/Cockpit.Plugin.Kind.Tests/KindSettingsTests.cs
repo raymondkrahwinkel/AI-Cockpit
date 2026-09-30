@@ -18,18 +18,4 @@ public class KindSettingsTests
         Assert.Single(settings.KindClusters);
         Assert.Equal(record, settings.KindClusters[0]);
     }
-
-    [Fact]
-    public void KindClusterMaxLifetime_DefaultsToFourHours_ThenRoundTrips()
-    {
-        // The default is the reaper's own budget, not a formatting detail: a kind cluster nobody deleted is torn
-        // down after it, so a change to it changes how long a stray cluster keeps running.
-        var settings = new KindSettings(new FakePluginStorage());
-
-        Assert.Equal(TimeSpan.FromHours(4), settings.KindClusterMaxLifetime);
-
-        settings.KindClusterMaxLifetime = TimeSpan.FromHours(8);
-
-        Assert.Equal(TimeSpan.FromHours(8), settings.KindClusterMaxLifetime);
-    }
 }

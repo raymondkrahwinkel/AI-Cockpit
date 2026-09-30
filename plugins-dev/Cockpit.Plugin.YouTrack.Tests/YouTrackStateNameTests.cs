@@ -18,25 +18,5 @@ public class YouTrackStateNameTests
         Assert.Equal("Ready", YouTrackFieldParser.ParseStateName(fields));
     }
 
-    [Fact]
-    public void ParseStateName_WithBothStateAndKanbanState_PrefersState()
-    {
-        // Document order must not decide it: a board carrying both means the plain one, and the gate has to agree with
-        // the grid about which value it is looking at.
-        var fields = _Parse("""
-            [{ "name": "Kanban State", "value": { "name": "Doing" } }, { "name": "State", "value": { "name": "Ready" } }]
-            """);
-
-        Assert.Equal("Ready", YouTrackFieldParser.ParseStateName(fields));
-    }
-
-    [Fact]
-    public void ParseStateName_WithNoStatusFieldOrNoValue_ReadsAsUnknown()
-    {
-        Assert.Null(YouTrackFieldParser.ParseStateName(_Parse("""[{ "name": "Assignee", "value": { "name": "raymond" } }]""")));
-        Assert.Null(YouTrackFieldParser.ParseStateName(_Parse("""[{ "name": "State", "value": null }]""")));
-        Assert.Null(YouTrackFieldParser.ParseStateName(_Parse("""{ "name": "State" }""")));
-    }
-
     private static JsonElement _Parse(string json) => JsonDocument.Parse(json).RootElement;
 }

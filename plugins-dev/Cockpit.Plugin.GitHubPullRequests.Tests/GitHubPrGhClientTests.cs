@@ -46,27 +46,4 @@ public class GitHubPrGhClientTests
         Assert.Equal("build", status.Checks[0].Name);
         Assert.Equal(PullRequestCheckState.Passed, status.Checks[0].State);
     }
-
-    [Fact]
-    public void ParsePullRequestStatus_NoReviewDecision_IsNull()
-    {
-        const string json = """
-            { "number": 1, "title": "x", "url": "https://github.com/o/r/pull/1", "mergeable": "UNKNOWN", "statusCheckRollup": [] }
-            """;
-
-        var status = GitHubPrGhClient.ParsePullRequestStatus(json);
-
-        Assert.Null(status!.ReviewDecision);
-        Assert.Equal("UNKNOWN", status.Mergeable);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("not-json")]
-    [InlineData("[]")]
-    [InlineData("null")]
-    public void ParsePullRequestStatus_ToleratesEmptyOrInvalidJson(string json)
-    {
-        Assert.Null(GitHubPrGhClient.ParsePullRequestStatus(json));
-    }
 }

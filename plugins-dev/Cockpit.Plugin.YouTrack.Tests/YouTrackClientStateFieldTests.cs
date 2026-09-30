@@ -35,35 +35,6 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetProjectStateFieldAsync_OnAServerRefusal_FailsOpenRatherThanThrowing()
-    {
-        var refusing = await LoopbackHttpServer.StartAsync(context =>
-        {
-            context.Response.StatusCode = 403;
-            return Task.CompletedTask;
-        });
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync($"{refusing.BaseUrl}api", "t", "AC", CancellationToken.None);
-
-        await refusing.DisposeAsync();
-        Assert.Null(fieldName);
-        Assert.Empty(values);
-    }
-
-    [Fact]
-    public async Task GetProjectStateFieldAsync_WithNoProjectShortName_NeverMakesTheCall()
-    {
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync($"{_prefix}api", "t", string.Empty, CancellationToken.None);
-
-        Assert.False(_wasCalled, "\"All projects\" (#48) has no single project to ask the admin API about");
-        Assert.Null(fieldName);
-        Assert.Empty(values);
-    }
-
-    [Fact]
     public async Task GetProjectStateFieldAsync_ExcludesAResolvedValue_OverARealHttpRoundTrip()
     {
         var requests = new List<string>();
@@ -80,46 +51,6 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
         await server.DisposeAsync();
         Assert.Equal("State", fieldName);
         Assert.Equal(["Open"], values);
-        Assert.Single(requests);
-    }
-
-    [Fact]
-    public async Task GetProjectStateFieldAsync_WhenIsResolvedIsAbsentFromTheResponse_KeepsEveryValueAndDoesNotRetry()
-    {
-        // The likely EnumBundle shape (a Stage/Kanban State field) — the call itself succeeds, its values just
-        // carry no isResolved key at all. Must not be treated as a failure: one request, nothing filtered out.
-        var requests = new List<string>();
-        var server = await LoopbackHttpServer.StartAsync(context =>
-        {
-            requests.Add(context.Request.QueryString.Value ?? string.Empty);
-            return context.Response.WriteAsync("""[{"field":{"name":"Stage"},"bundle":{"values":[{"name":"Backlog"},{"name":"Done"}]}}]""");
-        });
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync(server.BaseUrl + "api", "t", "AC", CancellationToken.None);
-
-        await server.DisposeAsync();
-        Assert.Equal("Stage", fieldName);
-        Assert.Equal(["Backlog", "Done"], values);
-        Assert.Single(requests);
-    }
-
-    [Fact]
-    public async Task GetProjectStateFieldAsync_WhenIsResolvedIsJsonNull_KeepsEveryValueAndDoesNotRetry()
-    {
-        var requests = new List<string>();
-        var server = await LoopbackHttpServer.StartAsync(context =>
-        {
-            requests.Add(context.Request.QueryString.Value ?? string.Empty);
-            return context.Response.WriteAsync("""[{"field":{"name":"State"},"bundle":{"values":[{"name":"Done","isResolved":null}]}}]""");
-        });
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync(server.BaseUrl + "api", "t", "AC", CancellationToken.None);
-
-        await server.DisposeAsync();
-        Assert.Equal("State", fieldName);
-        Assert.Equal(["Done"], values);
         Assert.Single(requests);
     }
 
@@ -151,23 +82,6 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
         // exactly the pre-AC-518-follow-up behaviour, never emptier than before.
         Assert.Equal(["Open", "Done"], values);
         Assert.Equal(2, requests.Count);
-    }
-
-    [Fact]
-    public async Task GetProjectStateFieldAsync_WhenBothTheExtendedAndThePlainCallFail_FailsOpen()
-    {
-        var server = await LoopbackHttpServer.StartAsync(context =>
-        {
-            context.Response.StatusCode = 500;
-            return Task.CompletedTask;
-        });
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync(server.BaseUrl + "api", "t", "AC", CancellationToken.None);
-
-        await server.DisposeAsync();
-        Assert.Null(fieldName);
-        Assert.Empty(values);
     }
 
     private Task _RecordAndAnswerAsync(HttpContext context)

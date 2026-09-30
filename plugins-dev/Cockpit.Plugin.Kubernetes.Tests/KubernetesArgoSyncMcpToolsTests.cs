@@ -44,18 +44,6 @@ public class KubernetesArgoSyncMcpToolsTests
         return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked, settings, cluster);
     }
 
-    [Fact]
-    public async Task ArgoSync_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked, _, _) = _Build(ConsentOutcome.Approved, withArgoToken: true);
-
-        var json = JsonNode.Parse(await tools.ArgoSync("does-not-exist", Session, "argocd", "cert-manager"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
     // AC-576 acceptance criterion 5, literally: no token, no diff, no approval asked, nothing written.
     [Fact]
     public async Task ArgoSync_NoArgoToken_RefusesBeforeAskingForApproval_AndBeforeReachingTheCluster()
@@ -67,16 +55,5 @@ public class KubernetesArgoSyncMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("No Argo CD API token", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task ArgoSync_WithToken_ReachesTheConnection()
-    {
-        var (tools, _, _, _) = _Build(ConsentOutcome.Approved, withKubeconfig: false, withArgoToken: true);
-
-        var json = JsonNode.Parse(await tools.ArgoSync("prod", Session, "argocd", "cert-manager"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
     }
 }

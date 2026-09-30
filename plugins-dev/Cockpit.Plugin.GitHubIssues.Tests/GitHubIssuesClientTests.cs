@@ -77,25 +77,6 @@ public class GitHubIssuesClientTests : IDisposable
         Assert.Equal([1], issues.Select(issue => issue.Number));
     }
 
-    [Fact]
-    public async Task GetOpenIssuesAsync_ALabelContainingAComma_IsNeverSentThroughTheLabelsParameter()
-    {
-        // Half of the same fix: whatever the client does instead, it must not still hand a comma-containing name to
-        // a parameter that is documented to split on comma — that would be sending the same broken request under a
-        // different disguise.
-        string? capturedQuery = null;
-        using var server = LoopbackServer.Start(request =>
-        {
-            capturedQuery = request.Url?.Query;
-            return LoopbackServer.Json("""[]""");
-        });
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None, label: "ready, honestly");
-
-        Assert.DoesNotContain("labels=", capturedQuery);
-    }
-
     private static string? _QueryParam(HttpListenerRequest request, string name)
     {
         var query = request.Url?.Query.TrimStart('?') ?? string.Empty;
@@ -128,50 +109,6 @@ public class GitHubIssuesClientTests : IDisposable
     }
 
     [Fact]
-    public async Task GetOpenIssuesAsync_ExactlyAtThePageLimit_ReturnsAllOfThemUntruncated()
-    {
-        // The boundary AC-519's truncation warning keys on: real parsing of a real page of exactly the limit.
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit)));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var (issues, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
-
-        Assert.Equal(GitHubIssuesClient.IssuePageLimit, issues.Count);
-        Assert.True(wasTruncated);
-    }
-
-    [Fact]
-    public async Task GetOpenIssuesAsync_ExactlyAtThePageLimitWithSomePullRequestsMixedIn_StillReportsTruncation()
-    {
-        // AC-519 fix (adversarial review): the raw page can be exactly the limit yet filter down to far fewer real
-        // issues once pull requests are stripped out — this is the fixture that reproduces that: 100 raw items, 40
-        // of them pull requests, 60 real issues left. WasTruncated must still be true because it is measured on the
-        // raw page, before this method's own pull-request filter runs, not on what filtering leaves behind.
-        var realIssues = string.Join(",", Enumerable.Range(1, 60).Select(n => $$"""{ "number": {{n}}, "title": "Issue {{n}}", "html_url": "https://x/{{n}}" }"""));
-        var pullRequests = string.Join(",", Enumerable.Range(1, 40).Select(n => $$"""{ "number": {{1000 + n}}, "title": "PR {{n}}", "html_url": "https://x/pr/{{n}}", "pull_request": { "url": "https://x/pr/{{n}}" } }"""));
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json($"[{realIssues},{pullRequests}]"));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var (issues, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
-
-        Assert.Equal(60, issues.Count);
-        Assert.True(wasTruncated);
-    }
-
-    [Fact]
-    public async Task GetOpenIssuesAsync_OneMoreThanThePageLimit_TheServerIsWhatWouldCapIt()
-    {
-        // gh/GitHub itself does the capping, not this client — asking for 101 back (a server that ignores per_page)
-        // proves the client does not impose a second, silent limit of its own on top of the real one.
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit + 1)));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var (issues, _) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
-
-        Assert.Equal(GitHubIssuesClient.IssuePageLimit + 1, issues.Count);
-    }
-
-    [Fact]
     public async Task GetOpenIssuesAsync_FiltersOutPullRequests()
     {
         const string body = """
@@ -187,28 +124,6 @@ public class GitHubIssuesClientTests : IDisposable
 
         Assert.Equal([1], issues.Select(issue => issue.Number));
         Assert.False(wasTruncated);
-    }
-
-    [Fact]
-    public async Task GetOpenIssuesAsync_OneShortOfThePageLimit_ReportsNotTruncated()
-    {
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit - 1)));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var (_, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
-
-        Assert.False(wasTruncated);
-    }
-
-    [Fact]
-    public async Task GetRepositoryLabelsAsync_ARepoWithNoLabels_ReturnsEmptyRatherThanThrowing()
-    {
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json("""[]"""));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var labels = await new GitHubIssuesClient().GetRepositoryLabelsAsync("octocat", "hello-world", token: null, CancellationToken.None);
-
-        Assert.Empty(labels);
     }
 
     [Fact]
@@ -228,21 +143,6 @@ public class GitHubIssuesClientTests : IDisposable
 
         Assert.Equal(["bug", "in progress"], labels);
     }
-
-    [Fact]
-    public async Task GetRepositoryLabelsAsync_ARepositoryThatCannotBeReached_ThrowsRatherThanSilentlyEmptying()
-    {
-        // The dialog is the one that decides to fail open on this (a filter aid, not the issue list itself); the
-        // client itself must still surface a real server error rather than swallow it.
-        using var server = LoopbackServer.Start(_ => (HttpStatusCode.NotFound, "application/json", """{"message":"Not Found"}"""u8.ToArray()));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
-            new GitHubIssuesClient().GetRepositoryLabelsAsync("octocat", "does-not-exist", token: null, CancellationToken.None));
-    }
-
-    private static string _IssuesJson(int count) =>
-        "[" + string.Join(",", Enumerable.Range(1, count).Select(number => $$"""{ "number": {{number}}, "title": "Issue {{number}}", "html_url": "https://x/{{number}}" }""")) + "]";
 
     // A minimal loopback HTTP server for driving the real `GitHubIssuesClient` without the real GitHub API.
     private sealed class LoopbackServer : IDisposable

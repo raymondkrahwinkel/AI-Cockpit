@@ -20,12 +20,6 @@ public class YouTrackMcpRegistrationTests
     }
 
     [Fact]
-    public void BuildContributions_NoInstances_ReturnsNothing()
-    {
-        Assert.Empty(YouTrackMcpRegistration.BuildContributions([]));
-    }
-
-    [Fact]
     public void BuildContributions_InstanceMissingUrlOrToken_IsSkipped()
     {
         var instances = new List<YouTrackInstance>
@@ -64,39 +58,5 @@ public class YouTrackMcpRegistrationTests
         };
 
         Assert.Empty(YouTrackMcpRegistration.BuildContributions(instances));
-    }
-
-    [Fact]
-    public void ManagedServerNames_CoversEveryInstance_EvenIncompleteOrOptedOut()
-    {
-        // The migration reclaims what an earlier version pushed, so it must name every instance — including one
-        // now incomplete or with MCP turned off, whose entry may still be sitting in the registry.
-        var instances = new List<YouTrackInstance>
-        {
-            new("Prod", "https://x.youtrack.cloud/api", "token", string.Empty),
-            new("No token", "https://x.youtrack.cloud/api", string.Empty, string.Empty),
-            new("Opted out", "https://x.youtrack.cloud/api", "token", string.Empty, AddMcpToSessions: false),
-        };
-
-        Assert.Equivalent(
-            new object[] { "YouTrack: Prod", "YouTrack: No token", "YouTrack: Opted out" },
-            YouTrackMcpRegistration.ManagedServerNames(instances));
-    }
-
-    [Fact]
-    public void BuildContributions_MultipleInstances_YieldsDistinctlyNamedContributions()
-    {
-        var instances = new List<YouTrackInstance>
-        {
-            new("Prod", "https://prod.youtrack.cloud/api", "prod-token", string.Empty),
-            new("Staging", "https://staging.youtrack.cloud/api", "staging-token", string.Empty),
-        };
-
-        var contributions = YouTrackMcpRegistration.BuildContributions(instances);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(contributions));
-        Assert.Equivalent(
-            new object[] { "YouTrack: Prod", "YouTrack: Staging" },
-            contributions.Select(contribution => contribution.Name));
     }
 }

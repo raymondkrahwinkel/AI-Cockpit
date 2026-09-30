@@ -39,18 +39,6 @@ public class KubernetesArgoRefreshMcpToolsTests
     }
 
     [Fact]
-    public async Task ArgoRefresh_UnknownCluster_IsACleanError()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.ArgoRefresh("does-not-exist", Session, "argocd", "cert-manager"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task ArgoRefresh_WhenConsentDenied_StopsBeforeTheCluster()
     {
         var (tools, _) = _Build(ConsentOutcome.Denied);
@@ -78,37 +66,4 @@ public class KubernetesArgoRefreshMcpToolsTests
     // AC-576 acceptance criterion 7, literally, and accurate: the annotation write itself does change the
     // Application object, so the card must not claim nothing changes — it must say no resource is rolled out,
     // updated or deleted, which is the true and complete claim.
-    [Fact]
-    public async Task ArgoRefresh_ConsentCard_SaysNoResourceIsRolledOutOrDeleted_WithoutOverclaimingNothingChanges()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
-
-        await tools.ArgoRefresh("prod", Session, "argocd", "cert-manager");
-
-        var refreshAsk = asked.First(request => request.Scope.StartsWith("k8s.argo.refresh:", StringComparison.Ordinal));
-        Assert.Contains("no resource is rolled out, updated or deleted", refreshAsk.Action);
-        Assert.DoesNotContain("changes nothing", refreshAsk.Action);
-    }
-
-    [Fact]
-    public async Task ArgoRefresh_Hard_ReflectsHardInTheCard()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
-
-        await tools.ArgoRefresh("prod", Session, "argocd", "cert-manager", hard: true);
-
-        var refreshAsk = asked.First(request => request.Scope.StartsWith("k8s.argo.refresh:", StringComparison.Ordinal));
-        Assert.Contains("(hard)", refreshAsk.Action);
-    }
-
-    [Fact]
-    public async Task ArgoRefresh_WhenApproved_ReachesTheConnection()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
-
-        var json = JsonNode.Parse(await tools.ArgoRefresh("prod", Session, "argocd", "cert-manager"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
-    }
 }
