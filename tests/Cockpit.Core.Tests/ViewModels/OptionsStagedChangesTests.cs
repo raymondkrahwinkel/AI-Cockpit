@@ -1,5 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -8,6 +9,7 @@ using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Secrets;
@@ -75,6 +77,40 @@ public class OptionsStagedChangesTests
 
         Assert.True(security.LockWithOperatingSystem);
         await screenLock.DidNotReceive().SaveAsync(Arg.Any<ScreenLockSettings>());
+    }
+
+    [Fact]
+    public async Task AssistantSettings_AreHeldBackWhileSuspended_AndWrittenOnApply()
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync().Returns(new AssistantSettings());
+        var assistant = new AssistantOptionsViewModel(store) { SuspendPersistence = true };
+
+        assistant.IsEnabled = true;
+        assistant.SpeakReplies = false;
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<AssistantSettings>());
+
+        assistant.SuspendPersistence = false;
+        await assistant.SaveStagedAsync();
+
+        await store.Received().SaveAsync(Arg.Is<AssistantSettings>(settings => settings.IsEnabled && !settings.SpeakReplies));
+    }
+
+    [Fact]
+    public async Task AssistantSettings_ComeBackFromDiskOnCancel()
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync().Returns(new AssistantSettings { IsEnabled = true, SpeakReplies = true });
+        var assistant = new AssistantOptionsViewModel(store) { SuspendPersistence = true };
+
+        assistant.IsEnabled = false;
+        assistant.SpeakReplies = false;
+        await assistant.RefreshAsync();
+
+        Assert.True(assistant.IsEnabled);
+        Assert.True(assistant.SpeakReplies);
+        await store.DidNotReceive().SaveAsync(Arg.Any<AssistantSettings>());
     }
 
     // Every store the dialog can write to, stubbed to return defaults and watched for writes.

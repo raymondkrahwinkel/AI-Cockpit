@@ -109,6 +109,17 @@ public class AssistantOptionsViewModelTests
     // ── AC-637: the "allow all" switch above them ─────────────────────────────────────────────────────────────
 
     [Fact]
+    public void Constructed_WithNoStores_HasAllowAllOn()
+    {
+        // The default the page shows before any store is asked has to be the one the settings record holds, or the
+        // dialog opens saying the opposite of what is in force.
+        var vm = new AssistantOptionsViewModel();
+
+        Assert.True(vm.ConsentBypassAll);
+        Assert.True(vm.HasConsentBypass);
+    }
+
+    [Fact]
     public async Task SwitchingAllowAllOff_PersistsIt_AndKeepsTheRowsAsTheyWere()
     {
         // Off falls back to the granular list rather than to an empty one: the rows are hidden while allow-all is
@@ -131,6 +142,18 @@ public class AssistantOptionsViewModelTests
     }
 
     [Fact]
+    public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
+    {
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false });
+        var vm = new AssistantOptionsViewModel(store);
+
+        await vm.RefreshAsync();
+
+        Assert.False(vm.ConsentBypassAll);
+        Assert.Null(store.Saved);
+    }
+
+    [Fact]
     public async Task UntickingASource_RemovesItRatherThanLeavingItOnDisk()
     {
         var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
@@ -140,6 +163,18 @@ public class AssistantOptionsViewModelTests
         vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk = false;
 
         Assert.Empty(store.Saved!.ConsentBypassSources);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_DoesNotSaveTheRowsBackOut()
+    {
+        // Seeding the checkboxes from disk must not read as the operator ticking them — the same guard the other
+        // switches on this page already have, and the one that would otherwise rewrite the file on every open.
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
+
+        await new AssistantOptionsViewModel(store).RefreshAsync();
+
+        Assert.Null(store.Saved);
     }
 
     private static ConsentAuditEntry Audit(string? pluginId, string label) =>
