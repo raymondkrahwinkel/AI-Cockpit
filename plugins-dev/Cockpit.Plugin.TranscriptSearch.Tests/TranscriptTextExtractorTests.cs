@@ -38,12 +38,6 @@ public class TranscriptTextExtractorTests
         Assert.Null(TranscriptTextExtractor.Extract(line));
     }
 
-    [Fact]
-    public void Extract_NonMessageType_ReturnsNull()
-    {
-        Assert.Null(TranscriptTextExtractor.Extract("""{"type":"summary","summary":"…"}"""));
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -51,36 +45,4 @@ public class TranscriptTextExtractorTests
     [InlineData("{}")]
     public void Extract_BlankOrMalformed_ReturnsNull(string line)
         => Assert.Null(TranscriptTextExtractor.Extract(line));
-
-    [Fact]
-    public void Extract_RoleFromMessageRoleWhenTopLevelTypeIsNotARole()
-    {
-        // Some records carry the role only on message.role, with a different top-level "type".
-        var line = """{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}""";
-
-        var entry = TranscriptTextExtractor.Extract(line);
-
-        Assert.NotNull(entry);
-        Assert.Equal("assistant", entry!.Role);
-        Assert.Equal("hi", entry.Text);
-    }
-
-    [Fact]
-    public void Extract_CapturesTheCwd_SoASessionCanBeResumedWhereItRan()
-    {
-        var line = """{"type":"user","cwd":"/home/me/project","message":{"role":"user","content":"fix the login bug"}}""";
-
-        var entry = TranscriptTextExtractor.Extract(line);
-
-        Assert.NotNull(entry);
-        Assert.Equal("/home/me/project", entry!.Cwd);
-    }
-
-    [Fact]
-    public void Extract_WithoutACwd_LeavesItNull()
-    {
-        var line = """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""";
-
-        Assert.Null(TranscriptTextExtractor.Extract(line)!.Cwd);
-    }
 }

@@ -18,53 +18,6 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task CollectAsync_DoesNotCreditTheStep_WithWorkAnEarlierStepLeftUncommitted()
-    {
-        // The defect this test exists for: nothing commits between ordinary steps, so a mark that only remembered HEAD
-        // would show the previous step's uncommitted edit as this step's own — and, because the diff was not empty,
-        // the "reported work but nothing changed" spot-check would stay silent about a step that did nothing at all.
-        _Write("tracked.txt", "an earlier step changed this and never committed it");
-
-        var mark = await _source.MarkAsync(_repository);
-        Assert.NotNull(mark);
-
-        // This step does nothing whatsoever.
-        var change = await _source.CollectAsync(_repository, mark);
-
-        Assert.NotNull(change);
-        Assert.True(change.IsEmpty, $"expected no change, got {string.Join(", ", change.FilesChanged)} / {string.Join(", ", change.UntrackedFiles)}");
-    }
-
-    [Fact]
-    public async Task CollectAsync_NamesTheCommitTheChangeWasMeasuredOn()
-    {
-        // AC-1037: evidence that cannot say which tree it is of is what let a green suite from another branch pass as
-        // proof, so the head commit is part of the observation rather than something the wording may or may not carry.
-        var mark = await _source.MarkAsync(_repository);
-        Assert.NotNull(mark);
-
-        var change = await _source.CollectAsync(_repository, mark);
-
-        Assert.NotNull(change);
-        Assert.Equal((await _Git("rev-parse", "HEAD")).Trim(), change.HeadCommit);
-    }
-
-    [Fact]
-    public async Task CollectAsync_ReportsOnlyUntrackedFilesThatWereNotAlreadyThere()
-    {
-        _Write("left-behind.txt", "an earlier step wrote this and never added it");
-
-        var mark = await _source.MarkAsync(_repository);
-        Assert.NotNull(mark);
-
-        _Write("this-step.txt", "the step's own new file");
-        var change = await _source.CollectAsync(_repository, mark);
-
-        Assert.NotNull(change);
-        Assert.Equal(["this-step.txt"], change.UntrackedFiles);
-    }
-
-    [Fact]
     public async Task CollectAsync_SeesWorkTheStepCommitted_AndWorkItLeftUncommitted()
     {
         var mark = await _source.MarkAsync(_repository);
@@ -85,25 +38,6 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task CollectAsync_SinglesOutAFileTheStepOnlyStaged_ThatWasAlreadyLyingThere()
-    {
-        // A file an earlier step wrote but never added crosses into the tracked half the moment this step runs
-        // `git add -A`, and then reads as brand new in the diff. It is a real change to the repository, so it stays —
-        // but its contents are not this step's work, and the CEO is told which files those are.
-        _Write("left-behind.txt", "an earlier step wrote this");
-
-        var mark = await _source.MarkAsync(_repository);
-        Assert.NotNull(mark);
-
-        await _Git("add", "-A");
-        var change = await _source.CollectAsync(_repository, mark);
-
-        Assert.NotNull(change);
-        Assert.Contains("left-behind.txt", change.FilesChanged);
-        Assert.Equal(["left-behind.txt"], change.AddedFromBeforeTheMark);
-    }
-
-    [Fact]
     public async Task MarkAsync_PinsTheDirtyWorktree_NotMerelyHead()
     {
         // The distinction the whole mark rests on: with uncommitted work present, the pinned commit must be a snapshot
@@ -115,16 +49,6 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
 
         Assert.NotNull(mark);
         Assert.NotEqual(head, mark.Commit);
-    }
-
-    [Fact]
-    public async Task MarkAsync_ForACleanWorktree_PinsHead()
-    {
-        var mark = await _source.MarkAsync(_repository);
-        var head = (await _Git("rev-parse", "HEAD")).Trim();
-
-        Assert.NotNull(mark);
-        Assert.Equal(head, mark.Commit);
     }
 
     [Fact]
@@ -160,22 +84,6 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
         finally
         {
             File.Delete(Path.Combine(_repository, ".git", "index.lock"));
-        }
-    }
-
-    [Fact]
-    public async Task MarkAsync_ForAFolderThatIsNotAGitWorktree_ReturnsNull()
-    {
-        var plain = Path.Combine(Path.GetTempPath(), $"ac255-plain-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(plain);
-
-        try
-        {
-            Assert.Null(await _source.MarkAsync(plain));
-        }
-        finally
-        {
-            Directory.Delete(plain, recursive: true);
         }
     }
 

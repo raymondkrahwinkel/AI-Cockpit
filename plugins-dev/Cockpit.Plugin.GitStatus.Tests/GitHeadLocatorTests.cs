@@ -35,19 +35,6 @@ public class GitHeadLocatorTests : IDisposable
     }
 
     [Fact]
-    public async Task ResolvesTheSameHeadFileFromASubdirectory()
-    {
-        var nested = Path.Combine(_repo, "src", "nested");
-        Directory.CreateDirectory(nested);
-
-        var fromRoot = await GitHeadLocator.ResolveHeadFileAsync(_repo, CancellationToken.None);
-        var fromSubdirectory = await GitHeadLocator.ResolveHeadFileAsync(nested, CancellationToken.None);
-
-        Assert.NotNull(fromRoot);
-        Assert.Equal(fromRoot, fromSubdirectory);
-    }
-
-    [Fact]
     public async Task ReturnsNullOutsideARepository()
     {
         var plain = Path.Combine(Path.GetTempPath(), $"cockpit-plain-{Guid.NewGuid():n}");

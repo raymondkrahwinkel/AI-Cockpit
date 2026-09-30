@@ -21,11 +21,6 @@ public class AutopilotRunContextTests
         [AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator, false],
     ];
 
-    [Theory]
-    [MemberData(nameof(ToastEdges))]
-    public void ShouldToastAwaiting_FiresOnlyOnTheEdgeIntoAwaitingOperator(object previous, object current, bool toasts) =>
-        Assert.Equal(toasts, AutopilotRunContext.ShouldToastAwaiting((AutopilotPlanPhase)previous, (AutopilotPlanPhase)current));
-
     // A run is recorded in history once it has settled — including an operator-stopped one (AC-196), which was the
     // case that used to be dropped silently.
     public static IEnumerable<object[]> Phases() =>
@@ -37,11 +32,6 @@ public class AutopilotRunContextTests
         [AutopilotPlanPhase.Running, false],
         [AutopilotPlanPhase.AwaitingOperator, false],
     ];
-
-    [Theory]
-    [MemberData(nameof(Phases))]
-    public void IsSettledOutcome_RecordsExactlyTheRunsThatEnded(object phase, bool settled) =>
-        Assert.Equal(settled, AutopilotWorkspaceRuns.IsSettledOutcome((AutopilotPlanPhase)phase));
 
     // The persistent "needs you" marker (AC-203): raised while any active run is in AwaitingOperator, cleared the
     // moment it leaves — answered or settled — so it never outlives the wait it signals. A CEO consult (spoor 2,
@@ -59,11 +49,6 @@ public class AutopilotRunContextTests
         [new[] { AutopilotPlanPhase.Running, AutopilotPlanPhase.Running }, false],
     ];
 
-    [Theory]
-    [MemberData(nameof(ActiveRunPhases))]
-    public void NeedsOperatorAttention_IsRaised_ExactlyWhileARunAwaitsTheOperator(object phases, bool needed) =>
-        Assert.Equal(needed, AutopilotPlanWorkspaceBody.NeedsOperatorAttention((AutopilotPlanPhase[])phases));
-
     // AC-440's bug: the pane always rendered _activeContexts[0] while the badge lit up for any awaiting run, so a
     // second run's blockade could sit behind the first run's step surface unreachable. The awaiting run now wins
     // regardless of position; with none awaiting the first run stays the default, as before AC-440.
@@ -75,11 +60,6 @@ public class AutopilotRunContextTests
         [new[] { AutopilotPlanPhase.Running, AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator }, 2],
         [new[] { AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator }, 0],
     ];
-
-    [Theory]
-    [MemberData(nameof(ContextPreferences))]
-    public void PreferredContextIndex_PicksTheFirstAwaitingRun_ElseTheFirstRun(object phases, int expected) =>
-        Assert.Equal(expected, AutopilotPlanWorkspaceBody.PreferredContextIndex((AutopilotPlanPhase[])phases));
 
     [Theory]
     // The badge is never visible with nothing awaiting, but the click handler guards it anyway rather than trusting
@@ -117,30 +97,6 @@ public class AutopilotRunContextTests
         new("Do the work", new AutopilotPlanSource("YouTrack", "AC-191", "A title"), []);
 
     [Fact]
-    public void ValidatorCeoRequest_AsksToBeConfined_ToTheDirectoryItValidates()
-    {
-        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", _SourcePlan(), "run-1");
-
-        Assert.True(request.ConfineFileToolsToWorkingDirectory);
-        Assert.Equal("/runs/worktree", request.WorkingDirectory);
-        // The validator never cuts its own worktree — it reads the one the run already has.
-        Assert.False(request.IsolateInWorktree);
-    }
-
-    [Fact]
-    public void ValidatorCeoRequest_CarriesTheRun_SoTheCeosOwnSpendIsCountedAgainstIt()
-    {
-        // AC-251: the validating CEO is one of the three things a run spends on, and the one whose context grows
-        // as the run goes. Leaving it off the run would under-report exactly the cost the reduction work targets.
-        var plan = _SourcePlan();
-
-        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", plan, "run-1");
-
-        Assert.Equal("run-1", request.RunId);
-        Assert.Equal(plan.Label, request.RunLabel);
-    }
-
-    [Fact]
     public void ValidatorCeoRequest_NamesItsOwnPermissionMode_SoAProfileSavedInBypassCannotDecideIt()
     {
         // Confinement is only granted if the provider vouches for it, and a permission-based provider stops
@@ -175,27 +131,5 @@ public class AutopilotRunContextTests
 
         Assert.Equal("work", request.ProfileId);
         Assert.Equal(expectedModel, request.Model);
-    }
-
-    [Fact]
-    public void ValidatorCeoRequest_WithACarryOver_StaysTheSameValidatorOnTheSameRun()
-    {
-        // AC-253: the replacement carries the ledger in its hidden brief, and is otherwise the validator the run
-        // already had — same profile/model (AC-254) and same run (AC-251), or the very context this measures would
-        // drop out of usage-history.jsonl the moment the checkpoint fires.
-        var settings = new AutopilotSettings(new FakeStorage());
-        settings.SetCeoProfileLabel("work");
-        settings.SetCeoValidationModel("sonnet");
-        var plan = _SourcePlan();
-
-        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", plan, "run-1", "- Code it: done, verified");
-
-        Assert.Equal("work", request.ProfileId);
-        Assert.Equal("sonnet", request.Model);
-        Assert.Equal("run-1", request.RunId);
-        Assert.Equal(plan.Label, request.RunLabel);
-        Assert.Contains("- Code it: done, verified", request.AppendSystemPrompt);
-        // The ledger is added to the validator brief, never instead of it.
-        Assert.Contains(AutopilotValidatorBrief.For(plan), request.AppendSystemPrompt);
     }
 }

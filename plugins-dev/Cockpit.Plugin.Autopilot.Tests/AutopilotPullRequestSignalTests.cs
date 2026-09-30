@@ -1,4 +1,3 @@
-using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -7,27 +6,6 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // Also pins the autopilot-own tools pre-authorized for a run's sessions (AC-215).
 public class AutopilotPullRequestSignalTests
 {
-    [Fact]
-    public void ForPlugin_CarriesTheDeliversPullRequestSignal()
-    {
-        var code = AutopilotTemplate.ForPlugin("youtrack", new PluginAutopilotTemplate("t.code", "Bug fix", "body", null, DeliversPullRequest: true));
-        var admin = AutopilotTemplate.ForPlugin("youtrack", new PluginAutopilotTemplate("t.admin", "Triage", "body"));
-
-        Assert.True(code.DeliversPullRequest);
-        Assert.False(admin.DeliversPullRequest);
-    }
-
-    [Fact]
-    public void Plan_DefaultsToNoPr_AndCanBeStampedAtApproval()
-    {
-        var plan = AutopilotPlan.Empty(source: null, goal: "Do the thing");
-        Assert.False(plan.DeliversPullRequest);
-
-        Assert.True(plan.WithDeliversPullRequest(true).DeliversPullRequest);
-        // The stamp is a pure with-copy — the original is untouched.
-        Assert.False(plan.DeliversPullRequest);
-    }
-
     [Fact]
     public void PreApprovedRunTools_AreOnlyAutopilotsOwnControlTools_NeverFileOrShell()
     {

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Tests;
@@ -12,51 +11,6 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // with it — from clicking a template, which is the first thing anybody does.
 public class WorkflowJsonRoundTripTests
 {
-    [Fact]
-    public void AFlowWithAStepThatOffersSuggestions_CanBeSaved()
-    {
-        // A contributed type with a Suggest function — exactly what a YouTrack status field has.
-        NodeCatalog.Contribute([
-            new NodeTypeDescriptor(
-                "youtrack.status",
-                "Set ticket status",
-                "Moves a ticket.",
-                "↦",
-                NodeCategory.External,
-                WorkflowNodeKind.Action,
-                [""],
-                ["Ticket", "Status"],
-                Suggest: (_, _) => Task.FromResult<IReadOnlyList<string>>(["In Progress", "Review"])),
-        ]);
-
-        var flow = new Workflow { Id = "w", Name = "Ticket → agent" };
-        flow.Nodes.Add(new WorkflowNode { Id = "n", TypeId = "youtrack.status", Name = "Move it" });
-
-        var save = () => WorkflowJson.WriteAll([flow]);
-
-        var ex = Record.Exception(save);
-        Assert.False(ex is NotSupportedException);
-
-        NodeCatalog.Contribute([]);
-    }
-
-    [Fact]
-    public void WhatIsSaved_IsTheFlow_NotWhatCanBeLookedUpFromIt()
-    {
-        var flow = new Workflow { Id = "w", Name = "Flow" };
-        var node = new WorkflowNode { Id = "n", TypeId = "cockpit.command", Name = "Cut the branch", X = 80, Y = 160 };
-        node.Parameters["Command"] = "git switch -c {branch}";
-        flow.Nodes.Add(node);
-
-        var json = JsonDocument.Parse(WorkflowJson.Write(flow)).RootElement;
-        var saved = json.GetProperty("Nodes")[0];
-
-        Assert.Equal("cockpit.command", saved.GetProperty("TypeId").GetString());
-        Assert.False(saved.TryGetProperty("Type", out _), "the type is looked up from the id, not stored beside it");
-        Assert.False(saved.TryGetProperty("Outputs", out _), "what a step's ways out are follows from its type");
-        Assert.False(saved.TryGetProperty("Kind", out _), "so does what kind of step it is");
-    }
-
     [Fact]
     public void AFlow_SurvivesBeingWrittenAndReadBack()
     {

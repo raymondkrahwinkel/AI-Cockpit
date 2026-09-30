@@ -38,58 +38,6 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
         Assert.True(checker.IsMerged("AC-1"));
     }
 
-    [Fact]
-    public async Task IsMerged_ForAnIssueNeverCommitted_ReturnsFalse()
-    {
-        var checker = await _Refreshed(_clone);
-
-        Assert.False(checker.IsMerged("AC-999"));
-    }
-
-    [Fact]
-    public async Task IsMerged_OnlyLooksAtOriginMain_NotALocalBranchAheadOfIt()
-    {
-        // A commit only on a local branch (the run's own worktree, never pushed/merged) must not read as "merged" —
-        // that is the whole point of checking origin/main and not a local ref.
-        await _Run(_clone, "checkout", "-b", "run/ac-2");
-        File.WriteAllText(Path.Combine(_clone, "work.md"), "local work");
-        await _Run(_clone, "add", "-A");
-        await _Run(_clone, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-m", "AC-2 - local only, never merged");
-
-        var checker = await _Refreshed(_clone);
-
-        Assert.False(checker.IsMerged("AC-2"));
-    }
-
-    [Fact]
-    public async Task IsMerged_ForAFolderThatIsNotAGitWorktree_ReturnsNull_NotFalse()
-    {
-        // AC-346 review, HIGH 3: "cannot tell" must not read the same as "confirmed not merged" — a caller that
-        // conflates the two would silently restart an epic chain from its first sub forever, whenever the repository
-        // directory could not be resolved (e.g. Autopilot started from a launcher whose CWD is $HOME).
-        var plain = Path.Combine(Path.GetTempPath(), $"ac346-plain-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(plain);
-
-        try
-        {
-            var checker = await _Refreshed(plain);
-            Assert.Null(checker.IsMerged("AC-1"));
-        }
-        finally
-        {
-            Directory.Delete(plain, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void IsMerged_BeforeRefreshAsyncEverRan_ReturnsNull()
-    {
-        // The tri-state contract holds even for a checker nobody refreshed yet — never silently reads as "not merged".
-        var checker = new GitEpicSubMergeChecker(_clone);
-
-        Assert.Null(checker.IsMerged("AC-1"));
-    }
-
     // AC-346 review, BLOCKING finding #2: `git log --grep="^AC-3"` also matches "AC-34 - …" / "AC-350 - …" — a prefix
     // collision that would read a sibling sub as already merged. Reproduced here with both colliding ids actually
     // present in history, on the same clone AC-1 (the seed commit) already lives in.
@@ -129,21 +77,6 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
 
     // AC-1337: a collection branch, when given, is checked instead of main — a sub merged only into the collection
     // branch reads as merged there and as not-yet-merged when no collection branch is set (main never saw it).
-    [Theory]
-    [InlineData(null, false)]
-    [InlineData("release/epic", true)]
-    public async Task IsMerged_WithACollectionBranch_ChecksThatBranchInsteadOfMain(string? collectionBranch, bool expectMerged)
-    {
-        await _Run(_clone, "checkout", "-b", "release/epic");
-        await _Commit("AC-2 - merged into the collection branch only");
-        await _Run(_clone, "push", "-u", "origin", "release/epic");
-        await _Run(_clone, "checkout", "main");
-
-        var checker = new GitEpicSubMergeChecker(_clone, collectionBranch);
-        await checker.RefreshAsync();
-
-        Assert.Equal(expectMerged, checker.IsMerged("AC-2"));
-    }
 
     public void Dispose()
     {

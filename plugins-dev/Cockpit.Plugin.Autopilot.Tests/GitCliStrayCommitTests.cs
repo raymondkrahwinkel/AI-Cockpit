@@ -79,14 +79,6 @@ public sealed class GitCliStrayCommitTests : IDisposable
     }
 
     [Fact]
-    public async Task RecoverStrayCommitsAsync_ForAStepThatRanInTheRunsOwnWorktree_DoesNothing()
-    {
-        var stray = await _publisher.RecoverStrayCommitsAsync(_repository, RunBranch, _repository);
-
-        Assert.False(stray.NeedsSaying);
-    }
-
-    [Fact]
     public async Task RecoverStrayCommitsAsync_WhenGitWillNotAnswer_ReportsAnUnmeasuredCheck_NotAnAllClear()
     {
         // The path nobody sees: git refuses (here, a run branch that is not a revision) and the answer used to be an

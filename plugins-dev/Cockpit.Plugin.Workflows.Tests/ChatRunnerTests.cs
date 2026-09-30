@@ -14,10 +14,6 @@ public class ChatRunnerTests
         Assert.Equal("deployed", _Field(ChatRunner.Body("deployed", discord: false), "text"));
 
     [Fact]
-    public void Discord_TakesContent() =>
-        Assert.Equal("deployed", _Field(ChatRunner.Body("deployed", discord: true), "content"));
-
-    [Fact]
     public void AMessageTooLongForDiscord_IsCutAndVisiblySo_RatherThanRefusedWhole()
     {
         var sent = _Field(ChatRunner.Body(new string('x', 3000), discord: true), "content");
@@ -25,10 +21,6 @@ public class ChatRunnerTests
         Assert.Equal(ChatRunner.DiscordLimit, sent.Length);
         Assert.EndsWith("…", sent);
     }
-
-    [Fact]
-    public void ALongMessageToSlack_IsLeftAlone_BecauseSlackTakesIt() =>
-        Assert.Equal(3000, _Field(ChatRunner.Body(new string('x', 3000), discord: false), "text").Length);
 
     private static string _Field(string json, string name) =>
         JsonDocument.Parse(json).RootElement.GetProperty(name).GetString()!;

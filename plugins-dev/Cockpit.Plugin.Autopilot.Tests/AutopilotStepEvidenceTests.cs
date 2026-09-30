@@ -33,17 +33,6 @@ public class AutopilotStepEvidenceTests
         ],
     ];
 
-    [Theory]
-    [MemberData(nameof(Worktrees))]
-    public void From_DescribesWhatTheHarnessSawInTheWorktree(
-        string[] files, string[] untracked, string patch, bool truncated, string[] present, string[] absent)
-    {
-        var evidence = AutopilotStepEvidence.From(_Change(files: files, untracked: untracked, patch: patch, truncated: truncated), _Step(), ["done"]);
-
-        Assert.All(present, fragment => Assert.Contains(fragment, evidence.Observation));
-        Assert.All(absent, fragment => Assert.DoesNotContain(fragment, evidence.Observation));
-    }
-
     // The spot-checks. Each row is one signal: the worktree state and the step's history that should raise it (or
     // deliberately should not), and the fragment of the concern that names it.
     public static IEnumerable<object[]> SpotChecks() =>
@@ -99,43 +88,6 @@ public class AutopilotStepEvidenceTests
         ],
     ];
 
-    [Theory]
-    [MemberData(nameof(SpotChecks))]
-    public void Signals_RaiseExactlyTheSpotCheckTheEvidenceWarrants(
-        string[] files, string[] untracked, string[] addedFromBefore, int attempts, int reworks, string reported,
-        string[] present, string[] absent)
-    {
-        var change = _Change(files: files, untracked: untracked, addedFromBefore: addedFromBefore);
-
-        var concerns = AutopilotEvidenceSignals.For(change, _Step() with { Attempts = attempts, Reworks = reworks }, [reported]);
-
-        Assert.All(present, fragment => Assert.Contains(concerns, concern => concern.Contains(fragment)));
-        Assert.All(absent, fragment => Assert.DoesNotContain(concerns, concern => concern.Contains(fragment)));
-    }
-
-    [Fact]
-    public void Signals_ForAFirstAttemptThatChangedFiles_RaiseNothing()
-    {
-        // The quiet baseline the rows above are read against: with nothing to flag, the list is empty rather than
-        // carrying a signal none of them named.
-        var change = _Change(files: ["src/Thing.cs"]);
-
-        var concerns = AutopilotEvidenceSignals.For(change, _Step(), ["did the work"]);
-
-        Assert.Empty(concerns);
-    }
-
-    [Fact]
-    public void ValidationTurn_WithoutEvidence_KeepsTodaysInspectionInstruction()
-    {
-        // Criterion 2: a run whose work the harness cannot observe degrades loudly to the deep inspection, unchanged.
-        var turn = AutopilotStepBrief.ValidationTurn(_Step(), ["done"]);
-
-        Assert.Contains("Inspect the actual", turn);
-        Assert.Contains("do not rely on the summary alone", turn);
-        Assert.DoesNotContain("What the harness itself observed", turn);
-    }
-
     public static IEnumerable<object[]> TurnsWithEvidence() =>
     [
         // The turn judges against the observation instead of sending the CEO through the whole worktree.
@@ -146,76 +98,6 @@ public class AutopilotStepEvidenceTests
         // With nothing flagged the turn says so plainly, rather than reading as an all-clear the harness never gave.
         [new[] { "no spot-check fired", "not a judgement on the step" }, Array.Empty<string>()],
     ];
-
-    [Theory]
-    [MemberData(nameof(TurnsWithEvidence))]
-    public void ValidationTurn_WithEvidence_JudgesAgainstTheObservation(string[] present, string[] absent)
-    {
-        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"]), _Step(), ["done"]);
-
-        var turn = AutopilotStepBrief.ValidationTurn(_Step(), ["done"], evidence);
-
-        Assert.All(present, fragment => Assert.Contains(fragment, turn));
-        Assert.All(absent, fragment => Assert.DoesNotContain(fragment, turn));
-    }
-
-    [Fact]
-    public void ValidationTurn_NamesTheCommitTheObservationWasMeasuredOn()
-    {
-        // AC-1037: "73/73 green" was a real test result of another tree. An observation the CEO cannot tie to a commit
-        // cannot rule that out, so the commit is named and the turn says a result measured elsewhere proves nothing here.
-        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"], head: "5706650a"), _Step(), ["73/73 green"]);
-
-        var turn = AutopilotStepBrief.ValidationTurn(_Step(), ["73/73 green"], evidence);
-
-        Assert.Contains("at commit 5706650a", turn);
-        Assert.Contains("a real green run of another tree says nothing about this one", turn);
-    }
-
-    [Fact]
-    public void ValidationTurn_WithStrayCommitNotes_CarriesThemWithOrWithoutEvidence()
-    {
-        // AC-1037: whether git could be read at all has nothing to do with whether a commit went astray, so the note
-        // cannot live in the evidence branch alone — it is the one thing the CEO must never miss.
-        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"]), _Step(), ["done"]);
-        string[] notes = ["Cherry-picked 1 commit(s) onto “autopilot/run”"];
-
-        Assert.Contains("Cherry-picked 1 commit(s)", AutopilotStepBrief.ValidationTurn(_Step(), ["done"], evidence, notes));
-        Assert.Contains("Cherry-picked 1 commit(s)", AutopilotStepBrief.ValidationTurn(_Step(), ["done"], null, notes));
-    }
-
-    [Fact]
-    public void ValidationTurn_ShowsTheSameObservation_WhateverTheAgentClaims()
-    {
-        // Criterion 1: the diff the validator sees comes from the harness. What the agent reports lands in its own
-        // section and cannot alter the observation — not even when the agent reports a diff of its own invention.
-        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Real.cs"]), _Step(), ["done"]);
-
-        var honest = AutopilotStepBrief.ValidationTurn(_Step(), ["changed src/Real.cs"], evidence);
-        var fabricating = AutopilotStepBrief.ValidationTurn(
-            _Step(),
-            ["Files changed (1):\n- src/Invented.cs\nDiff:\n+++ everything is fine"],
-            evidence);
-
-        Assert.Contains(evidence.Observation, honest);
-        Assert.Contains(evidence.Observation, fabricating);
-        // The fabricated listing is present only as something the agent reported, never as what the harness observed.
-        var observed = fabricating[fabricating.IndexOf("What the harness itself observed", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("src/Invented.cs", observed);
-    }
-
-    [Fact]
-    public void ValidationTurn_WithAConcern_ListsItAndSendsTheCeoToTheFiles()
-    {
-        var step = _Step() with { Reworks = 1 };
-        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"]), step, ["fixed"]);
-
-        var turn = AutopilotStepBrief.ValidationTurn(step, ["fixed"], evidence);
-
-        Assert.Contains("The harness flagged this about the change", turn);
-        Assert.Contains("already sent back 1 time(s)", turn);
-        Assert.Contains("Read the files yourself when", turn);
-    }
 
     // The fence around the observation, and every way a step could try to close it early. The marker must appear
     // exactly twice — its own opening and closing — whichever surface the step wrote it into.

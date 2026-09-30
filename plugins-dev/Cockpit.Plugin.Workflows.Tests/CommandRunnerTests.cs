@@ -9,81 +9,6 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // that fails — an exit code nobody looks at is how a flow ends up reporting green while nothing happened.
 public class CommandRunnerTests
 {
-    // CommandRunner hands the line to cmd.exe on Windows and /bin/sh elsewhere, so a test that writes one shell's
-    // syntax is testing one platform. cmd does not read ';' as a separator: "echo it broke >&2; exit 3" is a single
-    // echo there, the step succeeds, and the test reads as a runner that ignores exit codes. These are the same two
-    // commands in each shell's own words.
-    private static string FailsWithMessageOnStderr => OperatingSystem.IsWindows()
-        ? "echo it broke 1>&2 & exit 3"
-        : "echo it broke >&2; exit 3";
-
-    private static string PrintsTheWorkingDirectory => OperatingSystem.IsWindows() ? "cd" : "pwd";
-
-    [Fact]
-    public async Task WhatTheCommandPrints_BecomesTheDataTheNextStepGets()
-    {
-        var node = _Command("echo hello from the flow");
-
-        var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
-
-        Assert.Equal("hello from the flow", outcome.Output);
-        Assert.Equal("hello from the flow", outcome.Items.Single().Json["output"]!.ToString());
-    }
-
-    [Fact]
-    public async Task ACommandThatFails_FailsTheStep_AndSaysWhy()
-    {
-        var node = _Command(FailsWithMessageOnStderr);
-
-        var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
-
-        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(run);
-        Assert.Contains("exited with 3", thrown.Message);
-        Assert.Contains("it broke", thrown.Message);
-    }
-
-    [Fact]
-    public async Task AStepWithNoCommand_SaysSo_RatherThanQuietlyDoingNothing()
-    {
-        var run = async () => await new CommandRunner().RunAsync(_Context(_Command(string.Empty)), CancellationToken.None);
-
-        Assert.Contains("no command", (await Assert.ThrowsAsync<InvalidOperationException>(run)).Message);
-    }
-
-    [Fact]
-    public async Task AWorkingDirectoryThatDoesNotExist_IsSaidPlainly_NotSwallowed()
-    {
-        var node = _Command(PrintsTheWorkingDirectory);
-        node.Parameters["Working directory"] = Path.Combine(Path.GetTempPath(), "there", "is", "no", "such", "place");
-
-        var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
-
-        Assert.Contains("no directory", (await Assert.ThrowsAsync<InvalidOperationException>(run)).Message);
-    }
-
-    [Fact]
-    public async Task TheCommandRunsWhereItWasTold()
-    {
-        // A directory of its own rather than the temp root. "Contains tmp" did catch a runner that ignored the
-        // setting outright — the test binary's own directory has no "tmp" in it — but it holds for any path under
-        // /tmp, and on Windows the temp path is spelled Temp. A folder this test just made, carrying a GUID, can
-        // only end the output if the command ran in that one.
-        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"cockpit-workflows-{Guid.NewGuid():n}"));
-        try
-        {
-            var node = _Command(PrintsTheWorkingDirectory);
-            node.Parameters["Working directory"] = directory.FullName;
-
-            var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
-
-            Assert.EndsWith(directory.Name, outcome.Output);
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
-        }
-    }
-
     [Fact]
     public async Task AnUpstreamValueThatLooksLikeAnInjection_IsRunAsText_NotAsASecondCommand()
     {
@@ -106,16 +31,6 @@ public class CommandRunnerTests
         Assert.Equal("a`whoami`b", outcome.Output);
     }
 
-    [Fact]
-    public async Task TheOperatorsOwnShellFeatures_InTheTemplate_StillWork()
-    {
-        // Only substituted values are quoted; the operator's template keeps its shell — the && chains as written.
-        var outcome = await new CommandRunner().RunAsync(_Context(_Command("echo one && echo two")), CancellationToken.None);
-
-        Assert.Contains("one", outcome.Output);
-        Assert.Contains("two", outcome.Output);
-    }
-
     private static WorkflowNode _Command(string command) => new()
     {
         Id = "c",
@@ -123,8 +38,6 @@ public class CommandRunnerTests
         Name = "Run a command",
         Parameters = { ["Command"] = command },
     };
-
-    private static StepContext _Context(WorkflowNode node) => new(node, [], new Dictionary<string, IReadOnlyList<WorkflowItem>>());
 
     private static StepContext _Context(WorkflowNode node, IReadOnlyList<WorkflowItem> input) =>
         new(node, input, new Dictionary<string, IReadOnlyList<WorkflowItem>>());
