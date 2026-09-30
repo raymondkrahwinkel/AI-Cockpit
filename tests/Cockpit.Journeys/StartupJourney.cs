@@ -1,0 +1,77 @@
+using Avalonia.Headless;
+using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
+using Cockpit.App.ViewTests;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Sessions;
+
+namespace Cockpit.Journeys;
+
+// J1, the first thing every day: the cockpit starts with every bundled plugin, refuses one built for another contract
+// and shows its main window. Program's own desktop composition, so a registration taken out there turns this red.
+[Collection(JourneyCollection.Alone)]
+public sealed class StartupJourney
+{
+    private const string RefusedPlugin = "contract-two";
+
+    private static readonly string[] Bundled =
+    [
+        "autopilot", "claude-provider", "clock", "example-companion-tool", "example-workspace", "fan-out", "git-status",
+        "transcript-search", "usage-trend",
+    ];
+
+    [Fact]
+    public async Task TheCockpitStarts_WithEveryBundledPlugin_RefusingOneBuiltForAnotherContract()
+    {
+        await using var cockpit = JourneyHost.Desktop(_InstallAPluginForContractTwo);
+        var services = cockpit.Services;
+
+        cockpit.Backend.Start();
+        cockpit.Backend.InitializePlugins();
+        cockpit.Backend.StartPlanners();
+        var rendered = HeadlessAvalonia.Run(() =>
+        {
+            var window = new MainWindow { DataContext = services.GetRequiredService<CockpitViewModel>() };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            using var frame = window.CaptureRenderedFrame();
+            window.Close();
+            return frame?.PixelSize;
+        });
+
+        // Why a plugin is missing first, by name: a failure or an approval it waits for, before the list itself.
+        var diagnostics = services.GetRequiredService<PluginDiagnostics>();
+        Assert.Equal(
+            [$"{RefusedPlugin} (load): Built against a different Cockpit contract version than this app — update the app or reinstall the plugin build made for it."],
+            diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
+        Assert.Empty(diagnostics.PendingApprovals.Select(pending => pending.ToString()));
+        Assert.Equal(Bundled, services.GetRequiredService<PluginManager>().Loaded.Select(plugin => plugin.FolderId).Order());
+        Assert.DoesNotContain("Could not start cockpit MCP endpoint", cockpit.LogText, StringComparison.Ordinal);
+
+        // What the plugins registered landed, and the desktop's own seams replaced the backend's defaults.
+        Assert.NotNull(services.GetRequiredService<IPluginProviderRegistry>().Resolve("claude"));
+        Assert.Contains("git.branch", services.GetRequiredService<IWorkflowStepRegistry>().Steps.Select(step => step.TypeId));
+        Assert.Contains("cockpit-autopilot-merge-gate", services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Select(server => server.Name));
+        Assert.All(
+            [typeof(IUiHitchProbe), typeof(IDesktopDisplays), typeof(IExternalLinkOpener)],
+            seam => Assert.Equal(typeof(Program).Assembly, services.GetRequiredService(seam).GetType().Assembly));
+        Assert.NotNull(rendered);
+    }
+
+    // Installed as the store would leave it; its contract is refused before its assembly is ever read.
+    private static void _InstallAPluginForContractTwo(string stateRoot)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(stateRoot, "plugins", RefusedPlugin)).FullName;
+        File.WriteAllText(Path.Combine(folder, "plugin.json"), $$"""
+            { "id": "{{RefusedPlugin}}", "name": "Contract Two", "version": "1.0.0", "entryAssembly": "ContractTwo.dll", "abstractionsVersion": 2 }
+            """);
+        File.WriteAllBytes(Path.Combine(folder, "ContractTwo.dll"), []);
+    }
+}

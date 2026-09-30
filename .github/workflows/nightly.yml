@@ -101,6 +101,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/View --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
+      - name: Journeys
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Journeys --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
+
       - name: Plugin tests
         if: ${{ !cancelled() }}
         run: dotnet test PluginTests.slnx --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Plugins --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
@@ -120,6 +124,7 @@ jobs:
           # Every test project on disk rather than a list to keep in step by hand: a project that exists but is
           # wired into no solution runs nowhere, and that silent gap is what this set is here to catch.
           expected_names = {path.stem for path in pathlib.Path("tests").glob("Cockpit.*Tests/*.csproj")}
+          expected_names.update(path.stem for path in pathlib.Path("tests").glob("Cockpit.Journeys/*.csproj"))
           expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
           expected = {name.casefold(): name for name in expected_names}
           production = {

@@ -95,6 +95,8 @@
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.Infrastructure.Tests" />
     <InternalsVisibleTo Include="Cockpit.Backend.Tests" />
+    <!-- AC-1422: the node-connect journey reaches the door the way the backend tests it did before it moved. -->
+    <InternalsVisibleTo Include="Cockpit.Journeys" />
     <!-- The one place a store and a view converter can be put end to end: the converter needs a real Avalonia
          platform to decode with, which only the view tests have. -->
     <InternalsVisibleTo Include="Cockpit.App.ViewTests" />

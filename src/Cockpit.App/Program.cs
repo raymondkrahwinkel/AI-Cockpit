@@ -93,7 +93,7 @@ sealed class Program
         // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
         var backend = CockpitBackend.Build(
             loggerFactory,
-            services => _AddDesktop(services, loggerFactory),
+            services => AddDesktop(services, loggerFactory),
             args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load);
         Services = backend.Services;
 
@@ -159,7 +159,8 @@ sealed class Program
 
     // The desktop's own registrations on top of the backend's: its scanned services, which replace the backend's
     // no-frontend defaults. The plugins' own registrations follow in the backend's plugin phase 1 (#14).
-    private static void _AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory)
+    // AC-1422: internal so the journeys build this composition itself rather than a copy of it that could drift.
+    internal static void AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory)
     {
         services.AddServices(typeof(Program).Assembly);
 
