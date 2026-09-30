@@ -26,7 +26,7 @@ public class RealWorkflowsTests
         Assert.Equal(
             [
                 "changes", "build", "journeys", "plugins", "plugin-versions",
-                "xmldoc-scope", "comment-length", "duplicate-test-bodies", "descendant-selector-scope",
+                "xmldoc-scope", "comment-length", "test-count", "duplicate-test-bodies", "descendant-selector-scope",
                 "store-index-upsert",
             ],
             verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));

@@ -269,6 +269,20 @@ jobs:
       - name: Guard's own tests
         run: python3 scripts/check-comment-length.test.py
 
+  # AC-1423/AC-1424: the test suite is being cut down to journeys plus layer 2. A count that may only go down
+  # is what keeps it from growing back while that happens. Baseline: scripts/test-count-baseline.txt.
+  test-count:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test methods per project stay on the baseline
+        run: python3 scripts/check-test-count.py
+
+      - name: Guard's own tests
+        run: python3 scripts/check-test-count.test.py
+
   # AC-1244: five tests were copied to cover a second case, renamed, and never given the arrange the new name
   # promises. All five were found by looking for byte-equal test bodies within one file -- so that is the check.
   duplicate-test-bodies:

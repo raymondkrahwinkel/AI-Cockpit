@@ -1,0 +1,39 @@
+# Test methods per test project, pinned by scripts/check-test-count.py.
+# The count only goes down: lower the row in the same PR that removes tests.
+# Update with: scripts/check-test-count.py --update-baseline (keeps the allow-growth rules)
+# format: <project>	<count>   or   allow-growth	<project>
+allow-growth	tests/Cockpit.Journeys
+plugins-dev/Cockpit.Plugin.Autopilot.Tests	334
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	221
+plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	155
+plugins-dev/Cockpit.Plugin.Depot.Tests	339
+plugins-dev/Cockpit.Plugin.Diagram.Tests	365
+plugins-dev/Cockpit.Plugin.Discord.Tests	47
+plugins-dev/Cockpit.Plugin.Docker.Tests	38
+plugins-dev/Cockpit.Plugin.FanOut.Tests	23
+plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	16
+plugins-dev/Cockpit.Plugin.GitHubActions.Tests	11
+plugins-dev/Cockpit.Plugin.GitHubIssues.Tests	122
+plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	11
+plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	71
+plugins-dev/Cockpit.Plugin.GitStatus.Tests	23
+plugins-dev/Cockpit.Plugin.GrokProvider.Tests	11
+plugins-dev/Cockpit.Plugin.KimiProvider.Tests	104
+plugins-dev/Cockpit.Plugin.Kind.Tests	44
+plugins-dev/Cockpit.Plugin.Kubernetes.Tests	166
+plugins-dev/Cockpit.Plugin.LocalCi.Tests	154
+plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	11
+plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	48
+plugins-dev/Cockpit.Plugin.Proxmox.Tests	15
+plugins-dev/Cockpit.Plugin.SessionReview.Tests	47
+plugins-dev/Cockpit.Plugin.Slack.Tests	55
+plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	23
+plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
+plugins-dev/Cockpit.Plugin.Workflows.Tests	147
+plugins-dev/Cockpit.Plugin.YouTrack.Tests	189
+tests/Cockpit.App.ViewTests	1470
+tests/Cockpit.Backend.Tests	261
+tests/Cockpit.Core.Tests	4075
+tests/Cockpit.Infrastructure.Tests	1411
+tests/Cockpit.Journeys	8
+tests/Cockpit.PluginEndpointAnnotations.Tests	2
