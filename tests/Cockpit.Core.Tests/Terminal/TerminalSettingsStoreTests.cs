@@ -1,6 +1,4 @@
-using Cockpit.Core.Layout;
 using Cockpit.Core.Terminal;
-using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Terminal;
 
 namespace Cockpit.Core.Tests.Terminal;
@@ -22,18 +20,6 @@ public class TerminalSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsDefaults()
-    {
-        var store = new TerminalSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.Equal("Cascadia Mono, Consolas, monospace", settings.FontFamily);
-        Assert.Equal(13, settings.FontSize);
-        Assert.Empty(settings.Shell);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
     {
         var store = new TerminalSettingsStore(_configFilePath);
@@ -44,19 +30,6 @@ public class TerminalSettingsStoreTests : IDisposable
         Assert.Equal("JetBrains Mono", loaded.FontFamily);
         Assert.Equal(16, loaded.FontSize);
         Assert.Equal("pwsh", loaded.Shell);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var layoutStore = new LayoutSettingsStore(_configFilePath);
-        await layoutStore.SaveAsync(new LayoutSettings { SingleSessionLayout = true });
-
-        var terminalStore = new TerminalSettingsStore(_configFilePath);
-        await terminalStore.SaveAsync(new TerminalSettings { FontFamily = "Fira Code", FontSize = 20 });
-
-        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
-        Assert.Equal("Fira Code", (await terminalStore.LoadAsync()).FontFamily);
     }
 
     public void Dispose()

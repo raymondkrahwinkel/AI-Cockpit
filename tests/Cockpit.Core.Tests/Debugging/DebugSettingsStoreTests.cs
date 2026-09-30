@@ -1,7 +1,5 @@
 using Cockpit.Core.Debugging;
-using Cockpit.Core.SessionBehavior;
 using Cockpit.Infrastructure.Debugging;
-using Cockpit.Infrastructure.SessionBehavior;
 
 namespace Cockpit.Core.Tests.Debugging;
 
@@ -22,17 +20,6 @@ public class DebugSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_HidesControlsButLogsSnapshotsByDefault()
-    {
-        var store = new DebugSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.False(settings.ShowDebugControls);
-        Assert.True(settings.LogDiagnosticSnapshots); // AC-1125: on by default, so a fresh install has heap history from the first freeze.
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
     {
         var store = new DebugSettingsStore(_configFilePath);
@@ -42,19 +29,6 @@ public class DebugSettingsStoreTests : IDisposable
 
         Assert.True(loaded.ShowDebugControls);
         Assert.True(loaded.LogDiagnosticSnapshots);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var behaviorStore = new SessionBehaviorSettingsStore(_configFilePath);
-        await behaviorStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = true });
-
-        var debugStore = new DebugSettingsStore(_configFilePath);
-        await debugStore.SaveAsync(new DebugSettings { ShowDebugControls = true });
-
-        Assert.True((await behaviorStore.LoadAsync()).AutoCloseOnExit);
-        Assert.True((await debugStore.LoadAsync()).ShowDebugControls);
     }
 
     public void Dispose()

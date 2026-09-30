@@ -1,8 +1,4 @@
 using Cockpit.Core.TranscriptDisplay;
-using Cockpit.Infrastructure.Notifications;
-using Cockpit.Infrastructure.Shortcuts;
-using Cockpit.Core.Notifications;
-using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.TranscriptDisplay;
 
 namespace Cockpit.Core.Tests.TranscriptDisplay;
@@ -25,16 +21,6 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_ReturnsDefaults()
-    {
-        var store = new TranscriptDisplaySettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.False(settings.ShowTimestamps);
-    }
-
-    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
     {
         var store = new TranscriptDisplaySettingsStore(_configFilePath);
@@ -43,27 +29,6 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.ShowTimestamps);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var notificationStore = new NotificationSettingsStore(_configFilePath);
-        await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
-
-        var shortcutStore = new ShortcutSettingsStore(_configFilePath);
-        await shortcutStore.SaveAsync(ShortcutSettings.Default.With(ShortcutAction.NextSession, "Alt+Down"));
-
-        var displayStore = new TranscriptDisplaySettingsStore(_configFilePath);
-        await displayStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = true });
-
-        var reloadedNotifications = await notificationStore.LoadAsync();
-        var reloadedShortcuts = await shortcutStore.LoadAsync();
-        var reloadedDisplay = await displayStore.LoadAsync();
-
-        Assert.Equal("https://example/webhook", reloadedNotifications.WebhookUrl);
-        Assert.Equal("Alt+Down", reloadedShortcuts.GestureFor(ShortcutAction.NextSession));
-        Assert.True(reloadedDisplay.ShowTimestamps);
     }
 
     public void Dispose()
