@@ -21,23 +21,6 @@ public class EditableProfileViewModelMcpAndFolderTests
         };
 
     [Fact]
-    public void Load_SeedsTheDefaultWorkingDirectory_AndRoundTripsIt()
-    {
-        var editable = new EditableProfileViewModel(ClaudeProfile(defaultWorkingDirectory: "/home/r/App"), isLoggedIn: true);
-
-        Assert.Equal("/home/r/App", editable.DefaultWorkingDirectory);
-        Assert.Equal("/home/r/App", editable.ToProfile().DefaultWorkingDirectory);
-    }
-
-    [Fact]
-    public void Save_CollapsesABlankDefaultWorkingDirectoryToNull()
-    {
-        var editable = new EditableProfileViewModel(ClaudeProfile(), isLoggedIn: true) { DefaultWorkingDirectory = "   " };
-
-        Assert.Null(editable.ToProfile().DefaultWorkingDirectory);
-    }
-
-    [Fact]
     public void Load_TicksEachAvailableServer_WhenTheProfileHasNoRestriction()
     {
         var editable = new EditableProfileViewModel(

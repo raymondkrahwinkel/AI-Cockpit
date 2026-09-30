@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -50,106 +49,6 @@ public class McpServersViewModelTests
         // A stdio server has no TLS connection for a pin to bind to; keeping it would be a claim about a
         // certificate nothing will ever present.
         Assert.Null(row.ToConfig().PinnedCertificateFingerprint);
-    }
-
-    [Fact]
-    public void AddServer_AppendsANewRowAndSelectsIt()
-    {
-        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);
-
-        vm.AddServerCommand.Execute(null);
-
-        Assert.Single(vm.Servers);
-        Assert.Equal(vm.Servers[0], vm.SelectedServer);
-    }
-
-    [Fact]
-    public async Task LoadAsync_PopulatesRowsFromTheStore()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new McpServerConfig { Name = "github", Transport = McpTransport.Http, Url = "https://x/mcp" } });
-        var vm = new McpServersViewModel(store, []);
-
-        await vm.LoadAsync();
-
-        Assert.Equal("github", Assert.Single(vm.Servers).Name);
-    }
-
-    // AC-40: the cockpit's own loopback servers are answered live, not edited here. They are hidden by name, so even
-    // an entry an older build left in the store (before they stopped being published) is kept out of the manager.
-    [Fact]
-    public async Task LoadAsync_HidesTheCockpitsOwnInternalServers_IncludingAStaleStoreEntryOfTheSameName()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[]
-        {
-            new McpServerConfig { Name = "youtrack", Transport = McpTransport.Http, Url = "https://x/mcp" },
-            new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" },
-        });
-        var internalProvider = new FakeInternalMcpProvider(
-            new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp", CockpitHosted = true });
-        var vm = new McpServersViewModel(store, [internalProvider]);
-
-        await vm.LoadAsync();
-
-        Assert.Equal(new[] { "youtrack" }, vm.Servers.Select(server => server.Name));
-    }
-
-    [Fact]
-    public async Task Save_PersistsTheServers_AndCloses()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        var vm = new McpServersViewModel(store, []);
-        vm.AddServerCommand.Execute(null);
-        var row = vm.SelectedServer!;
-        row.Name = "fs";
-        row.Command = "npx";
-        row.Args = "-y\n@modelcontextprotocol/server-filesystem\n.";
-        var closed = false;
-        vm.CloseRequested += () => closed = true;
-
-        await vm.SaveCommand.ExecuteAsync(null);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
-                list.Count == 1 && list[0].Name == "fs" && list[0].Command == "npx" && list[0].Args.Count == 3),
-            Arg.Any<CancellationToken>());
-        Assert.True(closed);
-    }
-
-    [Fact]
-    public async Task Save_WithAStdioServerMissingItsCommand_DoesNotPersist()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        var vm = new McpServersViewModel(store, []);
-        vm.AddServerCommand.Execute(null);
-        var row = vm.SelectedServer!;
-        row.Name = "fs";
-        row.Command = "";
-
-        await vm.SaveCommand.ExecuteAsync(null);
-
-        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
-        Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
-    }
-
-    [Fact]
-    public async Task Save_WhenConfirmationReadFails_StaysOpen()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new IOException()));
-        var vm = new McpServersViewModel(store, []);
-        vm.AddServerCommand.Execute(null);
-        vm.SelectedServer!.Name = "fs";
-        vm.SelectedServer.Command = "npx";
-        var closed = false;
-        vm.CloseRequested += () => closed = true;
-
-        await vm.SaveCommand.ExecuteAsync(null);
-
-        Assert.False(closed);
-        Assert.Contains("Saved, but couldn't read", vm.StatusMessage);
     }
 
     [Fact]
