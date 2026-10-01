@@ -7,14 +7,17 @@ using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Journeys;
 
-// The journeys' one fake: the provider, faked below the launcher where a real one spawns a CLI. Answers every
-// prompt with "echo: <prompt>" and one completed turn, a failed one for `FailingPrompt`. `Answered` completes when the
+// The journeys' one fake: the provider, faked below the launcher. Answers a prompt with "echo: <prompt>" and a completed
+// turn; a failed one for `FailingPrompt`, and only once interrupted for `WaitingPrompt`. `Answered` completes when the
 // runtime comes back for the next event, which it only does once it has handed the turn's end on.
 public sealed class EchoDriver : ISessionDriver
 {
     public const string FailingPrompt = "fail";
 
+    public const string WaitingPrompt = "wait";
+
     private readonly Channel<string> _prompts = Channel.CreateUnbounded<string>();
+    private readonly Channel<bool> _interrupts = Channel.CreateUnbounded<bool>();
     private readonly TaskCompletionSource _answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task Answered => _answered.Task;
@@ -56,7 +59,7 @@ public sealed class EchoDriver : ISessionDriver
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task InterruptAsync(CancellationToken cancellationToken = default) => _interrupts.Writer.WriteAsync(true, cancellationToken).AsTask();
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -72,6 +75,14 @@ public sealed class EchoDriver : ISessionDriver
     {
         await foreach (var prompt in _prompts.Reader.ReadAllAsync(cancellationToken))
         {
+            // The turn a Stop breaks off ends as the CLI ends it, as an error the pane must not draw as a failure.
+            if (prompt == WaitingPrompt)
+            {
+                await _interrupts.Reader.ReadAsync(cancellationToken);
+                yield return new TurnCompleted { SessionId = SessionId, Subtype = "error_during_execution", Result = string.Empty, IsError = true };
+                continue;
+            }
+
             var fails = prompt == FailingPrompt;
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {prompt}" };
             yield return new TurnCompleted
