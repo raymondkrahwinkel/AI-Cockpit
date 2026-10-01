@@ -134,7 +134,7 @@ public class SessionHeaderUsagePillItemsTests
             UsagePillVisibleFields = [UsagePillField.SessionUsage],
         };
 
-        // The usage feed sets the summary before the tooltip (SessionViewModel._AccumulateUsage order); the pill's
+        // The usage feed sets the summary before the tooltip (SessionViewModel._OnLiveStateChanged order); the pill's
         // hover must reflect the tooltip's later assignment, not lag a turn behind.
         vm.UsageTooltip = "Input 900 · Output 100 · 1 turn";
 

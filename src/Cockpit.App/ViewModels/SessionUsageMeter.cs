@@ -1,58 +1,35 @@
 using System.Globalization;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// The two halves of a `TurnCompleted` result are counted differently, because the CLI reports them differently: `usage`
-// covers only the turn that just finished, so it sums, while `total_cost_usd` is what the session has cost so far, so
-// it replaces the previous figure (AC-564).
+// The meter over a session's running totals: an SDK pane takes them from its host's fold (AC-1437), a TTY pane sums
+// its own readings. How the two halves of a result count is `SessionUsageTotals.Add`'s (AC-564).
 internal sealed class SessionUsageMeter
 {
-    public int InputTokens { get; private set; }
-    public int OutputTokens { get; private set; }
-    public int CacheReadInputTokens { get; private set; }
-    public int CacheCreationInputTokens { get; private set; }
+    public SessionUsageTotals Totals { get; set; } = SessionUsageTotals.None;
+
+    public int InputTokens => Totals.InputTokens;
+    public int OutputTokens => Totals.OutputTokens;
+    public int CacheReadInputTokens => Totals.CacheReadInputTokens;
+    public int CacheCreationInputTokens => Totals.CacheCreationInputTokens;
 
     // The newest session-so-far cost the provider reported, which is the session's cost.
-    public double TotalCostUsd { get; private set; }
+    public double TotalCostUsd => Totals.TotalCostUsd;
 
     // Completed turns counted into the meter (a turn is counted even when its result carried no usage).
-    public int Turns { get; private set; }
+    public int Turns => Totals.Turns;
 
-    public int TotalTokens => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
+    public int TotalTokens => Totals.TotalTokens;
 
     // True once anything worth showing has accrued, so a pure-error session with no usage keeps the meter hidden.
-    public bool HasData => TotalTokens > 0 || TotalCostUsd > 0;
+    public bool HasData => Totals.HasData;
 
-    // Fold one completed turn's reported usage and cost into the running totals. Nulls (an error result with no usage) contribute nothing but still count as a turn.
-    public void Add(TokenUsage? usage, double? costUsd)
-    {
-        if (usage is not null)
-        {
-            InputTokens += usage.InputTokens;
-            OutputTokens += usage.OutputTokens;
-            CacheReadInputTokens += usage.CacheReadInputTokens;
-            CacheCreationInputTokens += usage.CacheCreationInputTokens;
-        }
-
-        if (costUsd is { } cost)
-        {
-            TotalCostUsd = cost;
-        }
-
-        Turns++;
-    }
+    public void Add(TokenUsage? usage, double? costUsd) => Totals = Totals.Add(usage, costUsd);
 
     // Back to zero for a conversation that starts over in the same pane (AC-564's context clear).
-    public void Reset()
-    {
-        InputTokens = 0;
-        OutputTokens = 0;
-        CacheReadInputTokens = 0;
-        CacheCreationInputTokens = 0;
-        TotalCostUsd = 0;
-        Turns = 0;
-    }
+    public void Reset() => Totals = SessionUsageTotals.None;
 
     // Compact one-line meter, e.g. `45.2k tok · $0.0123` — the cost is dropped when the provider reports none (local models).
     public string Summary =>

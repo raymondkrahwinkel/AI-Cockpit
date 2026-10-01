@@ -599,6 +599,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a session on a cockpit running without a window (the server), or one started over the backend API, now
+  reports the same status a desktop pane shows — needs you, working in the background, failed or done — instead of
+  only busy or idle, along with its running tool calls, background tasks, token use and cost.
 - changed: plugins built for plugin contract 2 no longer load, and Plugins shows why ("Built for plugin contract version
   2, this cockpit provides 3"). Update them from Plugins; every plugin that ships with the cockpit is already
   rebuilt and needs this version or newer. For plugin authors: `Cockpit.Plugins.Abstractions` no longer references

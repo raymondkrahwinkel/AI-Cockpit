@@ -1,7 +1,6 @@
 ViewModels/AskUserQuestionViewModel.cs
 ViewModels/AssistantChatViewModel.cs
 ViewModels/AssistantProfileDialogViewModel.cs
-ViewModels/BackgroundTaskViewModel.cs
 ViewModels/CockpitViewModel.cs
 ViewModels/ConsentPromptViewModel.cs
 ViewModels/DelegatedTasksViewModel.cs
@@ -23,11 +22,9 @@ ViewModels/SessionEventCoalescer.cs
 ViewModels/SessionEventQueue.cs
 ViewModels/SessionPanelViewModel.cs
 ViewModels/SessionProviderCatalog.cs
-ViewModels/SessionUsageMeter.cs
 ViewModels/SessionViewModel.cs
 ViewModels/TranscriptEntryViewModel.cs
 Views/FilePreviewWindow.axaml.cs
 Views/Onboarding/AssistantStep.cs
 Views/Onboarding/ProviderStep.cs
-Views/SessionView.axaml.cs
 Views/TtyView.axaml.cs

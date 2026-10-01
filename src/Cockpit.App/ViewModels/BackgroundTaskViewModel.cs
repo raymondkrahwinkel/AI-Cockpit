@@ -5,7 +5,7 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.App.ViewModels;
 
 // `AgeText` is derived, not reported — the CLI's own `BackgroundTask` carries no start time, so `SessionViewModel`
-// stamps the moment it first saw this `TaskId` in a `BackgroundTasksChanged` snapshot and this row counts up from there
+// stamps the moment it first saw this `TaskId` in the session's background-task list and this row counts up from there
 // rather than from a real start time (AC-531).
 public sealed class BackgroundTaskViewModel : ObservableObject
 {
