@@ -12,6 +12,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
 using Velopack;
@@ -162,6 +163,7 @@ sealed class Program
     // AC-1422: internal so the journeys build this composition itself rather than a copy of it that could drift.
     internal static void AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory)
     {
+        services.AddDesktopInfrastructure();
         services.AddServices(typeof(Program).Assembly);
 
         // AC-1379: the scan registers the assistant's host over the plain presence; the desktop's hears a controller come

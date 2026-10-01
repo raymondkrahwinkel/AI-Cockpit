@@ -6,6 +6,8 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -23,7 +25,9 @@ using Cockpit.Core.Sessions.Tty;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Hotkeys;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
@@ -94,18 +98,19 @@ public sealed class CockpitBackend
         StaleSessionProcessSweep.Run(loggerFactory.CreateLogger(typeof(StaleSessionProcessSweep)));
     }
 
-    // Core, Infrastructure and the no-frontend defaults, then whatever `frontend` adds; the last registration wins,
-    // so a frontend's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
+    // Core and the no-frontend defaults, then Infrastructure and whatever `frontend` adds; the last registration wins,
+    // so a desktop's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
     // so a plugin's ConfigureServices registers on top of all of it (#14).
     public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null, PluginStartup plugins = PluginStartup.None)
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
-        services.AddCore().AddInfrastructure().AddServices(
+        services.AddCore();
+        _AddNoFrontendDefaults(services);
+        services.AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
-        _AddNoFrontendDefaults(services);
         frontend?.Invoke(services);
         if (plugins != PluginStartup.None)
         {
@@ -418,6 +423,8 @@ public sealed class CockpitBackend
         services.AddSingleton<IExternalLinkOpener, NoBrowserLinkOpener>();
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();
         services.AddSingleton<IDesktopDisplays, NoDesktopDisplays>();
+        services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
+        services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
     }
 }
 

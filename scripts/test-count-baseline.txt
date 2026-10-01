@@ -32,7 +32,7 @@ plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	28
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1469
-tests/Cockpit.Backend.Tests	63
+tests/Cockpit.Backend.Tests	64
 tests/Cockpit.Core.Tests	993
 tests/Cockpit.Infrastructure.Tests	643
 tests/Cockpit.Journeys	8
