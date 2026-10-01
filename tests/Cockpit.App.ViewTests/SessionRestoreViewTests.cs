@@ -391,7 +391,7 @@ public class SessionRestoreViewTests
         // underneath it resolves against an already-completed fake Task, so the whole chain runs synchronously
         // within this call.
         restored.StartFreshCommand.Execute(null);
-        await _UntilStartedAsync(restored);
+        await _SettleAsync(() => !restored.HasRestoreOffer);
 
         await driver.Received(1).StartAsync(
             WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
@@ -494,6 +494,7 @@ public class SessionRestoreViewTests
         var (_, restored, _) = await _RestoreOneKnownPaneAsync(worktrees);
 
         restored.StartFreshCommand.Execute(null);
+        await _SettleAsync(() => !restored.HasRestoreOffer);
 
         await worktrees.Received(1).ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>());
     }
@@ -504,6 +505,7 @@ public class SessionRestoreViewTests
         var (_, restored, driver) = await _RestoreOneKnownPaneAsync();
 
         restored.ResumeConversationCommand.Execute(null);
+        await _SettleAsync(() => !restored.HasRestoreOffer);
 
         await driver.Received(1).StartAsync(
             WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
@@ -609,7 +611,7 @@ public class SessionRestoreViewTests
         restored.CloseRequested += (_, _) => closed = true;
 
         restored.ResumeConversationCommand.Execute(null);
-        await _UntilStartedAsync(restored);
+        await _SettleAsync(() => !restored.HasRestoreOffer);
         Assert.False(restored.HasRestoreOffer, "the offer clears the moment the launch is configured, same as any other start");
 
         ((TtyViewModel)restored).OnProcessExited("No conversation found with session ID: 00000000-dead-beef-0000-000000000000");
@@ -631,7 +633,7 @@ public class SessionRestoreViewTests
         restored.CloseRequested += (_, _) => closed = true;
 
         restored.ResumeConversationCommand.Execute(null);
-        await _UntilStartedAsync(restored);
+        await _SettleAsync(() => !restored.HasRestoreOffer);
         ((TtyViewModel)restored).OnLaunchSucceeded();
 
         ((TtyViewModel)restored).OnProcessExited("claude exited normally");
@@ -743,7 +745,7 @@ public class SessionRestoreViewTests
         // Starts the one pane, leaving the other still only offering.
         var toStart = vm.Sessions.Single(s => s.PaneId == "started-pane");
         toStart.ResumeConversationCommand.Execute(null);
-        await _UntilStartedAsync(toStart);
+        await _SettleAsync(() => !toStart.HasRestoreOffer);
         Assert.False(toStart.HasRestoreOffer);
         Assert.True(vm.Sessions.Single(s => s.PaneId == "unstarted-pane").HasRestoreOffer);
 
@@ -784,16 +786,6 @@ public class SessionRestoreViewTests
     {
         await Task.CompletedTask;
         yield break;
-    }
-
-    // AC-1439: a restored pane starts through the launcher, which hops to the UI thread, so the start lands a moment later.
-    private static async Task _UntilStartedAsync(SessionPanelViewModel restored)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (restored.HasRestoreOffer && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(10);
-        }
     }
 
     private static CockpitViewModel NewVm(
