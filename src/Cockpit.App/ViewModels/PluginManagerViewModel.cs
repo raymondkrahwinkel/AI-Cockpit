@@ -8,9 +8,6 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Svg;
-using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -18,20 +15,15 @@ namespace Cockpit.App.ViewModels;
 // installer + consent, never bypassing them (#14).
 public partial class PluginManagerViewModel : ViewModelBase
 {
+    // AC-1434: installing, enabling and removing go through the backend contract; the registration store is left for
+    // the menu preferences, and the store client for the logos and templates.
+    private readonly IPluginAdministration? _administration;
     private readonly IPluginRegistrationStore? _registrationStore;
-    private readonly IPluginInstaller? _installer;
-    private readonly PluginBootstrap? _bootstrap;
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
 
-    // Falls back to wrapping `_storeClient`/`_installer` itself only when nothing was handed in, so the dozens of
-    // existing tests that construct this view model by hand and stub `IPluginStoreClient`/`IPluginInstaller` directly
-    // keep observing every call without also having to stub this interface (AC-510[b]).
-    private readonly IPluginProvisioningService? _provisioningService;
-
     private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
-    private readonly PluginDiagnostics? _diagnostics;
     private readonly IPluginContributionSink? _contributionSink;
     private readonly IAppRestartService? _restartService;
     private readonly IWorkflowTemplateLibrary? _templateLibrary;
@@ -191,30 +183,22 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     public PluginManagerViewModel(
+        IPluginAdministration administration,
         IPluginRegistrationStore registrationStore,
-        IPluginInstaller installer,
-        PluginBootstrap bootstrap,
         ISessionDialogService dialogService,
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
         IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
-        PluginDiagnostics diagnostics,
         IPluginContributionSink? contributionSink = null,
         IAppRestartService? restartService = null,
-        IWorkflowTemplateLibrary? templateLibrary = null,
-        IPluginProvisioningService? provisioningService = null)
+        IWorkflowTemplateLibrary? templateLibrary = null)
     {
+        _administration = administration;
         _registrationStore = registrationStore;
-        _installer = installer;
-        _bootstrap = bootstrap;
         _dialogService = dialogService;
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
-        // Prefer the DI-resolved singleton (AC-510[b]: one install path, not two); only build a private one when
-        // nothing was handed in, which is every existing test that constructs this view model directly.
-        _provisioningService = provisioningService ?? new PluginProvisioningService(storeClient, installer);
         _settingsRegistry = settingsRegistry;
-        _diagnostics = diagnostics;
         _contributionSink = contributionSink;
         _restartService = restartService;
         _templateLibrary = templateLibrary;
@@ -253,29 +237,19 @@ public partial class PluginManagerViewModel : ViewModelBase
     // every change (AC-455).
     public async Task LoadAsync()
     {
-        if (_bootstrap is not null)
+        if (_administration is not null)
         {
-            var discovered = await _bootstrap.DiscoverAsync(AbstractionsContract.Version);
-            var registrations = _registrationStore is null
-                ? new Dictionary<string, PluginRegistration>()
-                : (await _registrationStore.LoadAllAsync()).ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+            var installed = await _administration.GetInstalledAsync();
 
             // AC-208: from here on PendingApprovalCount reads live off Plugins rather than the startup seed — a
             // real discovery just ran, so it is the fresher, and only source that drops to 0 as the operator acts.
             _hasDiscoveredPluginsOnce = true;
 
             Plugins.Clear();
-            // The manager lists plugins in the order they appear in the left menu (#72), so moving one up here
-            // moves it up there — a list ordered differently from the thing it reorders is a puzzle, not a tool.
-            foreach (var plugin in discovered.OrderBy(plugin => registrations.TryGetValue(plugin.FolderId, out var registration) ? registration.MenuOrder : 0))
+            // In the order they appear in the left menu (#72), so moving one up here moves it up there.
+            foreach (var plugin in installed)
             {
-                registrations.TryGetValue(plugin.FolderId, out var menuRegistration);
-                Plugins.Add(new PluginRowViewModel(
-                    plugin,
-                    _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false,
-                    _diagnostics?.AllForFolder(plugin.FolderId),
-                    menuRegistration?.HiddenInMenu ?? false,
-                    menuRegistration?.PinnedToSidebar ?? false));
+                Plugins.Add(new PluginRowViewModel(plugin, _settingsRegistry?.ContainsKey(plugin.Discovered.FolderId) ?? false));
             }
 
             HasPlugins = Plugins.Count > 0;
@@ -313,7 +287,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanInstallFromZip))]
     private async Task InstallFromZipAsync()
     {
-        if (_dialogService is null || _installer is null)
+        if (_dialogService is null || _administration is null)
         {
             return;
         }
@@ -329,7 +303,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _InstallExclusivelyAsync(async () =>
         {
             StatusMessage = $"Installing '{Path.GetFileName(zipPath)}'…";
-            var result = await _installer.InstallFromZipAsync(zipPath, AbstractionsContract.Version);
+            var result = await _administration.InstallFromZipAsync(zipPath);
             await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
         });
     }
@@ -337,7 +311,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task EnablePluginAsync(PluginRowViewModel row)
     {
-        if (_registrationStore is null || _dialogService is null)
+        if (_administration is null || _dialogService is null)
         {
             return;
         }
@@ -350,7 +324,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: row.Discovered.Sha256));
+        await _administration.SetEnabledAsync(row.FolderId, enabled: true, row.Discovered.Sha256);
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' enabled. Restart the cockpit to load it.";
         NeedsRestart = true;
@@ -455,12 +429,12 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task DisablePluginAsync(PluginRowViewModel row)
     {
-        if (_registrationStore is null)
+        if (_administration is null)
         {
             return;
         }
 
-        await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: false, PinnedSha256: row.Discovered.Sha256));
+        await _administration.SetEnabledAsync(row.FolderId, enabled: false, row.Discovered.Sha256);
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' disabled. Restart the cockpit to unload it.";
         NeedsRestart = true;
@@ -469,7 +443,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task RemovePluginAsync(PluginRowViewModel row)
     {
-        if (_registrationStore is null || _installer is null)
+        if (_administration is null)
         {
             return;
         }
@@ -483,8 +457,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _installer.MarkForRemovalAsync(row.FolderId);
-        await _registrationStore.RemoveAsync(row.FolderId);
+        await _administration.RemoveAsync(row.FolderId);
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' will be removed on the next restart.";
         NeedsRestart = true;
@@ -592,7 +565,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     public async Task BrowseStoresAsync()
     {
-        if (_storeClient is null)
+        if (_administration is null)
         {
             return;
         }
@@ -618,7 +591,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             {
                 var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
 
-                var fetch = await _storeClient.FetchIndexAsync(store);
+                var fetch = await _administration.FetchStoreIndexAsync(store);
                 if (!fetch.IsSuccess || fetch.Index is null || fetch.IndexUrl is null)
                 {
                     problems.Add(fetch.Error ?? "unreachable store");
@@ -742,8 +715,8 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     // Fetches a provider plugin's vendor-hosted logo (AC-553 option A), best-effort like `_LoadStoreLogoAsync`
-    // above: any failure leaves `RemoteLogo` null and the row falls to its glyph/monogram. Rasterises SVG bytes
-    // first (SvgRasterizer) since Avalonia's `Bitmap` only decodes raster images.
+    // above: any failure leaves `RemoteLogo` null and the row falls to its glyph/monogram. The store client hands an
+    // SVG over rasterised, since Avalonia's `Bitmap` only decodes raster images.
     private async Task _LoadPluginLogoAsync(StorePluginRowViewModel row, PluginStoreConfig store, string logoUrl)
     {
         if (_storeClient is null)
@@ -757,11 +730,6 @@ public partial class PluginManagerViewModel : ViewModelBase
             if (!image.IsSuccess || image.Bytes is not { Length: > 0 } bytes)
             {
                 return;
-            }
-
-            if (SvgRasterizer.LooksLikeSvg(bytes) && SvgRasterizer.Rasterize(bytes, 256f) is { } raster)
-            {
-                bytes = raster;
             }
 
             using var stream = new MemoryStream(bytes);
@@ -839,7 +807,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanInstallFromStore))]
     private async Task InstallFromStoreAsync(StorePluginRowViewModel row)
     {
-        if (_storeClient is null || _installer is null)
+        if (_administration is null)
         {
             return;
         }
@@ -943,7 +911,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanUpdateAll))]
     private async Task UpdateAllAsync()
     {
-        if (_storeClient is null || _installer is null)
+        if (_administration is null)
         {
             return;
         }
@@ -1052,7 +1020,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Installs a specific advertised version of a plugin (the detail panel's per-version Install), so a newer install can be rolled back to an older one.
     public async Task InstallStoreVersionAsync(StorePluginRowViewModel row, PluginStoreVersion version)
     {
-        if (_storeClient is null || _installer is null)
+        if (_administration is null)
         {
             return;
         }
@@ -1081,8 +1049,12 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
-        var provision = await _provisioningService!.InstallAsync(
-            new PluginProvisionRequest(row.Id, row.Name, row.Store, version), AbstractionsContract.Version);
+        if (_administration is null)
+        {
+            return false;
+        }
+
+        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version));
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
@@ -1090,10 +1062,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             ? $"⚠ {warning} '{row.Name}' installed. Restart the cockpit to activate it."
             : $"'{row.Name}' installed. Restart the cockpit to activate it.";
 
-        // Translated back to the installer's own result shape so the shared aftercare below — consent walk,
-        // registration re-pin — stays the one place that logic lives, unchanged by where the bytes came from.
-        var installResult = provision.IsSuccess
-            ? PluginInstallResult.Success(provision.FolderId!, provision.Sha256, staged: provision.Outcome == PluginProvisionOutcome.Staged)
+        // Translated back to the installer's own result shape so the shared aftercare below stays the one place the
+        // consent walk lives, unchanged by where the bytes came from.
+        var installResult = provision is { IsSuccess: true, FolderId: { } folderId }
+            ? PluginInstallResult.Success(folderId, provision.Sha256, staged: provision.Outcome == PluginProvisionOutcome.Staged)
             : PluginInstallResult.Failure(provision.Error ?? "Install failed.");
 
         await _AfterInstallAsync(installResult, installedMessage);
@@ -1121,22 +1093,8 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         if (result.Staged)
         {
-            // An update: the new bytes are live only after the restart, so re-pin their hash now (matching the
-            // swap) and keep the current enabled/disabled state. No rediscovery, no consent — the restart
-            // applies it cleanly.
-            if (_registrationStore is not null && result.FolderId is { } folderId && result.Sha256 is { } newSha256)
-            {
-                var registrations = await _registrationStore.LoadAllAsync();
-                if (registrations.TryGetValue(folderId, out var prior))
-                {
-                    await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: newSha256));
-                }
-
-                // No registration at all means this is not an update: the operator removed this plugin and has now
-                // installed it again, so the folder is still on disk (the removal is applied at the next start) and the
-                // installer staged over it (AC-455).
-            }
-
+            // An update: the administration already re-pinned the new bytes and the restart applies them. No
+            // rediscovery, no consent.
             StatusMessage = installedMessage;
             NeedsRestart = true;
             return;

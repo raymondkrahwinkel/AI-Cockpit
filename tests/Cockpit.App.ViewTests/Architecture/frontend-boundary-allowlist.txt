@@ -11,8 +11,6 @@ ViewModels/NewSessionDialogViewModel.cs
 ViewModels/NodeSessionsViewModel.cs
 ViewModels/Onboarding/AssistantStepViewModel.cs
 ViewModels/Onboarding/ProviderStepViewModel.cs
-ViewModels/PluginManagerViewModel.cs
-ViewModels/PluginRowViewModel.cs
 ViewModels/ProjectDialogViewModel.cs
 ViewModels/ProjectsViewModel.cs
 ViewModels/QuickNoteViewModel.cs

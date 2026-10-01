@@ -15,7 +15,7 @@ public interface IPluginStoreClient
 
     /// <summary>
     /// Fetches a store's logo image (#62) — the <c>iconUrl</c> its <c>index.json</c> advertises, absolute or
-    /// relative to the store — as raw bytes for the Manage-stores dialog. Http(s) or, for a local store, a file;
+    /// relative to the store — as raster image bytes for the store dialogs, an SVG rasterised. Http(s) or, for a local store, a file;
     /// capped in size and time. No code and nothing to consent to; a failure is non-fatal, the store simply keeps its emoji/default glyph.
     /// </summary>
     Task<PluginStoreImageResult> DownloadImageAsync(PluginStoreConfig store, string iconUrl, CancellationToken cancellationToken = default);

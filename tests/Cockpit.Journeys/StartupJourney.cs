@@ -6,6 +6,7 @@ using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.ViewTests;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Mcp;
@@ -42,11 +43,16 @@ public sealed class StartupJourney
         });
 
         // Why a plugin is missing first, by name: a failure or an approval it waits for, before the list itself.
+        const string Refusal = "Built against a different Cockpit contract version than this app — update the app or reinstall the plugin build made for it.";
         var diagnostics = services.GetRequiredService<PluginDiagnostics>();
-        Assert.Equal(
-            [$"{RefusedPlugin} (load): Built against a different Cockpit contract version than this app — update the app or reinstall the plugin build made for it."],
-            diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
+        Assert.Equal([$"{RefusedPlugin} (load): {Refusal}"], diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
         Assert.Empty(diagnostics.PendingApprovals.Select(pending => pending.ToString()));
+
+        // And the plugin manager reads that refusal through the backend's contract (AC-1434).
+        var installed = await services.GetRequiredService<IPluginAdministration>().GetInstalledAsync();
+        Assert.Equal(
+            [$"{RefusedPlugin}: {Refusal}"],
+            installed.Where(plugin => plugin.ActivationFailure is not null).Select(plugin => $"{plugin.Discovered.FolderId}: {plugin.ActivationFailure}"));
         Assert.Equal(Bundled, services.GetRequiredService<PluginManager>().Loaded.Select(plugin => plugin.FolderId).Order());
         Assert.DoesNotContain("Could not start cockpit MCP endpoint", cockpit.LogText, StringComparison.Ordinal);
 
