@@ -17,7 +17,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
-using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
@@ -46,11 +45,11 @@ public sealed partial class SecurityOptionsViewModel(
     INodeSessionsClient? nodeSessions = null,
     // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
     // design-time/unit-test graph like the client above. AC-1324: the permission relay rides the same poll.
-    NodeInboxRelay? nodeInboxRelay = null,
+    INodeInboxRelay? nodeInboxRelay = null,
     NodePermissionRelay? nodePermissionRelay = null,
     // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
     // design-time/unit-test graph like the relays above.
-    BehaviourMemorySync? behaviourSync = null) : ObservableObject
+    IBehaviourMemorySync? behaviourSync = null) : ObservableObject
 {
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.

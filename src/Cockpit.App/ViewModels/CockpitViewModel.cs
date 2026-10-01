@@ -67,7 +67,6 @@ using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
@@ -3133,10 +3132,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodeControllerPresence? controllerPresence = null,
         // AC-1322: collects, on the node cards' poll, what agents on a paired node sent their assistant. Absent in
         // the design-time/unit-test graph, where the cards only list.
-        NodeInboxRelay? nodeInboxRelay = null,
+        INodeInboxRelay? nodeInboxRelay = null,
         // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
         // design-time/unit-test graph like the relay above.
-        BehaviourMemorySync? behaviourSync = null,
+        IBehaviourMemorySync? behaviourSync = null,
         SessionRegistry? sessionRegistry = null,
         ISessionControlFactory? sessionControls = null,
         Func<ISessionControl, SessionViewModel>? sdkPaneOver = null)

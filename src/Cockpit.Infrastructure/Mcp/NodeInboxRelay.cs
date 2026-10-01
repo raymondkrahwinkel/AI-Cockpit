@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Mcp;
 public sealed class NodeInboxRelay(
     INodeSessionsClient nodes,
     IAgentMessageInbox inbox,
-    ILogger<NodeInboxRelay>? logger = null) : ISingletonService
+    ILogger<NodeInboxRelay>? logger = null) : INodeInboxRelay, ISingletonService
 {
     private readonly ILogger<NodeInboxRelay> _logger = logger ?? NullLogger<NodeInboxRelay>.Instance;
 
