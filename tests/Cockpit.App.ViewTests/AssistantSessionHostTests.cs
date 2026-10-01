@@ -1417,9 +1417,10 @@ public class AssistantSessionHostTests
 
         var sessionStateRecorder = new SessionStateRecorder(
             sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance);
+        var desktop = cockpit ?? new CockpitViewModel();
 
         return new AssistantSessionHost(
-            new SessionLauncherAdapter(cockpit ?? new CockpitViewModel()), new NodeControllerPresence(), settings, profiles,
+            new DesktopSessionSeams(() => desktop), new NodeControllerPresence(), settings, profiles,
             sessionState, sessionStateRecorder,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance);

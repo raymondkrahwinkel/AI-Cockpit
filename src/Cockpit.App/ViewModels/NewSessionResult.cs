@@ -1,6 +1,5 @@
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -41,29 +40,4 @@ public sealed record NewSessionResult(
     // leave alone (#AC-310). The whole rule, in one expression: a name is chosen when there is one and nobody
     // composed it. Everything downstream applies this rather than working it out again (#AC-324).
     public bool NameIsChosen => !NameIsComposed && !string.IsNullOrWhiteSpace(SessionName);
-
-    // The SDK provider's launch options with `SystemPrompt` (or its fallback, AC-544) folded in.
-    public IReadOnlyDictionary<string, string>? SdkLaunchOptionsWithInstructions => _WithSystemPrompt(SdkLaunchOptions);
-
-    // The TTY provider's launch options with `SystemPrompt` (or its fallback, AC-544) folded in.
-    public IReadOnlyDictionary<string, string>? TtyLaunchOptionsWithInstructions => _WithSystemPrompt(PluginTtyOptions);
-
-    // AC-544 criterion 5: `AgentStatusSystemPrompt.Default` rides *alongside* a profile's own prompt rather than being
-    // replaced by it, because that is what the criterion's own precedent does.
-    private IReadOnlyDictionary<string, string>? _WithSystemPrompt(IReadOnlyDictionary<string, string>? options)
-    {
-        var merged = options is null
-            ? new Dictionary<string, string>(StringComparer.Ordinal)
-            : new Dictionary<string, string>(options, StringComparer.Ordinal);
-
-        // The profile's own words first, the standing instruction after — the same order, and the same blank-line
-        // join, that _AppendedInstructions already uses for the delegation nudge.
-        var standing = ProjectJobId is null
-            ? AgentStatusSystemPrompt.Default
-            : AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun;
-        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(SystemPrompt)
-            ? standing
-            : SystemPrompt.Trim() + "\n\n" + standing;
-        return merged;
-    }
 }

@@ -16,6 +16,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -187,7 +188,10 @@ public sealed class AssistantChatLiveSessionsTests
         var terminal = Substitute.For<ITerminalSettingsStore>();
         terminal.LoadAsync().Returns(new TerminalSettings());
 
-        return new CockpitViewModel(
+        // AC-1439: the dialog's start goes through the launcher, which lands the pane through the registry.
+        var registry = new SessionRegistry();
+        var launcher = new DesktopLauncher.Slot();
+        var cockpit = new CockpitViewModel(
             () => new SessionViewModel(),
             () => new TtyViewModel(),
             dialogService,
@@ -199,7 +203,11 @@ public sealed class AssistantChatLiveSessionsTests
             sessionBehavior,
             layout,
             voice,
-            terminal);
+            terminal,
+            sessionRegistry: registry,
+            sessionLauncher: launcher.Get);
+        launcher.Launcher = DesktopLauncher.Over(cockpit, registry);
+        return cockpit;
     }
 
     // AC-774 again: the live-session subscription must come off on close, or every reopened chat window chains another handler.

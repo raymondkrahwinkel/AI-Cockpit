@@ -54,8 +54,12 @@ public sealed class AssistantJourney
 
         Assert.True(started["ok"]?.GetValue<bool>(), started.ToJsonString());
         Assert.Equal((desk, true), HeadlessAvalonia.Run(() => (session.WorkspaceId, session.StartedByTheAssistant)));
-        // AC-1450: the pane the registry made draws every row once, and the assistant's rail had it from the start (AC-1332).
-        Assert.All(HeadlessAvalonia.Run(() => session.Transcript.GroupBy(row => (row.Kind, row.Text)).ToList()), group => Assert.Single(group));
+        // AC-1439: the launcher's session lands as one pane drawing every row exactly once — the brief and its answer
+        // there, nothing twice — and the assistant's rail had it from the start (AC-1332).
+        var rows = HeadlessAvalonia.Run(() => session.Transcript.Select(row => (row.Kind, row.Text)).ToList());
+        Assert.Single(rows, row => row == (TranscriptEntryKind.UserText, "go"));
+        Assert.Single(rows, row => row == (TranscriptEntryKind.AssistantText, "echo: go"));
+        Assert.All(rows.GroupBy(row => row), group => Assert.Single(group));
         Assert.Contains(session, HeadlessAvalonia.Run(() => chat.SessionsStartedByTheAssistant.ToList()));
         Assert.Contains(cockpit.Drivers.Made, driver => driver.Profile?.Label == OtherProfile);
     }

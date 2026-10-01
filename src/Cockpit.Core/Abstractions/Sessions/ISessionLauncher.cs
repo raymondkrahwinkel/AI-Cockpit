@@ -1,4 +1,3 @@
-using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
@@ -72,17 +71,6 @@ public interface ISessionLauncher
     /// The number of sessions found on it; zero means it was closed.
     /// </returns>
     Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId);
-
-    /// <summary>
-    /// Makes the assistant's own session, on no desk and outside <c>All</c>, as the registry's <c>Assistant</c> (AC-1379).
-    /// Null when this cockpit cannot start sessions; the caller starts it and holds the only reference.
-    /// </summary>
-    IAssistantSession? CreateAssistantSession();
-
-    /// <summary>
-    /// Lets go of an assistant session its host stood down; the registry forgets it only while it is still the one held.
-    /// </summary>
-    void ReleaseAssistantSession(IAssistantSession session);
 }
 
 // AC-1375: one start as AssistantAgentGateway composes it. Kind null means the profile's own route; Kind Tty is only
@@ -102,7 +90,27 @@ public sealed record SessionLaunchRequest(
     SessionResume? Resume = null,
     string? Model = null,
     string? PermissionMode = null,
-    string? PaneId = null);
+    string? PaneId = null)
+{
+    // AC-1439: what the desktop's dialog settled and a spawn leaves to the launcher's compose (IsComposed false).
+    public bool IsComposed { get; init; }
+
+    public bool NameIsComposed { get; init; }
+
+    public string? Effort { get; init; }
+
+    public IReadOnlySet<string>? EnabledMcpServerNames { get; init; }
+
+    public ReadingLevel? ReadingLevel { get; init; }
+
+    public string? ProjectJobId { get; init; }
+
+    // The profile's and project's own words; the launcher folds the standing instruction after them (AC-544).
+    public string? SystemPrompt { get; init; }
+
+    // The person's answer to a NeedsWorktreeDecision: run in the folder as given, unisolated.
+    public bool RunUnisolated { get; init; }
+}
 
 // PromptDelivered: null when no prompt was given, false when it is held until the session is ready.
 // WorktreeDecision set (AC-1448): nothing started, and only a person may choose to run without isolation.

@@ -24,6 +24,11 @@ internal static class UiThreadCall
     internal static Task RunAsync(Func<Task> work, TimeSpan? grace = null) =>
         RunAsync(async () => { await work().ConfigureAwait(false); return true; }, grace);
 
+    // AC-1439: for work that takes as long as it takes once on the UI thread (a session's start, a settings save),
+    // where the cap would turn a slow provider or disk into a failed start.
+    internal static Task Uncapped(Func<Task> work) =>
+        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
+
     internal static T Run<T>(Func<T> work, TimeSpan? grace = null) =>
         Dispatcher.UIThread.CheckAccess() ? work() : DispatchAsync(work, grace).GetAwaiter().GetResult();
 

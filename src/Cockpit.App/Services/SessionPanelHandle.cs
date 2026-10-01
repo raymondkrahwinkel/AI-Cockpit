@@ -14,7 +14,7 @@ internal sealed record DesktopSessionLaunch(
 // AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
 // a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
 // closed after the caller looked it up is left alone rather than written to.
-internal sealed class SessionPanelHandle : ISessionHandle
+internal sealed class SessionPanelHandle : IHostedSession
 {
     private readonly DesktopSessionLaunch _launch;
     private readonly Func<string?> _firstSessionsWorkspaceId;
@@ -45,6 +45,37 @@ internal sealed class SessionPanelHandle : ISessionHandle
     public ISessionControl? Control { get; }
 
     public SessionPanelViewModel? Pane => _pane;
+
+    // AC-1439: how the cockpit starts this pane, set on one the launcher hosts or a restart brought back. Dispatched
+    // without the request-thread cap: a start takes as long as its provider does, as it always did from the dialog.
+    public Func<SessionPanelViewModel, SessionLaunchRequest, string?, Task>? Start { get; set; }
+
+    public bool AwaitsStart => Start is not null && !_startAsked;
+
+    private bool _startAsked;
+
+    public Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default) =>
+        _pane is SessionViewModel sdk ? UiThreadCall.Uncapped(() => sdk.PrepareRecordedTranscriptAsync(resume, cancellationToken)) : Task.CompletedTask;
+
+    public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
+    {
+        if (Start is not { } start || _pane is not { } pane)
+        {
+            throw new InvalidOperationException($"Pane '{PaneId}' has not landed, so it cannot start.");
+        }
+
+        // A start that threw may be asked for again, from the restore banner say.
+        _startAsked = true;
+        try
+        {
+            await UiThreadCall.Uncapped(() => start(pane, request, workingDirectory)).ConfigureAwait(false);
+        }
+        catch
+        {
+            _startAsked = false;
+            throw;
+        }
+    }
 
     public bool StartedByTheAssistant => _launch.StartedByTheAssistant;
 

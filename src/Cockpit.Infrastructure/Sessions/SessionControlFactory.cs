@@ -18,7 +18,10 @@ public sealed class SessionControlFactory(
     ILogger<SessionHost>? logger = null,
     TimeProvider? time = null) : ISessionControlFactory, ISingletonService
 {
-    public ISessionControl Create(Func<string> paneId) => new SessionHost(
+    public ISessionControl Create(Func<string> paneId) => CreateHost(paneId);
+
+    // AC-1439: the same host for the backend launcher, so a headless session gets what a desktop pane's does.
+    public SessionHost CreateHost(Func<string> paneId) => new(
         paneId, manager, time ?? TimeProvider.System, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore,
         stateRecorder);
 }

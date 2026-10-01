@@ -95,6 +95,9 @@ public sealed class PluginBackendActions(
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"The session on '{profileLabel}' could not start.");
 
-        return started.Name;
+        // AC-1448: only a person may choose to run without the worktree the project asks for, and a plugin is not one.
+        return started.WorktreeDecision is { } decision
+            ? throw new InvalidOperationException($"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}")
+            : started.Name;
     }
 }

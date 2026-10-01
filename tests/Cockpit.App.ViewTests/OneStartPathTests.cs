@@ -100,7 +100,9 @@ public class OneStartPathTests
                 SessionOptionCatalog.DefaultEffort, "one"));
 
         var registry = new SessionRegistry();
-        var cockpit = _Cockpit(() => TestSessions.Pane(manager, loginChecker: loginChecker, timeProvider: time), dialogs, registry);
+        var launcher = new DesktopLauncher.Slot();
+        var cockpit = _Cockpit(() => TestSessions.Pane(manager, loginChecker: loginChecker, timeProvider: time), dialogs, registry, launcher);
+        launcher.Launcher = DesktopLauncher.Over(cockpit, registry);
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
 
@@ -121,7 +123,8 @@ public class OneStartPathTests
         return new Graph(cockpit, gateway, desk.Id, steps);
     }
 
-    private static CockpitViewModel _Cockpit(Func<SessionViewModel> sessions, ISessionDialogService dialogs, SessionRegistry registry)
+    private static CockpitViewModel _Cockpit(
+        Func<SessionViewModel> sessions, ISessionDialogService dialogs, SessionRegistry registry, DesktopLauncher.Slot launcher)
     {
         var notifications = Substitute.For<INotificationSettingsStore>();
         notifications.LoadAsync().Returns(new NotificationSettings());
@@ -149,7 +152,8 @@ public class OneStartPathTests
             layout,
             voice,
             terminal,
-            sessionRegistry: registry);
+            sessionRegistry: registry,
+            sessionLauncher: launcher.Get);
     }
 
     // Every timer the host asks for, by its period; none of them ever ticks.
