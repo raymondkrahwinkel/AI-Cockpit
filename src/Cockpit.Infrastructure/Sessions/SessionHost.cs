@@ -589,6 +589,9 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
 
     public void RecordRow(TranscriptSnapshotEntry row) => _transcript.Record(row);
 
+    // AC-1438: the rows as they stand, for a consumer that missed some of their upserts; read on the consumer's thread.
+    public IReadOnlyList<TranscriptSnapshotEntry> Rows => _transcript.Rows;
+
     // A cleared context (AC-564) starts a new conversation in the same rows; the streaming state goes with it.
     public void ResetTranscriptStreaming() => _transcript.ResetStreaming();
 

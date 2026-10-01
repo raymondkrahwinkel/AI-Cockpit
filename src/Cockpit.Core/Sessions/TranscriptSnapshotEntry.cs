@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace Cockpit.Core.Sessions;
 
 // One version of one transcript row, durable enough to rebuild that row after a restart (AC-1090; was AC-684's
@@ -48,36 +46,36 @@ public sealed record TranscriptSnapshotEntry(
     public string? BackgroundTaskId { get; init; }
 
     // AC-1377: what the live view draws and a restore does not read — how a streamed reply was split over rows
-    // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written, so the log stays byte-equal to what it was.
-    [JsonIgnore]
+    // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written to the log, so it stays byte-equal to what it was.
+    [TranscriptViewOnly]
     public bool StartsReply { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool IsReplyContinuation { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool ReplyContinuesBelow { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool StartsInsideCodeBlock { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool EndsInsideCodeBlock { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool StartsInsideTable { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool EndsInsideTable { get; init; }
 
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public int TableSpanRevision { get; init; }
 
     // Decision point 13 of AC-1090 stays open: a restore still reads no row as waiting.
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public bool IsPendingPermission { get; init; }
 
     // AC-1088: what the output measured before the cap, 0 when it fitted.
-    [JsonIgnore]
+    [TranscriptViewOnly]
     public int TruncatedFromChars { get; init; }
 }

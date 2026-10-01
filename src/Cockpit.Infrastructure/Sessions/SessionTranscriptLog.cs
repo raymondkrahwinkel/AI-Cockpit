@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -32,7 +33,20 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
         // A row carries eight optional members and almost never fills them; writing those as nulls would put the
         // bytes this change exists to save straight back into every line.
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+
+        // AC-1438: what only the live view draws stays out of the log, as `[JsonIgnore]` kept it out before.
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { _LeaveOutViewOnly } },
     };
+
+    private static void _LeaveOutViewOnly(JsonTypeInfo typeInfo)
+    {
+        foreach (var property in typeInfo.Properties
+            .Where(property => property.AttributeProvider?.IsDefined(typeof(TranscriptViewOnlyAttribute), inherit: false) == true)
+            .ToList())
+        {
+            typeInfo.Properties.Remove(property);
+        }
+    }
 
     private readonly string _root;
     private readonly ILogger<SessionTranscriptLog> _logger;

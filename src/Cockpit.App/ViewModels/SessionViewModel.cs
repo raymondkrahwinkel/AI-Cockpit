@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -673,12 +674,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1377: the host forms the rows and this draws them. An upsert lands on the row of its id or adds that row — at
     // the top level, or under the anchor whose snapshot carries it (AC-146) — and is never recorded back.
-    private void _OnRowUpserted(TranscriptRowUpsert upsert)
+    private void _DrawHostRow(TranscriptSnapshotEntry entry)
     {
         _applyingHostRow = true;
         try
         {
-            _DrawRow(upsert.Row, anchor: null);
+            _DrawRow(entry, anchor: null);
         }
         finally
         {
@@ -686,7 +687,28 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    private void _DrawRow(TranscriptSnapshotEntry entry, TranscriptEntryViewModel? anchor)
+    // AC-1438: the host's rows after the event log said some of their upserts were missed. A row this pane holds is
+    // brought up to date; one it never drew goes in after the row the host has before it, so the order is the host's.
+    private void _Resync(IReadOnlyList<TranscriptSnapshotEntry> rows)
+    {
+        _applyingHostRow = true;
+        try
+        {
+            var previous = -1;
+            foreach (var entry in rows)
+            {
+                var known = _rowsById.TryGetValue(entry.Id, out var row) ? _IndexOfLast(row) : -1;
+                previous = known >= 0 ? known : previous + 1;
+                _DrawRow(entry, anchor: null, insertAt: known >= 0 ? null : previous);
+            }
+        }
+        finally
+        {
+            _applyingHostRow = false;
+        }
+    }
+
+    private void _DrawRow(TranscriptSnapshotEntry entry, TranscriptEntryViewModel? anchor, int? insertAt = null)
     {
         if (_rowsById.TryGetValue(entry.Id, out var row))
         {
@@ -696,14 +718,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             row = _NewRow(entry);
             _rowsById[entry.Id] = row;
-            if (anchor is null)
+            if (anchor is not null)
             {
-                _addedByFold.Add(row);
-                Transcript.Add(row);
+                anchor.SubAgentRows.Add(row);
             }
             else
             {
-                anchor.SubAgentRows.Add(row);
+                _addedByFold.Add(row);
+                Transcript.Insert(insertAt ?? Transcript.Count, row);
             }
         }
 
@@ -1104,6 +1126,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
         _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null, TimeProvider.System);
+        _rowFeed = _FollowRows(eventLog: null, logger: null);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563): a
@@ -1184,13 +1207,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IBackendEventLog? eventLog = null)
         : base(usageHistory)
     {
         _transcriptReader = transcriptReader;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
         _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore, timeProvider ?? TimeProvider.System);
+
+        _rowFeed = _FollowRows(eventLog, logger);
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -1230,26 +1256,68 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         };
         // AC-1438: the host folds its runtime's events itself, on this thread, a frame's worth at a time (AC-529).
         host.PumpOn(UiPost, UiPostAfterWindow);
-        host.Folded += _OnFolded;
+        host.Folded += fold => _InOrder(() => _OnFolded(fold));
         host.Queue.CollectionChanged += (_, change) => _MirrorQueue(change);
         // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
         host.Started += startedAt => _startedAt = startedAt;
-        host.RowUpserted += _OnRowUpserted;
         host.BusyChanged += _OnHostBusyChanged;
-        host.TurnStarting += _OnTurnStarting;
-        host.TurnFailedToStart += _OnTurnFailedToStart;
-        host.MailDelivered += _NoteDeliveredMail;
+        host.TurnStarting += prompt =>
+        {
+            _HoldQueueIfExit(prompt);
+            _InOrder(() => _OnTurnStarting(prompt));
+        };
+        host.TurnFailedToStart += (prompt, exception) => _InOrder(() => _OnTurnFailedToStart(prompt, exception));
+        host.MailDelivered += notice => _InOrder(() => _NoteDeliveredMail(notice));
         host.LoginChecked += loggedIn => _OnUiThread(() => _WhilePolling(() => ReportLoginStatus(loggedIn)));
         host.UsageCatchUpDue += () => _OnUiThread(() => _WhilePolling(_RefreshLimits));
         host.SignOfLifeDue += arm => _OnUiThread(() => _OnSignOfLife(arm));
-        // AC-1437: raised inside `Apply`'s own fold, so on the UI thread the queue already marshalled the event onto.
-        host.LiveStateChanged += _OnLiveStateChanged;
-        host.TurnEnded += _OnTurnEnded;
+        // AC-1437: raised inside the host's fold, on this thread; AC-1438: drawn once the rows they name are.
+        host.LiveStateChanged += state => _InOrder(() => _OnLiveStateChanged(state));
+        host.TurnEnded += end => _InOrder(() => _OnTurnEnded(end));
         host.ToolProgressed += () => ToolActivity?.Invoke();
-        host.BackgroundTaskNotified += _OnBackgroundTaskNotified;
+        host.BackgroundTaskNotified += notice => _InOrder(() => _OnBackgroundTaskNotified(notice));
         host.OutputTextProduced += RaiseOutputText;
         host.ToolActivityProduced += toolCall => RaiseToolActivity(toolCall.ToolName, toolCall.InputJson, toolCall.ResultContent, toolCall.IsError);
         return host;
+    }
+
+    // AC-1438: null in the design-time and unit-test graphs, which draw straight from the host and act on its signals as
+    // they come; see `SessionRowFeed` for why a pane reading the log cannot.
+    private readonly SessionRowFeed? _rowFeed;
+
+    // AC-1438: every pane the container builds draws its rows from the backend event log, not from the host.
+    private SessionRowFeed? _FollowRows(IBackendEventLog? eventLog, ILogger? logger)
+    {
+        if (eventLog is null)
+        {
+            _host.RowUpserted += upsert => _DrawHostRow(upsert.Row);
+            return null;
+        }
+
+        return new SessionRowFeed(
+            eventLog, () => PaneId, () => _host.Rows, _DrawHostRow, _Resync, UiPost,
+            exception => logger?.LogError(exception, "The pane stopped reading its rows from the event log."));
+    }
+
+    private void _InOrder(Action signal)
+    {
+        if (_rowFeed is null)
+        {
+            signal();
+        }
+        else
+        {
+            _rowFeed.InOrder(signal);
+        }
+    }
+
+    // T10: decided as the turn leaves, not once the pane draws it, so the host keeps the queue when that turn ends.
+    private void _HoldQueueIfExit(QueuedPrompt prompt)
+    {
+        if (AutoCloseOnExit && prompt.Text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
+        {
+            _host.EndsAfterThisTurn = true;
+        }
     }
 
     // One frame at 30 fps, matching `MarkdownView.RebuildIntervalMs`: the markdown rows repaint on that cadence anyway,
@@ -2008,7 +2076,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         if (AutoCloseOnExit && text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
         {
             _closeAfterTurn = true;
-            _host.EndsAfterThisTurn = true;
         }
 
         // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
@@ -2761,6 +2828,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // it would otherwise take the process down before the record reached disk (AC-251).
         await _DrainUsageWritesAsync();
 
+        _rowFeed?.Dispose();
         await _StopRuntimeAsync();
 
         // AC-713, AC-786: the host's clocks stop here — the sign of life's own !IsBusy guard never fires once the
