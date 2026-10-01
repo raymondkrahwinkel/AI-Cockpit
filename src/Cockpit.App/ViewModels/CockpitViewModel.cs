@@ -70,6 +70,7 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
@@ -6007,115 +6008,47 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // When asked and the folder is a git repository, a worktree is created for this session on its own branch — keyed
-    // on the session's pane, so the same session identity is used whichever kind it is — and the session runs there
-    // instead of in the folder as given; the branch shows as a header chip (AC-85, AC-938).
+    // Isolation keyed on the session's pane, the branch shown as a header chip (AC-85, AC-938). The rule is
+    // `WorktreeAdmission`'s, shared with the backend launcher (AC-1448); the dialog is this desktop's.
     private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(
         SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
     {
-        if (!result.IsolateInWorktree && !string.IsNullOrWhiteSpace(result.WorkingDirectory))
+        var admitted = await WorktreeAdmission.AdmitAsync(
+            _worktreeManager, session.PaneId, result.Profile.Label, result.WorkingDirectory, result.IsolateInWorktree);
+        if (admitted.Decision is not { } decision)
         {
-            if (await _MatchingWorktreeAsync(result.WorkingDirectory) is not { } managed)
+            if (admitted.WorktreeBranch is { } branch)
             {
-                return result.WorkingDirectory;
+                session.WorktreeBranch = branch;
             }
 
-            if (_worktreeManager is null || await _worktreeManager.ReattachAsync(managed.Path, session.PaneId) is not { } reattached)
-            {
-                throw new WorktreeAdmissionException(managed.Path, managed.SessionId);
-            }
-
-            session.WorktreeBranch = reattached.Branch;
-            return reattached.Path;
+            return admitted.WorkingDirectory;
         }
 
-        if (!result.IsolateInWorktree)
+        // A non-interactive caller (AC-719: an assistant spawn) never gets the dialog below — a modal it cannot see
+        // or answer — so it is refused with the reason.
+        if (!interactive)
         {
-            return result.WorkingDirectory;
+            throw new InvalidOperationException(
+                $"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}");
         }
 
-        try
+        // Ask, and only run unisolated on an explicit yes. A no throws OperationCanceledException, which the
+        // launch path turns into a cancelled start rather than contaminating the working tree.
+        var runInFolder = _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
+            "Could not isolate this session",
+            $"A git worktree could not be created for this session ({decision.Reason}). Run it directly in '{decision.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
+            "Run in folder");
+        if (runInFolder)
         {
-            if (_worktreeManager is null)
-            {
-                throw new InvalidOperationException("worktree isolation is not available here (no worktree manager).");
-            }
-
-            if (string.IsNullOrWhiteSpace(result.WorkingDirectory))
-            {
-                throw new InvalidOperationException("no working directory is set, so no isolated worktree can be created.");
-            }
-
-            // Reattach: the folder is already a worktree the cockpit created — re-own it for this session and run
-            // there, rather than nesting a new worktree inside it.
-            var existing = await _MatchingWorktreeAsync(result.WorkingDirectory);
-            if (existing is not null)
-            {
-                if (await _worktreeManager.ReattachAsync(existing.Path, session.PaneId) is { } reattached)
-                {
-                    session.WorktreeBranch = reattached.Branch;
-                    return reattached.Path;
-                }
-
-                throw new WorktreeAdmissionException(existing.Path, existing.SessionId);
-
-            }
-
-            if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
-            {
-                throw new InvalidOperationException("the working directory is not a git repository, so no isolated worktree can be created.");
-            }
-
-            var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, result.Profile.Label, result.WorkingDirectory);
-            session.WorktreeBranch = worktree.Branch;
-            return worktree.Path;
+            return decision.WorkingDirectory;
         }
-        catch (WorktreeAdmissionException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            // The worktree could not be created; running unisolated is the exact contamination isolation exists to
-            // prevent, so this never falls back to it silently. A non-interactive caller (AC-719: an assistant
-            // spawn) never gets the dialog below — a modal it cannot see or answer — so it is refused with the reason.
-            if (!interactive)
-            {
-                throw new InvalidOperationException(
-                    $"worktree isolation failed for '{result.WorkingDirectory}': {exception.Message}");
-            }
 
-            // Ask, and only run unisolated on an explicit yes. A no throws OperationCanceledException, which the
-            // launch path turns into a cancelled start rather than contaminating the working tree.
-            var runInFolder = _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
-                "Could not isolate this session",
-                $"A git worktree could not be created for this session ({exception.Message}). Run it directly in '{result.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
-                "Run in folder");
-            if (runInFolder)
-            {
-                return result.WorkingDirectory;
-            }
-
-            throw new OperationCanceledException("Session start cancelled: worktree isolation failed and running unisolated was declined.");
-        }
+        throw new OperationCanceledException("Session start cancelled: worktree isolation failed and running unisolated was declined.");
     }
 
-    // Uses the same OS-aware path comparison the worktree engine does, so a case-only difference matches on
-    // Windows/macOS and is distinct on Linux (AC-320).
-    private async Task<WorktreeRecord?> _MatchingWorktreeAsync(string workingDirectory)
-    {
-        if (_worktreeManager is null)
-        {
-            return null;
-        }
-
-        var full = Path.GetFullPath(workingDirectory);
-        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        return (await _worktreeManager.ListAsync())
-            .FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), full, comparison));
-    }
+    private Task<WorktreeRecord?> _MatchingWorktreeAsync(string workingDirectory) =>
+        WorktreeAdmission.MatchingAsync(_worktreeManager, workingDirectory);
 
     // AC-633: a `worktree_create`-made worktree is registered to the pane that asked for it, not to the session
     // started in it, so neither the paths above nor a per-pane lookup finds it — the folder is what is true on

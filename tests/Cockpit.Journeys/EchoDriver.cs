@@ -31,6 +31,8 @@ public sealed class EchoDriver : ISessionDriver
 
     public string? PermissionMode { get; private set; }
 
+    public SessionResume? Resume { get; private set; }
+
     public IAsyncEnumerable<SessionEvent> Events => _EchoAsync();
 
     public Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
@@ -38,6 +40,7 @@ public sealed class EchoDriver : ISessionDriver
         Profile = profile;
         WorkingDirectory = workingDirectory;
         PermissionMode = permissionMode;
+        Resume = resume;
         return Task.CompletedTask;
     }
 

@@ -1,7 +1,9 @@
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
+using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -84,7 +86,8 @@ public interface ISessionLauncher
 }
 
 // AC-1375: one start as AssistantAgentGateway composes it. Kind null means the profile's own route; Kind Tty is only
-// asked for once ProfileHasTtyRoute said yes, so both routes start through this one request.
+// asked for once ProfileHasTtyRoute said yes, so both routes start through this one request. AC-1448: a restore passes
+// its own PaneId, the key its recorded transcript is kept under; null fields start as before.
 public sealed record SessionLaunchRequest(
     string WorkspaceId,
     SessionProfile Profile,
@@ -95,7 +98,12 @@ public sealed record SessionLaunchRequest(
     IReadOnlyDictionary<string, string>? LaunchOptions,
     bool? IsolateInWorktree,
     string? ProjectId,
-    bool StartedByTheAssistant);
+    bool StartedByTheAssistant,
+    SessionResume? Resume = null,
+    string? Model = null,
+    string? PermissionMode = null,
+    string? PaneId = null);
 
 // PromptDelivered: null when no prompt was given, false when it is held until the session is ready.
-public sealed record LaunchedSession(string PaneId, string Name, bool? PromptDelivered);
+// WorktreeDecision set (AC-1448): nothing started, and only a person may choose to run without isolation.
+public sealed record LaunchedSession(string PaneId, string Name, bool? PromptDelivered, NeedsWorktreeDecision? WorktreeDecision = null);

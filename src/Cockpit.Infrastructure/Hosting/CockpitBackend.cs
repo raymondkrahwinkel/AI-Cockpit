@@ -417,7 +417,8 @@ public sealed class CockpitBackend
                 provider.GetRequiredService<ISessionManager>(),
                 TimeProvider.System,
                 provider.GetService<ITtySessionProviderResolver>(),
-                provider.GetService<ISessionTranscriptStore>());
+                provider.GetService<ISessionTranscriptStore>(),
+                provider.GetService<IWorktreeManager>());
         });
         services.AddSingleton<IProjectEditor, StoreProjectEditor>();
         services.AddSingleton<IAssistantConversation, HostAssistantConversation>();

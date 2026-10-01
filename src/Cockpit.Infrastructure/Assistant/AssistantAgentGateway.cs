@@ -163,6 +163,13 @@ internal sealed class AssistantAgentGateway(
             // back out of the spawn trail later — a trail records what happened, not what is still true.
             StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)).ConfigureAwait(false);
 
+        // AC-719: a spawn has no one to ask, so isolation that needs a person's choice is a refusal with the reason.
+        if (started is { WorktreeDecision: { } decision })
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name,
+                $"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}", cancellationToken).ConfigureAwait(false);
+        }
+
         if (started is not { } pane)
         {
             // Null means the cockpit has no session factories, the launch declined, or the desk closed before the

@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
@@ -9,12 +10,13 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1378: `ISessionLauncher` without a frontend. It starts SDK sessions through `SessionHost.StartAsync`, the start the
 // desktop pane runs too, and refuses a TTY one with the reason; the desktop keeps its own launcher until F4 (AC-1372).
-// Registered by the backend bootstrap (`CockpitBackend`, AC-1381) over the saved desks; the desktop's own wins there.
+// Registered by the backend bootstrap (AC-1381) over the saved desks; worktree admission is the desktop's rule (AC-1448).
 public sealed class SessionLauncher(
     WorkspaceSettings workspaces,
     IWorkspaceSettingsStore workspaceStore,
@@ -23,7 +25,8 @@ public sealed class SessionLauncher(
     ISessionManager sessionManager,
     TimeProvider time,
     ITtySessionProviderResolver? ttyProviders = null,
-    ISessionTranscriptStore? transcriptStore = null) : ISessionLauncher
+    ISessionTranscriptStore? transcriptStore = null,
+    IWorktreeManager? worktrees = null) : ISessionLauncher
 {
     // The desktop's exclusion is its UI thread; this is the backend's. Sections are synchronous, so it is never held
     // across an await.
@@ -65,33 +68,45 @@ public sealed class SessionLauncher(
             throw new TtyLaunchRefusedException(profile.Label);
         }
 
-        // The worktree step is the desktop's (`CockpitViewModel._ResolveIsolatedWorkingDirectoryAsync`); running in the
-        // shared checkout instead of the isolation that was asked for would be the one outcome isolation exists to stop.
-        if (request.IsolateInWorktree == true)
+        var paneId = request.PaneId ?? Guid.NewGuid().ToString("n");
+        if (registry.Find(paneId) is not null)
         {
-            throw new InvalidOperationException(
-                "This cockpit cannot isolate a session in a worktree of its own yet, so it did not start one in the shared checkout either.");
+            throw new InvalidOperationException($"Pane '{paneId}' is already running.");
         }
 
-        var paneId = Guid.NewGuid().ToString("n");
         var name = string.IsNullOrWhiteSpace(request.SessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : request.SessionName.Trim();
+        var admitted = await WorktreeAdmission.AdmitAsync(
+            worktrees, paneId, profile.Label, request.WorkingDirectory, request.IsolateInWorktree == true).ConfigureAwait(false);
+        if (admitted.Decision is { } decision)
+        {
+            return new LaunchedSession(string.Empty, name, null, decision);
+        }
+
         var host = new SessionHost(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
         var handle = new SessionHostHandle(
-            paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, request.WorkingDirectory, profile.Label, host, request.ProjectId);
+            paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, admitted.WorkingDirectory, profile.Label, host, request.ProjectId);
+        await handle.SetWorktreeBranchAsync(admitted.WorktreeBranch).ConfigureAwait(false);
 
         // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
-        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && _Register(handle)).ConfigureAwait(false))
+        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(handle)).ConfigureAwait(false))
         {
-            await handle.DisposeAsync().ConfigureAwait(false);
+            await _TearDownAsync(handle).ConfigureAwait(false);
             return null;
         }
 
         try
         {
+            // AC-1080: a resumed conversation repaints its recorded log before the first turn.
+            var resume = request.Resume ?? SessionResume.New;
+            if (request.Resume is not null)
+            {
+                await handle.PrepareRecordedTranscriptAsync(resume).ConfigureAwait(false);
+            }
+
             var runtime = await host.StartAsync(new SessionStart(
-                profile, PermissionMode: null, Model: null,
+                profile, request.PermissionMode, request.Model,
                 McpServerRegistryFilter.EffectiveSessionSelection(null, profile.EnabledMcpServerNames),
-                request.WorkingDirectory, SessionResume.New, request.LaunchOptions, request.ProjectId)).ConfigureAwait(false);
+                admitted.WorkingDirectory, resume, request.LaunchOptions, request.ProjectId)).ConfigureAwait(false);
             if (runtime is not { IsRunning: true })
             {
                 throw new InvalidOperationException("The provider returned without a running session.");
@@ -100,7 +115,7 @@ public sealed class SessionLauncher(
             // Stopped while it came up: the stop found no runtime yet, so this one would run with no pane to reach it.
             if (registry.Find(paneId) != handle)
             {
-                await handle.DisposeAsync().ConfigureAwait(false);
+                await _TearDownAsync(handle).ConfigureAwait(false);
                 return null;
             }
         }
@@ -108,7 +123,7 @@ public sealed class SessionLauncher(
         {
             // A pane that never came up has no view to say so on: it goes, and the reason travels to the caller.
             registry.Unregister(paneId);
-            await handle.DisposeAsync().ConfigureAwait(false);
+            await _TearDownAsync(handle).ConfigureAwait(false);
             throw;
         }
 
@@ -148,7 +163,26 @@ public sealed class SessionLauncher(
         }
 
         registry.Unregister(paneId);
+        await _TearDownAsync(handle).ConfigureAwait(false);
+    }
+
+    // Keyed on the pane, as the desktop's close is: a clean worktree goes with its branch, one holding work is retained.
+    private async Task _TearDownAsync(SessionHostHandle handle)
+    {
         await handle.DisposeAsync().ConfigureAwait(false);
+        if (worktrees is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await worktrees.ReleaseAsync(handle.PaneId).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Left for the startup reconcile, as on the desktop.
+        }
     }
 
     public async Task<bool> SetSessionNameAsync(string paneId, string name) =>
