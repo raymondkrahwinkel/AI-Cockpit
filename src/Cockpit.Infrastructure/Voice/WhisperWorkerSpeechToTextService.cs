@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 
@@ -13,7 +12,7 @@ namespace Cockpit.Infrastructure.Voice;
 internal sealed class WhisperWorkerSpeechToTextService(
     IVoiceSettingsStore settingsStore,
     ILogger<WhisperWorkerSpeechToTextService> logger)
-    : ISpeechToTextService, ISingletonService, IAsyncDisposable
+    : ISpeechToTextService, IAsyncDisposable
 {
     private static readonly TimeSpan IdleUnloadAfter = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan IdleCheckInterval = TimeSpan.FromMinutes(1);

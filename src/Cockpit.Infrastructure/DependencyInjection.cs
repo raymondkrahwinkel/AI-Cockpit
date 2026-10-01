@@ -14,8 +14,10 @@ using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Hotkeys;
+using Cockpit.Infrastructure.Voice;
 
 namespace Cockpit.Infrastructure;
 
@@ -23,8 +25,6 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
-        services.AddSingleton<AudioEngine, MiniAudioEngine>();
-
         // AC-1110: handed to DelegationService as a deferred lookup, not as the instance. The catalog reaches that
         // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
         // that deadlocks the container instead of being reported.
@@ -98,9 +98,17 @@ public static class DependencyInjection
         AddNotifications(services);
         AddPtyHost(services);
         AddSessionMemoryLimiter(services);
+        return services;
+    }
+
+    public static IServiceCollection AddDesktopInfrastructure(this IServiceCollection services)
+    {
+        services.AddSingleton<AudioEngine, MiniAudioEngine>();
+        services.AddSingleton<ISpeechToTextService, WhisperWorkerSpeechToTextService>();
         AddGlobalHotkey(services);
         AddScreenshotCapture(services);
         AddScreenLockMonitor(services);
+        AddPresenceDetector(services);
 
         return services;
     }
@@ -287,22 +295,31 @@ public static class DependencyInjection
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            services.AddSingleton<IPresenceDetector, WindowsPresenceDetector>();
             services.AddSingleton<IToastNotifier, WindowsToastNotifier>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             // #76: Linux used to get the no-op, so the "you are at the machine" half of the router delivered nothing
             // on the machine this cockpit is mostly used from.
-            services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
             services.AddSingleton<IToastNotifier, LinuxToastNotifier>();
         }
         else
         {
             // macOS keeps the no-op: there is no Mac here to try one on, and a notifier nobody has ever seen fire is
             // a claim, not a feature.
-            services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
             services.AddSingleton<IToastNotifier, NoOpToastNotifier>();
+        }
+    }
+
+    private static void AddPresenceDetector(IServiceCollection services)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IPresenceDetector, WindowsPresenceDetector>();
+        }
+        else
+        {
+            services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
         }
     }
 }

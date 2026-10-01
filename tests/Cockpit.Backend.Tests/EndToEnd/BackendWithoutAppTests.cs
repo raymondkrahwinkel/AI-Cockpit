@@ -1,8 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Hosting;
+using Cockpit.Infrastructure.Hotkeys;
+using SoundFlow.Abstracts;
 
 namespace Cockpit.Backend.Tests.EndToEnd;
 
@@ -56,5 +61,17 @@ public sealed class BackendWithoutAppTests : IDisposable
         Assert.IsType<InvalidOperationException>(early);
         Assert.Null(watchingBeforeStart);
         Assert.NotNull(services.GetRequiredService<CiWatcher>().Watching);
+    }
+
+    [Fact]
+    public async Task ABackendWithoutTheDesktop_UsesNoHotkeysAndResolvesNoUiOnlyServices()
+    {
+        var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
+        await using var services = backend.Services;
+
+        Assert.IsType<NoOpGlobalHotkeyService>(services.GetRequiredService<IGlobalHotkeyService>());
+        Assert.Null(services.GetService<AudioEngine>());
+        Assert.Null(services.GetService<ISpeechToTextService>());
+        Assert.Null(services.GetService<IScreenshotCapture>());
     }
 }
