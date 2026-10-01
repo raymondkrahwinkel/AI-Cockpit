@@ -1,8 +1,7 @@
 using System.Diagnostics;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
 
-namespace Cockpit.Infrastructure.Tests.Projects;
+namespace Cockpit.Core.Tests.Projects;
 
 /// <summary>
 /// The I/O <see cref="Cockpit.Core.Sessions.SessionStartDefaults.Resolve"/> deliberately never does itself

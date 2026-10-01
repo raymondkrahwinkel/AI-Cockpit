@@ -53,7 +53,7 @@ public class ProjectsWorkspaceSharedProjectsTests
             var store = Substitute.For<IProjectStore>();
             store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs, sharedSources: registry);
+            var projects = TestProjects.ViewModel(store, dialogs, sharedSources: registry);
             await projects.LoadAsync();
             await projects.SharedProjectsLoadTask;
 
@@ -79,7 +79,7 @@ public class ProjectsWorkspaceSharedProjectsTests
             // ProjectsViewModel command instance rather than silently landing on null (Avalonia logs, but does not
             // throw, a bad binding path).
             Assert.Same(cockpit.Projects.FinishSettingUpCommand, finishSettingUpButton.Command);
-            Assert.Equal(sharedProject.Id, ((SharedProject?)finishSettingUpButton.CommandParameter)?.Id);
+            Assert.Equal(sharedProject.Id, ((SharedProjectOffer?)finishSettingUpButton.CommandParameter)?.Id);
 
             window.Close();
         });
@@ -91,7 +91,7 @@ public class ProjectsWorkspaceSharedProjectsTests
             var store = Substitute.For<IProjectStore>();
             store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs);
+            var projects = TestProjects.ViewModel(store, dialogs);
             await projects.LoadAsync();
             await projects.SharedProjectsLoadTask;
 
@@ -127,7 +127,7 @@ public class ProjectsWorkspaceSharedProjectsTests
             var store = Substitute.For<IProjectStore>();
             store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs, sharedSources: registry);
+            var projects = TestProjects.ViewModel(store, dialogs, sharedSources: registry);
             await projects.LoadAsync();
             await projects.SharedProjectsLoadTask;
 

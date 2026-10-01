@@ -9,7 +9,7 @@
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
              xmlns:docking="using:Cockpit.Plugins.Abstractions.Docking"
-             xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
+             xmlns:sharedProjects="using:Cockpit.Core.Projects"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:avconv="using:Avalonia.Data.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -1359,7 +1359,7 @@
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="sharedProjects:SharedProject">
+                                            <DataTemplate x:DataType="sharedProjects:SharedProjectOffer">
                                                 <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
                                                      reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
                                                      the local-project cards' commands, which travel on the card. -->

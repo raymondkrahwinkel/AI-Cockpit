@@ -34,20 +34,21 @@ public sealed class ProjectOwnershipRegistry : IProjectOwnershipRegistry, ISingl
 
     public bool Register(ProjectOwnershipRegistration registration)
     {
-        if (string.IsNullOrWhiteSpace(registration.ProjectId) || _claims.ContainsKey(registration.ProjectId))
+        lock (_claims)
         {
-            return false;
+            return !string.IsNullOrWhiteSpace(registration.ProjectId) && _claims.TryAdd(registration.ProjectId, registration);
         }
-
-        _claims.Add(registration.ProjectId, registration);
-        return true;
     }
 
     public IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? Resolve(string projectId)
     {
-        if (!_claims.TryGetValue(projectId, out var registration))
+        ProjectOwnershipRegistration? registration;
+        lock (_claims)
         {
-            return null;
+            if (!_claims.TryGetValue(projectId, out registration))
+            {
+                return null;
+            }
         }
 
         return _AllFields.ToDictionary(

@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;

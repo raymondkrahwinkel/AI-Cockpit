@@ -8,26 +8,12 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
 
-// AC-1375: `IProjectEditor` over the Projects page's own view model and the two project dialogs' composition. The
-// page refreshes only on its own mutations, so a write straight to the store would never reach the screen.
-internal sealed class ProjectEditorAdapter(
-    CockpitViewModel cockpit,
+// AC-1435: what is left of AC-1375's editor adapter, the two project dialogs' composition without their windows.
+// Storing what it composes goes through IProjectEditor, and the Projects page follows the catalog.
+internal sealed class ProjectComposer(
     ISessionProfileStore profiles,
-    ISharedProjectSourceRegistry? sharedProjectSources = null,
-    IMcpServerCatalog? mcpServerCatalog = null) : IProjectEditor, ISingletonService
+    IMcpServerCatalog? mcpServerCatalog = null) : IProjectComposer, ISingletonService
 {
-    // Registry and visibility filter read in one UI-thread hop: `SharedProjectSourceRegistry` is a plain dictionary
-    // mutated on the UI thread by plugin settings screens, so reading it from a request thread would risk a torn read.
-    public Task<(IReadOnlyList<ISharedProjectSource> Sources, IReadOnlySet<string> BoundIds, IReadOnlySet<string> HiddenIds)> ReadSharedProjectSourcesAsync() =>
-        UiThreadCall.RunAsync(() =>
-        {
-            var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
-            return ((IReadOnlyList<ISharedProjectSource>)(sharedProjectSources?.Sources ?? []), (IReadOnlySet<string>)bound, (IReadOnlySet<string>)hidden);
-        });
-
-    public Task<Project?> FindProjectAsync(string projectId) =>
-        UiThreadCall.RunAsync(() => cockpit.Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId));
-
     // The "Choose…" route, not the "Clone…" one — so, exactly as `ApplyPickedDirectory` does for the operator's own
     // pick, the shared definition's `GitUrl` is dropped: the folder was pointed at rather than cloned from it.
     public async Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
@@ -89,13 +75,6 @@ internal sealed class ProjectEditorAdapter(
             return ((Project?)(viewModel.CanSave ? viewModel.ToProject() : null), (string?)null);
         });
     }
-
-    public Task<Project> AddBoundProjectAsync(Project project) => UiThreadCall.RunAsync(() => cockpit.Projects.AddBoundProjectAsync(project));
-
-    public Task<Project> AddNewProjectAsync(Project project) => UiThreadCall.RunAsync(() => cockpit.Projects.AddNewProjectAsync(project));
-
-    public Task<Project?> UpdateStoredProjectAsync(Project project) =>
-        UiThreadCall.RunAsync(() => cockpit.Projects.UpdateStoredProjectAsync(project));
 
     // AC-246: fills machine-specific resource rows the shared definition names but carries no reference for.
     // Positional, not keyed by label, since two rows can share a label. A blank row is silently dropped by the

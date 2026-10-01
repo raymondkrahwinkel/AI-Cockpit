@@ -1,4 +1,4 @@
-namespace Cockpit.App.Services;
+namespace Cockpit.Core.Projects;
 
 // AC-763/AC-1054: `IProjectLogoStore.SaveAsync` only reads a local path or URL, never raw bytes — every caller
 // that receives a downloaded logo as bytes (a fresh bind, a later sync pickup) needs this same bridge.

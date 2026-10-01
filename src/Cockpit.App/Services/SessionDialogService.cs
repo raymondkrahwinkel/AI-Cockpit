@@ -55,6 +55,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectFieldRegistry _projectFields;
     private readonly IProjectMemorySourceRegistry _memorySources;
     private readonly IProjectOwnershipRegistry _projectOwnership;
+    private readonly ISharedProjectSourceRegistry _sharedProjectSources;
     private readonly SurfaceWindows _surfaces;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
@@ -81,6 +82,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProjectFieldRegistry projectFields,
         IProjectMemorySourceRegistry memorySources,
         IProjectOwnershipRegistry projectOwnership,
+        ISharedProjectSourceRegistry sharedProjectSources,
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore,
         IProfileLoginStarter loginStarter,
@@ -110,6 +112,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _projectFields = projectFields;
         _memorySources = memorySources;
         _projectOwnership = projectOwnership;
+        _sharedProjectSources = sharedProjectSources;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -272,7 +275,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         });
     }
 
-    public async Task<Project?> ShowProjectDialogAsync(Project? project, ISharedProjectSource? sharedSource = null)
+    public async Task<Project?> ShowProjectDialogAsync(Project? project, string? sharedSourceKey = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -296,7 +299,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // optimistic-concurrency check actually saw. A failed read leaves sharedWriteBack null: the editor still
         // opens with claimed fields locked, same as a project whose source never claimed it editable.
         ProjectSharedWriteBackContext? sharedWriteBack = null;
-        if (project is not null && sharedSource is not null)
+        if (project is not null && _FindSharedSource(sharedSourceKey) is { } sharedSource)
         {
             var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
             if (boundTo is { Length: > 0 })
@@ -354,20 +357,25 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<ProjectDefinitionConflictResolution?>(owner);
     }
 
-    public async Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source)
+    public async Task<Project?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
             return null;
         }
 
-        var key = (typeof(SharedProjectBindingDialog), sharedProject.Id);
+        var key = (typeof(SharedProjectBindingDialog), sharedProjectId);
         if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
         {
             return await open;
         }
 
-        var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProject.Id, sourceName, source, _profileStore);
+        if (_FindSharedSource(sourceKey) is not { } source)
+        {
+            return null;
+        }
+
+        var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProjectId, sourceName, source, _profileStore);
         if (viewModel is null)
         {
             // Definition read failed (unreachable, not signed in, project vanished) — surfaced via the
@@ -386,7 +394,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
     }
 
-    public async Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources)
+    public async Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<string> publishSourceKeys)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -399,6 +407,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return await open;
         }
 
+        var publishSources = publishSourceKeys.Select(_FindSharedSource).OfType<ISharedProjectSource>().ToList();
         var viewModel = ShareProjectDialogViewModel.Create(project, publishSources);
         Project? bound = null;
         viewModel.CloseRequested += result => bound = result;
@@ -407,6 +416,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         return await _surfaces.ShowAsync(key, dialog, owner, () => bound);
     }
+
+    // AC-1435: the view models name a shared-project source by its key; the source itself is a plugin's object.
+    private ISharedProjectSource? _FindSharedSource(string? key) =>
+        key is null ? null : _sharedProjectSources.Sources.FirstOrDefault(source => source.Key == key);
 
     // Mirrors _CloneIntoProjectAsync, pre-filled with the shared definition's own GitUrl (AC-246: "Clone…" is an
     // offer built on a URL the operator never has to type in, not a general clone-from-anywhere flow).

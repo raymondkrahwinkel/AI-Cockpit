@@ -9,8 +9,6 @@ ViewModels/ManageProfilesDialogViewModel.cs
 ViewModels/NewSessionDialogViewModel.cs
 ViewModels/Onboarding/AssistantStepViewModel.cs
 ViewModels/Onboarding/ProviderStepViewModel.cs
-ViewModels/ProjectDialogViewModel.cs
-ViewModels/ProjectsViewModel.cs
 ViewModels/QuickNoteViewModel.cs
 ViewModels/SessionPanelViewModel.cs
 ViewModels/SessionProviderCatalog.cs

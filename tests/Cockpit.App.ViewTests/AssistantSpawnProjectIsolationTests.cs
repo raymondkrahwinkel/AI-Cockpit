@@ -445,7 +445,7 @@ public class AssistantSpawnProjectIsolationTests
         var projectStore = Substitute.For<IProjectStore>();
         projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [project] });
         var dialogs = dialogService ?? Substitute.For<ISessionDialogService>();
-        var projects = new ProjectsViewModel(projectStore, dialogs);
+        var projects = TestProjects.ViewModel(projectStore, dialogs);
         projects.LoadAsync().GetAwaiter().GetResult();
 
         var profileStore = Substitute.For<ISessionProfileStore>();

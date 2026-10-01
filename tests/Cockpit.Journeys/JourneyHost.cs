@@ -123,7 +123,8 @@ public sealed class JourneyHost : IAsyncDisposable
         });
     }
 
-    // An SDK profile to start (a TTY one needs a terminal) and one project on `folder`, as the operator saved them.
+    // An SDK profile to start (a TTY one needs a terminal) and one project on `folder`, added through the project editor
+    // the Projects page and the assistant both write through (AC-1435).
     public async Task<Project> SaveProfileAndProjectAsync(string folder, bool isolateInWorktree = false)
     {
         var project = Project.Create("Journey") with
@@ -132,8 +133,7 @@ public sealed class JourneyHost : IAsyncDisposable
             IsolateInWorktreeByDefault = isolateInWorktree,
         };
         await Services.GetRequiredService<ISessionProfileStore>().SaveAsync([new SessionProfile(EchoProfile, new ClaudeConfig(Path.Combine(StateRoot, ".claude"))) { DefaultKind = ProfileSessionKind.Sdk }]);
-        await Services.GetRequiredService<IProjectStore>().SaveAsync(new ProjectSettings { Projects = [project] });
-        return project;
+        return await Services.GetRequiredService<IProjectEditor>().AddNewProjectAsync(project);
     }
 
     // The operator's route to a session: New session, the project, the profile, Start. The real dialog, answered

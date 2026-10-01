@@ -1,112 +1,106 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Projects;
-using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// Owns the persisting that `ProjectDialogViewModel` deliberately does not, so the editor stays a value editor and this
-// is the only thing that writes the list (AC-161, AC-245).
+// Hands what `ProjectDialogViewModel` produces to IProjectEditor, so the editor stays a value editor (AC-161, AC-245),
+// and draws IProjectCatalog's snapshot, also after a write it did not make itself (AC-1435).
 public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 {
-    private readonly IProjectStore _store;
+    private readonly IProjectCatalog _catalog;
+    private readonly IProjectEditor _editor;
+    private ProjectCatalogSnapshot _snapshot = ProjectCatalogSnapshot.Empty;
 
     // AC-490: the job-run trail the cards read "started 9 September" from, and what was read from it last. Null
     // in a graph without one, where every job's line stays the calendar's alone.
     private readonly IProjectJobHistory? _jobHistory;
     private IReadOnlyList<ProjectJobRun> _jobRuns = [];
 
-    // Takes the cockpit's own copy of a picked or downloaded logo. Null under the previewer, where a project keeps whatever path it was given.
-    private readonly IProjectLogoStore? _logos;
-
     // Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.
     private readonly ISessionDialogService? _dialogs;
-
-    // Where a shared project's origin is claimed for a local project already bound to it (AC-604/AC-245's own
-    // consumption of it — see `LoadSharedProjectsAsync`). Null under the previewer.
-    private readonly IProjectOwnershipRegistry? _ownership;
-
-    // What every registered plugin shares elsewhere (AC-245). Null under the previewer, where `SharedProjectGroups` simply stays empty.
-    private readonly ISharedProjectSourceRegistry? _sharedSources;
 
     // Which layout the Projects page draws (AC-772). Null under the previewer, which keeps the default and persists nothing.
     private readonly IProjectsDisplaySettingsStore? _displaySettings;
 
-    private ProjectSettings _settings = ProjectSettings.Empty;
 
     // What the cards this view model builds can do (AC-772). Set once by `CockpitViewModel` — which owns the
     // commands — before the first load, so every card carries them. Left null under the previewer and in tests,
     // where a card is data to inspect rather than a thing to start.
     internal ProjectCardActions? CardActions { get; set; }
 
-    // AC-894: forces an immediate `DepotSyncWatcher` check for one project, outside its own 15-minute timer. Set by
-    // the cockpit once the watcher exists; null under the previewer and in tests, where "Sync now" is simply inert.
-    internal Func<Project, Task>? SyncNow { get; set; }
-
-    // Local projects `DepotSyncWatcher` most recently reported a moved checksum for (AC-894) — cleared once "Sync
-    // now" or the next tick reports the checksum unchanged again. Read by `_ToCard` so the badge reflects it.
-    private readonly HashSet<string> _remoteChangedProjectIds = new(StringComparer.Ordinal);
-
-    // Cancels a still-running `LoadSharedProjectsAsync` when a newer one starts (the workspace reopened, say), so a slow connection cannot overwrite a fresher answer with a stale one.
-    private CancellationTokenSource? _sharedProjectsLoadCts;
-
-    // The background `LoadSharedProjectsAsync` call `LoadAsync` most recently started
+    // The background shared-project read `LoadAsync` most recently started
     // (never awaited by it — see that method's own remarks). Internal test seam only: it lets a test await the
     // same run `LoadAsync` kicked off instead of racing it with a second, independent call.
     internal Task SharedProjectsLoadTask { get; private set; } = Task.CompletedTask;
 
-    // Design-time constructor for the Avalonia previewer: an empty store and no dialog service, so a rendered
-    // surface can reach neither the operator's config nor a window that does not exist there. The commands are
-    // inert in that context — see `_dialogs`.
+    // Design-time constructor for the Avalonia previewer: projects kept in memory and no dialog service, so a rendered
+    // surface can reach neither the operator's config nor a window that does not exist there. The commands are inert
+    // in that context — see `_dialogs`.
     public ProjectsViewModel()
-        : this(new DesignTimeProjectStore(), dialogs: null)
+        : this(new DesignTimeProjects(), dialogs: null)
+    {
+    }
+
+    private ProjectsViewModel(DesignTimeProjects projects, ISessionDialogService? dialogs)
+        : this(projects, projects, dialogs)
     {
     }
 
     public ProjectsViewModel(
-        IProjectStore store,
+        IProjectCatalog catalog,
+        IProjectEditor editor,
         ISessionDialogService? dialogs,
-        IProjectLogoStore? logos = null,
-        IProjectOwnershipRegistry? ownership = null,
-        ISharedProjectSourceRegistry? sharedSources = null,
         IProjectsDisplaySettingsStore? displaySettings = null,
         IProjectJobHistory? jobHistory = null)
     {
-        _store = store;
+        _catalog = catalog;
+        _editor = editor;
         _dialogs = dialogs;
-        _logos = logos;
-        _ownership = ownership;
-        _sharedSources = sharedSources;
         _displaySettings = displaySettings;
         _jobHistory = jobHistory;
 
-        // AC-762: a source that registers after the startup race already lost it (App.axaml.cs's plugin phase 2
-        // runs after CockpitViewModel's constructor kicks off the first LoadAsync) gets its own retry instead of
-        // leaving every card on that source stuck until the operator happens to open Manage projects.
-        if (_sharedSources is not null)
+        // AC-1435: a write by the assistant, a shared-project read or a Depot sync check lands on another thread.
+        _catalog.Changed += _OnCatalogChanged;
+    }
+
+    private void _OnCatalogChanged()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
         {
-            _sharedSources.Registered += _OnSharedSourceRegistered;
+            _ApplyCurrent();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(_ApplyCurrent);
         }
     }
 
-    private void _OnSharedSourceRegistered(ISharedProjectSource source) => _BeginSharedProjectsLoad();
-
-    // Cancels a still-running load and starts a fresh one — the same dance `LoadAsync` does after re-reading
-    // settings, factored out so a source registering later (`_OnSharedSourceRegistered`) can trigger the same
-    // retry without re-reading `_settings` from disk for no reason.
-    private void _BeginSharedProjectsLoad()
+    // Draws the catalog's latest snapshot. Also called right after this view model's own write, so a selection made
+    // straight after it finds the project it just stored.
+    private void _ApplyCurrent()
     {
-        _sharedProjectsLoadCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _sharedProjectsLoadCts = cts;
-        SharedProjectsLoadTask = LoadSharedProjectsAsync(cts.Token);
+        if (ReferenceEquals(_catalog.Current, _snapshot))
+        {
+            return;
+        }
+
+        var sharedGroupsChanged = !ReferenceEquals(_catalog.Current.SharedProjectGroups, _snapshot.SharedProjectGroups);
+        _snapshot = _catalog.Current;
+        _Republish();
+        if (sharedGroupsChanged)
+        {
+            _RepublishSharedProjectGroups();
+        }
     }
+
+    // Starts a shared-project read without waiting on it: opening the workspace never blocks on a slow connection.
+    private void _BeginSharedProjectsLoad() => SharedProjectsLoadTask = LoadSharedProjectsAsync();
 
     // The saved projects in the order they are stored — what the manager lists and edits.
     public ObservableCollection<Project> Projects { get; } = [];
@@ -134,7 +128,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // AC-248: gates the launcher's own pointer line separately from HasSharedProjects, so it never contradicts a
     // signed-out connection's own "Sign in to this Depot connection…" error by implying nothing is set up.
-    public bool HasNoSharedProjectSources => _sharedSources is null || _sharedSources.Sources.Count == 0;
+    public bool HasNoSharedProjectSources => _snapshot.Sources.Count == 0;
 
     // `Projects` grouped by category for the list (AC-618), rebuilt by `_Republish` — replaces AC-245's "On this
     // machine" heading with a per-card origin badge instead (`ProjectCardViewModel.OriginBadge`).
@@ -171,30 +165,13 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     public Project? MostRecentProject => RecentProjects.FirstOrDefault(project => project.LastOpenedAt is not null);
 
     // Records that a session just started on `project`, so the overview can lead with what is
-    // actually worked on. Persists like every other change here; a project removed in the meantime is left alone
-    // rather than written back. True when the project was saved — AC-490 records a job run only after that.
+    // actually worked on. A project removed in the meantime is left alone rather than written back. True when the
+    // project was saved — AC-490 records a job run only after that.
     public async Task<bool> MarkOpenedAsync(Project project, DateTimeOffset openedAt)
     {
-        if (_settings.Projects.FirstOrDefault(candidate => candidate.Id == project.Id) is not { } stored)
-        {
-            return false;
-        }
-
-        await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
-        return true;
-    }
-
-    // AC-1059: `update_project` without the dialog — same direct-patch shape `MarkOpenedAsync` uses above,
-    // since no `LogoPath` change ever comes through this door. Null when `updated.Id` names no stored project.
-    internal async Task<Project?> UpdateStoredProjectAsync(Project updated)
-    {
-        if (_settings.Projects.All(candidate => candidate.Id != updated.Id))
-        {
-            return null;
-        }
-
-        await _PersistAsync(_settings.WithUpdated(updated));
-        return updated;
+        var marked = await _editor.MarkOpenedAsync(project.Id, openedAt);
+        _ApplyCurrent();
+        return marked;
     }
 
     // A manager holding one sample project, for a headless render of a surface that shows projects — the
@@ -212,7 +189,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // view model is the one `CockpitViewModel` already owns and so cannot be swapped for a freshly built sample.
     internal void StageDesignSample()
     {
-        _settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
+        _snapshot = _snapshot with
+        {
+            Settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
         {
             Description = "The cockpit itself — the desktop app these sessions run in.",
             SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
@@ -223,7 +202,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
-        });
+        }),
+        };
         _Republish();
     }
 
@@ -243,12 +223,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SharedProjectGroups.Add(new SharedProjectGroupViewModel(
             "Depot — Work",
             [
-                new SharedProject("depot:onboarding", "Onboarding flow")
-                {
-                    Description = "New-hire checklist and the tooling walkthrough.",
-                    Role = "Editor",
-                },
-                new SharedProject("depot:roadmap", "Product roadmap") { Role = "Viewer" },
+                new SharedProjectOffer("depot:onboarding", "Onboarding flow", "New-hire checklist and the tooling walkthrough.", "Editor"),
+                new SharedProjectOffer("depot:roadmap", "Product roadmap", Role: "Viewer"),
             ],
             Error: null));
         SharedProjectGroups.Add(new SharedProjectGroupViewModel(
@@ -282,14 +258,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         };
         var scratch = Project.Create("Testproject") with { SourceDirectories = [new("/home/raymond/tmp/scratch")] };
 
-        var ownership = new ProjectOwnershipRegistry();
-        ownership.Register(new ProjectOwnershipRegistration(onboarding.Id, new ProjectFieldOwnership("Depot — Work")));
-
-        var viewModel = new ProjectsViewModel(new DesignTimeProjectStore(), dialogs: null, ownership: ownership);
-        viewModel._settings = ProjectSettings.Empty with
+        var viewModel = new ProjectsViewModel();
+        viewModel._snapshot = ProjectCatalogSnapshot.Empty with
         {
-            Projects = [cockpit, eveWorkbench, onboarding, scratch],
-            CategoryOrder = ["Werk", "Privé"],
+            Settings = ProjectSettings.Empty with
+            {
+                Projects = [cockpit, eveWorkbench, onboarding, scratch],
+                CategoryOrder = ["Werk", "Privé"],
+            },
+            OwnershipClaims = new Dictionary<string, string?> { [onboarding.Id] = "Depot — Work" },
         };
         viewModel._Republish();
 
@@ -303,7 +280,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Called when Options opens, so an edit made elsewhere is reflected rather than overwritten.
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
+        await _catalog.LoadAsync(cancellationToken).ConfigureAwait(true);
+        _snapshot = _catalog.Current;
+
         await RefreshJobRunsAsync(cancellationToken).ConfigureAwait(true);
 
         if (_displaySettings is not null)
@@ -382,104 +361,46 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     // Public (rather than folded into `LoadAsync`) so a test can await it directly instead of racing the
-    // fire-and-forget call `LoadAsync` makes (AC-245, AC-604).
+    // fire-and-forget call `LoadAsync` makes (AC-245, AC-604). The catalog reads the sources and claims (AC-1435).
     public async Task LoadSharedProjectsAsync(CancellationToken cancellationToken = default)
     {
-        if (_sharedSources is null)
-        {
-            return;
-        }
+        await _catalog.RefreshSharedProjectsAsync(cancellationToken).ConfigureAwait(true);
+        _ApplyCurrent();
+    }
 
-        var sources = _sharedSources.Sources;
-        if (sources.Count == 0)
-        {
-            SharedProjectGroups.Clear();
-            return;
-        }
-
-        var (boundIds, hiddenIds) = SharedProjectVisibilityFilterIds();
-
-        var results = await Task.WhenAll(sources.Select(source => _ListWithTimeoutAsync(source, cancellationToken)))
-            .ConfigureAwait(true);
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            // A newer LoadSharedProjectsAsync call superseded this one (LoadAsync cancels the previous token) —
-            // its own results, not this stale run's, belong in SharedProjectGroups.
-            return;
-        }
-
-        var groups = new List<SharedProjectGroupViewModel>();
-        var reconciledProjects = new List<Project>();
-        foreach (var (source, result) in sources.Zip(results))
-        {
-            // Claiming runs over every project this source reported, bound or not — a project already bound is
-            // exactly the one this claim is for (it is what makes the editor draw the ◆ Shared badge on it), even
-            // though it never appears in this source's own group below (it already shows under "On this machine").
-            if (result.Succeeded)
-            {
-                reconciledProjects.AddRange(_ReconcileSharedSourceClaims(result.Projects, source));
-            }
-
-            var visible = result.Succeeded
-                ? result.Projects.Where(project => !boundIds.Contains(project.Id) && !hiddenIds.Contains(project.Id)).ToList()
-                : [];
-
-            if (visible.Count == 0 && result.Succeeded)
-            {
-                continue;
-            }
-
-            groups.Add(new SharedProjectGroupViewModel(source.SourceName, visible, result.Succeeded ? null : result.Error));
-        }
-
-        if (reconciledProjects.Count > 0)
-        {
-            var reconciled = _settings;
-            foreach (var project in reconciledProjects)
-            {
-                reconciled = reconciled.WithUpdated(project);
-            }
-
-            await _PersistAsync(reconciled).ConfigureAwait(true);
-        }
-
+    private void _RepublishSharedProjectGroups()
+    {
         SharedProjectGroups.Clear();
-        foreach (var group in groups)
+        foreach (var group in _snapshot.SharedProjectGroups)
         {
-            SharedProjectGroups.Add(group);
+            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error));
         }
 
         OnPropertyChanged(nameof(HasSharedProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
         OnPropertyChanged(nameof(HasNoSharedProjectSources));
-
-        // AC-618: _ClaimBoundProjects above may just have registered an ownership claim this run — a bound
-        // project's card must show its "◆ <connection>" badge without the operator having to touch anything else
-        // for _Republish to run again.
-        _RepublishCategoryGroups();
     }
 
-    // Finds the `ISharedProjectSource` it came from by its own `SharedProject.Id` prefix (the same `"{scheme}:{slug}"`
-    // shape `ISharedProjectSource.Key`'s own doc comment describes) rather than carrying the source alongside the row
+    // Finds the source it came from by its own `SharedProjectOffer.Id` prefix (the same `"{scheme}:{slug}"` shape
+    // `ISharedProjectSource.Key`'s own doc comment describes) rather than carrying the source alongside the row
     // (AC-246, AC-245).
     [RelayCommand]
-    private async Task FinishSettingUpAsync(SharedProject sharedProject)
+    private async Task FinishSettingUpAsync(SharedProjectOffer sharedProject)
     {
-        if (_dialogs is null || _sharedSources is null)
+        if (_dialogs is null)
         {
             return;
         }
 
         var group = SharedProjectGroups.FirstOrDefault(candidate => candidate.Projects.Any(project => project.Id == sharedProject.Id));
-        var source = _sharedSources.Sources.FirstOrDefault(
+        var source = _snapshot.Sources.FirstOrDefault(
             candidate => sharedProject.Id.StartsWith(candidate.Key + ":", StringComparison.Ordinal));
         if (source is null || group is null)
         {
             return;
         }
 
-        if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject, group.SourceName, source) is { } created)
+        if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject.Id, group.SourceName, source.Key) is { } created)
         {
             var stored = await AddBoundProjectAsync(created);
 
@@ -490,70 +411,14 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
-    // Stores `created` — a project just built from a shared definition — and returns it as stored. The tail of the
-    // bind step, shared by the dialog route above and the assistant's own (AC-798), so a project bound without a
-    // window is written exactly the way one bound with it is: same logo copy, same normalising save.
+    // Stores `created`, a project just built from a shared definition, the way the assistant's bind does (AC-798):
+    // both go through IProjectEditor.AddBoundProjectAsync.
     internal async Task<Project> AddBoundProjectAsync(Project created)
     {
-        var stored = await _WithStoredLogoAsync(created);
-        await _PersistAsync(_settings.WithProject(stored));
-
-        // The row just bound must not keep showing under "Shared via …" until the next full reload — a fresh
-        // run finds it in boundIds now (its own Memory row names the shared project's id) and leaves it out on its
-        // own, but that reload has not happened yet and the operator is looking at this list right now.
-        await LoadSharedProjectsAsync();
-
+        var stored = await _editor.AddBoundProjectAsync(created);
+        _ApplyCurrent();
         return stored;
     }
-
-    // Claims every local project bound to `sharedProjects` as owned by `source`, and returns every project whose
-    // `SharedSourceName` needs persisting to match (AC-762): confirmed when still listed, cleared only when a
-    // project's own claim names this exact `source` but its successful list no longer contains it.
-    private List<Project> _ReconcileSharedSourceClaims(IReadOnlyList<SharedProject> sharedProjects, ISharedProjectSource source)
-    {
-        var byId = sharedProjects.ToDictionary(project => project.Id, StringComparer.Ordinal);
-        var updated = new List<Project>();
-
-        foreach (var project in _settings.Projects)
-        {
-            var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
-            if (boundTo is not { Length: > 0 })
-            {
-                continue;
-            }
-
-            if (byId.TryGetValue(boundTo, out var sharedProject))
-            {
-                // AC-247/AC-763: every claimed field, Logo included, unlocks once the source says this role can
-                // write (SharedProject.CanWriteBack) — SaveAsync now has somewhere to send that edit
-                // (ISharedProjectSource.WriteBackAsync), so no per-field override is needed any more.
-                _ownership?.Register(new ProjectOwnershipRegistration(
-                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)));
-
-                if (!string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
-                {
-                    updated.Add(project with { SharedSourceName = source.SourceName });
-                }
-            }
-            else if (string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
-            {
-                updated.Add(project with { SharedSourceName = null });
-            }
-        }
-
-        return updated;
-    }
-
-    // The ids a shared project is filtered against before it counts as visible here: already bound to a local
-    // project, or hidden on this machine. AC-1374: forwards to Infrastructure's copy, which the moved
-    // `AssistantReadGateway` applies too — the exact same rule instead of a second copy that can drift from this one.
-    internal (HashSet<string> BoundIds, HashSet<string> HiddenIds) SharedProjectVisibilityFilterIds() =>
-        SharedProjectSourceLister.VisibilityFilterIds(_settings);
-
-    // AC-1374: forwards to Infrastructure's copy — see `SharedProjectSourceLister.ListWithTimeoutAsync` for the
-    // never-throws rationale (AC-797).
-    internal static Task<SharedProjectListResult> _ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken) =>
-        SharedProjectSourceLister.ListWithTimeoutAsync(source, cancellationToken);
 
     [RelayCommand]
     private async Task AddProjectAsync()
@@ -594,12 +459,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SelectedProject = Projects.FirstOrDefault(project => project.Id == stored.Id);
     }
 
-    // The two do not race each other because there is no `await` between the `_settings.WithProject(stored)` read below
-    // and the `_settings = settings;` write in `_PersistAsync` (AC-799).
+    // Two adds at once both land: the editor serialises its writes (AC-799).
     internal async Task<Project> AddNewProjectAsync(Project created)
     {
-        var stored = await _WithStoredLogoAsync(created);
-        await _PersistAsync(_settings.WithProject(stored));
+        var stored = await _editor.AddNewProjectAsync(created);
+        _ApplyCurrent();
         return stored;
     }
 
@@ -617,25 +481,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             return;
         }
 
-        if (await _dialogs.ShowProjectDialogAsync(project, _ResolveSharedSource(project)) is { } edited)
+        if (await _dialogs.ShowProjectDialogAsync(project, _ResolveSharedSource(project)?.Key) is { } edited)
         {
-            var stored = await _WithStoredLogoAsync(edited);
-            await _PersistAsync(_settings.WithUpdated(stored));
-            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+            await _UpdateAsync(edited);
         }
     }
 
     // The source `project` is genuinely bound to — a matching Memory-reference prefix alone is not enough (AC-744).
     // "Claimed" is a live ownership claim or, absent that (AC-762), the persisted `SharedSourceName` — same
     // either/or `_OriginBadge` reads, so the share toggle never disagrees with what the badge just showed.
-    private ISharedProjectSource? _ResolveSharedSource(Project project)
+    private SharedProjectSourceInfo? _ResolveSharedSource(Project project)
     {
-        if (_sharedSources is null)
-        {
-            return null;
-        }
-
-        var isClaimed = _ownership?.Resolve(project.Id) is not null || project.SharedSourceName is { Length: > 0 };
+        var isClaimed = _snapshot.OwnershipClaims.ContainsKey(project.Id) || project.SharedSourceName is { Length: > 0 };
         if (!isClaimed)
         {
             return null;
@@ -643,7 +500,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         var boundTo = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
         return boundTo is { Length: > 0 }
-            ? _sharedSources.Sources.FirstOrDefault(source => boundTo.StartsWith(source.Key + ":", StringComparison.Ordinal))
+            ? _snapshot.Sources.FirstOrDefault(source => boundTo.StartsWith(source.Key + ":", StringComparison.Ordinal))
             : null;
     }
 
@@ -663,39 +520,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (confirmed)
         {
-            _logos?.Remove(project.Id);
-            await _PersistAsync(_settings.WithoutProject(project.Id));
+            await _editor.RemoveProjectAsync(project.Id);
+            _ApplyCurrent();
         }
     }
 
-    // `project` with its logo as a copy the cockpit owns.
-    private async Task<Project> _WithStoredLogoAsync(Project project)
+    // Stores `project` over its stored self and selects it.
+    private async Task _UpdateAsync(Project project)
     {
-        if (_logos is null)
-        {
-            return project;
-        }
-
-        if (project.LogoPath is not { Length: > 0 } source)
-        {
-            _logos.Remove(project.Id);
-            return project with { LogoPath = null };
-        }
-
-        // Already the copy: re-storing it would read the file the cockpit is about to overwrite.
-        if (_logos.IsStoredCopy(source))
-        {
-            return project;
-        }
-
-        return project with { LogoPath = await _logos.SaveAsync(project.Id, source) };
-    }
-
-    private async Task _PersistAsync(ProjectSettings settings)
-    {
-        _settings = settings;
-        await _store.SaveAsync(settings).ConfigureAwait(true);
-        _Republish();
+        await _editor.UpdateStoredProjectAsync(project);
+        _ApplyCurrent();
+        SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
     }
 
     private void _Republish()
@@ -703,13 +538,13 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var selectedId = SelectedProject?.Id;
 
         Projects.Clear();
-        foreach (var project in _settings.Projects)
+        foreach (var project in _snapshot.Settings.Projects)
         {
             Projects.Add(project);
         }
 
         RecentProjects.Clear();
-        foreach (var project in _settings.Projects
+        foreach (var project in _snapshot.Settings.Projects
             .OrderByDescending(project => project.LastOpenedAt ?? DateTimeOffset.MinValue)
             .ThenBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase))
         {
@@ -736,7 +571,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
         ProjectCategoryGroups.Clear();
 
-        var normalized = _settings.Normalized();
+        var normalized = _snapshot.Settings.Normalized();
         _RepublishRecentCards(normalized);
         if (!normalized.Projects.Any(project => !string.IsNullOrWhiteSpace(project.Category)))
         {
@@ -777,7 +612,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     private ProjectCardViewModel _ToCard(Project project) =>
-        new(project, _OriginBadge(project), CardActions, _remoteChangedProjectIds.Contains(project.Id), jobRuns: _jobRuns)
+        new(project, _OriginBadge(project), CardActions, _snapshot.RemoteChangedProjectIds.Contains(project.Id), jobRuns: _jobRuns)
         {
             IsSelected = project.Id == SelectedProject?.Id,
         };
@@ -794,78 +629,19 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _Republish();
     }
 
-    // AC-894: every local project genuinely bound to a Depot source right now, and the id `DepotSyncWatcher` should
-    // ask that source about — the same "genuinely bound" test `_ResolveSharedSource` already applies for the editor,
-    // reused here rather than a second copy of it.
-    internal IReadOnlyList<DepotBoundProject> DepotBoundProjects()
+    // AC-894: "Sync now" checks one Depot-bound project immediately, outside the watcher's own interval.
+    internal async Task SyncNowAsync(Project project)
     {
-        if (_sharedSources is null)
-        {
-            return [];
-        }
-
-        var bound = new List<DepotBoundProject>();
-        foreach (var project in _settings.Projects)
-        {
-            var sharedId = project.Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
-            if (sharedId is not { Length: > 0 })
-            {
-                continue;
-            }
-
-            if (_ResolveSharedSource(project) is { } source)
-            {
-                bound.Add(new DepotBoundProject(project.Id, source, sharedId));
-            }
-        }
-
-        return bound;
+        await _catalog.SyncNowAsync(project.Id);
+        _ApplyCurrent();
     }
 
-    // AC-894: `DepotSyncWatcher`'s own report for one project — a republish only when the flag actually moved.
-    // AC-1054: also carries the logo bytes that same check already re-downloaded, adopted below only into a
-    // project with no logo of its own yet, so a sync check can never overwrite a local choice.
-    internal async Task SetRemoteChangeState(string projectId, bool hasRemoteChange, byte[]? logoBytes)
-    {
-        var moved = hasRemoteChange ? _remoteChangedProjectIds.Add(projectId) : _remoteChangedProjectIds.Remove(projectId);
-        if (moved)
-        {
-            _RepublishCategoryGroups();
-        }
-
-        await _AdoptSharedLogoIfMissingAsync(projectId, logoBytes);
-    }
-
-    // AC-1054: the bytes `DepotSyncWatcher` already downloaded for the checksum check, written in only when this
-    // machine's own copy of the project still has no logo — the same one-way "never overwrite" rule AC-894 set for
-    // the rest of a changed shared definition.
-    private async Task _AdoptSharedLogoIfMissingAsync(string projectId, byte[]? logoBytes)
-    {
-        if (_logos is null || logoBytes is not { Length: > 0 })
-        {
-            return;
-        }
-
-        if (_settings.Projects.FirstOrDefault(project => project.Id == projectId) is not { LogoPath: null } project)
-        {
-            return;
-        }
-
-        if (TempLogoFile.WriteOrNull(logoBytes) is not { } tempPath)
-        {
-            return;
-        }
-
-        var stored = await _WithStoredLogoAsync(project with { LogoPath = tempPath });
-        await _PersistAsync(_settings.WithUpdated(stored));
-    }
-
-    // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project` (AC-604, claimed by
-    // `_ReconcileSharedSourceClaims`) — falls back to `SharedSourceName` (AC-762) so a genuinely shared project
-    // never renders as local just because that in-memory, network-rebuilt claim has not arrived or failed.
+    // "● This machine", or "◆ &lt;connection&gt;" once the catalog holds a claim on `project` (AC-604) — falls back to
+    // `SharedSourceName` (AC-762) so a genuinely shared project never renders as local just because that in-memory,
+    // network-rebuilt claim has not arrived or failed.
     private string _OriginBadge(Project project) =>
-        _ownership?.Resolve(project.Id)?.Values.FirstOrDefault(ownership => ownership is not null) is { } claim
-            ? $"◆ {claim.SourceName}"
+        _snapshot.OwnershipClaims.GetValueOrDefault(project.Id) is { } claim
+            ? $"◆ {claim}"
             : project.SharedSourceName is { Length: > 0 } lastKnown
                 ? $"◆ {lastKnown}"
                 : "● This machine";
@@ -916,12 +692,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // know or care that it is Depot. No connection able to publish yet → nothing to open.
     private async Task _ShareAsync(Project project)
     {
-        if (_dialogs is null || _sharedSources is null)
+        if (_dialogs is null)
         {
             return;
         }
 
-        var publishSources = _sharedSources.Sources.Where(source => source.CanPublish).ToList();
+        var publishSources = _snapshot.Sources.Where(source => source.CanPublish).Select(source => source.Key).ToList();
         if (publishSources.Count == 0)
         {
             return;
@@ -929,9 +705,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowShareProjectDialogAsync(project, publishSources) is { } shared)
         {
-            var stored = await _WithStoredLogoAsync(shared);
-            await _PersistAsync(_settings.WithUpdated(stored));
-            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+            await _UpdateAsync(shared);
             await LoadSharedProjectsAsync();
         }
     }
@@ -969,8 +743,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             SharedSourceName = null,
         };
 
-        await _PersistAsync(_settings.WithUpdated(withoutBinding));
-        SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == withoutBinding.Id);
+        await _UpdateAsync(withoutBinding);
         await LoadSharedProjectsAsync();
     }
 }

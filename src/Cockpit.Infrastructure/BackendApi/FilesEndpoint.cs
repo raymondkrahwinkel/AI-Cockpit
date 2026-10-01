@@ -1,8 +1,8 @@
 using System.Text;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Mcp;
-using Cockpit.Infrastructure.Projects;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;

@@ -22,7 +22,8 @@ namespace Cockpit.Infrastructure.Assistant;
 internal sealed class AssistantAgentGateway(
     ISessionRegistry sessions,
     ISessionLauncher launcher,
-    IProjectEditor projectEditor,
+    ProjectCatalog projects,
+    IProjectComposer projectComposer,
     ISessionWatcher watcher,
     IAssistantConversation conversation,
     IExternalLinkOpener links,
@@ -756,7 +757,7 @@ internal sealed class AssistantAgentGateway(
         IReadOnlyList<string>? resourceReferences = null,
         CancellationToken cancellationToken = default)
     {
-        var (sources, boundIds, hiddenIds) = await projectEditor.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = await projects.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
 
         if (sources.Count == 0)
         {
@@ -834,14 +835,14 @@ internal sealed class AssistantAgentGateway(
                 $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.");
         }
 
-        var (composed, composeRefusal) = await projectEditor
+        var (composed, composeRefusal) = await projectComposer
             .ComposeSharedProjectAsync(id, source, directory, profile.Label, resourceReferences, cancellationToken).ConfigureAwait(false);
         if (composed is null)
         {
             return AssistantProjectBindResult.Refused(composeRefusal ?? "Could not read this project's definition.");
         }
 
-        var stored = await projectEditor.AddBoundProjectAsync(composed).ConfigureAwait(false);
+        var stored = await projects.AddBoundProjectAsync(composed).ConfigureAwait(false);
 
         return AssistantProjectBindResult.Bound(stored.Id, stored.Name, source.SourceName, stored.SourceDirectory);
     }
@@ -882,7 +883,7 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectCreateResult.Refused(unknownProfileError);
         }
 
-        var (project, composeRefusal) = await projectEditor.ComposeNewProjectAsync(
+        var (project, composeRefusal) = await projectComposer.ComposeNewProjectAsync(
             name, description, sourceDirectory, behaviorPrompt, isolateInWorktreeByDefault, category, defaultProfileLabel,
             cancellationToken).ConfigureAwait(false);
 
@@ -910,7 +911,7 @@ internal sealed class AssistantAgentGateway(
             PluginFields = pluginFields ?? ReadOnlyDictionary<string, string>.Empty,
         };
 
-        var stored = await projectEditor.AddNewProjectAsync(withDynamicFields).ConfigureAwait(false);
+        var stored = await projects.AddNewProjectAsync(withDynamicFields).ConfigureAwait(false);
         return AssistantProjectCreateResult.Created(stored.Id, stored.Name);
     }
 
@@ -918,7 +919,7 @@ internal sealed class AssistantAgentGateway(
     // gateway ever raising consent itself (that stays the caller's job, same split every other tool here keeps).
     public async Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default)
     {
-        var project = await projectEditor.FindProjectAsync(projectId).ConfigureAwait(false);
+        var project = await projects.FindProjectAsync(projectId).ConfigureAwait(false);
         return project is null
             ? null
             : new AssistantProjectSnapshot(
@@ -973,7 +974,7 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectUpdateResult.Refused(unknownProfileError);
         }
 
-        var stored = await projectEditor.FindProjectAsync(projectId).ConfigureAwait(false);
+        var stored = await projects.FindProjectAsync(projectId).ConfigureAwait(false);
         if (stored is null)
         {
             return AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.");
@@ -1063,7 +1064,7 @@ internal sealed class AssistantAgentGateway(
             updated = updated with { PluginFields = merged };
         }
 
-        var result = await projectEditor.UpdateStoredProjectAsync(updated).ConfigureAwait(false);
+        var result = await projects.UpdateStoredProjectAsync(updated).ConfigureAwait(false);
         return result is null
             ? AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.")
             : AssistantProjectUpdateResult.Updated(result.Id, result.Name);
@@ -1095,7 +1096,7 @@ internal sealed class AssistantAgentGateway(
     private async Task<(string SourceName, string Id, string Name)?> _FindSharedProjectByNameAsync(
         string name, CancellationToken cancellationToken)
     {
-        var (sources, boundIds, hiddenIds) = await projectEditor.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = await projects.ReadSharedProjectSourcesAsync().ConfigureAwait(false);
 
         if (sources.Count == 0)
         {

@@ -66,7 +66,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Equal("Invoices", result.Name);
         Assert.NotNull(result.ProjectId);
 
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(result.ProjectId, stored.Id);
         Assert.Equal("Invoices", stored.Name);
         Assert.Equal("Client billing", stored.Description);
@@ -92,7 +92,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Standup notes");
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Null(stored.SourceDirectory);
     }
 
@@ -107,7 +107,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Equal("A project needs a name.", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
 
         // Not assumed: the dialog's own view model, given the same blank name, has CanSave false for the identical
         // reason — this is `ProjectDialogViewModel.CanSave` itself, not a rewritten copy of its rule.
@@ -145,7 +145,7 @@ public class AssistantCreateProjectTests : IDisposable
         // would run start to finish, `_logos` being null making `_WithStoredLogoAsync` synchronous too, before the
         // second job ever gets a turn. That "proved" the assertion by never exercising the race at all. Here
         // `SaveAsync` genuinely suspends the caller until this test releases it, so the dispatcher is forced to run
-        // the second job while the first is still awaiting inside `_PersistAsync` — the actual interleaving a lost
+        // the second job while the first is still awaiting inside the save — the actual interleaving a lost
         // update would need.
         var firstSaveReached = new TaskCompletionSource();
         var secondSaveReached = new TaskCompletionSource();
@@ -160,7 +160,7 @@ public class AssistantCreateProjectTests : IDisposable
             return releaseSaves.Task;
         });
 
-        var projects = new ProjectsViewModel(store, dialogs: null);
+        var projects = TestProjects.ViewModel(store, dialogs: null);
         await Dispatcher.UIThread.InvokeAsync(() => projects.LoadAsync());
 
         var assistantProject = Project.Create("Assistant project") with { SourceDirectories = [new(_folder)] };
@@ -169,18 +169,17 @@ public class AssistantCreateProjectTests : IDisposable
         var assistantTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(assistantProject));
         var dialogTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(dialogProject));
 
-        // Both jobs have now reached `_PersistAsync`'s `await _store.SaveAsync(settings)` and are suspended there —
-        // which proves the second call's `_settings.WithProject(stored)` read ran only after the first call's
-        // `_settings = settings;` write, exactly the ordering the production comment on `AddNewProjectAsync`
-        // depends on (see AC-799 review finding 7).
-        await Task.WhenAll(firstSaveReached.Task, secondSaveReached.Task);
+        // The first job is suspended inside the store's save while the second has already started. AC-1435: the
+        // project catalog serialises its writes, so the second reads the settings only after the first stored them.
+        await firstSaveReached.Task;
+        Assert.False(secondSaveReached.Task.IsCompleted);
 
         releaseSaves.SetResult();
         await Task.WhenAll(assistantTask, dialogTask);
 
-        Assert.Equal(2, projects.Projects.Count);
-        Assert.Contains(projects.Projects, project => project.Name == "Assistant project");
-        Assert.Contains(projects.Projects, project => project.Name == "Dialog project");
+        Assert.Equal(2, projects.Drawn().Projects.Count);
+        Assert.Contains(projects.Drawn().Projects, project => project.Name == "Assistant project");
+        Assert.Contains(projects.Drawn().Projects, project => project.Name == "Dialog project");
     }
 
     // ── Criterion 6: a name already shared elsewhere is reported, not duplicated ────────────────────────────────
@@ -196,7 +195,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Contains("Handbook", result.Error);
         Assert.Contains("Depot — Work", result.Error);
         Assert.Contains("bind_shared_project", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -215,7 +214,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Handbook");
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Projects.Count);
+        Assert.Equal(2, projects.Drawn().Projects.Count);
     }
 
     [Fact]
@@ -230,7 +229,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices");
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Projects.Count(project => project.Name == "Invoices"));
+        Assert.Equal(2, projects.Drawn().Projects.Count(project => project.Name == "Invoices"));
     }
 
     // ── sourceDirectory: full path, and it has to exist ─────────────────────────────────────────────────────────
@@ -244,7 +243,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("relative path", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -256,7 +255,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("no folder", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // ── pluginFields: keys come from the registry, never invented ──────────────────────────────────────────────
@@ -273,7 +272,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("github.repository", result.Error);
         Assert.Contains("youtrack.project", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // AC-884: a value naming several prefixes is stored and read back verbatim — the tool takes the same
@@ -288,7 +287,7 @@ public class AssistantCreateProjectTests : IDisposable
             "EVE Workbench", pluginFields: new Dictionary<string, string> { ["youtrack.project"] = "EWB, AT, EJ" });
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(["EWB", "AT", "EJ"], stored.LinkedAsAll("youtrack.project"));
     }
 
@@ -304,7 +303,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("not-a-real-profile", result.Error);
         Assert.Contains(ProfileLabel, result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -315,7 +314,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices", defaultProfileLabel: ProfileLabel);
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(ProfileLabel, stored.DefaultProfileLabel);
     }
 
@@ -329,7 +328,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices");
 
         Assert.False(result.Ok);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -353,7 +352,8 @@ public class AssistantCreateProjectTests : IDisposable
             fieldRegistry.Register(field);
         }
 
-        var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
+        var catalog = TestProjects.Catalog(store, registry);
+        var projects = TestProjects.ViewModel(catalog, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
         var sessions = new SessionRegistry();
@@ -371,7 +371,8 @@ public class AssistantCreateProjectTests : IDisposable
             worktreeManager: null,
             sharedProjectSources: registry,
             mcpServerCatalog: includeMcpCatalog ? _McpCatalog() : null,
-            projectFields: fieldRegistry));
+            projectFields: fieldRegistry,
+            projects: catalog));
 
         return (gateway, projects, store);
     }

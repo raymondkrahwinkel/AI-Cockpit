@@ -96,7 +96,7 @@ public sealed class Ac1297SegmentSwitchTests
                 Projects = [Project.Create("Cockpit") with { Category = "Privé" }],
                 CategoryOrder = ["Privé"],
             });
-            var projects = new ProjectsViewModel(store, Substitute.For<ISessionDialogService>());
+            var projects = TestProjects.ViewModel(store, Substitute.For<ISessionDialogService>());
             await projects.LoadAsync();
             projects.LayoutMode = ProjectsLayoutMode.List;
 
