@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Cockpit.Core.Abstractions.Sessions;
@@ -19,6 +20,14 @@ public sealed class EchoDriver : ISessionDriver
     private readonly Channel<string> _prompts = Channel.CreateUnbounded<string>();
     private readonly Channel<bool> _interrupts = Channel.CreateUnbounded<bool>();
     private readonly TaskCompletionSource _answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly bool _wedged;
+
+    public EchoDriver(bool wedged = false) => _wedged = wedged;
+
+    // AC-1442: a wedged driver runs a real CLI process and never finishes its teardown, as one that stopped answering.
+    public Process? Child { get; private set; }
+
+    public int? ProcessId => Child?.Id;
 
     public Task Answered => _answered.Task;
 
@@ -44,6 +53,13 @@ public sealed class EchoDriver : ISessionDriver
         WorkingDirectory = workingDirectory;
         PermissionMode = permissionMode;
         Resume = resume;
+        if (_wedged)
+        {
+            Child = Process.Start(OperatingSystem.IsWindows()
+                ? new ProcessStartInfo("ping", "-n 600 127.0.0.1") { RedirectStandardOutput = true }
+                : new ProcessStartInfo("sleep", "600"));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -68,7 +84,7 @@ public sealed class EchoDriver : ISessionDriver
     public ValueTask DisposeAsync()
     {
         _prompts.Writer.TryComplete();
-        return ValueTask.CompletedTask;
+        return _wedged ? new ValueTask(Task.Delay(Timeout.Infinite)) : ValueTask.CompletedTask;
     }
 
     private async IAsyncEnumerable<SessionEvent> _EchoAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -99,6 +115,9 @@ public sealed class EchoDriverFactory(EchoDriver first) : ISessionDriverFactory
 {
     private readonly List<EchoDriver> _made = [];
 
+    // What every driver after the first is.
+    public Func<EchoDriver> Next { get; set; } = () => new EchoDriver();
+
     public IReadOnlyList<EchoDriver> Made
     {
         get
@@ -114,7 +133,7 @@ public sealed class EchoDriverFactory(EchoDriver first) : ISessionDriverFactory
     {
         lock (_made)
         {
-            var driver = _made.Count == 0 ? first : new EchoDriver();
+            var driver = _made.Count == 0 ? first : Next();
             _made.Add(driver);
             return driver;
         }

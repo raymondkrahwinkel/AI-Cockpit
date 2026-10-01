@@ -1,12 +1,16 @@
+using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Mcp;
@@ -106,6 +110,54 @@ public sealed class NodeConnectJourney
         evt.Kind == "row" && evt.Data.TryGetProperty("PaneId", out var pane) ? pane.GetString() : null;
 
     // A desk to land on, an SDK profile to run (a TTY one needs a window) and the node door on a port of the OS's choosing.
+    // AC-1442: the backend's stop without App. Of two sessions one has a CLI that never lets go; within the budget the
+    // register is empty, the listeners' ports are free, and that CLI's process is ended rather than left behind.
+    [Fact]
+    public async Task StoppingTheBackend_EndsBothSessionsWithinTheBudget_AndLeavesNoProcessBehind()
+    {
+        await using var cockpit = JourneyHost.Api();
+        var services = cockpit.Services;
+        await _SaveAFreshNodeAsync(services);
+        cockpit.Drivers.Next = () => new EchoDriver(wedged: true);
+        cockpit.Backend.Start();
+        cockpit.Backend.StartPlanners();
+        var endpoints = services.GetRequiredService<CockpitMcpEndpointHost>();
+        int[] ports = [new Uri(Assert.Single(endpoints.GetNodeAddresses()).Url).Port, new Uri(endpoints.GetServers()[0].Url ?? "").Port];
+        var registry = services.GetRequiredService<ISessionRegistry>();
+        var launcher = services.GetRequiredService<ISessionLauncher>();
+        var profile = Assert.Single(await services.GetRequiredService<ISessionProfileStore>().LoadAsync());
+        for (var session = 0; session < 2; session++)
+        {
+            Assert.NotNull(await launcher.StartSessionAsync(new SessionLaunchRequest(
+                launcher.Workspaces.Workspaces[0].Id, profile, null, null, null, PaneSessionKind.Sdk, null, false, null, false)));
+        }
+
+        var child = cockpit.Drivers.Made[1].Child ?? throw new InvalidOperationException("The wedged session started no process.");
+        try
+        {
+            var budget = TimeSpan.FromSeconds(2);
+            var clock = Stopwatch.StartNew();
+            await cockpit.Backend.StopAsync(budget);
+
+            Assert.True(clock.Elapsed < budget * 2, $"The stop took {clock.Elapsed}.");
+            Assert.Empty(registry.All);
+            Assert.True(child.WaitForExit(TimeSpan.FromSeconds(5)), $"Process {child.Id} outlived the stop.");
+            foreach (var port in ports)
+            {
+                var probe = new TcpListener(IPAddress.Any, port);
+                probe.Start();
+                probe.Stop();
+            }
+        }
+        finally
+        {
+            if (!child.HasExited)
+            {
+                child.Kill(entireProcessTree: true);
+            }
+        }
+    }
+
     private static async Task _SaveAFreshNodeAsync(IServiceProvider services)
     {
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
