@@ -3,6 +3,8 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Projects;
 
@@ -16,6 +18,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     private readonly IProjectOwnershipRegistry _ownership;
     private readonly ISharedProjectSourceRegistry _sharedSources;
     private readonly DepotSyncWatcher? _depotSync;
+    private readonly ILogger<ProjectCatalog> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _remoteChangedProjectIds = new(StringComparer.Ordinal);
 
@@ -33,17 +36,19 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         IProjectOwnershipRegistry ownership,
         ISharedProjectSourceRegistry sharedSources,
         IProjectLogoStore? logos = null,
-        DepotSyncWatcher? depotSync = null)
+        DepotSyncWatcher? depotSync = null,
+        ILogger<ProjectCatalog>? logger = null)
     {
         _store = store;
         _ownership = ownership;
         _sharedSources = sharedSources;
         _logos = logos;
         _depotSync = depotSync;
+        _logger = logger ?? NullLogger<ProjectCatalog>.Instance;
 
         // AC-762: a source that registers after the first read (plugin phase 2 runs after the window's first load)
         // gets its own read instead of leaving every card on it stuck until the operator opens Manage projects.
-        _sharedSources.Registered += source => { _ = RefreshSharedProjectsAsync(); };
+        _sharedSources.Registered += source => { _ = _RefreshAfterRegistrationAsync(source); };
 
         // AC-894: the watcher asks which projects to poll every tick and reports each check back here.
         if (_depotSync is not null)
@@ -181,6 +186,23 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             var stored = await _WithStoredLogoAsync(project with { LogoPath = tempPath }).ConfigureAwait(false);
             return (settings.WithUpdated(stored), true);
         }).ConfigureAwait(false);
+    }
+
+    // Nothing awaits a read a registration starts, so its failure is logged here rather than lost unobserved.
+    private async Task _RefreshAfterRegistrationAsync(ISharedProjectSource source)
+    {
+        try
+        {
+            await RefreshSharedProjectsAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer read, which carries the answer.
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Reading the shared projects after {Source} registered failed.", source.SourceName);
+        }
     }
 
     private async Task _LoadSharedProjectsAsync(CancellationToken cancellationToken)

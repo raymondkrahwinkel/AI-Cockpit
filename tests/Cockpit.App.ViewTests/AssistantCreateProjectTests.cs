@@ -66,7 +66,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Equal("Invoices", result.Name);
         Assert.NotNull(result.ProjectId);
 
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(result.ProjectId, stored.Id);
         Assert.Equal("Invoices", stored.Name);
         Assert.Equal("Client billing", stored.Description);
@@ -92,7 +92,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Standup notes");
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Null(stored.SourceDirectory);
     }
 
@@ -107,7 +107,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Equal("A project needs a name.", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
 
         // Not assumed: the dialog's own view model, given the same blank name, has CanSave false for the identical
         // reason — this is `ProjectDialogViewModel.CanSave` itself, not a rewritten copy of its rule.
@@ -177,9 +177,9 @@ public class AssistantCreateProjectTests : IDisposable
         releaseSaves.SetResult();
         await Task.WhenAll(assistantTask, dialogTask);
 
-        Assert.Equal(2, projects.Projects.Count);
-        Assert.Contains(projects.Projects, project => project.Name == "Assistant project");
-        Assert.Contains(projects.Projects, project => project.Name == "Dialog project");
+        Assert.Equal(2, projects.Drawn().Projects.Count);
+        Assert.Contains(projects.Drawn().Projects, project => project.Name == "Assistant project");
+        Assert.Contains(projects.Drawn().Projects, project => project.Name == "Dialog project");
     }
 
     // ── Criterion 6: a name already shared elsewhere is reported, not duplicated ────────────────────────────────
@@ -195,7 +195,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Contains("Handbook", result.Error);
         Assert.Contains("Depot — Work", result.Error);
         Assert.Contains("bind_shared_project", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Handbook");
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Projects.Count);
+        Assert.Equal(2, projects.Drawn().Projects.Count);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices");
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Projects.Count(project => project.Name == "Invoices"));
+        Assert.Equal(2, projects.Drawn().Projects.Count(project => project.Name == "Invoices"));
     }
 
     // ── sourceDirectory: full path, and it has to exist ─────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("relative path", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("no folder", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // ── pluginFields: keys come from the registry, never invented ──────────────────────────────────────────────
@@ -272,7 +272,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("github.repository", result.Error);
         Assert.Contains("youtrack.project", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // AC-884: a value naming several prefixes is stored and read back verbatim — the tool takes the same
@@ -287,7 +287,7 @@ public class AssistantCreateProjectTests : IDisposable
             "EVE Workbench", pluginFields: new Dictionary<string, string> { ["youtrack.project"] = "EWB, AT, EJ" });
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(["EWB", "AT", "EJ"], stored.LinkedAsAll("youtrack.project"));
     }
 
@@ -303,7 +303,7 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("not-a-real-profile", result.Error);
         Assert.Contains(ProfileLabel, result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -314,7 +314,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices", defaultProfileLabel: ProfileLabel);
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(ProfileLabel, stored.DefaultProfileLabel);
     }
 
@@ -328,7 +328,7 @@ public class AssistantCreateProjectTests : IDisposable
         var result = await gateway.CreateProjectAsync("Invoices");
 
         Assert.False(result.Ok);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────

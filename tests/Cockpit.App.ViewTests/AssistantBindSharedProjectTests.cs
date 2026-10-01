@@ -67,7 +67,7 @@ public class AssistantBindSharedProjectTests : IDisposable
         // The comparison that makes this criterion 3 rather than a re-statement of the composition: the expected
         // project is built by running the dialog's own view model over the same binding and the same two answers.
         var expected = await _WhatTheDialogWouldBuildAsync(binding);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal(expected.Name, stored.Name);
         Assert.Equal(expected.Description, stored.Description);
         Assert.Equal(expected.SourceDirectory, stored.SourceDirectory);
@@ -95,19 +95,19 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
 
-        Assert.Null(Assert.Single(projects.Projects).GitUrl);
+        Assert.Null(Assert.Single(projects.Drawn().Projects).GitUrl);
     }
 
     [Fact]
     public async Task Binds_TheRowStopsBeingOfferedAsSomethingToAdd()
     {
         var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-        await projects.LoadSharedProjectsAsync();
-        Assert.Single(Assert.Single(projects.SharedProjectGroups).Projects);
+        await Dispatcher.UIThread.InvokeAsync(() => projects.LoadSharedProjectsAsync());
+        Assert.Single(Assert.Single(projects.Drawn().SharedProjectGroups).Projects);
 
         Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
 
-        Assert.Empty(projects.SharedProjectGroups);
+        Assert.Empty(projects.Drawn().SharedProjectGroups);
     }
 
     // ── Criterion 2: the three machine-specific answers are asked for, never defaulted ─────────────────────────
@@ -121,7 +121,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("Which folder", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("does not clone", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("relative path", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("Which profile", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("'Zyra'", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         // The refusal is the whole point: a blank row is dropped on save, so binding anyway would have produced a
         // project quietly missing a resource nobody was told about.
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class AssistantBindSharedProjectTests : IDisposable
             "depot:handbook", _folder, ProfileLabel, [Path.Combine(_folder, "runbook.md"), Path.Combine(_folder, "data")]);
 
         Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Projects);
+        var stored = Assert.Single(projects.Drawn().Projects);
         Assert.Equal("depot:handbook", stored.Resources[0].Reference); // the binding row, always first
         Assert.Equal(Path.Combine(_folder, "runbook.md"), stored.Resources[1].Reference);
         Assert.Equal(ProjectResourceRole.Instructions, stored.Resources[1].Role);
@@ -234,7 +234,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Equal("Sign in to this Depot connection.", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("already added", result.Error);
-        Assert.Single(projects.Projects);
+        Assert.Single(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -279,7 +279,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("hidden", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
 
-        Assert.Equal("local-1", projects.SelectedProject?.Id);
+        Assert.Equal("local-1", projects.Drawn().SelectedProject?.Id);
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────────────────────────────────────────────

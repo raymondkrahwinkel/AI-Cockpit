@@ -66,7 +66,7 @@ public class AssistantUpdateProjectTests
                 existing.Id, category: "Klanten", gitUrl: "https://example.test/new.git", memoryRef: "depot:new-memory");
 
             Assert.True(result.Ok, result.Error);
-            var stored = Assert.Single(projects.Projects);
+            var stored = Assert.Single(projects.Drawn().Projects);
             Assert.Equal("Klanten", stored.Category);
             Assert.Equal("https://example.test/new.git", stored.GitUrl);
             Assert.Equal("depot:new-memory", stored.MemoryRef);
@@ -95,7 +95,7 @@ public class AssistantUpdateProjectTests
         Assert.False(result.Ok);
         Assert.Contains("no-such-project", result.Error);
         Assert.Contains("list_projects", result.Error);
-        Assert.Empty(projects.Projects);
+        Assert.Empty(projects.Drawn().Projects);
     }
 
     // ── Fixtures — trimmed from AssistantCreateProjectTests' own, same shape ──────────────────────────────────
