@@ -26,10 +26,11 @@ internal static class TestSessions
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionTranscriptStore? transcriptStore = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null,
+        ISessionProviderNames? providerNames = null,
+        IProviderUsageSignals? usageSignals = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
-        IProfileLoginStarter? loginStarter = null,
+        ISessionLoginFlows? loginFlows = null,
         IMentionFileSource? mentionFileSource = null,
         ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
@@ -41,6 +42,6 @@ internal static class TestSessions
                 sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, transcriptStore, sessionStateRecorder,
                 time: timeProvider),
             voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, usageHistory, turnInboxDelivery,
-            pluginProviderRegistry, voiceOverlay, loginChecker, loginStarter, mentionFileSource, transcriptReader, logger,
+            providerNames, usageSignals, voiceOverlay, loginChecker, loginFlows, mentionFileSource, transcriptReader, logger,
             eventLog);
 }

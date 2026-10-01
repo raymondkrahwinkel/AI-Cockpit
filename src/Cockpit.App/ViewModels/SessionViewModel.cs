@@ -19,7 +19,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Usage;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 
@@ -54,12 +53,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same registry
     // `Converters.ProfileDisplayConverter` uses for the profile picker, injected here rather than reaching into that
-    // converter's static seam.
-    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    // converter's static seam. AC-1449: the name and the usage signals, through contracts of their own.
+    private readonly ISessionProviderNames? _providerNames;
+    private readonly IProviderUsageSignals? _usageSignals;
 
     // AC-713: the generic login gate/starter, dispatched to whichever provider plugin the profile below names.
     private readonly IProfileLoginChecker? _loginChecker;
-    private readonly IProfileLoginStarter? _loginStarter;
+    private readonly ISessionLoginFlows? _loginFlows;
 
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
     private readonly IMentionFileSource? _mentionFileSource;
@@ -1189,10 +1189,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null,
+        ISessionProviderNames? providerNames = null,
+        IProviderUsageSignals? usageSignals = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
-        IProfileLoginStarter? loginStarter = null,
+        ISessionLoginFlows? loginFlows = null,
         IMentionFileSource? mentionFileSource = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
@@ -1206,9 +1207,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         _rowFeed = _FollowRows(eventLog, logger);
         _turnInboxDelivery = turnInboxDelivery;
-        _pluginProviderRegistry = pluginProviderRegistry;
+        _providerNames = providerNames;
+        _usageSignals = usageSignals;
         _loginChecker = loginChecker;
-        _loginStarter = loginStarter;
+        _loginFlows = loginFlows;
         _mentionFileSource = mentionFileSource;
         _logger = logger;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
@@ -1592,7 +1594,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return SessionProviderCatalog.Resolve(profile.Provider).Label;
         }
 
-        var name = _pluginProviderRegistry?.Resolve(plugin.ProviderId)?.DisplayName;
+        var name = _providerNames?.DisplayNameOf(plugin.ProviderId);
         return string.IsNullOrWhiteSpace(name) ? string.Empty : name;
     }
 
@@ -2729,7 +2731,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // it (`TranscriptEntryViewModel.HasAction` hides itself once `LoginFlow` is set).
     private void _StartLoginFlow(TranscriptEntryViewModel entry)
     {
-        if (_profile is null || _loginStarter?.StartLogin(_profile, CancellationToken.None) is not { } flow)
+        if (_profile is null || _loginFlows?.StartLogin(_profile, CancellationToken.None) is not { } flow)
         {
             return;
         }
@@ -2765,7 +2767,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         var providerId = _profile?.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : null;
-        var declared = providerId is not null ? _pluginProviderRegistry?.Resolve(providerId)?.UsageSignals : null;
+        var declared = providerId is not null ? _usageSignals?.UsageSignalsOf(providerId) : null;
         UsageProviderId = providerId;
 
         var signals = new List<PluginUsageSignal>();
