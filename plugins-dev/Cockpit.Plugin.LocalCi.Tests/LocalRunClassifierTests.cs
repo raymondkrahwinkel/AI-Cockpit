@@ -85,78 +85,24 @@ public class LocalRunClassifierTests
         Assert.Contains("matrix", verdict.Reason);
     }
 
-    [Fact]
-    public void NonLinuxRunner_IsRefusedByName()
+    [Theory]
+    [InlineData("runs-on: macos-latest", "it needs a macos-latest runner, and only Linux runners can run here")]
+    [InlineData("runs-on: self-hosted", "it needs a self-hosted runner, and only Linux runners can run here")]
+    [InlineData("runs-on: ${{ matrix.os }}", "its runs-on is an expression, and what that resolves to is only known on GitHub")]
+    [InlineData("runs-on: [self-hosted, linux]", "its runs-on is written in a form this check does not understand")]
+    [InlineData("", "it does not say what it runs on")]
+    public void UnsupportedRunsOn_IsRefused(string runsOn, string expectedReason)
     {
-        var verdict = _ClassifyOne("""
+        var verdict = _ClassifyOne($"""
             jobs:
-              mac:
-                runs-on: macos-latest
+              build:
+                {runsOn}
                 steps:
-                  - run: xcodebuild
+                  - run: dotnet build
             """);
 
         Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it needs a macos-latest runner, and only Linux runners can run here", verdict.Reason);
-    }
-
-    [Fact]
-    public void SelfHostedRunner_IsRefused()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              own:
-                runs-on: self-hosted
-                steps:
-                  - run: make
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("self-hosted", verdict.Reason);
-    }
-
-    [Fact]
-    public void ExpressionInRunsOn_IsRefusedRatherThanGuessed()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              publish:
-                runs-on: ${{ matrix.os }}
-                steps:
-                  - run: dotnet publish
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("expression", verdict.Reason);
-    }
-
-    [Fact]
-    public void ListRunsOn_IsRefusedAsNotUnderstood()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              own:
-                runs-on: [self-hosted, linux]
-                steps:
-                  - run: make
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("does not understand", verdict.Reason);
-    }
-
-    [Fact]
-    public void MissingRunsOn_IsRefused()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              nowhere:
-                steps:
-                  - run: make
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it does not say what it runs on", verdict.Reason);
+        Assert.Equal(expectedReason, verdict.Reason);
     }
 
     [Theory]
@@ -176,130 +122,75 @@ public class LocalRunClassifierTests
         Assert.Contains("exchanges artifacts with another job", verdict.Reason);
     }
 
-    [Fact]
-    public void UploadGuardedAgainstAct_CanRunLocally()
+    [Theory]
+    [InlineData("${{ always() && !env.ACT }}", true, null)]
+    [InlineData("always()", false, "it exchanges artifacts with another job (it uses actions/upload-artifact)")]
+    [InlineData("${{ !env.SOMETHING_ELSE }}", false, "it exchanges artifacts with another job (it uses actions/upload-artifact)")]
+    public void ArtifactUploadConditions_AreClassified(string condition, bool canRunLocally, string? expectedReason)
     {
-        var verdict = _ClassifyOne("""
+        var verdict = _ClassifyOne($"""
             jobs:
               build:
                 runs-on: ubuntu-latest
                 steps:
-                  - if: ${{ always() && !env.ACT }}
+                  - if: {condition}
                     uses: actions/upload-artifact@v7
             """);
 
-        Assert.True(verdict.CanRunLocally, verdict.Reason);
+        Assert.Equal(canRunLocally, verdict.CanRunLocally);
+        Assert.Equal(expectedReason, verdict.Reason);
     }
 
-    [Fact]
-    public void UploadWithAlwaysOnly_IsStillRefused()
+    [Theory]
+    [InlineData("softprops/action-gh-release@v2", "it uses softprops/action-gh-release, which only means something on GitHub")]
+    [InlineData("./.github/actions/setup", "it uses ./.github/actions/setup, an action from this repository, which this check does not run")]
+    [InlineData("docker://alpine:3.19", "it uses docker://alpine:3.19, a container action, which this check does not run")]
+    [InlineData("   ", "a step has an empty uses:, and an empty action is not something to assume about")]
+    [InlineData("actions/checkout-but-not-really@v1", "it uses actions/checkout-but-not-really, which only means something on GitHub")]
+    public void UnsupportedActions_AreRefused(string uses, string expectedReason)
     {
-        var verdict = _ClassifyOne("""
+        var verdict = _ClassifyOne($"""
             jobs:
               build:
                 runs-on: ubuntu-latest
                 steps:
-                  - if: always()
-                    uses: actions/upload-artifact@v7
+                  - uses: {uses}
             """);
 
         Assert.False(verdict.CanRunLocally);
-        Assert.Contains("exchanges artifacts with another job", verdict.Reason);
+        Assert.Equal(expectedReason, verdict.Reason);
     }
 
-    [Fact]
-    public void UploadWithUnknownCondition_IsStillRefused()
+    [Theory]
+    [InlineData("jobs:\n  build:\n    runs-on: ubuntu-latest\n    some-future-key: true\n    steps:\n      - run: dotnet build", "it uses \"some-future-key\", which this check does not understand")]
+    [InlineData("jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet build\n        some-future-key: true", "a step uses \"some-future-key\", which this check does not understand")]
+    [InlineData("jobs:\n  build:\n    runs-on: ubuntu-latest\n    strategy:\n      some-future-key: true\n    steps:\n      - run: dotnet build", "its strategy uses \"some-future-key\", which this check does not understand")]
+    [InlineData("some-future-key: true\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet build", "the workflow uses \"some-future-key\", which this check does not understand")]
+    public void UnknownKeys_AreRefusedRatherThanIgnored(string yaml, string expectedReason)
     {
-        var verdict = _ClassifyOne("""
+        var verdict = _ClassifyOne(yaml);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal(expectedReason, verdict.Reason);
+    }
+
+    [Theory]
+    [InlineData("container: node:20", "it runs the whole job inside a container of its own, which this plugin does not set up")]
+    [InlineData("continue-on-error: true", "it uses continue-on-error, which decides whether a failure counts — and act ignores it, so a local result would not mean the same thing")]
+    [InlineData("uses: ./.github/workflows/build.yml", "it calls another workflow instead of running steps of its own")]
+    public void UnsupportedJobFeatures_AreRefused(string jobFeature, string expectedReason)
+    {
+        var verdict = _ClassifyOne($"""
             jobs:
               build:
                 runs-on: ubuntu-latest
-                steps:
-                  - if: ${{ !env.SOMETHING_ELSE }}
-                    uses: actions/upload-artifact@v7
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("exchanges artifacts with another job", verdict.Reason);
-    }
-
-    [Fact]
-    public void ActionOutsideTheAllowlist_IsRefusedAndNamed()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              release:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: softprops/action-gh-release@v2
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it uses softprops/action-gh-release, which only means something on GitHub", verdict.Reason);
-    }
-
-    [Fact]
-    public void UnknownJobKey_IsRefusedRatherThanIgnored()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                some-future-key: true
+                {jobFeature}
                 steps:
                   - run: dotnet build
             """);
 
         Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it uses \"some-future-key\", which this check does not understand", verdict.Reason);
-    }
-
-    [Fact]
-    public void UnknownStepKey_IsRefusedRatherThanIgnored()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - run: dotnet build
-                    some-future-key: true
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("a step uses \"some-future-key\"", verdict.Reason);
-    }
-
-    [Fact]
-    public void JobContainer_IsRefusedWithItsOwnReason()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                container: node:20
-                steps:
-                  - run: node --version
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("inside a container of its own", verdict.Reason);
-    }
-
-    [Fact]
-    public void ContinueOnError_IsRefusedBecauseActIgnoresIt()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                continue-on-error: true
-                steps:
-                  - run: dotnet build
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("act ignores it", verdict.Reason);
+        Assert.Equal(expectedReason, verdict.Reason);
     }
 
     [Fact]
@@ -321,85 +212,6 @@ public class LocalRunClassifierTests
         Assert.True(verdict.CanRunLocally, verdict.Reason);
     }
 
-    [Fact]
-    public void UnknownStrategyKey_IsStillRefused()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                strategy:
-                  some-future-key: true
-                steps:
-                  - run: dotnet build
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("its strategy uses \"some-future-key\", which this check does not understand", verdict.Reason);
-    }
-
-    [Fact]
-    public void LocalActionFromThisRepository_IsRefusedWithoutBlamingGitHub()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: ./.github/actions/setup
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it uses ./.github/actions/setup, an action from this repository, which this check does not run", verdict.Reason);
-        Assert.DoesNotContain("GitHub", verdict.Reason);
-    }
-
-    [Fact]
-    public void ContainerAction_IsRefusedWithoutBlamingGitHub()
-    {
-        // docker:// is the one shape act runs most naturally of all; saying it "only means something on GitHub"
-        // would be the opposite of true.
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: docker://alpine:3.19
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it uses docker://alpine:3.19, a container action, which this check does not run", verdict.Reason);
-        Assert.DoesNotContain("GitHub", verdict.Reason);
-    }
-
-    [Fact]
-    public void EmptyUses_IsRefusedRatherThanTreatedAsARunStep()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: "   "
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Contains("empty uses:", verdict.Reason);
-    }
-
-    [Fact]
-    public void ActionWhoseNameMerelyStartsWithAnAllowedOne_IsRefused()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: actions/checkout-but-not-really@v1
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-    }
 
     [Fact]
     public void NeedsAlone_DoesNotBlock()
@@ -417,18 +229,6 @@ public class LocalRunClassifierTests
         Assert.True(verdict.CanRunLocally);
     }
 
-    [Fact]
-    public void JobThatCallsAnotherWorkflow_IsRefusedForWhatItIs()
-    {
-        var verdict = _ClassifyOne("""
-            jobs:
-              shared:
-                uses: ./.github/workflows/build.yml
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it calls another workflow instead of running steps of its own", verdict.Reason);
-    }
 
     [Fact]
     public void JobWithNoSteps_IsRefusedRatherThanCalledRunnable()
@@ -466,21 +266,6 @@ public class LocalRunClassifierTests
         Assert.Contains("defaults for every run step", verdict.Reason);
     }
 
-    [Fact]
-    public void UnknownWorkflowLevelKey_RefusesToo()
-    {
-        var verdict = _ClassifyOne("""
-            some-future-key: true
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - run: dotnet build
-            """);
-
-        Assert.False(verdict.CanRunLocally);
-        Assert.Equal("the workflow uses \"some-future-key\", which this check does not understand", verdict.Reason);
-    }
 
     [Theory]
     [InlineData("ubuntu-latest-4-cores")]
