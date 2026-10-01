@@ -31,4 +31,40 @@
        be shown loading them from bundled-plugins the way the desktop does. -->
   <Import Project="..\..\src\BundledPlugins.targets" />
 
+  <!-- AC-1403: every other in-repo plugin and the Avalonia fixture join them, so the backend's own first-run install
+       approves all 33 and BackendWithPluginsTests loads them without App. -->
+  <ItemGroup>
+    <_InRepoPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
+    <_InRepoPlugin Include="Depot" FolderId="depot" />
+    <_InRepoPlugin Include="Diagram" FolderId="diagram" />
+    <_InRepoPlugin Include="Discord" FolderId="discord" />
+    <_InRepoPlugin Include="Docker" FolderId="docker" />
+    <_InRepoPlugin Include="GeminiProvider" FolderId="gemini-provider" />
+    <_InRepoPlugin Include="GitHubActions" FolderId="github-actions" />
+    <_InRepoPlugin Include="GitHubIssues" FolderId="github-issues" />
+    <_InRepoPlugin Include="GitHubModelsProvider" FolderId="github-models-provider" />
+    <_InRepoPlugin Include="GitHubPullRequests" FolderId="github-pull-requests" />
+    <_InRepoPlugin Include="GrokProvider" FolderId="grok-provider" />
+    <_InRepoPlugin Include="KimiProvider" FolderId="kimi-provider" />
+    <_InRepoPlugin Include="Kind" FolderId="kind" />
+    <_InRepoPlugin Include="Kubernetes" FolderId="kubernetes" />
+    <_InRepoPlugin Include="LocalCi" FolderId="local-ci" />
+    <_InRepoPlugin Include="OpenRouterProvider" FolderId="openrouter-provider" />
+    <_InRepoPlugin Include="OpencodeProvider" FolderId="opencode-provider" />
+    <_InRepoPlugin Include="PromptLibrary" FolderId="prompt-library" />
+    <_InRepoPlugin Include="Proxmox" FolderId="proxmox" />
+    <_InRepoPlugin Include="SessionReview" FolderId="session-review" />
+    <_InRepoPlugin Include="Slack" FolderId="slack" />
+    <_InRepoPlugin Include="SystemMonitor" FolderId="system-monitor" />
+    <_InRepoPlugin Include="Workflows" FolderId="workflows" />
+    <_InRepoPlugin Include="YouTrack" FolderId="youtrack" />
+    <BundledPlugin Include="@(_InRepoPlugin)" />
+    <ProjectReference Include="@(_InRepoPlugin->'..\..\plugins-dev\Cockpit.Plugin.%(Identity)\Cockpit.Plugin.%(Identity).csproj')"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+
+    <BundledPlugin Include="UiInBackend" FolderId="ui-in-backend" SourceRoot="$(MSBuildThisFileDirectory)..\" />
+    <ProjectReference Include="..\Cockpit.Plugin.UiInBackend\Cockpit.Plugin.UiInBackend.csproj"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+
 </Project>
