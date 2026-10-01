@@ -74,6 +74,9 @@ jobs:
       - name: Build
         run: dotnet build Cockpit.slnx --configuration Release --no-restore -warnaserror
 
+      - name: Build Cockpit.App Debug
+        run: dotnet build src/Cockpit.App --configuration Debug --no-restore
+
       # --blame-hang catches what the banned-symbols list can't: AC-577 was a hang with no failing test and
       # no summary, burning toward GitHub's six-hour job limit. Dump is off because the sequence file
       # already names the test that was running -- the whole ask.
