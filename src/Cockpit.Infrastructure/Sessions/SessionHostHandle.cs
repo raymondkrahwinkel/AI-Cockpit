@@ -616,7 +616,11 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     // from a send or from the end of the previous turn, both under the lock.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
-        _turnImages = prompt.Images;
+        lock (_gate)
+        {
+            _turnImages = prompt.Images;
+        }
+
         _host.RecordRow(new TranscriptSnapshotEntry(
             Guid.NewGuid().ToString("n"), UserText, prompt.Text, ToolName: null, InputJson: null,
             ToolUseId: null, ResultText: null, IsResultError: false, DateTimeOffset.Now));
