@@ -602,6 +602,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Projects page now adds, edits, shares and removes projects through the same backend interface a
+  server will offer, and redraws from what that backend holds, so a project the assistant adds or changes shows on
+  the page at once. A cockpit running without a window (the server) can now add and change projects itself; it used
+  to refuse both. Nothing changes in how the Projects page looks or works.
 - changed: the Security and Diagnostics pages of Options, and the node cards on them, now reach the node relays
   and the kept log paths through the cockpit's own contracts instead of its internals, a step toward the same pages
   working against a cockpit that runs elsewhere. Nothing changes in how these pages look or behave.
