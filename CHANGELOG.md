@@ -602,6 +602,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a chat session the desktop opens — a new one, one brought back after a restart, one a plugin embeds, and
+  the assistant — is now put on the cockpit's own list of sessions first, and its pane appears because it is on that
+  list. This is the route that later lets a session started elsewhere show up on the desktop. Nothing changes in how
+  a pane looks or behaves.
 - changed: the plugin manager and the plugin store now install, enable, disable and remove plugins, and read the
   installed plugins with what went wrong with them, through the same backend interface a server will offer, so a
   cockpit without a window manages its plugins the way the desktop does. A store whose logo is an SVG now shows

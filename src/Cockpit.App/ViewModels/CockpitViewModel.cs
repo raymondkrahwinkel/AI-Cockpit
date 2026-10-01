@@ -111,6 +111,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly SessionRegistry? _sessionRegistry;
+
+    // AC-1450: an SDK session's control, made and registered before its pane, which the registry's Changed then makes.
+    // Null in the design-time and unit-test graphs, which keep making the pane first.
+    private readonly ISessionControlFactory? _sessionControls;
+    private readonly Func<ISessionControl, SessionViewModel>? _sdkPaneOver;
+    private readonly Dictionary<SessionPanelHandle, Action<SessionViewModel>> _panesToMake = [];
+    private readonly Dictionary<SessionPanelHandle, SessionViewModel> _panesMade = [];
     private readonly ISessionDialogService? _dialogService;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
@@ -3130,7 +3137,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
         // design-time/unit-test graph like the relay above.
         BehaviourMemorySync? behaviourSync = null,
-        SessionRegistry? sessionRegistry = null)
+        SessionRegistry? sessionRegistry = null,
+        ISessionControlFactory? sessionControls = null,
+        Func<ISessionControl, SessionViewModel>? sdkPaneOver = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3231,6 +3240,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1373: the grid feeds the registry from the collection itself, so every way a pane enters or leaves it
         // (AddSession, a restore, CloseSessionAsync, teardown) reaches the registry. Embedded panes are fed in Embed.
         Sessions.CollectionChanged += _FeedSessionRegistry;
+        _sessionControls = sessionControls;
+        _sdkPaneOver = sdkPaneOver;
+        if (sessionRegistry is not null)
+        {
+            sessionRegistry.Changed += _OnSessionRegistryChanged;
+        }
+
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
@@ -5821,14 +5837,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             result = result with { SessionName = _UniqueSessionTitle(composed) };
         }
 
-        SessionPanelViewModel session = result.Kind == SessionKind.Sdk ? _sessionFactory() : _ttySessionFactory();
-        session.LaunchResult = result;
+        void Attach(SessionPanelViewModel pane)
+        {
+            pane.LaunchResult = result;
+            AddSession(pane, result.SessionName, result.Profile.Label, result.NameIsChosen, targetWorkspaceId);
+        }
 
         // AC-1332: stamped before AddSession, not after — the rail rebuilds off Sessions' own CollectionChanged
         // (AssistantChatViewModel._RebuildLiveSessions), so an unstamped session lands unseen and never gets a
-        // second look. _AttachRestoredSession follows the same order for the restore path.
-        session.StartedByTheAssistant = result.StartedByTheAssistant;
-        AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen, targetWorkspaceId);
+        // second look. AC-1450: an SDK session carries it on its handle, and its pane takes it over when made.
+        SessionPanelViewModel session;
+        if (result.Kind == SessionKind.Sdk)
+        {
+            session = _MakeSdkPane(
+                new DesktopSessionLaunch(Guid.NewGuid().ToString("n"), result.SessionName ?? string.Empty, targetWorkspaceId,
+                    IsEmbedded: false, result.StartedByTheAssistant),
+                Attach);
+        }
+        else
+        {
+            session = _ttySessionFactory();
+            session.StartedByTheAssistant = result.StartedByTheAssistant;
+            Attach(session);
+        }
 
         // AC-410: written now, before the session actually starts — see _PersistNewSessionPane for why this order
         // is the crash-safe one.
@@ -7244,9 +7275,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _restorePlans[pane.Id] = plan;
                 }
 
-                SessionPanelViewModel session = pane.SessionKind == PaneSessionKind.Tty ? _ttySessionFactory() : _sessionFactory();
-                session.AdoptPaneId(pane.Id);
-                _AttachRestoredSession(session, workspace.Id, pane);
+                SessionPanelViewModel session;
+                if (pane.SessionKind == PaneSessionKind.Tty)
+                {
+                    session = _ttySessionFactory();
+                    session.AdoptPaneId(pane.Id);
+                    _AttachRestoredSession(session, workspace.Id, pane);
+                }
+                else
+                {
+                    session = _MakeSdkPane(
+                        new DesktopSessionLaunch(pane.Id, pane.Title ?? string.Empty, workspace.Id, IsEmbedded: false, pane.StartedByTheAssistant),
+                        made => _AttachRestoredSession(made, workspace.Id, pane));
+                }
+
                 session.RestoreOffer = plan;
 
                 // AC-410: pane-id continuity (AdoptPaneId, above) means a restored pane's own id is the worktree's
@@ -7474,8 +7516,102 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var added in change.NewItems?.OfType<SessionPanelViewModel>() ?? [])
         {
+            // AC-1450: a pane the registry made is already there under its own handle.
+            if (registry.Find(added.PaneId) is SessionPanelHandle { Pane: { } held } && ReferenceEquals(held, added))
+            {
+                continue;
+            }
+
             registry.Register(new SessionPanelHandle(added, isEmbedded: false, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(added.PaneId), added)));
         }
+    }
+
+    // AC-1450: an SDK session the desktop starts is registered first; its pane is made here, on the UI thread, and a
+    // handle that leaves takes its pane with it. Keyed by handle as `SessionEventsBridge._Follow` is: a pane id
+    // registered again is a new handle.
+    private void _OnSessionRegistryChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            _FollowSessionRegistry();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(_FollowSessionRegistry);
+        }
+    }
+
+    private void _FollowSessionRegistry()
+    {
+        if (_sessionRegistry is not { } registry || _sdkPaneOver is not { } paneOver)
+        {
+            return;
+        }
+
+        var live = registry.All.Append(registry.Assistant).OfType<SessionPanelHandle>().ToHashSet();
+        foreach (var (gone, pane) in _panesMade.Where(made => !live.Contains(made.Key)).ToList())
+        {
+            _panesMade.Remove(gone);
+            // A close path unregisters after letting go of the pane, so only a pane still standing is closed here.
+            if (Sessions.Contains(pane) || _IsEmbeddedSessionLive(pane))
+            {
+                pane.RequestSelfClose();
+            }
+        }
+
+        foreach (var handle in live)
+        {
+            if (handle.Control is not { } control || !_panesToMake.Remove(handle, out var attach))
+            {
+                continue;
+            }
+
+            var pane = paneOver(control);
+            pane.AdoptPaneId(handle.PaneId);
+            pane.StartedByTheAssistant = handle.StartedByTheAssistant;
+            handle.Attach(pane);
+            _panesMade[handle] = pane;
+            attach(pane);
+        }
+    }
+
+    // AC-1450: the handle first, the pane from the registry's Changed, then `attach` on it. A graph without controls
+    // (design-time, unit tests) makes the pane first and registers it after, as before.
+    private SessionViewModel _MakeSdkPane(DesktopSessionLaunch launch, Action<SessionViewModel> attach, bool isAssistant = false)
+    {
+        if (_sessionRegistry is { } registry && _sessionControls is { } controls && _sdkPaneOver is not null)
+        {
+            var handle = new SessionPanelHandle(
+                launch, controls.Create(() => launch.PaneId), _FirstSessionsWorkspaceId,
+                isAssistant ? null : pane => ReferenceEquals(FindSession(pane.PaneId), pane));
+            _panesToMake[handle] = attach;
+            if (isAssistant)
+            {
+                registry.RegisterAssistant(handle);
+            }
+            else
+            {
+                registry.Register(handle);
+            }
+
+            return handle.Pane as SessionViewModel
+                ?? throw new InvalidOperationException($"Pane '{launch.PaneId}' was registered off the UI thread, so it has no pane yet.");
+        }
+
+        var made = _sessionFactory?.Invoke() ?? throw new InvalidOperationException("This host cannot make sessions.");
+        made.AdoptPaneId(launch.PaneId);
+        made.StartedByTheAssistant = launch.StartedByTheAssistant;
+        attach(made);
+        if (isAssistant)
+        {
+            _sessionRegistry?.RegisterAssistant(new SessionPanelHandle(made, isEmbedded: false, _FirstSessionsWorkspaceId));
+        }
+        else if (launch.IsEmbedded)
+        {
+            _sessionRegistry?.Register(new SessionPanelHandle(made, isEmbedded: true, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(made.PaneId), made)));
+        }
+
+        return made;
     }
 
     // AC-1374: memoized per `Workspaces.Settings` instance — a snapshot sweep over N panes used to resolve this
@@ -8443,30 +8579,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        var session = _sessionFactory();
-        session.AdoptPaneId(paneId);
-        session.BelongsToNoWorkspace = true;
-        session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
-        _SeedSessionPreferences(session);
+        void Attach(SessionViewModel session)
+        {
+            session.BelongsToNoWorkspace = true;
+            session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
+            _SeedSessionPreferences(session);
 
-        // AC-1379: the host outside the app seeds the assistant's speech through this rather than reading it off here.
-        session.AssistantVoice = () => (SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
+            // AC-1379: the host outside the app seeds the assistant's speech through this rather than reading it off here.
+            session.AssistantVoice = () => (SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
 
-        // The screenshot button in the chat window, with the region picker and its marking tools behind it
-        // (AC-630). Missing here is why the assistant was the one session that could not be shown anything.
-        _WireScreenshots(session);
+            // The screenshot button in the chat window, with the region picker and its marking tools behind it
+            // (AC-630). Missing here is why the assistant was the one session that could not be shown anything.
+            _WireScreenshots(session);
 
-        // Status changes still feed the shared status plumbing, so the indicator can read "thinking" off the same
-        // signal every other session reports through — but no close wiring: the assistant is not closed by the
-        // operator, and its host is the only thing that ever ends it.
-        _lastStatus[session] = session.SessionStatus;
-        session.PropertyChanged += OnSessionPropertyChanged;
-        _assistantSession = session;
+            // Status changes still feed the shared status plumbing, so the indicator can read "thinking" off the same
+            // signal every other session reports through — but no close wiring: the assistant is not closed by the
+            // operator, and its host is the only thing that ever ends it.
+            _lastStatus[session] = session.SessionStatus;
+            session.PropertyChanged += OnSessionPropertyChanged;
+            _assistantSession = session;
+        }
+
         // AC-1374: a seam apart from the grid/embedded pool below — the registry's `Assistant` reaches it without
         // ever listing it in `All`, matching `AssistantPane`'s own exclusion from `FindSession`/`AllSessions`.
-        _sessionRegistry?.RegisterAssistant(new SessionPanelHandle(session, isEmbedded: false, _FirstSessionsWorkspaceId));
-
-        return session;
+        return _MakeSdkPane(
+            new DesktopSessionLaunch(paneId, Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName, WorkspaceId: null, IsEmbedded: false, StartedByTheAssistant: false),
+            Attach, isAssistant: true);
     }
 
     // Without this the dead `SessionViewModel` stayed subscribed to `OnSessionPropertyChanged` and sat in `_lastStatus`
@@ -8624,42 +8762,48 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             throw new InvalidOperationException("This host cannot embed sessions.");
         }
 
-        var session = _sessionFactory();
-        // The plugin workspace, not EnsureSessionWorkspace's forced Sessions desk: that would switch focus to a
-        // Sessions tab and put the session where BelongsToActiveWorkspace shows it in the grid.
-        session.WorkspaceId = workspaceId;
-        // What the usage trail needs to tell this session's spend apart from an operator's own (AC-251). The
-        // workspace cannot stand in for the run: a plugin runs every one of its runs in the same workspace, so
-        // only the embedder knows which run this session is for.
-        session.RunKind = UsageRunKind.Embedded;
-        session.RunId = request.RunId;
-        session.RunLabel = request.RunLabel;
-        session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
-        _SeedSessionPreferences(session);
-
-        // Seed the statusline from it now rather than leave the line blank until the agent inside remembers to call
-        // set_status itself: a model that never calls it, or dies before its first turn, otherwise never shows one at
-        // all (AC-544, AC-13).
-        if ((_TicketFromBrief(request.InitialUserMessage) ?? _TicketFromBrief(request.RunLabel)) is { } ticket)
+        var title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
+        void Attach(SessionViewModel session)
         {
-            session.Statusline = ticket;
+            // The plugin workspace, not EnsureSessionWorkspace's forced Sessions desk: that would switch focus to a
+            // Sessions tab and put the session where BelongsToActiveWorkspace shows it in the grid.
+            session.WorkspaceId = workspaceId;
+            // What the usage trail needs to tell this session's spend apart from an operator's own (AC-251). The
+            // workspace cannot stand in for the run: a plugin runs every one of its runs in the same workspace, so
+            // only the embedder knows which run this session is for.
+            session.RunKind = UsageRunKind.Embedded;
+            session.RunId = request.RunId;
+            session.RunLabel = request.RunLabel;
+            session.Title = title;
+            _SeedSessionPreferences(session);
+
+            // Seed the statusline from it now rather than leave the line blank until the agent inside remembers to call
+            // set_status itself: a model that never calls it, or dies before its first turn, otherwise never shows one at
+            // all (AC-544, AC-13).
+            if ((_TicketFromBrief(request.InitialUserMessage) ?? _TicketFromBrief(request.RunLabel)) is { } ticket)
+            {
+                session.Statusline = ticket;
+            }
+
+            // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
+            // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded
+            // sessions tear down through their own path.
+            session.CloseRequested += OnEmbeddedSessionCloseRequested;
+            _lastStatus[session] = session.SessionStatus;
+            session.PropertyChanged += OnSessionPropertyChanged;
+
+            if (!_embeddedSessions.TryGetValue(workspaceId, out var owned))
+            {
+                owned = [];
+                _embeddedSessions[workspaceId] = owned;
+            }
+
+            owned.Add(session);
         }
 
-        // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
-        // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded
-        // sessions tear down through their own path.
-        session.CloseRequested += OnEmbeddedSessionCloseRequested;
-        _lastStatus[session] = session.SessionStatus;
-        session.PropertyChanged += OnSessionPropertyChanged;
-
-        if (!_embeddedSessions.TryGetValue(workspaceId, out var owned))
-        {
-            owned = [];
-            _embeddedSessions[workspaceId] = owned;
-        }
-
-        owned.Add(session);
-        _sessionRegistry?.Register(new SessionPanelHandle(session, isEmbedded: true, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(session.PaneId), session)));
+        var session = _MakeSdkPane(
+            new DesktopSessionLaunch(Guid.NewGuid().ToString("n"), title, workspaceId, IsEmbedded: true, StartedByTheAssistant: false),
+            Attach);
         _agentCoordinator?.Enroll(session.PaneId);
 
         // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason

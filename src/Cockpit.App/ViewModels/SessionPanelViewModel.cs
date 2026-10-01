@@ -397,7 +397,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     private void RaiseNameChanged() => NameChanged?.Invoke(this, EventArgs.Empty);
 
-    // Test seam: raise `CloseRequested` directly to exercise the cockpit's close wiring.
+    // Raises `CloseRequested` as the pane's own close does: a test exercising the cockpit's close wiring, and a pane whose
+    // handle left the registry (AC-1450).
     internal void RequestSelfClose() => RaiseCloseRequested();
 
     // True while a close is awaiting confirmation for this panel, so its sidebar row shows an inline
