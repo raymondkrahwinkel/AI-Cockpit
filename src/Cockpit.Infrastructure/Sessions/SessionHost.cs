@@ -80,6 +80,9 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // AC-761 F3: catches a usage reply that missed its turn's publish grace, for a session that has since gone idle.
     public static readonly TimeSpan UsageCatchUpInterval = TimeSpan.FromSeconds(30);
 
+    // `TranscriptEntryKind.ToolUse` as the transcript store spells it, like `SessionTranscriptBuilder`'s kinds.
+    private const string ToolUseKind = "ToolUse";
+
     // Long enough for a send the stopped runtime is failing to settle, short enough that a hung one cannot hold a close.
     private static readonly TimeSpan InFlightDrainBudget = TimeSpan.FromSeconds(5);
 
@@ -94,6 +97,8 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // AC-1090: Cockpit's own copy of the conversation, written from here so a session without a view has one too.
     private readonly ISessionTranscriptStore? _transcriptStore;
     private readonly SessionTranscriptBuilder _transcript;
+    private readonly SessionLiveStateFold _liveState = new();
+    private SessionLiveState _raisedLiveState = SessionLiveState.None;
 
     // The sends and wire answers started where nothing can await them (a hold lifting, a turn ending), kept so the
     // host's own disposal does.
@@ -153,7 +158,25 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // Carries the arm the tick belongs to; see `IsCurrentSignOfLife`.
     public event Action<int>? SignOfLifeDue;
 
+    // AC-1437: the fold's signals, raised on the consumer's thread like `RowUpserted`; see `ISessionHandle`.
+    public event Action<SessionLiveState>? LiveStateChanged;
+
+    public event Action<SessionTurnEnd>? TurnEnded;
+
+    public event Action? ToolProgressed;
+
+    public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified;
+
+    public event Action<string>? OutputTextProduced;
+
+    public event Action<SessionToolCall>? ToolActivityProduced;
+
     public ISessionRuntime? Runtime { get; private set; }
+
+    // What the consumer knows of the provider before its runtime says so; the runtime's own word otherwise.
+    public SessionCapabilities? Capabilities { get; set; }
+
+    public SessionLiveState LiveState => _liveState.Snapshot(IsBusy);
 
     // Whether this host can launch at all; the design-time graph builds one without a manager.
     public bool CanLaunch => _manager is not null;
@@ -176,6 +199,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
 
             _isBusy = value;
             BusyChanged?.Invoke();
+            _RaiseLiveStateIfChanged();
         }
     }
 
@@ -314,10 +338,13 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
         }
 
         // The consumer may set IsBusy itself inside these handlers, where its own bookkeeping wants it; setting it
-        // again here is then a no-op, and a consumer that does not still gets a gate that reads busy.
+        // again here is then a no-op, and a consumer that does not still gets a gate that reads busy. The operator
+        // sending again is the one having been back to a session that asked for attention.
+        _liveState.ClearNeedsAttention();
         TurnStarting?.Invoke(prompt);
         _transcript.EndReply();
         IsBusy = true;
+        _RaiseLiveStateIfChanged();
 
         try
         {
@@ -416,7 +443,103 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
         _inFlight.Add(task);
     }
 
-    public TranscriptFold ApplyToTranscript(SessionEvent evt) => _transcript.Apply(evt);
+    // AC-1437: also folds what the pane shows besides its rows, raising each signal in the order
+    // `SessionViewModel.Apply` acted on it: tool progress and a mid-turn start before the rows, a turn's end before
+    // the status it leaves behind, so a consumer cleans up the turn before the session reads as done.
+    public TranscriptFold ApplyToTranscript(SessionEvent evt)
+    {
+        if (evt is ToolUseRequested or ToolResult)
+        {
+            ToolProgressed?.Invoke();
+        }
+
+        // AC-1319: a CLI with its own input queue starts turns nobody sent here, so the agent's first top-level output
+        // is the only sign one began.
+        if (!IsBusy && (Capabilities ?? Runtime?.Capabilities) is { SupportsMidTurnInput: true } && evt.ParentToolUseId is null
+            && evt is AssistantTextDelta or AssistantThinkingDelta or AssistantTextCompleted or ToolUseRequested or ToolResult)
+        {
+            IsBusy = true;
+        }
+
+        var fold = _transcript.Apply(evt);
+        fold = fold with
+        {
+            IsReply = evt is AssistantTextDelta or AssistantTextCompleted && string.IsNullOrEmpty(evt.ParentToolUseId),
+            AsksTheOperator = evt is Question || evt is PermissionRequested && fold.Row is { IsPendingPermission: true },
+        };
+        var (end, notice) = _liveState.Apply(evt, fold, InterruptRequested, _time.GetLocalNow());
+        _RaiseProduced(evt, fold);
+        if (notice is not null)
+        {
+            BackgroundTaskNotified?.Invoke(notice);
+        }
+
+        if (end is not null)
+        {
+            // AC-1031: consumed by the turn it ended, so a later genuine failure does not read as interrupted too.
+            if (!end.BySessionError)
+            {
+                InterruptRequested = false;
+            }
+
+            TurnEnded?.Invoke(end);
+            IsBusy = false;
+        }
+
+        _RaiseLiveStateIfChanged();
+        return fold;
+    }
+
+    // AC-1324: the operator answered the last prompt, so the session runs on and stops flagging itself.
+    public void ClearNeedsAttention()
+    {
+        _liveState.ClearNeedsAttention();
+        _RaiseLiveStateIfChanged();
+    }
+
+    // A conversation that starts over in the same pane (AC-564).
+    public void ResetLiveState()
+    {
+        _liveState.Reset();
+        _RaiseLiveStateIfChanged();
+    }
+
+    private void _RaiseLiveStateIfChanged()
+    {
+        var liveState = LiveState;
+        if (liveState == _raisedLiveState)
+        {
+            return;
+        }
+
+        _raisedLiveState = liveState;
+        LiveStateChanged?.Invoke(liveState);
+    }
+
+    // AC-146: a sub-agent's own text or result is never the session's output, nor is an orphaned one's.
+    private void _RaiseProduced(SessionEvent evt, TranscriptFold fold)
+    {
+        switch (evt)
+        {
+            case AssistantTextCompleted { ParentToolUseId: null or "" } completed when !string.IsNullOrEmpty(completed.Text):
+                OutputTextProduced?.Invoke(completed.Text);
+                break;
+
+            case ToolResult { ParentToolUseId: null or "" } result when !fold.InSubAgentLane:
+                // Tool output is where a shelled-out `gh pr create` prints its pull-request url (the PR watcher's channel).
+                if (!string.IsNullOrEmpty(result.Content))
+                {
+                    OutputTextProduced?.Invoke(result.Content);
+                }
+
+                if (fold.Row is { Kind: ToolUseKind, ToolName: { Length: > 0 } toolName } row)
+                {
+                    ToolActivityProduced?.Invoke(new SessionToolCall(_paneId(), toolName, row.InputJson ?? "{}", result.Content, result.IsError));
+                }
+
+                break;
+        }
+    }
 
     public void RecordRow(TranscriptSnapshotEntry row) => _transcript.Record(row);
 

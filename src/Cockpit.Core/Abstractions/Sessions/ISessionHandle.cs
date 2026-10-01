@@ -245,6 +245,69 @@ public interface ISessionHandle
     /// The images the message that started the current turn carried (AC-1415); empty when it carried none or no turn runs.
     /// </summary>
     IReadOnlyList<ImageAttachment> CurrentTurnImages => [];
+
+    /// <summary>
+    /// The status, outstanding tool calls, background tasks, usage and connection the session's events folded to
+    /// (AC-1437); <see cref="SessionLiveState.None"/> for a handle whose session keeps no host-owned fold.
+    /// </summary>
+    SessionLiveState LiveState => SessionLiveState.None;
+
+    /// <summary>
+    /// Raised with the new <see cref="LiveState"/> whenever it changes (AC-1437), outside the handle's own lock.
+    /// Never raised by a handle whose session keeps no host-owned fold, such as a TTY pane or a plain terminal.
+    /// </summary>
+    event Action<SessionLiveState>? LiveStateChanged
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised when a turn ends, completed or broken off by a session error (AC-1437), outside the handle's own lock.
+    /// </summary>
+    event Action<SessionTurnEnd>? TurnEnded
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised for every tool call or tool result, a sub-agent's included: the session doing real work (AC-215, AC-1437).
+    /// </summary>
+    event Action? ToolProgressed
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised when the provider gives its own verdict on one background task (AC-1057, AC-1437).
+    /// </summary>
+    event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
 }
 
 // AC-1415: one completed top-level tool call, as ISessionHandle.ToolActivityProduced reports it.

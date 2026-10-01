@@ -310,7 +310,7 @@ public partial class SessionView : UserControl
 
     // The newest row still waiting on the operator, as an index into what the transcript is showing. -1 for none.
     // Read off the status rather than off the pending flag alone: this exists to give needs-attention somewhere to
-    // point, and the two move together — `PermissionRequested` sets both, and whatever clears one clears the other.
+    // point, and the two move together — a permission prompt sets both, and whatever clears one clears the other.
     private int _PendingPermissionIndex()
     {
         if (DataContext is not SessionViewModel { SessionStatus: SessionStatus.NeedsAttention } session)

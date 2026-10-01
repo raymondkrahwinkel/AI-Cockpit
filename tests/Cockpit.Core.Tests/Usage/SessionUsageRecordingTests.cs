@@ -88,7 +88,7 @@ public class SessionUsageRecordingTests
         session.ActiveProfileLabel = "raymond";
         session.SelectedModel = new ModelOption("Opus", "opus");
 
-        session._AccumulateUsage(_Turn(new TokenUsage(120, 40, 9_000, 300), 0.25));
+        session.Apply(_Turn(new TokenUsage(120, 40, 9_000, 300), 0.25));
 
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(session.PaneId, snapshot.PaneId);
@@ -127,8 +127,8 @@ public class SessionUsageRecordingTests
         // The cost figures rise the way a real session reports them — each result states what the session has
         // cost so far, not what its last turn cost (AC-481). The pair used to fall (0.10 then 0.05), which the
         // old summing meter added up to the same 0.15 for the wrong reason.
-        session._AccumulateUsage(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
-        session._AccumulateUsage(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
+        session.Apply(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
+        session.Apply(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
 
         // Cumulative, not per-turn: the newest record is the session's total, which is what makes a record per
         // turn a crash-proof snapshot rather than something a reader has to add up.
@@ -145,7 +145,7 @@ public class SessionUsageRecordingTests
         var history = new RecordingUsageHistory();
         var session = _Session(history);
 
-        session._AccumulateUsage(_Turn(usage: null, costUsd: null));
+        session.Apply(_Turn(usage: null, costUsd: null));
 
         Assert.Empty(history.Recorded);
     }
@@ -156,7 +156,7 @@ public class SessionUsageRecordingTests
         var history = new RecordingUsageHistory();
         var session = _Session(history);
 
-        session._AccumulateUsage(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
+        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(UsageRunKind.Interactive, snapshot.RunKind);
@@ -173,7 +173,7 @@ public class SessionUsageRecordingTests
         session.RunId = "run-7";
         session.RunLabel = "AC-251 - persist usage";
 
-        session._AccumulateUsage(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
+        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(UsageRunKind.Embedded, snapshot.RunKind);
@@ -189,7 +189,7 @@ public class SessionUsageRecordingTests
         var gate = new TaskCompletionSource();
         var session = _Session(new BlockingUsageHistory(gate.Task));
 
-        session._AccumulateUsage(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
+        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
         var closing = session.DisposeAsync();
         Assert.False(closing.IsCompleted);
@@ -213,7 +213,7 @@ public class SessionUsageRecordingTests
         // The design-time and test graphs have no usage history; the header must not lose its meter over it.
         var session = new SessionViewModel(Substitute.For<ISessionManager>());
 
-        session._AccumulateUsage(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
+        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
         Assert.True(session.HasUsage);
     }

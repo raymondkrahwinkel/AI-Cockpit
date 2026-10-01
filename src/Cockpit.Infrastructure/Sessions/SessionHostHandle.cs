@@ -13,7 +13,6 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     // `TranscriptEntryKind.UserText` and `.Divider` as the transcript store spells them, like `SessionTranscriptBuilder`'s kinds.
     private const string UserText = "UserText";
     private const string Divider = "Divider";
-    private const string ToolUse = "ToolUse";
 
     private readonly Lock _gate = new();
     private readonly SessionHost<QueuedPrompt> _host;
@@ -27,6 +26,9 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     private string _failureReason = "Not started.";
     private bool _wasWaitingOnOperator;
     private bool _stateChangePending;
+
+    // AC-1437: the host's signals, held while the lock is and raised once it is let go, in the order they came.
+    private readonly List<Action> _heldRaises = [];
 
     public SessionHostHandle(
         string paneId,
@@ -51,6 +53,12 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
+        host.LiveStateChanged += liveState => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(liveState));
+        host.TurnEnded += end => _RaiseOutsideTheLock(() => TurnEnded?.Invoke(end));
+        host.ToolProgressed += () => _RaiseOutsideTheLock(() => ToolProgressed?.Invoke());
+        host.BackgroundTaskNotified += notice => _RaiseOutsideTheLock(() => BackgroundTaskNotified?.Invoke(notice));
+        host.OutputTextProduced += text => _RaiseOutsideTheLock(() => OutputTextProduced?.Invoke(text));
+        host.ToolActivityProduced += toolCall => _RaiseOutsideTheLock(() => ToolActivityProduced?.Invoke(toolCall));
     }
 
     public string PaneId { get; }
@@ -95,13 +103,16 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
     public bool IsEmbedded => false;
 
-    public SessionStatus SessionStatus
+    // AC-1437: the same fold the desktop pane reads, so a headless session shows the status a desktop one would.
+    public SessionStatus SessionStatus => LiveState.Status;
+
+    public SessionLiveState LiveState
     {
         get
         {
             lock (_gate)
             {
-                return _host.IsBusy ? SessionStatus.Busy : SessionStatus.Idle;
+                return _host.LiveState;
             }
         }
     }
@@ -180,6 +191,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
                 sending = _host.SubmitAsync(queued);
             }
 
+            _RaiseHeldSignals();
             await sending.ConfigureAwait(false);
             return !failed;
         }
@@ -216,6 +228,12 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
             _host.RecordRow(row with { IsPendingPermission = false, PermissionDecision = allow ? "Allowed" : "Denied" });
             answering = runtime.RespondToPermissionAsync(toolUseId, allow);
+
+            // AC-1324: the last prompt answered, the session runs on and stops flagging itself.
+            if (!_rows.Exists(pending => pending.IsPendingPermission))
+            {
+                _host.ClearNeedsAttention();
+            }
         }
 
         _RaisePendingStateChange();
@@ -290,8 +308,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     {
         lock (_gate)
         {
-            return Task.FromResult(new SessionWakeState(
-                HasPendingConsent, _host.IsBusy ? SessionStatus.Busy : SessionStatus.Idle, CanTakeAPrompt));
+            return Task.FromResult(new SessionWakeState(HasPendingConsent, _host.LiveState.Status, CanTakeAPrompt));
         }
     }
 
@@ -351,6 +368,8 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
             {
                 _host.TurnsHeldBecause = value;
             }
+
+            _RaiseHeldSignals();
         }
     }
 
@@ -392,6 +411,14 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     public event Action<string>? OutputTextProduced;
 
     public event Action<SessionToolCall>? ToolActivityProduced;
+
+    public event Action<SessionLiveState>? LiveStateChanged;
+
+    public event Action<SessionTurnEnd>? TurnEnded;
+
+    public event Action? ToolProgressed;
+
+    public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified;
 
     public IReadOnlyList<ImageAttachment> CurrentTurnImages
     {
@@ -531,6 +558,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
     private void _RaisePendingStateChange()
     {
+        _RaiseHeldSignals();
         if (_gate.IsHeldByCurrentThread || !_stateChangePending)
         {
             return;
@@ -538,6 +566,38 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
 
         _stateChangePending = false;
         StateChanged?.Invoke(this, false);
+    }
+
+    private void _RaiseHeldSignals()
+    {
+        if (_gate.IsHeldByCurrentThread)
+        {
+            return;
+        }
+
+        Action[] held;
+        lock (_gate)
+        {
+            held = [.. _heldRaises];
+            _heldRaises.Clear();
+        }
+
+        foreach (var raise in held)
+        {
+            raise();
+        }
+    }
+
+    // AC-1437: the handle's own lock is never held while a listener runs, as with `StateChanged`.
+    private void _RaiseOutsideTheLock(Action raise)
+    {
+        if (_gate.IsHeldByCurrentThread)
+        {
+            _heldRaises.Add(raise);
+            return;
+        }
+
+        raise();
     }
 
     // A consent card is a view's; a headless session never has one open.
@@ -569,14 +629,13 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
-    // Stream order is the runtime's, and a session error ends the turn it broke, as it does in the view model.
+    // Stream order is the runtime's; the host's fold ends a turn on a session error, as it does in the view model.
     // The turn's images go before the next queued turn can start and take its own.
     private void _OnEventAppended(SessionHostEvent hostEvent)
     {
-        (string? Text, SessionToolCall? ToolCall) produced;
         lock (_gate)
         {
-            produced = _Produced(hostEvent.Event, _host.ApplyToTranscript(hostEvent.Event));
+            _host.ApplyToTranscript(hostEvent.Event);
             if (hostEvent.Event is TurnCompleted)
             {
                 _turnImages = [];
@@ -585,32 +644,11 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
             else if (hostEvent.Event is SessionError)
             {
                 _turnImages = [];
-                _host.IsBusy = false;
             }
         }
 
         _RaisePendingStateChange();
-        if (!string.IsNullOrEmpty(produced.Text))
-        {
-            OutputTextProduced?.Invoke(produced.Text);
-        }
-
-        if (produced.ToolCall is { } toolCall)
-        {
-            ToolActivityProduced?.Invoke(toolCall);
-        }
     }
-
-    // `SessionViewModel.Apply`'s output signals: a sub-agent's own text or result never raises them (AC-146).
-    private (string? Text, SessionToolCall? ToolCall) _Produced(SessionEvent sessionEvent, TranscriptFold fold) => sessionEvent switch
-    {
-        AssistantTextCompleted { ParentToolUseId: null or "" } completed => (completed.Text, null),
-        ToolResult { ParentToolUseId: null or "" } result when !fold.InSubAgentLane => (result.Content,
-            fold.Row is { Kind: ToolUse, ToolName: { Length: > 0 } toolName } row
-                ? new SessionToolCall(PaneId, toolName, row.InputJson ?? "{}", result.Content, result.IsError)
-                : null),
-        _ => (null, null),
-    };
 
     // The operator's own row, which the desktop pane forms itself (`SessionViewModel._OnTurnStarting`). A turn starts
     // from a send or from the end of the previous turn, both under the lock.

@@ -91,14 +91,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as `SessionPanelViewModel.McpServerSelection` just before `StartWithProfileAsync` reads them.
     private IReadOnlyDictionary<string, string>? _launchOptions;
 
-    // Assistant-text rows added since the last `TurnCompleted` — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.
+    // Assistant-text rows added since the last turn ended — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
     // One top-level tool call the turn is currently waiting on (AC-532).
     private readonly record struct ActiveToolCall(string ToolUseId, string Label, DateTimeOffset StartedAt);
 
-    // Provider-neutral by construction: driven only by `ToolUseRequested`/`ToolResult`, the two events every provider
-    // that reports tool calls at all raises (AC-532).
+    // Provider-neutral by construction: driven only by a tool call surfacing and its result landing, which every provider
+    // that reports tool calls at all reports (AC-532).
     private readonly List<ActiveToolCall> _activeToolCalls = [];
 
     // True while a top-level tool call is outstanding — drives the composer's activity band in place of "Thinking…" (AC-532).
@@ -277,7 +277,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
 
-        // A TaskId no longer reported has finished (or the whole set was wiped, e.g. SessionError): forget its
+        // A TaskId no longer reported has finished (or the whole set was wiped, e.g. by a session error): forget its
         // clock so a reused id someday starts fresh rather than resuming a stale one (AC-531 #8).
         foreach (var staleId in _backgroundTaskFirstSeen.Keys.Where(id => !liveIds.Contains(id)).ToList())
         {
@@ -382,7 +382,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).
     private bool _closeAfterTurn;
 
-    // The most recently dispatched user turn (text + images), so a failed TurnCompleted row's Retry action
+    // The most recently dispatched user turn (text + images), so a failed turn row's Retry action
     // (AC-728) can resend exactly what was sent — the operator does not have to retype it.
     private (string Text, IReadOnlyList<Core.Sessions.ImageAttachment> Images)? _lastDispatchedUserTurn;
 
@@ -561,16 +561,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // When on, this session runs tool calls without prompting (still shown as tool rows). Applied live to the driver.
     [ObservableProperty]
     private bool _autoApproveTools;
-
-    // True while a pending permission decision or CLI `needs_action` signal is outstanding, driving `SessionStatus.NeedsAttention`.
-    private bool _needsAttention;
-
-    // True once at least one turn has finished, so an idle session reads as Done rather than Idle — independent of whether a (success) turn added a transcript row (T4).
-    private bool _hasCompletedATurn;
-
-    // True from a `SessionError` until the turn it ended is superseded — by a fresh send (where `IsBusy` outranks
-    // it in `_RecomputeStatus`) or by the next `TurnCompleted` success (AC-1309). Drives `SessionStatus.Failed`.
-    private bool _lastTurnFailed;
 
     // Carries messages other agents left for this pane out with its next turn (AC-394). Optional: a pane built
     // without it — every design-time and most test constructions — simply sends what it was given, which is the
@@ -990,7 +980,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return -1;
     }
 
-    // Distinct from `SessionStatus.NeedsAttention`, which is deliberately stickier: `_needsAttention` is set when a
+    // Distinct from `SessionStatus.NeedsAttention`, which is deliberately stickier: the host's attention flag is set when a
     // prompt appears and cleared only when the operator sends the next message, so a session keeps flagging itself in
     // the sidebar until someone has actually been back to it.
     public bool HasPendingPermission => Transcript.Any(entry => entry.IsPendingPermission);
@@ -1228,7 +1218,18 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         TimeProvider time)
     {
         var host = new SessionHost<QueuedMessageViewModel>(
-            () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore);
+            () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore)
+        {
+            Capabilities = Capabilities,
+        };
+        // AC-1319: the host decides a mid-turn start on this pane's capabilities, which settle once the driver started.
+        PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Capabilities))
+            {
+                host.Capabilities = Capabilities;
+            }
+        };
         host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
         // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
         host.Started += startedAt => _startedAt = startedAt;
@@ -1240,6 +1241,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         host.LoginChecked += loggedIn => _OnUiThread(() => _WhilePolling(() => ReportLoginStatus(loggedIn)));
         host.UsageCatchUpDue += () => _OnUiThread(() => _WhilePolling(_RefreshLimits));
         host.SignOfLifeDue += arm => _OnUiThread(() => _OnSignOfLife(arm));
+        // AC-1437: raised inside `Apply`'s own fold, so on the UI thread the queue already marshalled the event onto.
+        host.LiveStateChanged += _OnLiveStateChanged;
+        host.TurnEnded += _OnTurnEnded;
+        host.ToolProgressed += () => ToolActivity?.Invoke();
+        host.BackgroundTaskNotified += _OnBackgroundTaskNotified;
+        host.OutputTextProduced += RaiseOutputText;
+        host.ToolActivityProduced += toolCall => RaiseToolActivity(toolCall.ToolName, toolCall.InputJson, toolCall.ResultContent, toolCall.IsError);
         return host;
     }
 
@@ -1448,22 +1456,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _ResetForNewConversation()
     {
         QueuedMessages.Clear();
-        if (_activeToolCalls.Count > 0)
-        {
-            _activeToolCalls.Clear();
-            _RaiseActiveToolActivityChanged();
-        }
-
         _host.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
         _readAloudFlushedLength = 0;
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         ClearCurrentTurnImages();
-        _hasCompletedATurn = false;
-        _needsAttention = false;
-        _lastTurnFailed = false;
         IsBusy = false;
+        _host.ResetLiveState();
 
         _usage.Reset();
         HasUsage = _usage.HasData;
@@ -1479,7 +1479,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // A restore offer belongs to the conversation this pane was restored with; that conversation is no longer
         // the one running here, so the banner must not go on offering to resume it.
         RestoreOffer = null;
-        _RecomputeStatus();
     }
 
     // The header kind chip's label for a profile's provider (AC-537): a built-in provider's own label, nothing for a
@@ -1695,7 +1694,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         IsBusy = true;
-        _RecomputeStatus();
 
         try
         {
@@ -1706,7 +1704,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // The turn never left, so the session is not working — left standing, it would read as permanently busy.
             IsBusy = false;
-            _RecomputeStatus();
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Compacting the context failed: {ex.Message}"));
             return false;
         }
@@ -1956,7 +1953,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // "exit" closes the session once its turn completes when the operator enabled it (T10). The
         // message is still sent normally so any session-end/Stop-hooks on Claude's side run first; the
-        // close then fires from the TurnCompleted handler. Armed at dispatch so a queued "exit" counts too.
+        // close then fires when the turn ends. Armed at dispatch so a queued "exit" counts too.
         if (AutoCloseOnExit && text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
         {
             _closeAfterTurn = true;
@@ -1979,12 +1976,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _lastDispatchedUserTurn = (text, images);
-        // AC-1031: a stale flag from a Stop whose own TurnCompleted never arrived (crash, or the interrupt
-        // landing after that turn's TurnCompleted already ran) must not paint this new turn's failure as one.
+        // AC-1031: a stale flag from a Stop whose own turn end never arrived (crash, or the interrupt
+        // landing after that turn had already ended) must not paint this new turn's failure as one.
         _host.InterruptRequested = false;
         IsBusy = true;
-        _needsAttention = false;
-        _RecomputeStatus();
 
         // Cleared when the turn completes, or in `_OnTurnFailedToStart` if the send never happened (AC-116).
         _RememberTurnImages(images);
@@ -1996,7 +1991,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.Error, SendFailureMessage(exception, _Runtime is { IsRunning: true })));
         IsBusy = false;
-        _RecomputeStatus();
     }
 
     // AC-935: the only difference between the wire text and the row is this prefix — same "model sees ≠ row
@@ -2188,10 +2182,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-1324: `needsYou` means "stopped on a question nobody answered", and this was the last one — the
         // session runs on from here, so it stops flagging itself the moment the click lands, not at the next message.
-        if (_needsAttention && !_PendingRows().Any())
+        if (!_PendingRows().Any())
         {
-            _needsAttention = false;
-            _RecomputeStatus();
+            _host.ClearNeedsAttention();
         }
     }
 
@@ -2314,400 +2307,264 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // is slow because it is working hard is not mistaken for a stuck one. Not raised on text/thinking on purpose.
     public event Action? ToolActivity;
 
+    // A turn the host's fold ended in this pass; it is completed once the pane is done with the event (T8).
+    private bool _turnCompletedInFold;
+
+    // The connection, usage and tool calls this pane last drew, so a new reading is told from one it already showed.
+    private SessionConnection? _shownConnection;
+    private SessionUsageTotals _shownUsage = SessionUsageTotals.None;
+    private IReadOnlyList<SessionActiveToolCall> _shownToolCalls = [];
+
     // internal (rather than private) so `Cockpit.Core.Tests` can drive it directly, bypassing `Dispatcher.UIThread` — see `_eventQueue`.
+    // AC-1437: the host folds the event, its rows and what `_OnLiveStateChanged` and `_OnTurnEnded` draw; what is
+    // left here is what this pane does with the row the event landed on, decided from that one snapshot.
     internal void Apply(SessionEvent evt)
     {
-        // It used to track "no visible output yet" — cleared by the first text, re-armed only by a ToolResult — and
-        // that is what left the composer blank for a minute at a time when the model said something and then went back
-        // to work (AC-532).
-
-        // Real tool progress (AC-215/stall): a tool call surfacing or a tool result landing is the agent actually
-        // working — the signal that distinguishes a busy-but-progressing step from a genuinely stuck one (AC-192: a
-        // turn that emits text describing a tool it never runs, so no tool event ever fires).
-        if (evt is ToolUseRequested or ToolResult)
-        {
-            ToolActivity?.Invoke();
-        }
-
-        // AC-1088: the CLI names its own transcript after this id, so it is what finds a clamped result back.
-        // Taken off whichever event reports it rather than off `SessionInitialized` alone — a resumed session
-        // carries it from its first event, and a `/clear` gives the conversation a new one mid-session.
-        _cliSessionId = evt.SessionId ?? _cliSessionId;
-
-        // AC-1319: a CLI that keeps its own input queue (SupportsMidTurnInput) starts turns this pane never sent — a
-        // prompt queued past the `result`, or a task-notification for a finished background task — with no turn-start
-        // line, so the agent's own first output is the signal. A sub-agent's output does not speak for the main agent.
-        if (!IsBusy && Capabilities.SupportsMidTurnInput && evt.ParentToolUseId is null
-            && evt is AssistantTextDelta or AssistantThinkingDelta or AssistantTextCompleted or ToolUseRequested or ToolResult)
-        {
-            IsBusy = true;
-            _RecomputeStatus();
-        }
-
-        // AC-1377: the host forms the rows, drawn here as its upserts arrive; what follows is what this pane does
-        // with the row the event landed on, decided from that one snapshot.
         _addedByFold.Clear();
+        _turnCompletedInFold = false;
         var fold = _host.ApplyToTranscript(evt);
         var landed = fold.Row is { } landedRow ? _rowsById[landedRow.Id] : null;
 
-        switch (evt)
+        // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
+        if (fold.IsReply)
         {
-            case SessionInitialized init:
-                // The init event is where an SDK session's working directory becomes known — surface it on the
-                // shared base so the read/observe surface can report it (a directory-scoped plugin follows this).
-                if (!string.IsNullOrEmpty(init.Cwd))
-                {
-                    WorkingDirectory = init.Cwd;
-                }
+            _currentTurnAssistantEntries.AddRange(_addedByFold);
+        }
 
-                // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder icon's
-                // own tooltip (SessionHeaderBar.axaml) (AC-563).
-                Status = ConnectedStatusLine;
-                // AC-563 took the tool names off the provider chip's hover — the same count AC-537 had already ruled
-                // uninformative, one hover further along.
-                ConnectedToolsHeading = init.Tools.Count == 0
-                    ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
-                    : $"{init.Tools.Count} tools connected";
+        // A result coupled to its call (L14) is where a backgrounded call learns its task id, in any lane.
+        if (landed is { Kind: TranscriptEntryKind.ToolUse, BackgroundTaskId: not null } && !_backgroundToolRows.Contains(landed))
+        {
+            _TrackBackgroundToolRow(landed);
+        }
 
-                // AC-963: the same hover that lists the servers now says what became of their tools — preloaded, or
-                // kept out of the prompt behind search_tools. Only the init event knows which of the two happened.
-                McpToolReach = McpToolReachFor(init.Tools);
-
-                // Seed it in, don't fire a switch: the driver already reported this, and set_model would be the host
-                // talking back a choice the operator never made (AC-141).
-                if (init.Model is { Length: > 0 } resolvedModel)
-                {
-                    foreach (var control in LiveControls)
-                    {
-                        if (control.Key == WellKnownPluginSessionOptions.Model)
-                        {
-                            control.SeedIfUnset(resolvedModel);
-                        }
-                    }
-                }
-
-                break;
-
-            case AssistantTextDelta delta:
-                // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
-                if (string.IsNullOrEmpty(delta.ParentToolUseId))
-                {
-                    _currentTurnAssistantEntries.AddRange(_addedByFold);
-                }
-
-                break;
-
-            case AssistantTextCompleted completed:
-                // A sub-agent's own narration is not the session's answer to the operator, so it never reaches the
-                // read-aloud queue or the output-text signal (AC-146).
-                if (!string.IsNullOrEmpty(completed.ParentToolUseId))
-                {
-                    break;
-                }
-
-                _currentTurnAssistantEntries.AddRange(_addedByFold);
-                RaiseOutputText(completed.Text);
-                break;
-
-            case ToolUseRequested toolUse:
-                // AC-146: a sub-agent's own tool call nests under its Task row and is not what the turn waits on.
-                if (fold.InSubAgentLane || landed is not { } toolUseRow)
-                {
-                    break;
-                }
-
-                // AC-532: this top-level call is now outstanding — reuses the row's own ToolHeader ("Bash  ·
-                // dotnet build") rather than re-deriving a summary from the input JSON a second time.
-                _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
-                _RaiseActiveToolActivityChanged();
-
-                // Until now the only mid-turn flushes were a permission prompt and a question, which was enough while
-                // every tool call raised one — and stopped being enough the moment an operator turned on
-                // bypassPermissions or the cockpit's consent bypass (AC-575).
-                _FlushPendingProseForReadAloud();
-
-                // AC-597: and when there was no lead-in to flush, say one of our own. Two turns in five reach this
-                // line with nothing written yet, and silence from the question to the answer reads as unheard.
-                _SpeakLeadInIfTheModelGaveNone();
-
-                // AC-598: the wait starts here too, so a turn that said its lead-in and then spends two minutes in
-                // tools still gives a sign of life.
-                _RestartSignOfLifeClock();
-                break;
-
-            case ToolResult toolResult:
-                // The row the result coupled to (L14), or null when it fell back to a row of its own.
-                var toolUseEntry = landed is { Kind: TranscriptEntryKind.ToolUse } coupled ? coupled : null;
-                if (toolUseEntry is not null)
-                {
-                    _TrackBackgroundToolRow(toolUseEntry);
-                }
-
-                // AC-146: a sub-agent's own result never raises the signals a top-level one does.
-                if (fold.InSubAgentLane)
-                {
-                    break;
-                }
-
-                // AC-532: this call is no longer outstanding, whichever way it resolved — success, error, or a
-                // permission denial the driver reported as a tool result.
-                var activeCallIndex = _activeToolCalls.FindIndex(call => call.ToolUseId == toolResult.ToolUseId);
-                if (activeCallIndex >= 0)
-                {
-                    _activeToolCalls.RemoveAt(activeCallIndex);
-                    _RaiseActiveToolActivityChanged();
-                }
-
-                // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row was
-                // never seen) is coupled/shown above like any other, so nothing vanishes silently.
-                if (!string.IsNullOrEmpty(toolResult.ParentToolUseId))
-                {
-                    break;
-                }
-
-                // Tool output is where a shelled-out `gh pr create`/`git push` prints its pull-request url, so
-                // it is the primary channel the PR watcher scans (the read/observe surface).
-                RaiseOutputText(toolResult.Content);
-
-                // And, coupled with its call, the structured tool-activity signal (AC-116): the tool-use row we just
-                // found carries the name and input, the result carries the content.
-                if (toolUseEntry is { ToolName: { } toolName })
-                {
-                    RaiseToolActivity(toolName, toolUseEntry.InputJson ?? "{}", toolResult.Content, toolResult.IsError);
-                }
-
-                break;
-
-            case PermissionRequested permission:
-                // AC-215: the host allowed a pre-authorized tool of a self-driving run itself, so nobody is asked.
-                if (fold.Row is not { IsPendingPermission: true } || landed is not { } entry)
-                {
-                    break;
-                }
-
-                // AC-715: an AskUserQuestion rides this same callback but asks for an answer, not consent —
-                // parse its questions here so the row renders them as choices instead of Allow/Deny over raw
-                // JSON. Any other tool parses to nothing and keeps the ordinary consent card.
-                entry.QuestionPrompts = permission.ToolName == AskUserQuestionToolName
-                    ? AskUserQuestionViewModel.Parse(permission.InputJson)
+        if (fold.AsksTheOperator)
+        {
+            if (fold.Row is { IsPendingPermission: true } && landed is { } entry)
+            {
+                // AC-715: an AskUserQuestion rides the permission callback but asks for an answer, not consent, so
+                // the row renders its questions as choices instead of Allow/Deny over raw JSON.
+                entry.QuestionPrompts = entry.ToolName == AskUserQuestionToolName
+                    ? AskUserQuestionViewModel.Parse(entry.InputJson ?? "{}")
                     : null;
-                // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
-                // flip the composer's activity band from "running" to "waiting for permission" so that reads
-                // as waiting on the operator rather than as the tool quietly still working.
+                // AC-532: the composer's activity band now reads "waiting for permission" rather than "running".
                 _RaiseActiveToolActivityChanged();
+            }
 
-                // AC-996: the host gave a permission without a tool-use row one of its own, so there is always
-                // something to click while the session parks on needs-attention.
-                _needsAttention = true;
-                // Speak the lead-in the reply gave before this tool needs approval, rather than holding it back
-                // until the operator answers the prompt (AC-97).
-                _FlushPendingProseForReadAloud();
-                _RecomputeStatus();
-                break;
+            // A question or a prompt pauses the turn, so speak what was said before it now (AC-97).
+            _FlushPendingProseForReadAloud();
+        }
 
-            case Question:
-                // Same as a permission prompt: a question pauses the turn, so speak what was said before it now.
-                _FlushPendingProseForReadAloud();
-                break;
+        if (!_turnCompletedInFold)
+        {
+            return;
+        }
 
-            case TurnCompleted turn:
-                // AC-1031: consumed once, right here — a turn's own IsError below must not keep reading this
-                // as "interrupted" once we've reported it, or a later genuine failure would render as one too.
-                var wasInterrupted = _host.InterruptRequested;
-                _host.InterruptRequested = false;
+        _RefreshLimits();
+        // "exit" turn finished → ask the cockpit to close this session (T10); anything still queued is moot.
+        if (_closeAfterTurn)
+        {
+            _closeAfterTurn = false;
+            RaiseCloseRequested();
+            return;
+        }
 
-                if (fold.Row is { IsFailedTurnRow: true } && landed is { } failedTurnRow)
+        // A completed turn (success or error result) frees the session, so the host sends the next queued message
+        // (T8). A session error does not: the chips stay, so a broken session isn't cascaded through every one.
+        _host.CompleteTurn();
+    }
+
+    // AC-1437: the turn-end half of what `Apply` did per event; the status, usage and outstanding work it left behind
+    // arrive after this, in `_OnLiveStateChanged`.
+    private void _OnTurnEnded(SessionTurnEnd end)
+    {
+        var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
+        if (end.BySessionError)
+        {
+            // AC-713: re-checks the profile's own login gate rather than pattern-matching the message.
+            if (failedRow is not null && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+            {
+                failedRow.ActionLabel = "Login";
+                failedRow.ActionCommand = new RelayCommand(() => _StartLoginFlow(failedRow));
+            }
+
+            // A session error ends the turn without completing it, so its images go here too (AC-116).
+            ClearCurrentTurnImages();
+            return;
+        }
+
+        if (failedRow is not null)
+        {
+            // AC-939: an auth classification means Retry would just fail again, so it offers the login gate instead.
+            if (failedRow.ErrorKind == SessionErrorKind.AuthRequired && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+            {
+                failedRow.ActionLabel = "Login";
+                failedRow.ActionCommand = new RelayCommand(() => _StartLoginFlow(failedRow));
+            }
+            // AC-728: unset when this turn never went through the host's dispatch, which only a scheduled resume's
+            // own first turn (SendPromptAsync, AC-410) does.
+            else if (_lastDispatchedUserTurn is { } lastTurn)
+            {
+                failedRow.ActionLabel = "Retry";
+                failedRow.ActionCommand = new RelayCommand(
+                    () => _host.DispatchInBackground(new QueuedPrompt(lastTurn.Text, lastTurn.Images)));
+            }
+        }
+
+        // A failure here is a resume that was tried and refused: an expired conversation id ends the turn as
+        // error_during_execution with no Result (AC-410). AC-1031: an interrupted first turn is not a refused resume.
+        if (_restoredOfferSnapshot is { } restoredOffer)
+        {
+            _restoredOfferSnapshot = null;
+            if (end.IsError && !end.WasInterrupted)
+            {
+                RestoreOffer = restoredOffer with
                 {
-                    // AC-939: an auth classification means Retry would just fail again — offer the same
-                    // login-gate the SessionError branch below uses instead.
-                    if (failedTurnRow.ErrorKind == SessionErrorKind.AuthRequired && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
-                    {
-                        failedTurnRow.ActionLabel = "Login";
-                        failedTurnRow.ActionCommand = new RelayCommand(() => _StartLoginFlow(failedTurnRow));
-                    }
-                    // AC-728: same ActionLabel/ActionCommand convention as AC-713's "Login" row. Left unset when
-                    // this turn never went through the host's dispatch — a scheduled resume's own first turn
-                    // (SendPromptAsync, AC-410) is the one case that applies to.
-                    else if (_lastDispatchedUserTurn is { } lastTurn)
-                    {
-                        failedTurnRow.ActionLabel = "Retry";
-                        failedTurnRow.ActionCommand = new RelayCommand(
-                            () => _host.DispatchInBackground(new QueuedPrompt(lastTurn.Text, lastTurn.Images)));
-                    }
-                }
+                    Availability = SessionRestoreAvailability.Gone,
+                    Explanation = _DegradedTurnExplanation(end, restoredOffer.State?.WorkingDirectory),
+                };
+            }
+        }
 
-                // A failure here is a resume that was actually tried and refused (an expired conversation id makes
-                // claude --resume print "No conversation found" and end the turn as error_during_execution with no
-                // Result) (AC-410).
-                if (_restoredOfferSnapshot is { } restoredOffer)
+        _FlushPendingProseForReadAloud();
+
+        _currentTurnAssistantEntries.Clear();
+        _readAloudFlushedLength = 0;
+        _spokenSomethingThisTurn = false;
+        _StopSignOfLifeClock();
+        // This turn's images belong to this turn only (AC-116): a later image-less turn's tool call attaches nothing stale.
+        ClearCurrentTurnImages();
+        _turnCompletedInFold = true;
+    }
+
+    // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
+    private void _OnLiveStateChanged(SessionLiveState state)
+    {
+        _cliSessionId = state.CliSessionId;
+        if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
+        {
+            _shownConnection = connection;
+            _ShowConnection(connection);
+        }
+
+        if (!ReferenceEquals(state.ActiveToolCalls, _shownToolCalls))
+        {
+            _ShowActiveToolCalls(state.ActiveToolCalls);
+        }
+
+        // Replaced wholesale, an empty list included, which is how the last task ending arrives (AC-276).
+        if (!ReferenceEquals(state.BackgroundTasks, _backgroundTasks))
+        {
+            _backgroundTasks = state.BackgroundTasks;
+            OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+            OnPropertyChanged(nameof(SessionStatusLabel));
+            _RebuildBackgroundTaskRows();
+        }
+
+        // Recorded after every turn (AC-251); a conversation started over blanks the meter in `_ResetForNewConversation`.
+        if (state.Usage != _shownUsage)
+        {
+            _shownUsage = state.Usage;
+            if (state.Usage.Turns > 0)
+            {
+                _usage.Totals = state.Usage;
+                HasUsage = _usage.HasData;
+                UsageSummary = _usage.Summary;
+                UsageTooltip = _usage.Tooltip;
+                _RecordUsageSnapshot();
+            }
+        }
+
+        SessionStatus = state.Status;
+    }
+
+    // The init event is where an SDK session's working directory becomes known; surfaced on the shared base so the
+    // read/observe surface can report it (a directory-scoped plugin follows this).
+    private void _ShowConnection(SessionConnection connection)
+    {
+        if (!string.IsNullOrEmpty(connection.WorkingDirectory))
+        {
+            WorkingDirectory = connection.WorkingDirectory;
+        }
+
+        // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder icon's own
+        // tooltip (SessionHeaderBar.axaml) (AC-563).
+        Status = ConnectedStatusLine;
+        ConnectedToolsHeading = connection.Tools.Count == 0
+            ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
+            : $"{connection.Tools.Count} tools connected";
+
+        // AC-963: the same hover that lists the servers says what became of their tools, preloaded or kept out of the
+        // prompt behind search_tools. Only the init event knows which of the two happened.
+        McpToolReach = McpToolReachFor(connection.Tools);
+
+        // Seed it in, don't fire a switch: the driver already reported this, and set_model would be the host talking
+        // back a choice the operator never made (AC-141).
+        if (connection.Model is { Length: > 0 } resolvedModel)
+        {
+            foreach (var control in LiveControls)
+            {
+                if (control.Key == WellKnownPluginSessionOptions.Model)
                 {
-                    _restoredOfferSnapshot = null;
-                    // AC-1031: an interrupted first turn is not a refused resume — leave the offer alone rather
-                    // than degrading it to Gone over a stop the operator asked for.
-                    if (turn.IsError && !wasInterrupted)
-                    {
-                        RestoreOffer = restoredOffer with
-                        {
-                            Availability = SessionRestoreAvailability.Gone,
-                            Explanation = _DegradedTurnExplanation(turn, restoredOffer.State?.WorkingDirectory),
-                        };
-                    }
+                    control.SeedIfUnset(resolvedModel);
                 }
-
-                _FlushPendingProseForReadAloud();
-
-                _currentTurnAssistantEntries.Clear();
-                _readAloudFlushedLength = 0;
-                _spokenSomethingThisTurn = false;
-                _StopSignOfLifeClock();
-                // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
-                // tool call attaches nothing stale.
-                ClearCurrentTurnImages();
-                // AC-532 safety net: every turn ends here or in SessionError below, whether or not each of its tool
-                // calls got a matching ToolResult first (an interrupt ends the turn without one).
-                if (_activeToolCalls.Count > 0)
-                {
-                    _activeToolCalls.Clear();
-                    _RaiseActiveToolActivityChanged();
-                }
-
-                // AC-531: deliberately no _backgroundTasks/_RebuildBackgroundTaskRows() call here, unlike
-                // _activeToolCalls just above.
-                _hasCompletedATurn = true;
-                // This success supersedes whatever the previous turn ended in (AC-1309): a Failed session that
-                // recovers reads as Done, not stuck on the error that no longer describes it.
-                _lastTurnFailed = false;
-                IsBusy = false;
-                _AccumulateUsage(turn);
-                _RefreshLimits();
-                _RecomputeStatus();
-                // "exit" turn finished → ask the cockpit to close this session (T10). Skip draining the
-                // queue: the session is going away, so anything still queued is moot.
-                if (_closeAfterTurn)
-                {
-                    _closeAfterTurn = false;
-                    RaiseCloseRequested();
-                    break;
-                }
-
-                // A completed turn (success or error result) frees the session, so the host sends the next queued
-                // message (T8). A SessionError event does not drain the queue — the chips stay so a
-                // broken session isn't cascaded through every queued message.
-                _host.CompleteTurn();
-                break;
-
-            case SessionError:
-                // AC-713: re-checks the profile's own login gate rather than pattern-matching the message.
-                if (landed is { } errorEntry && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
-                {
-                    errorEntry.ActionLabel = "Login";
-                    errorEntry.ActionCommand = new RelayCommand(() => _StartLoginFlow(errorEntry));
-                }
-
-                // A session error ends the turn without a TurnCompleted, so drop this turn's images here too —
-                // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
-                ClearCurrentTurnImages();
-                IsBusy = false;
-                _lastTurnFailed = true;
-                // Whatever was outstanding died with the session (AC-276). Unlike the TTY route this one has no
-                // safety timeout to fall back on, so a sub-agent left in the list here would hold a crashed session
-                // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
-                _backgroundTasks = [];
-                OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
-                OnPropertyChanged(nameof(SessionStatusLabel));
-                _RebuildBackgroundTaskRows();
-                // AC-532: same reasoning as the background-task list above — a crashed driver never sends the
-                // ToolResult that would otherwise have cleared this, so the composer must not go on showing a
-                // tool as running past the session that was running it.
-                if (_activeToolCalls.Count > 0)
-                {
-                    _activeToolCalls.Clear();
-                    _RaiseActiveToolActivityChanged();
-                }
-
-                _RecomputeStatus();
-                break;
-
-            // The driver restated what is still outstanding (AC-276). Kept verbatim — the weighing of sub-agent
-            // versus shell belongs to _RecomputeStatus and the notification gate, not here, so this stays a
-            // straight assignment even when the list is empty (which is how the last task ending arrives).
-            case BackgroundTasksChanged backgroundTasks:
-                _backgroundTasks = backgroundTasks.Tasks;
-                OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
-                OnPropertyChanged(nameof(SessionStatusLabel));
-                _RebuildBackgroundTaskRows();
-                _RecomputeStatus();
-                break;
-
-            // AC-1057: the provider's own verdict on one background task, replacing the inferred done/failed guess
-            // for exactly the row that started it. Matched by ToolUseId first (the id this event names for that
-            // reason) and by BackgroundTaskId as a fallback for a row whose ToolUseId went unset for some reason.
-            case BackgroundTaskNotification notification:
-                var notifiedRow = notification.ToolUseId is not null
-                    ? _backgroundToolRows.FirstOrDefault(row => row.ToolUseId == notification.ToolUseId)
-                    : null;
-                notifiedRow ??= _backgroundToolRows.FirstOrDefault(row => row.BackgroundTaskId == notification.TaskId);
-                if (notifiedRow is not null)
-                {
-                    notifiedRow.BackgroundNotificationStatus = notification.Status;
-                }
-
-                break;
-
-            case SessionStatusChanged statusChanged:
-                // A non-empty needs_action requests sidebar attention, like a pending permission (AC-146).
-                if (!string.IsNullOrEmpty(statusChanged.NeedsAction))
-                {
-                    _needsAttention = true;
-                }
-
-                _RecomputeStatus();
-                break;
-
-            case RateLimitInfo:
-            case UnknownEvent:
-                break;
+            }
         }
     }
 
-    // Derives `SessionStatus` from the flags this view model already tracks: busy while a turn is in flight; see
-    // AC-276. `_lastTurnFailed` only decides anything once neither of those outrank it (AC-1309) — a fresh send
-    // reads as Busy regardless, which is what lets a retried turn escape Failed without a separate reset.
-    private void _RecomputeStatus()
+    // AC-532: a call keeps the label its row had when it surfaced ("Bash  ·  dotnet build"), the row's own ToolHeader.
+    private void _ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
     {
-        SessionStatus = (_needsAttention, IsBusy, _HasOutstandingSubAgents, _lastTurnFailed) switch
+        var surfaced = calls.Any(call => _activeToolCalls.TrueForAll(shown => shown.ToolUseId != call.ToolUseId));
+        var shown = _activeToolCalls.ToList();
+        _shownToolCalls = calls;
+        _activeToolCalls.Clear();
+        _activeToolCalls.AddRange(calls.Select(call =>
+            shown.FindIndex(existing => existing.ToolUseId == call.ToolUseId) is var index and >= 0
+            ? shown[index]
+            : new ActiveToolCall(
+                call.ToolUseId,
+                Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.ToolHeader ?? call.ToolName,
+                call.StartedAt)));
+        _RaiseActiveToolActivityChanged();
+        if (!surfaced)
         {
-            (true, _, _, _) => SessionStatus.NeedsAttention,
-            (false, true, _, _) => SessionStatus.Busy,
-            (false, false, true, _) => SessionStatus.WorkingBackground,
-            (false, false, false, true) => SessionStatus.Failed,
-            (false, false, false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
-        };
+            return;
+        }
+
+        // Until then the only mid-turn flushes were a permission prompt and a question, which stopped being enough
+        // the moment an operator turned on bypassPermissions or the cockpit's consent bypass (AC-575).
+        _FlushPendingProseForReadAloud();
+
+        // AC-597: and when there was no lead-in to flush, say one of our own.
+        _SpeakLeadInIfTheModelGaveNone();
+
+        // AC-598: the wait starts here too, so a turn that spends minutes in tools still gives a sign of life.
+        _RestartSignOfLifeClock();
     }
 
-    // Replaced wholesale rather than added to and removed from: the event carries the complete set every time (see
-    // `BackgroundTasksChanged`), so a dropped event costs one stale reading instead of permanently desynchronising a
-    // ledger.
-    private IReadOnlyList<BackgroundTask> _backgroundTasks = [];
+    // AC-1057: the provider's own verdict on one background task, replacing the inferred done/failed guess for exactly
+    // the row that started it; matched by ToolUseId first, by task id for a row whose ToolUseId went unset.
+    private void _OnBackgroundTaskNotified(SessionBackgroundTaskNotice notice)
+    {
+        var notifiedRow = notice.ToolUseId is not null
+            ? _backgroundToolRows.FirstOrDefault(row => row.ToolUseId == notice.ToolUseId)
+            : null;
+        notifiedRow ??= _backgroundToolRows.FirstOrDefault(row => row.BackgroundTaskId == notice.TaskId);
+        if (notifiedRow is not null)
+        {
+            notifiedRow.BackgroundNotificationStatus = notice.Status;
+        }
+    }
 
-    private bool _HasOutstandingSubAgents => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.SubAgent);
+    // Replaced wholesale rather than added to and removed from: the session restates the complete set every time, so
+    // a dropped update costs one stale reading instead of permanently desynchronising a ledger.
+    private IReadOnlyList<BackgroundTask> _backgroundTasks = [];
 
     // True while a backgrounded shell is still running (AC-276). It does not hold the status — a never-ending
     // dev server would pin the session forever — but it does suppress the "session finished" notification, which
     // would otherwise announce a session that is still doing something.
     public override bool HasOutstandingBackgroundShells =>
         _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.Shell) || base.HasOutstandingBackgroundShells;
-
-    // The meter sums the tokens and follows the cost, which the result reports as a session total rather than a
-    // per-turn share.
-    internal void _AccumulateUsage(TurnCompleted turn)
-    {
-        _usage.Add(turn.Usage, turn.TotalCostUsd);
-        HasUsage = _usage.HasData;
-        UsageSummary = _usage.Summary;
-        UsageTooltip = _usage.Tooltip;
-        _RecordUsageSnapshot();
-    }
 
     // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the app —
     // recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
@@ -2727,7 +2584,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // from these flags: the composer queues behind IsBusy rather than sending on top of a running turn, and
         // AC-395's wake refuses a pane that is already working.
         IsBusy = true;
-        _RecomputeStatus();
 
         try
         {
@@ -2741,7 +2597,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // the composer would queue forever and no later message could ever wake it. Rethrown rather than swallowed,
             // because the callers already decide what a failed prompt means for them.
             IsBusy = false;
-            _RecomputeStatus();
             throw;
         }
 
@@ -2751,18 +2606,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-539: that reason names the id but not what decides whether it can be found — Claude keeps its saved
     // conversations per working directory, so a pane that came back somewhere else gets the message with nothing
     // pointing at the cause (AC-410).
-    private static string _DegradedTurnExplanation(TurnCompleted turn, string? workingDirectory)
+    private static string _DegradedTurnExplanation(SessionTurnEnd end, string? workingDirectory)
     {
-        var reason = _TurnFailureReason(turn) ?? $"Claude could not resume the earlier conversation ({turn.Subtype}).";
+        var reason = end.FailureReason ?? $"Claude could not resume the earlier conversation ({end.Subtype}).";
 
         return workingDirectory is { Length: > 0 } directory
             ? $"{reason}\nThe resume was made in {directory} — Claude keeps its conversations per working directory, so one saved elsewhere is not found here."
             : reason;
     }
-
-    // The provider's own reason a turn failed (AC-410), when it gave one — null otherwise.
-    private static string? _TurnFailureReason(TurnCompleted turn) =>
-        turn.Errors is { Count: > 0 } errors ? string.Join('\n', errors) : null;
 
     // --- Login flow (AC-713) ----------------------------------------------------------------------------------
 
@@ -2771,7 +2622,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // flow ever plays out, regardless of where it started.
     protected override void OnSignInAgainRequested()
     {
-        // AC-720: TurnCompleted, not Error — this is a status line, not a driver failure, and Error rows
+        // AC-720: a turn-status row, not an Error row — this is a status line, not a driver failure, and Error rows
         // now render as a severity-coloured card that would misread "Signing in again…" as a problem.
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.TurnCompleted, "Signing in again…");
         Transcript.Add(entry);
