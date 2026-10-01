@@ -62,7 +62,7 @@ public class AssistantChatComposerTests
         // starts with an empty queue.
         session.QueuedMessages.Clear();
         var vm = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
-        session.QueuedMessages.Add(new QueuedMessageViewModel("kijk hier nog eens naar", [], replyTo: null, m => session.QueuedMessages.Remove(m)));
+        session.QueuedMessages.Add(new QueuedMessageViewModel(new QueuedPrompt("kijk hier nog eens naar", []), replyTo: null, m => session.QueuedMessages.Remove(m)));
 
         Assert.True(vm.RecallLastQueuedMessage());
 

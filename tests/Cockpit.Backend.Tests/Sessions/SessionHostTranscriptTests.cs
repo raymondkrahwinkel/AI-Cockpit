@@ -46,8 +46,8 @@ public class SessionHostTranscriptTests
         Assert.Equal("one two three", upserts[^1].Row.Text);
     }
 
-    // The consumer's duty from `ISessionTranscript`, done the way a headless consumer does it: on the event's own thread.
-    private static (SessionHost<QueuedPrompt> Host, ISessionRuntime Runtime, RecordingStore Store) _Started()
+    // AC-1438: the host folds its own events, inline on the event's thread until a consumer names another.
+    private static (SessionHost Host, ISessionRuntime Runtime, RecordingStore Store) _Started()
     {
         var runtime = Substitute.For<ISessionRuntime>();
         runtime.IsRunning.Returns(true);
@@ -55,8 +55,7 @@ public class SessionHostTranscriptTests
         manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
         var store = new RecordingStore();
 
-        var host = new SessionHost<QueuedPrompt>(() => "pane-a", manager, TimeProvider.System, transcriptStore: store);
-        host.EventAppended += hostEvent => host.ApplyToTranscript(hostEvent.Event);
+        var host = new SessionHost(() => "pane-a", manager, TimeProvider.System, transcriptStore: store);
         host.Attach(new SessionProfile("work", new ClaudeConfig("/fake/.claude")));
         return (host, runtime, store);
     }

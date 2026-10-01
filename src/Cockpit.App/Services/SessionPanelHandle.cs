@@ -134,6 +134,42 @@ internal sealed class SessionPanelHandle(
         }
     }
 
+    // AC-1438: the host's fold as the pane last drew it, with its signals raised on the UI thread once drawn; a TTY
+    // pane and a plain terminal keep none, as the contract's defaults say.
+    public SessionLiveState LiveState => pane is SessionViewModel sdk ? sdk.LiveState : SessionLiveState.None;
+
+    public event Action<SessionLiveState>? LiveStateChanged
+    {
+        add => _OnSdk(sdk => sdk.LiveStateChanged += value);
+        remove => _OnSdk(sdk => sdk.LiveStateChanged -= value);
+    }
+
+    public event Action<SessionTurnEnd>? TurnEnded
+    {
+        add => _OnSdk(sdk => sdk.TurnEnded += value);
+        remove => _OnSdk(sdk => sdk.TurnEnded -= value);
+    }
+
+    public event Action? ToolProgressed
+    {
+        add => _OnSdk(sdk => sdk.ToolActivity += value);
+        remove => _OnSdk(sdk => sdk.ToolActivity -= value);
+    }
+
+    public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified
+    {
+        add => _OnSdk(sdk => sdk.BackgroundTaskNotified += value);
+        remove => _OnSdk(sdk => sdk.BackgroundTaskNotified -= value);
+    }
+
+    private void _OnSdk(Action<SessionViewModel> hook)
+    {
+        if (pane is SessionViewModel sdk)
+        {
+            hook(sdk);
+        }
+    }
+
     // AC-1415: the pane's own signals, which stay their source on the desktop until AC-1437 moves them to the host. The
     // pane is hooked while anyone listens, so a handle nobody follows holds no handler on it.
     private readonly Lock _gate = new();

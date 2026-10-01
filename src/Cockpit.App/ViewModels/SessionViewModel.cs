@@ -31,7 +31,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
     // AC-1376: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This view
     // model draws what it reports and hands it what the operator does.
-    private readonly SessionHost<QueuedMessageViewModel> _host;
+    private readonly SessionHost _host;
 
     // AC-409: written on a live permission-mode switch (see `OnSelectedPermissionModeChanged`). Null in the design-time/unit-test graph, where the switch simply is not persisted.
     private readonly SessionStateRecorder? _sessionStateRecorder;
@@ -433,8 +433,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // silently drops a pasted image.
     public bool CanPasteImages => Capabilities is { SupportsVision: true };
 
-    // Messages typed while a turn was in flight, dispatched in order as turns complete (T8). The host's queue.
-    public ObservableCollection<QueuedMessageViewModel> QueuedMessages => _host.Queue;
+    // Messages typed while a turn was in flight, dispatched in order as turns complete (T8): the host's queue as chips.
+    public ObservableCollection<QueuedMessageViewModel> QueuedMessages { get; } = [];
 
     // True while the send queue holds a message, so the queued-chip strip can hide when empty.
     public bool HasQueuedMessages => QueuedMessages.Count > 0;
@@ -1104,7 +1104,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
         _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null, TimeProvider.System);
-        _eventQueue = new SessionEventQueue(Apply);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563): a
@@ -1164,8 +1163,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _TrackPendingAttachments();
 
         // A sample queued message so the previewer/Screenshotter render the send-queue strip (T8).
-        QueuedMessages.Add(new QueuedMessageViewModel(
-            "run the tests once the build finishes", [], replyTo: null, m => QueuedMessages.Remove(m)));
+        _host.Queue.Add(new QueuedPrompt("run the tests once the build finishes", []));
     }
 
     public SessionViewModel(
@@ -1193,7 +1191,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
         _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore, timeProvider ?? TimeProvider.System);
-        _eventQueue = new SessionEventQueue(Apply);
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -1208,7 +1205,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // The host reports on the consumer's thread except for its clocks, which tick on the pool and are posted here.
-    private SessionHost<QueuedMessageViewModel> _BuildHost(
+    private SessionHost _BuildHost(
         ISessionManager? sessionManager,
         IAgentTurnInboxDelivery? turnInboxDelivery,
         IProfileLoginChecker? loginChecker,
@@ -1217,10 +1214,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptStore? transcriptStore,
         TimeProvider time)
     {
-        var host = new SessionHost<QueuedMessageViewModel>(
+        var host = new SessionHost(
             () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore)
         {
             Capabilities = Capabilities,
+            OutgoingText = prompt => BuildOutgoingText(prompt.Text, _RowOf(prompt.ReplyToRowId)),
         };
         // AC-1319: the host decides a mid-turn start on this pane's capabilities, which settle once the driver started.
         PropertyChanged += (_, args) =>
@@ -1230,7 +1228,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 host.Capabilities = Capabilities;
             }
         };
-        host.EventAppended += hostEvent => _eventQueue.Enqueue(hostEvent.Event);
+        // AC-1438: the host folds its runtime's events itself, on this thread, a frame's worth at a time (AC-529).
+        host.PumpOn(UiPost, UiPostAfterWindow);
+        host.Folded += _OnFolded;
+        host.Queue.CollectionChanged += (_, change) => _MirrorQueue(change);
         // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
         host.Started += startedAt => _startedAt = startedAt;
         host.RowUpserted += _OnRowUpserted;
@@ -1250,6 +1251,57 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         host.ToolActivityProduced += toolCall => RaiseToolActivity(toolCall.ToolName, toolCall.InputJson, toolCall.ResultContent, toolCall.IsError);
         return host;
     }
+
+    // One frame at 30 fps, matching `MarkdownView.RebuildIntervalMs`: the markdown rows repaint on that cadence anyway,
+    // so folding the deltas that arrive between two repaints removes work no one could have seen (AC-529).
+    private const int PumpWindowMs = 33;
+
+    // The host's pump on this thread. Posted first, timer armed second: `DispatcherTimer` binds to
+    // `Dispatcher.CurrentDispatcher`, so arming one from the runtime's thread lands it on a dispatcher nothing pumps.
+    internal static readonly Action<Action> UiPost = action => Dispatcher.UIThread.Post(action);
+
+    internal static readonly Action<Action> UiPostAfterWindow =
+        action => Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(action, TimeSpan.FromMilliseconds(PumpWindowMs)));
+
+    // The host's queue as chips, one per prompt and in its order; a chip's Remove takes its prompt out of the queue.
+    private void _MirrorQueue(NotifyCollectionChangedEventArgs change)
+    {
+        switch (change.Action)
+        {
+            case NotifyCollectionChangedAction.Add when change.NewItems is { } added:
+                var index = change.NewStartingIndex;
+                foreach (var prompt in added.OfType<QueuedPrompt>())
+                {
+                    QueuedMessages.Insert(index++, _ChipFor(prompt));
+                }
+
+                break;
+
+            case NotifyCollectionChangedAction.Remove when change.OldItems is { } removed:
+                for (var count = 0; count < removed.Count; count++)
+                {
+                    QueuedMessages.RemoveAt(change.OldStartingIndex);
+                }
+
+                break;
+
+            default:
+                QueuedMessages.Clear();
+                foreach (var prompt in _host.Queue)
+                {
+                    QueuedMessages.Add(_ChipFor(prompt));
+                }
+
+                break;
+        }
+    }
+
+    private QueuedMessageViewModel _ChipFor(QueuedPrompt prompt) =>
+        new(prompt, _RowOf(prompt.ReplyToRowId), chip => _host.Queue.Remove(chip.Prompt));
+
+    // AC-935: the row a queued reply answers, while this pane still holds it.
+    private TranscriptEntryViewModel? _RowOf(string? rowId) =>
+        rowId is not null && _rowsById.TryGetValue(rowId, out var row) ? row : null;
 
     // A DispatcherTimer stopped on close ticked no more; a pool tick posted just before the close still lands here.
     private void _WhilePolling(Action action)
@@ -1455,7 +1507,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // empty context is a figure that actively lies (decision 3). The transcript is deliberately not among them.
     private void _ResetForNewConversation()
     {
-        QueuedMessages.Clear();
+        _host.Queue.Clear();
         _host.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
         _readAloudFlushedLength = 0;
@@ -1881,7 +1933,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         IReadOnlyList<Core.Sessions.ImageAttachment> images = [Core.Sessions.ImageAttachment.FromBytes(screenshotPng, "image/png")];
 
-        await _host.SubmitAsync(new QueuedMessageViewModel(caption, images, replyTo: null, message => QueuedMessages.Remove(message)));
+        await _host.SubmitAsync(new QueuedPrompt(caption, images));
         return true;
     }
 
@@ -1915,9 +1967,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-739: measured 3x that the CLI delivers a mid-turn message to the model. SupportsMidTurnInput gates
         // straight-through writing versus the local send-queue chip (T8), driver by driver.
-        await _host.SubmitAsync(
-            new QueuedMessageViewModel(text, images, replyTo, m => QueuedMessages.Remove(m)),
-            Capabilities.SupportsMidTurnInput);
+        await _host.SubmitAsync(new QueuedPrompt(text, images, replyTo?.Id), Capabilities.SupportsMidTurnInput);
     }
 
     // Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
@@ -1930,8 +1980,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return false;
         }
 
+        // Taken out the way its chip's own Remove takes it, so the host's queue and the chips stay one list.
         var last = QueuedMessages[^1];
-        QueuedMessages.RemoveAt(QueuedMessages.Count - 1);
+        last.RemoveCommand.Execute(null);
 
         InputText = last.Text;
         foreach (var image in last.Images)
@@ -1949,7 +2000,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         var text = prompt.Text;
         var images = prompt.Images;
-        var replyTo = (prompt as QueuedMessageViewModel)?.ReplyTo;
+        var replyTo = _RowOf(prompt.ReplyToRowId);
 
         // "exit" closes the session once its turn completes when the operator enabled it (T10). The
         // message is still sent normally so any session-end/Stop-hooks on Claude's side run first; the
@@ -1957,6 +2008,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         if (AutoCloseOnExit && text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
         {
             _closeAfterTurn = true;
+            _host.EndsAfterThisTurn = true;
         }
 
         // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
@@ -1975,22 +2027,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             replyTo.LatestReply = row;
         }
 
+        // The host marks the turn busy and clears a stale interrupt itself (AC-1031) once this returns.
         _lastDispatchedUserTurn = (text, images);
-        // AC-1031: a stale flag from a Stop whose own turn end never arrived (crash, or the interrupt
-        // landing after that turn had already ended) must not paint this new turn's failure as one.
-        _host.InterruptRequested = false;
-        IsBusy = true;
 
         // Cleared when the turn completes, or in `_OnTurnFailedToStart` if the send never happened (AC-116).
         _RememberTurnImages(images);
     }
 
+    // The host frees the session itself once this returns.
     private void _OnTurnFailedToStart(QueuedPrompt prompt, Exception exception)
     {
         ClearCurrentTurnImages();
         Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.Error, SendFailureMessage(exception, _Runtime is { IsRunning: true })));
-        IsBusy = false;
     }
 
     // AC-935: the only difference between the wire text and the row is this prefix — same "model sees ≠ row
@@ -2298,16 +2347,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _signOfLifeRepeat = 0;
     }
 
-    // The host re-issues the runtime's events off the UI thread (#68); marshalling them onto it is this panel's job,
-    // because it is the consumer that touches UI — a headless consumer of the same host marshals nothing (AC-529).
-    private readonly SessionEventQueue _eventQueue;
-
     // Raised when the session makes real tool progress — a tool call surfacing or a tool result landing (AC-215/stall).
     // An embedder that fails a silent step on a stall deadline (Autopilot) resets that deadline on this, so a step that
     // is slow because it is working hard is not mistaken for a stuck one. Not raised on text/thinking on purpose.
     public event Action? ToolActivity;
 
-    // A turn the host's fold ended in this pass; it is completed once the pane is done with the event (T8).
+    // A turn the host's fold ended in this pass; the pane reads its limits once it is done with the event.
     private bool _turnCompletedInFold;
 
     // The connection, usage and tool calls this pane last drew, so a new reading is told from one it already showed.
@@ -2315,15 +2360,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private SessionUsageTotals _shownUsage = SessionUsageTotals.None;
     private IReadOnlyList<SessionActiveToolCall> _shownToolCalls = [];
 
-    // internal (rather than private) so `Cockpit.Core.Tests` can drive it directly, bypassing `Dispatcher.UIThread` — see `_eventQueue`.
-    // AC-1437: the host folds the event, its rows and what `_OnLiveStateChanged` and `_OnTurnEnded` draw; what is
-    // left here is what this pane does with the row the event landed on, decided from that one snapshot.
-    internal void Apply(SessionEvent evt)
+    // The seam the tests drive in place of a runtime: the host's own pump step, without the UI dispatcher between.
+    internal void Apply(SessionEvent evt) => _host.Pump(evt);
+
+    // AC-1437/1438: the host folds the event, its rows and what `_OnLiveStateChanged` and `_OnTurnEnded` draw, and ends
+    // the turn itself; what is left here is what this pane does with the row the event landed on.
+    private void _OnFolded(TranscriptFold fold)
     {
-        _addedByFold.Clear();
-        _turnCompletedInFold = false;
-        var fold = _host.ApplyToTranscript(evt);
-        var landed = fold.Row is { } landedRow ? _rowsById[landedRow.Id] : null;
+        var landed = _RowOf(fold.Row?.Id);
 
         // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
         if (fold.IsReply)
@@ -2354,28 +2398,42 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _FlushPendingProseForReadAloud();
         }
 
+        _addedByFold.Clear();
         if (!_turnCompletedInFold)
         {
             return;
         }
 
+        _turnCompletedInFold = false;
         _RefreshLimits();
-        // "exit" turn finished → ask the cockpit to close this session (T10); anything still queued is moot.
+
+        // "exit" turn finished → ask the cockpit to close this session (T10); the host kept what was queued.
         if (_closeAfterTurn)
         {
             _closeAfterTurn = false;
+            _host.EndsAfterThisTurn = false;
             RaiseCloseRequested();
-            return;
         }
+    }
 
-        // A completed turn (success or error result) frees the session, so the host sends the next queued message
-        // (T8). A session error does not: the chips stay, so a broken session isn't cascaded through every one.
-        _host.CompleteTurn();
+    // AC-1438: the host's fold as this pane last drew it, and its signals once drawn, for the pane's registry handle.
+    internal SessionLiveState LiveState { get; private set; } = SessionLiveState.None;
+
+    internal event Action<SessionLiveState>? LiveStateChanged;
+
+    internal event Action<SessionTurnEnd>? TurnEnded;
+
+    internal event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified;
+
+    private void _OnTurnEnded(SessionTurnEnd end)
+    {
+        _DrawTurnEnd(end);
+        TurnEnded?.Invoke(end);
     }
 
     // AC-1437: the turn-end half of what `Apply` did per event; the status, usage and outstanding work it left behind
     // arrive after this, in `_OnLiveStateChanged`.
-    private void _OnTurnEnded(SessionTurnEnd end)
+    private void _DrawTurnEnd(SessionTurnEnd end)
     {
         var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
         if (end.BySessionError)
@@ -2475,6 +2533,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         SessionStatus = state.Status;
+        LiveState = state;
+        LiveStateChanged?.Invoke(state);
     }
 
     // The init event is where an SDK session's working directory becomes known; surfaced on the shared base so the
@@ -2554,6 +2614,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             notifiedRow.BackgroundNotificationStatus = notice.Status;
         }
+
+        BackgroundTaskNotified?.Invoke(notice);
     }
 
     // Replaced wholesale rather than added to and removed from: the session restates the complete set every time, so
@@ -2721,15 +2783,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-529: ahead of the null guard, because a teardown that finds the runtime already gone still has the last
         // window's events queued.
-        if (_eventQueue.HasWork)
+        if (_host.HasPumpedWork)
         {
             if (Dispatcher.UIThread.CheckAccess())
             {
-                _eventQueue.Flush();
+                _host.FlushPumped();
             }
             else
             {
-                Dispatcher.UIThread.Post(_eventQueue.Flush);
+                Dispatcher.UIThread.Post(_host.FlushPumped);
             }
         }
 

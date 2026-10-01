@@ -57,7 +57,7 @@ public class OneStartPathTests
                 "login",
                 "attach",
                 $"start {pane.PaneId}",
-                $"timer {SessionHost<QueuedPrompt>.UsageCatchUpInterval}",
+                $"timer {SessionHost.UsageCatchUpInterval}",
             ],
             graph.Steps);
     }

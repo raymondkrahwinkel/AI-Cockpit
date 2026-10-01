@@ -1,16 +1,12 @@
 using System.Runtime.ExceptionServices;
-using Avalonia.Threading;
 using Cockpit.Core.Sessions;
 
-namespace Cockpit.App.ViewModels;
+namespace Cockpit.Infrastructure.Sessions;
 
-// Marshals session events onto the UI thread in batches rather than one post per event (AC-529).
+// Marshals session events onto the consumer's thread in batches rather than one post per event (AC-529). AC-1438: the
+// host's own pump, for a consumer whose thread has frames to batch into; the desktop's is its UI thread.
 internal sealed class SessionEventQueue
 {
-    // One frame at 30 fps, matching `MarkdownView.RebuildIntervalMs`: the markdown rows repaint on that cadence
-    // anyway, so folding the deltas that arrive between two repaints removes work no one could have seen.
-    private const int DrainDelayMs = 33;
-
     // Comfortably past what a healthy drain cadence ever lets build up, so this never engages under normal load —
     // only once a starved dispatcher has already let the tail-only fold below fall behind (AC-1204).
     private const int WideFoldThreshold = 128;
@@ -26,24 +22,13 @@ internal sealed class SessionEventQueue
     private List<SessionEvent> _pending = [];
     private int _drainPending;
 
-    // `post`/`postAfterWindow`: Test seams, the same shape as `ToastHostViewModel`'s scheduler and
-    // `DevPluginReloadWatcher`'s debounce: null takes the real dispatcher, a test hands in a manual pump so each drain
-    // runs when it says so instead of when a real dispatcher gets round to it.
-    public SessionEventQueue(
-        Action<SessionEvent> apply,
-        Action<Action>? post = null,
-        Action<Action>? postAfterWindow = null)
+    // `postAfterWindow` runs a drain one frame later. The desktop's pair is `SessionViewModel`'s; a test hands in a
+    // manual pump so each drain runs when it says so.
+    public SessionEventQueue(Action<SessionEvent> apply, Action<Action> post, Action<Action> postAfterWindow)
     {
         _apply = apply;
-        _post = post ?? (action => Dispatcher.UIThread.Post(action));
-
-        // Posted first, timer armed second: `DispatcherTimer` binds to `Dispatcher.CurrentDispatcher`, so arming one
-        // straight from the runtime's pump thread lands it on a dispatcher nothing pumps (AC-529, and the shape
-        // `TtyViewModel` already uses). One-shot, so nothing keeps ticking against a recycled pane (AC-611).
-        _postAfterWindow = postAfterWindow
-            ?? post
-            ?? (action => Dispatcher.UIThread.Post(
-                () => DispatcherTimer.RunOnce(action, TimeSpan.FromMilliseconds(DrainDelayMs))));
+        _post = post;
+        _postAfterWindow = postAfterWindow;
     }
 
     // Applies what the drain window is still holding.

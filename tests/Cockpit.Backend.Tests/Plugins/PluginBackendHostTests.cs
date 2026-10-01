@@ -175,7 +175,7 @@ public class PluginBackendHostTests
         runtime.IsRunning.Returns(true);
         var manager = Substitute.For<ISessionManager>();
         manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
-        var host = new SessionHost<QueuedPrompt>(() => PaneId, manager, TimeProvider.System);
+        var host = new SessionHost(() => PaneId, manager, TimeProvider.System);
         host.Attach(new SessionProfile("Echo", new ClaudeConfig("/fake/.claude")));
         var registry = new SessionRegistry();
         registry.Register(new SessionHostHandle(PaneId, "Echo", nameIsChosen: false, "desk", "/work/echo", "Echo", host));

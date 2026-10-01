@@ -25,7 +25,7 @@ public interface ISessionTurnGate
     string? TurnsHeldBecause { get; set; }
 
     /// <summary>
-    /// The consumer calls CompleteTurn when it applies a TurnCompleted, in stream order; the host never ends a turn on its own.
+    /// Called by the host's own pump when it folds a TurnCompleted, in stream order (AC-1438).
     /// It clears the turn in flight and sends the next queued prompt, unless turns are held.
     /// </summary>
     void CompleteTurn();
@@ -42,7 +42,7 @@ public interface ISessionTranscript
     event Action<TranscriptRowUpsert>? RowUpserted;
 
     /// <summary>
-    /// The consumer calls ApplyToTranscript for every event the host re-issues, in stream order; the host never folds an event on its own.
+    /// Called by the host's own pump for every event its runtime raises, in stream order (AC-1438).
     /// It forms or updates the rows that event touches on the consumer's thread, and returns the row it landed on.
     /// </summary>
     TranscriptFold ApplyToTranscript(SessionEvent evt);
@@ -53,26 +53,14 @@ public interface ISessionTranscript
     void RecordRow(TranscriptSnapshotEntry row);
 }
 
-// A prompt waiting for the turn in flight to end (T8). A consumer that sends more than the text it shows, such as a
-// reply prefix (AC-935), overrides `OutgoingText`; it is read when the prompt leaves, not when it was queued.
-public class QueuedPrompt(string text, IReadOnlyList<ImageAttachment> images)
-{
-    public string Text { get; } = text;
-
-    public IReadOnlyList<ImageAttachment> Images { get; } = images;
-
-    public virtual string OutgoingText => Text;
-}
-
 // One runtime event as the host re-issues it, numbered on one counter for the whole backend so a stream can resume
 // from a `Last-Event-ID` without renumbering (F5).
 public readonly record struct SessionHostEvent(long Seq, SessionEvent Event);
 
-// AC-1376 (F1.4): one SDK session's backend half, which `SessionViewModel` used to be: the runtime, the turn gate with
-// its queue, the funnel every turn leaves through, and the three clocks. No dispatcher: members run on the consumer's
-// thread and awaits resume there (no ConfigureAwait(false)); only the timer events arrive on the thread pool.
-public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript, IAsyncDisposable
-    where TPrompt : QueuedPrompt
+// AC-1376/1438: one SDK session's backend half: runtime, turn gate and queue, the send funnel, the clocks, and the one
+// consumer of its runtime's events. Members run on the consumer's thread (`PumpOn`) and awaits resume there (no
+// ConfigureAwait(false)); only the timer events arrive on the thread pool.
+public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDisposable
 {
     // Same as `ClaudeLoginStatus.MaxAge`: a tick mostly re-reads a cache another poll already refreshed (AC-713).
     public static readonly TimeSpan LoginPollInterval = TimeSpan.FromMinutes(1);
@@ -108,6 +96,10 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     private string? _turnsHeldBecause;
     private IReadOnlySet<string> _preApprovedTools = new HashSet<string>(StringComparer.Ordinal);
 
+    // Inline on the runtime's thread until a consumer names its own (`PumpOn`); the batch, when it asked for one.
+    private Action<SessionEvent> _deliver;
+    private SessionEventQueue? _events;
+
     private ITimer? _loginPoll;
     private SessionProfile? _loginProfile;
     private ITimer? _usageCatchUp;
@@ -134,6 +126,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
         _logger = logger;
         _transcriptStore = transcriptStore;
         _transcript = new SessionTranscriptBuilder(time, TryAutoAllow, () => InterruptRequested, _OnRowChanged);
+        _deliver = Pump;
     }
 
     public event Action<SessionHostEvent>? EventAppended;
@@ -158,6 +151,10 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // Carries the arm the tick belongs to; see `IsCurrentSignOfLife`.
     public event Action<int>? SignOfLifeDue;
 
+    // AC-1438: what the fold of one pumped event left, raised after its other signals, as `SessionViewModel.Apply`
+    // acted on it after the fold.
+    public event Action<TranscriptFold>? Folded;
+
     // AC-1437: the fold's signals, raised on the consumer's thread like `RowUpserted`; see `ISessionHandle`.
     public event Action<SessionLiveState>? LiveStateChanged;
 
@@ -181,8 +178,15 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     // Whether this host can launch at all; the design-time graph builds one without a manager.
     public bool CanLaunch => _manager is not null;
 
-    // Mutated on the consumer's thread only, which for the desktop is the UI thread that binds it.
-    public ObservableCollection<TPrompt> Queue { get; } = [];
+    // Mutated on the consumer's thread only; the desktop pane mirrors it into its chips.
+    public ObservableCollection<QueuedPrompt> Queue { get; } = [];
+
+    // AC-935: the text a prompt leaves with, read when it leaves rather than when it was queued; a consumer that sends
+    // more than it shows, such as a reply's citation, says so here.
+    public Func<QueuedPrompt, string> OutgoingText { get; set; } = prompt => prompt.Text;
+
+    // T10: the turn in flight is the session's last; when it completes, what was queued behind it stays queued.
+    public bool EndsAfterThisTurn { get; set; }
 
     // AC-145: drain the whole queue into one follow-up turn instead of one turn per queued prompt.
     public bool CombineQueued { get; set; }
@@ -228,7 +232,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     public IReadOnlyCollection<string> PreApprovedTools => _preApprovedTools;
 
     // AC-1031: set once an interrupt the operator asked for went through, so the turn it ends is not drawn as a
-    // failure. The consumer clears it when that turn's TurnCompleted has been applied, or when a new turn starts.
+    // failure. Cleared when that turn's TurnCompleted has been folded, or when a new turn starts.
     public bool InterruptRequested { get; set; }
 
     // Whether this host writes a transcript at all; the design-time and most test graphs have no store.
@@ -305,8 +309,47 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     }
 
     // One counter across hosts, so seq is unique backend-wide; within a host it rises because a runtime raises in order.
-    private void _OnRuntimeEvent(SessionEvent evt) =>
+    private void _OnRuntimeEvent(SessionEvent evt)
+    {
         EventAppended?.Invoke(new SessionHostEvent(SessionEventSequence.Next(), evt));
+        _deliver(evt);
+    }
+
+    // AC-1438: where the events are folded. `post` runs an action on the consumer's thread; with `postAfterWindow`,
+    // the events go there in batches a frame apart (AC-529, AC-1204), otherwise one post per event.
+    public void PumpOn(Action<Action> post, Action<Action>? postAfterWindow = null)
+    {
+        if (postAfterWindow is null)
+        {
+            _deliver = evt => post(() => Pump(evt));
+            _events = null;
+            return;
+        }
+
+        var events = new SessionEventQueue(Pump, post, postAfterWindow);
+        _events = events;
+        _deliver = events.Enqueue;
+    }
+
+    // Whether events wait in a batch the consumer has not drained; see `FlushPumped`.
+    public bool HasPumpedWork => _events?.HasWork == true;
+
+    // Folds what the batch still holds, on the consumer's thread, ahead of a stop.
+    public void FlushPumped() => _events?.Flush();
+
+    // AC-1438: the one consumer step, on the consumer's thread: the fold, and the end of a completed turn, which sends
+    // what was queued behind it. Public as the seam a test drives in place of a runtime.
+    public void Pump(SessionEvent evt)
+    {
+        var fold = ApplyToTranscript(evt);
+        Folded?.Invoke(fold);
+
+        // A session error ends the turn without completing it: the queue stays, so a broken session is not cascaded.
+        if (evt is TurnCompleted && !EndsAfterThisTurn)
+        {
+            CompleteTurn();
+        }
+    }
 
     public void CompleteTurn()
     {
@@ -315,7 +358,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
     }
 
     // Queues behind a turn in flight, unless the runtime takes input mid-turn (AC-739); otherwise sends now.
-    public Task SubmitAsync(TPrompt prompt, bool takesMidTurnInput = false)
+    public Task SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
     {
         if (IsBusy && !takesMidTurnInput)
         {
@@ -341,6 +384,9 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
         // again here is then a no-op, and a consumer that does not still gets a gate that reads busy. The operator
         // sending again is the one having been back to a session that asked for attention.
         _liveState.ClearNeedsAttention();
+
+        // AC-1031: a stale flag from a Stop whose own turn end never arrived must not paint this turn's failure as one.
+        InterruptRequested = false;
         TurnStarting?.Invoke(prompt);
         _transcript.EndReply();
         IsBusy = true;
@@ -348,7 +394,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
 
         try
         {
-            await _SendWithWaitingMessagesAsync(runtime, prompt.OutgoingText, prompt.Images, noteMail: true);
+            await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images, noteMail: true);
         }
         catch (Exception ex)
         {
@@ -423,7 +469,7 @@ public sealed class SessionHost<TPrompt> : ISessionTurnGate, ISessionTranscript,
             // AC-935: each prompt keeps its own prefix — one over the merged text would misattribute all but the first.
             var combinedText = string.Join(
                 "\n\n",
-                Queue.Select(prompt => prompt.OutgoingText).Where(text => !string.IsNullOrWhiteSpace(text)));
+                Queue.Select(OutgoingText).Where(text => !string.IsNullOrWhiteSpace(text)));
             var combinedImages = Queue.SelectMany(prompt => prompt.Images).ToList();
             Queue.Clear();
             next = new QueuedPrompt(combinedText, combinedImages);

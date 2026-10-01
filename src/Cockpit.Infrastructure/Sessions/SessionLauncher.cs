@@ -75,7 +75,7 @@ public sealed class SessionLauncher(
 
         var paneId = Guid.NewGuid().ToString("n");
         var name = string.IsNullOrWhiteSpace(request.SessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : request.SessionName.Trim();
-        var host = new SessionHost<QueuedPrompt>(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
+        var host = new SessionHost(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
         var handle = new SessionHostHandle(
             paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, request.WorkingDirectory, profile.Label, host, request.ProjectId);
 
@@ -122,7 +122,7 @@ public sealed class SessionLauncher(
     // the only reference; nothing here stops it, since only that host ever ends it.
     public IAssistantSession? CreateAssistantSession()
     {
-        var host = new SessionHost<QueuedPrompt>(() => AssistantIdentity.PaneId, sessionManager, time, transcriptStore: transcriptStore);
+        var host = new SessionHost(() => AssistantIdentity.PaneId, sessionManager, time, transcriptStore: transcriptStore);
         var handle = new SessionHostHandle(
             AssistantIdentity.PaneId, AssistantProfileSlot.DisplayName, nameIsChosen: true,
             Workspaces.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? string.Empty,

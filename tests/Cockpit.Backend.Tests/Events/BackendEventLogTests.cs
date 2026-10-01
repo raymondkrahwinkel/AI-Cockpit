@@ -82,7 +82,7 @@ public sealed class BackendEventLogTests
     public void BackendEventsAndTranscriptUpsertsShareOneSequence()
     {
         var log = new BackendEventLog();
-        var host = new SessionHost<QueuedPrompt>(() => "pane-a", null, TimeProvider.System);
+        var host = new SessionHost(() => "pane-a", null, TimeProvider.System);
         TranscriptRowUpsert? upsert = null;
         host.RowUpserted += row => upsert = row;
         var before = log.Append("first", null, new { });
