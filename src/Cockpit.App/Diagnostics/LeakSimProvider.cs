@@ -1,6 +1,5 @@
 #if DEBUG
 using System.Threading.Channels;
-using Avalonia.Controls;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -21,24 +20,13 @@ internal static class LeakSimProvider
             ProviderId,
             "Leak Sim",
             _ => new LeakSimDriverFactory(),
-            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            _ => new _ConfigView()));
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)));
 
     private sealed class LeakSimDriverFactory : IPluginSessionDriverFactory
     {
         public IPluginSessionDriver Create(string configJson) => Current = new LeakSimDriver();
     }
 
-    private sealed class _ConfigView : IPluginProviderConfigView
-    {
-        public Control View { get; } = new TextBlock { Text = "leak sim" };
-
-        public bool TryGetConfigJson(out string configJson)
-        {
-            configJson = "{}";
-            return true;
-        }
-    }
 }
 
 // Channel-backed scripted driver (same shape as tests' FakePluginSessionDriver) — only the interface's required
