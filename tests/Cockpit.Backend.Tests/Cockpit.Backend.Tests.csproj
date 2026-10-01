@@ -27,6 +27,11 @@
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- AC-1448: the journeys' fake provider, so the launcher's own tests start a session the way the journeys do. -->
+  <ItemGroup>
+    <Compile Include="..\Cockpit.Journeys\EchoDriver.cs" Link="EndToEnd\EchoDriver.cs" />
+  </ItemGroup>
+
   <!-- AC-1392: the nine bundled plugins beside the output, built but never referenced, so a backend without App can
        be shown loading them from bundled-plugins the way the desktop does. -->
   <Import Project="..\..\src\BundledPlugins.targets" />

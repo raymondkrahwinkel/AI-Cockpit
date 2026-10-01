@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: on a cockpit running without a window (the server), a session started with worktree isolation now gets a
+  git worktree and branch of its own, the same as on the desktop, and stopping it removes both when they hold no
+  work. Such a start used to be refused.
 - added: on a cockpit running without a window (the server), plugins now hear what its sessions produce — the
   replies, each finished tool call with its result, and the images the current turn's message carried — so a
   plugin that watches for a pull-request link or attaches pasted images to a new issue works there as well.
