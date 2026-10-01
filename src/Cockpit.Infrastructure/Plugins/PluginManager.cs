@@ -85,7 +85,7 @@ public sealed class PluginManager(
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} failed to load; skipping it.", candidate.FolderId);
-                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "load", exception.Message);
+                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "load", _Reason(exception));
                 continue;
             }
 
@@ -103,7 +103,7 @@ public sealed class PluginManager(
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during ConfigureServices; skipping it.", candidate.FolderId);
-                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", exception.Message);
+                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", _Reason(exception));
                 plugin.Dispose();
                 continue;
             }
@@ -176,6 +176,10 @@ public sealed class PluginManager(
             PluginIssueSeverity.Warning);
     }
 
+    // AC-1403: the runtime wraps a load context's refusal in a FileLoadException; the reason is the refusal's own.
+    private static string _Reason(Exception exception) =>
+        exception is FileLoadException { InnerException: InvalidOperationException refusal } ? refusal.Message : exception.Message;
+
     private static Version? _ReadBuiltAgainstAbstractions(ICockpitPlugin plugin) =>
         plugin.GetType().Assembly.GetReferencedAssemblies()
             .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
@@ -201,7 +205,7 @@ public sealed class PluginManager(
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
                 _initializeFailed.Add(discovered);
-                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", exception.Message);
+                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", _Reason(exception));
             }
         }
     }

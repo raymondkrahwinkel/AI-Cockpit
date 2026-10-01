@@ -7,7 +7,8 @@ namespace Cockpit.Infrastructure.Plugins;
 
 // #14: turns a `DiscoveredPlugin` into a live `ICockpitPlugin` by loading it in its own
 // `PluginLoadContext` and instantiating the entry type; `PluginManager.LoadAndConfigure` isolates any throw here.
-public sealed class PluginActivator(ILogger<PluginActivator> logger)
+// AC-1403: `withoutFrontend` loads each plugin with the load context's guard against Avalonia.
+public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withoutFrontend = false)
 {
     public ICockpitPlugin? Activate(DiscoveredPlugin discovered)
     {
@@ -22,7 +23,7 @@ public sealed class PluginActivator(ILogger<PluginActivator> logger)
             return null;
         }
 
-        var context = new PluginLoadContext(entryPath);
+        var context = new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null);
         var assembly = context.LoadFromAssemblyPath(entryPath);
 
         var entryType = _ResolveEntryType(assembly, discovered.Manifest.EntryType);

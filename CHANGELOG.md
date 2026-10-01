@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a cockpit running without a window (the server) loads every plugin's backend part, and turns away one
+  whose backend part reaches for the user interface, naming the plugin and the reason in the plugin manager
+  instead of failing later with a missing-file error.
 - added: every change to the cockpit is now checked against a set of everyday routes, run end to end: the cockpit
   starting with all its bundled plugins and turning away one built for an older plugin contract; a session started
   from a project and a profile answering in its pane; a worktree session getting its own worktree and branch and

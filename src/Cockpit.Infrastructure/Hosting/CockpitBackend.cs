@@ -114,7 +114,7 @@ public sealed class CockpitBackend
         frontend?.Invoke(services);
         if (plugins != PluginStartup.None)
         {
-            _LoadPlugins(services, loggerFactory, plugins == PluginStartup.SafeMode);
+            _LoadPlugins(services, loggerFactory, plugins == PluginStartup.SafeMode, withoutFrontend: frontend is null);
         }
 
         CockpitBackend? built = null;
@@ -297,7 +297,8 @@ public sealed class CockpitBackend
 
     // Plugin phase 1 (#14): install what this build ships, discover, and instantiate and configure each plugin that may
     // load; a failure is logged and the backend continues without plugins. Safe mode discovers but loads none (AC-478).
-    private static void _LoadPlugins(IServiceCollection services, ILoggerFactory loggerFactory, bool safeMode)
+    // AC-1403: without a frontend, a backend part that reaches for Avalonia is refused with its reason.
+    private static void _LoadPlugins(IServiceCollection services, ILoggerFactory loggerFactory, bool safeMode, bool withoutFrontend)
     {
         var diagnostics = new PluginDiagnostics();
         services.AddSingleton(diagnostics);
@@ -314,7 +315,7 @@ public sealed class CockpitBackend
             // The one pass that applies a staged update or a marked removal: no plugin is loaded yet.
             var discovered = new PluginBootstrap()
                 .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
-            manager.LoadAndConfigure(discovered, services, new PluginActivator(loggerFactory.CreateLogger<PluginActivator>()).Activate);
+            manager.LoadAndConfigure(discovered, services, new PluginActivator(loggerFactory.CreateLogger<PluginActivator>(), withoutFrontend).Activate);
         }
         catch (Exception exception)
         {

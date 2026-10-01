@@ -73,6 +73,13 @@
   <!-- AC-1390: the bundled plugins, by project folder and installed folder id. Each one's files are taken from its
        output folder by wildcard (*.dll, *.deps.json, plugin.json) rather than by name, so a plugin that splits into
        a backend and a UI part, two assemblies in that one folder, needs no change in this file. -->
+  <!-- AC-1403: SourceRoot lets an importing project add a plugin from outside plugins-dev, such as a test fixture. -->
+  <ItemDefinitionGroup>
+    <BundledPlugin>
+      <SourceRoot>$(_BundledPluginsDev)</SourceRoot>
+    </BundledPlugin>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <BundledPlugin Include="TranscriptSearch" FolderId="transcript-search" />
     <BundledPlugin Include="GitStatus" FolderId="git-status" />
@@ -89,7 +96,7 @@
        a clean checkout has no output folder yet and a wildcard would quietly match nothing. -->
   <Target Name="ResolveBundledPluginFiles">
     <ItemGroup>
-      <_BundledPluginOutput Include="@(BundledPlugin->'$(_BundledPluginsDev)Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')"
+      <_BundledPluginOutput Include="@(BundledPlugin->'%(SourceRoot)Cockpit.Plugin.%(Identity)\bin\$(Configuration)\$(TargetFramework)\')"
                             PluginName="%(BundledPlugin.Identity)" />
       <BundledPluginFile Include="%(_BundledPluginOutput.Identity)*.dll;%(_BundledPluginOutput.Identity)*.deps.json;%(_BundledPluginOutput.Identity)plugin.json"
                          FolderId="%(_BundledPluginOutput.FolderId)" />

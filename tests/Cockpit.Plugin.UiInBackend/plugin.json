@@ -1,0 +1,11 @@
+{
+  "id": "ui-in-backend",
+  "name": "UI in backend",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.UiInBackend.dll",
+  "entryType": "Cockpit.Plugin.UiInBackend.UiInBackendPlugin",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
+  "description": "Test fixture: a backend part that touches Avalonia.",
+  "author": "Cockpit"
+}
