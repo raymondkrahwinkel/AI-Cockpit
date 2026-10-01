@@ -312,17 +312,12 @@ public class WireframeParserTests
         Assert.Equal(source, WireframeWriter.Write(result.Screens));
     }
 
-    [Fact]
-    public void Goto_DeclaredBeforeItsTargetScreen_StillResolves_BecauseScreensMayForwardReference()
+    [Theory]
+    [InlineData("screen \"Aanmelden\"\n  button \"Verder\" goto:\"Dashboard\"\n\nscreen \"Dashboard\"")]
+    [InlineData("screen \"X\"\n  state \"Empty\" replaces:#results\n    label \"No results found\"\n  list #results\n    item \"Result 1\"")]
+    public void ReferencesDeclaredBeforeTheirTargets_StillResolve(string source)
     {
-        var result = WireframeParser.Parse("""
-            screen "Aanmelden"
-              button "Verder" goto:"Dashboard"
-
-            screen "Dashboard"
-            """);
-
-        Assert.Empty(result.Errors);
+        Assert.Empty(WireframeParser.Parse(source).Errors);
     }
 
     [Fact]
@@ -378,22 +373,13 @@ public class WireframeParserTests
 
     // ---- Viewport (AC-915) ----
 
-    [Fact]
-    public void ASourceWithoutAViewportLine_ReadsAsDesktop()
-    {
-        var result = WireframeParser.Parse("screen \"X\"");
-
-        Assert.Empty(result.Errors);
-        Assert.Null(result.Viewport);
-    }
-
     [Theory]
-    [InlineData("desktop", WireframeViewport.Desktop)]
-    [InlineData("tablet", WireframeViewport.Tablet)]
-    [InlineData("mobile", WireframeViewport.Mobile)]
-    public void AViewportLine_AboveTheFirstScreen_ParsesAndRoundTrips(string name, WireframeViewport expected)
+    [InlineData("screen \"X\"", null)]
+    [InlineData("viewport desktop\n\nscreen \"X\"", WireframeViewport.Desktop)]
+    [InlineData("viewport tablet\n\nscreen \"X\"", WireframeViewport.Tablet)]
+    [InlineData("viewport mobile\n\nscreen \"X\"", WireframeViewport.Mobile)]
+    public void AViewportLine_AboveTheFirstScreen_ParsesAndRoundTrips(string source, WireframeViewport? expected)
     {
-        var source = $"viewport {name}\n\nscreen \"X\"";
         var result = WireframeParser.Parse(source);
 
         Assert.Empty(result.Errors);
@@ -448,19 +434,6 @@ public class WireframeParserTests
         Assert.Equal(source, WireframeWriter.Write(result.Screens));
     }
 
-    [Fact]
-    public void State_DeclaredBeforeItsContainer_StillResolves_BecauseAScreenIsReadWhole()
-    {
-        var result = WireframeParser.Parse("""
-            screen "X"
-              state "Empty" replaces:#results
-                label "No results found"
-              list #results
-                item "Result 1"
-            """);
-
-        Assert.Empty(result.Errors);
-    }
 
     [Fact]
     public void State_AtTheLeftMargin_IsRefused_BecauseAWireframeBeginsWithAScreen()

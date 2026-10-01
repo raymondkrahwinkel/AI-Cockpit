@@ -7,7 +7,7 @@ plugins-dev/Cockpit.Plugin.Autopilot.Tests	59
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	68
 plugins-dev/Cockpit.Plugin.Depot.Tests	138
-plugins-dev/Cockpit.Plugin.Diagram.Tests	108
+plugins-dev/Cockpit.Plugin.Diagram.Tests	106
 plugins-dev/Cockpit.Plugin.Discord.Tests	21
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
@@ -21,7 +21,7 @@ plugins-dev/Cockpit.Plugin.GrokProvider.Tests	5
 plugins-dev/Cockpit.Plugin.KimiProvider.Tests	48
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
-plugins-dev/Cockpit.Plugin.LocalCi.Tests	69
+plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	5
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	12
