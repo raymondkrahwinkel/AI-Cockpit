@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Events;
@@ -22,7 +21,7 @@ public sealed class SessionRowFeedResyncTests
 
         // The bridge's own shape (`SessionEventsBridge`), switched off for the stretch the reader misses.
         var publishing = true;
-        ((IAssistantSession)session).RowUpserted += upsert =>
+        session.Control.RowUpserted += upsert =>
         {
             if (publishing)
             {

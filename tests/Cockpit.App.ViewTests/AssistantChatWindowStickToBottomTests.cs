@@ -9,6 +9,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -37,7 +38,7 @@ public sealed class AssistantChatWindowStickToBottomTests
             }
 
             var host = Substitute.For<IAssistantSessionHost>();
-            host.Session.Returns(session);
+            host.Session.Returns(TestSessions.Assistant(session));
 
             var window = new AssistantChatWindow
             {

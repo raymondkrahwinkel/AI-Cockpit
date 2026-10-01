@@ -80,7 +80,7 @@ public class Ac1321TakeoverStateTests
         { "inbox wake on a live session", async (host, driver) =>
             {
                 var live = await _LiveSession(driver);
-                host.Session = live;
+                host.Session = TestSessions.Assistant(live);
                 Assert.False(live.CanTakeAPrompt);
                 Assert.False(await live.SendPromptAsync("[wake]"));
             }

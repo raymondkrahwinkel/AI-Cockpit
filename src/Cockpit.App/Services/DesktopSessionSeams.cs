@@ -60,11 +60,11 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
         Dispatcher.UIThread.Post(() => cockpit().NoteSessionStarted(paneId, projectId, projectJobId));
 
     // AC-1379: the assistant's host calls these on the UI thread, as it always called the cockpit, so they do not hop.
-    public IAssistantSession? CreateAssistantSession() => cockpit().CreateAssistantSession(AssistantIdentity.PaneId);
+    public IAssistantSession? CreateAssistantSession() => cockpit().CreateAssistantHandle(AssistantIdentity.PaneId);
 
     public void ReleaseAssistantSession(IAssistantSession session)
     {
-        if (session is SessionPanelViewModel pane)
+        if (session is SessionPanelHandle { Pane: { } pane })
         {
             cockpit().ReleaseAssistantSession(pane);
         }

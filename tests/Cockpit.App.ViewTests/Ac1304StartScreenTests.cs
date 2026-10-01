@@ -22,6 +22,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -130,7 +131,7 @@ public sealed class Ac1304StartScreenTests
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
 
         return new AssistantChatViewModel(host, settings, Substitute.For<IVoicePlaybackQueue>(), cockpit: cockpit);
     }

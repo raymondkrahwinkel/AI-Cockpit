@@ -2,7 +2,7 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
 /// Makes the assistant's own session, on no desk and outside the registry's <c>All</c> (AC-1379, AC-1439).
-/// The desktop makes its window's pane until AC-1440 moves that window onto the contracts.
+/// On the desktop it is the pane's handle, whose pane the chat window draws (AC-1440).
 /// </summary>
 public interface IAssistantSessionFactory
 {

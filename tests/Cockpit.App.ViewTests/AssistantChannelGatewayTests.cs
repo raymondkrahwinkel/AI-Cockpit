@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -63,7 +64,7 @@ public class AssistantChannelGatewayTests
     {
         var logger = new _RecordingLogger();
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(_Session());
+        host.Session.Returns(TestSessions.Assistant(_Session()));
         var gateway = _Open(host, Substitute.For<IConsentBroker>(), [], logger);
 
         await gateway.SendAsync("118", "let me in");
@@ -247,7 +248,7 @@ public class AssistantChannelGatewayTests
             new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Second paragraph, " },
             new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "still growing." },
             new AssistantTextCompleted { SessionId = "S1", Text = "First paragraph.\n\nSecond paragraph, still growing." });
-        ((IAssistantSession)session).AddDivider("Context was full");
+        TestSessions.Assistant(session).AddDivider("Context was full");
 
         var relayed = rows.GroupBy(row => row.Id).Select(group => (group.First().Kind.ToString(), group.Last().Text));
         Assert.Equal(session.Transcript.Select(entry => (entry.Kind.ToString(), entry.Text)), relayed);
@@ -353,7 +354,7 @@ public class AssistantChannelGatewayTests
     private static AssistantChannelGateway _Open(SessionViewModel session, IConsentBroker broker, List<AssistantChannelRow> rows)
     {
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
 
         return _Open(host, broker, rows);
     }
@@ -380,7 +381,7 @@ public class AssistantChannelGatewayTests
     {
         var session = _Session();
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
         var rows = new List<AssistantChannelRow>();
 
         return (_Open(host, Substitute.For<IConsentBroker>(), rows), host, session, rows);

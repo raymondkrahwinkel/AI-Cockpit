@@ -1692,7 +1692,7 @@ internal static class Screenshotter
         var session = new SessionViewModel { Title = "personal - webshop" };
         session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "remember to check the deploy logs"));
 
-        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var host = new _FakeAssistantSessionHost { Pane = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
@@ -2269,7 +2269,7 @@ internal static class Screenshotter
     {
         var host = new _FakeAssistantSessionHost
         {
-            Session = session,
+            Pane = session,
             Activity = unavailableReason is null
                 ? Cockpit.Core.Assistant.AssistantActivity.Ready
                 : Cockpit.Core.Assistant.AssistantActivity.Unavailable,
@@ -2619,7 +2619,7 @@ internal static class Screenshotter
             ]);
         session.ReportMemoryAgainstCap((long)(Cap * 1.12));
 
-        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var host = new _FakeAssistantSessionHost { Pane = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
@@ -2631,7 +2631,7 @@ internal static class Screenshotter
     {
         var host = new _FakeAssistantSessionHost
         {
-            Session = _BuildAskUserQuestionSession(answered: false),
+            Pane = _BuildAskUserQuestionSession(answered: false),
             Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
         };
 
@@ -2658,7 +2658,7 @@ internal static class Screenshotter
             IsPendingBrokerAnswer = true,
         });
 
-        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var host = new _FakeAssistantSessionHost { Pane = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
@@ -2690,7 +2690,7 @@ internal static class Screenshotter
         // bare SessionViewModel reports no usage at all).
         var assistantSession = new ViewModels.SessionViewModel { UsagePillVisibleFields = [Cockpit.Core.UsagePill.UsagePillField.Context] };
         assistantSession.ContextUsedPercent = 37;
-        var host = new _FakeAssistantSessionHost { Session = assistantSession, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        var host = new _FakeAssistantSessionHost { Pane = assistantSession, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(
             host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(), cockpit: cockpit);
         var window = new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
@@ -2707,6 +2707,12 @@ internal static class Screenshotter
     private sealed class _FakeAssistantSessionHost : IAssistantSessionHost
     {
         public IAssistantSession? Session { get; init; }
+
+        // AC-1440: a scene's pane reaches the window as the desktop's does, through its handle.
+        public SessionViewModel? Pane
+        {
+            init => Session = value is null ? null : new SessionPanelHandle(value, isEmbedded: false, () => null);
+        }
 
         public Cockpit.Core.Assistant.AssistantActivity Activity { get; init; }
 

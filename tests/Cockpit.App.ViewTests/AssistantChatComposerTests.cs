@@ -317,9 +317,9 @@ public class AssistantChatComposerTests
     private static IAssistantSessionHost _FakeHost(SessionViewModel? session)
     {
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
         host.Activity.Returns(AssistantActivity.Ready);
-        host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IAssistantSession?>(session));
+        host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IAssistantSession?>(TestSessions.Assistant(session)));
         host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         return host;
     }

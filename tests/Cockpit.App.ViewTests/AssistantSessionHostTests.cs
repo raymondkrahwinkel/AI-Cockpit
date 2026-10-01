@@ -92,7 +92,7 @@ public class AssistantSessionHostTests
     {
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: false, slot: _ConfiguredSlot()));
 
-        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
 
         Assert.Null(session);
         Assert.Null(host.Session);
@@ -106,7 +106,7 @@ public class AssistantSessionHostTests
         var host = Dispatcher.UIThread.Invoke(() =>
             _Host(enabled: true, slot: AssistantProfileSlot.Unset("The provider switch could not be completed.")));
 
-        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
 
         Assert.Null(session);
         // The slot's reason, not one invented here: the operator is told what actually happened to their profile
@@ -167,11 +167,13 @@ public class AssistantSessionHostTests
             ReadAloudLanguage = "en",
             TtsVoiceSid = -1,
             ReadAloudAsOneUtterance = false,
+        });
 
-            // AC-1379: the voice the cockpit hands every assistant pane it mints (`CockpitViewModel.CreateAssistantSession`).
+        // AC-1379: the voice the cockpit hands every assistant handle it mints (`CockpitViewModel.CreateAssistantHandle`).
+        Dispatcher.UIThread.Invoke(() => host.Session = new SessionPanelHandle(session, isEmbedded: false, () => null)
+        {
             AssistantVoice = () => (cockpit.SelectedTtsVoice.Sid, cockpit.SelectedReadAloudLanguage.Code),
         });
-        Dispatcher.UIThread.Invoke(() => host.Session = session);
 
         Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
 
@@ -661,7 +663,7 @@ public class AssistantSessionHostTests
             () => TestSessions.Pane(new SessionManager(factory))));
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
 
-        var first = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var first = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(first);
         Assert.DoesNotContain(first!.Transcript, entry => entry.IsDivider);
 
@@ -698,7 +700,7 @@ public class AssistantSessionHostTests
 
         // The same conversation, and the ask that keeps it: a hand-over would have swapped the instance for one whose
         // transcript is empty.
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
         driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
 
         // And it says so where the operator reads, since the provider reports a compaction nowhere they can see.
@@ -717,7 +719,7 @@ public class AssistantSessionHostTests
         var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
 
         _ReportAFullContext(first, driver, fill: 90);
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
 
         // The next reading with nothing running is the provider's answer landing — and it left the context as full
         // as it found it.
@@ -744,7 +746,7 @@ public class AssistantSessionHostTests
         _ReportAFullContext(first, driver, fill: 40);
         _ReportAFullContext(first, driver, fill: 90);
 
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
         driver.Received(2).CompactContextAsync(Arg.Any<CancellationToken>());
     }
 
@@ -759,12 +761,12 @@ public class AssistantSessionHostTests
         var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
 
         _ReportAFullContext(first, driver, fill: 90);
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
 
         // The compaction turn ends: busy drops while the provider's figure has not been re-read yet.
         Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
 
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
         driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
     }
 
@@ -966,7 +968,7 @@ public class AssistantSessionHostTests
         // No replacement happens: give the (fire-and-forget, if it were wrongly triggered) recovery a moment, then
         // assert the original instance is still standing.
         Thread.Sleep(200);
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
     }
 
     /// <summary>
@@ -1009,7 +1011,7 @@ public class AssistantSessionHostTests
     private static SessionViewModel _ReplacementOf(AssistantSessionHost host, SessionViewModel previous)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (host.Session is null || ReferenceEquals(host.Session, previous))
+        while (host.Session is null || ReferenceEquals(host.View(), previous))
         {
             if (DateTimeOffset.UtcNow > deadline)
             {
@@ -1019,7 +1021,7 @@ public class AssistantSessionHostTests
             Thread.Sleep(10);
         }
 
-        return Assert.IsType<SessionViewModel>(host.Session);
+        return Assert.IsType<SessionViewModel>(host.View());
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
@@ -1039,7 +1041,7 @@ public class AssistantSessionHostTests
         var host = Dispatcher.UIThread.Invoke(() => _Host(
             enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
 
-        var session = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(session);
         return (host, session!, driver);
     }
@@ -1097,17 +1099,17 @@ public class AssistantSessionHostTests
     {
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
         var running = Dispatcher.UIThread.Invoke(() => new _RunningSession());
-        Dispatcher.UIThread.Invoke(() => host.Session = running);
+        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(running));
 
-        var kept = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
+        var kept = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.Same(running, kept);
-        Assert.Same(running, host.Session);
+        Assert.Same(running, host.View());
 
         Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
 
         // Gone, and not quietly left in place looking reachable. (Nothing takes its place here: this cockpit has no
         // session factory, so the fresh start says so — which is the failure path, reported, rather than silence.)
-        Assert.NotSame(running, host.Session);
+        Assert.NotSame(running, host.View());
         Assert.Equal(AssistantActivity.Unavailable, host.Activity);
         Assert.NotNull(host.UnavailableReason);
     }
@@ -1123,7 +1125,7 @@ public class AssistantSessionHostTests
         var profiles = Substitute.For<IAssistantProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ConfiguredSlot());
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), profiles: profiles));
-        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession());
+        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession()));
 
         Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
 
@@ -1243,10 +1245,10 @@ public class AssistantSessionHostTests
             CanRemember: false);
 
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession
+        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession
         {
             PendingConsent = new ConsentPromptViewModel(prompt, broker),
-        });
+        }));
 
         Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
 
@@ -1278,7 +1280,7 @@ public class AssistantSessionHostTests
         // Not run while busy: give the (fire-and-forget, if wrongly triggered) clear a moment, then assert nothing
         // moved.
         Thread.Sleep(200);
-        Assert.Same(first, host.Session);
+        Assert.Same(first, host.View());
 
         // The turn ends: the same property change AC-596's hand-over watches is what runs the queued clear.
         Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
@@ -1299,7 +1301,7 @@ public class AssistantSessionHostTests
     public void RequestingAClear_ASecondTimeInTheSameTurn_ReportsItIsAlreadyQueued()
     {
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession { IsBusy = true });
+        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession { IsBusy = true }));
 
         Assert.True(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
         Assert.False(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
@@ -1369,6 +1371,8 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>A session whose runtime is up, which is the state that cannot be produced without a real child process.</summary>
+    private static SessionViewModel? _Pane(IAssistantSession? session) => (session as SessionPanelHandle)?.Pane as SessionViewModel;
+
     private sealed class _RunningSession : SessionViewModel
     {
         public override bool IsSessionReady => true;

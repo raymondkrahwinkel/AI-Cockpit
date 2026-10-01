@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -32,7 +33,7 @@ public sealed class Ac1303ColumnRolesTests
     // touch the stand or the selection, which is exactly what criterion 5 is about.
     private static void _AssistantSession(IAssistantSessionHost host, SessionViewModel? session)
     {
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
         host.PropertyChanged += Raise.Event<PropertyChangedEventHandler>(
             host, new PropertyChangedEventArgs(nameof(IAssistantSessionHost.Session)));
     }
@@ -44,7 +45,7 @@ public sealed class Ac1303ColumnRolesTests
         cockpit.Sessions.Add(agent);
 
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(assistant);
+        host.Session.Returns(TestSessions.Assistant(assistant));
         _ = new AssistantChatViewModel(host, _SettingsStore(), Substitute.For<IVoicePlaybackQueue>(), cockpit: cockpit);
 
         return (cockpit, host, agent);

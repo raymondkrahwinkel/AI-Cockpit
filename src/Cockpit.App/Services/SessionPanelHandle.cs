@@ -14,7 +14,7 @@ internal sealed record DesktopSessionLaunch(
 // AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
 // a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
 // closed after the caller looked it up is left alone rather than written to.
-internal sealed class SessionPanelHandle : IHostedSession
+internal sealed partial class SessionPanelHandle : IHostedSession
 {
     private readonly DesktopSessionLaunch _launch;
     private readonly Func<string?> _firstSessionsWorkspaceId;

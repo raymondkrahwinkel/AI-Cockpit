@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.UsagePill;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -40,7 +41,7 @@ public sealed class AssistantChatSessionPillTests
     private static AssistantChatWindow _Window(CockpitViewModel cockpit, int width = 520, SessionViewModel? assistantSession = null)
     {
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(assistantSession);
+        host.Session.Returns(TestSessions.Assistant(assistantSession));
         var store = Substitute.For<IAssistantSettingsStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
 

@@ -4,8 +4,9 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
-/// The assistant's own session as <c>AssistantSessionHost</c> drives it (AC-1379): the desktop pane on the desktop,
-/// a headless session in the backend. Each implementation marshals to its own thread; the host calls it on one.
+/// The assistant's own session as <c>AssistantSessionHost</c> drives it (AC-1379): its registry handle, over a pane
+/// on the desktop (AC-1440) and over a headless host in the backend. Each implementation marshals to its own
+/// thread; the host calls it on one.
 /// </summary>
 public interface IAssistantSession : IAsyncDisposable
 {
