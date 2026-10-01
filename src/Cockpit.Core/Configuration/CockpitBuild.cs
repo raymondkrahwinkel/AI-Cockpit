@@ -41,6 +41,19 @@ public static class CockpitBuild
     // message that says "see the log" is worth only as much as their ability to find it.
     public static string LogPath => Path.Combine(StateRoot, "logs", "cockpit.log");
 
+    // Appended to the log path for the copy `PrepareLogFile` keeps of the previous run (AC-1436: here, so the
+    // diagnostics page names the kept logs without Infrastructure).
+    public const string PreviousLogSuffix = ".previous";
+
+    // AC-1113: two quick restarts is the normal reaction to a freeze, and with a single kept copy the second
+    // one discarded the evidence of the first — which is exactly how the 21:04 and 22:03 freezes were lost.
+    public const int KeptLogGenerations = 3;
+
+    // Where `PrepareLogFile` keeps generation `generation` of the log, 1 being the run that just ended.
+    public static string KeptLogPath(string logPath, int generation) => generation <= 1
+        ? logPath + PreviousLogSuffix
+        : $"{logPath}{PreviousLogSuffix}.{generation}";
+
     // A relative override would resolve against each process's working directory, and the cockpit gives its
     // children their own — so the desktop and a session it spawned would isolate to two different places while
     // reading as one. Refusing at the first read makes that a startup failure instead of a silent half-isolation.

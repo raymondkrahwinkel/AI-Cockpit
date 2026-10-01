@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Services;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
@@ -84,10 +83,10 @@ public sealed partial class DiagnosticsViewModel(
         builder.AppendLine($"  {CockpitBuild.LogPath}");
         // AC-718: the log is truncated to this path on every start, so after a freeze the interesting tail is a
         // generation back. AC-1113: three of them are kept, so two quick restarts no longer lose the freeze.
-        for (var generation = 1; generation <= CredentialFileHousekeeping.KeptLogGenerations; generation++)
+        for (var generation = 1; generation <= CockpitBuild.KeptLogGenerations; generation++)
         {
             var restarts = generation == 1 ? "the last restart" : $"{generation} restarts ago";
-            builder.AppendLine($"  Previous run {generation}: {CredentialFileHousekeeping.KeptLogPath(CockpitBuild.LogPath, generation)}   ← the tail from before {restarts} (a freeze/crash is usually here, not in the live log)");
+            builder.AppendLine($"  Previous run {generation}: {CockpitBuild.KeptLogPath(CockpitBuild.LogPath, generation)}   ← the tail from before {restarts} (a freeze/crash is usually here, not in the live log)");
         }
 
         builder.AppendLine().AppendLine("Crash / memory logs (newest first)");

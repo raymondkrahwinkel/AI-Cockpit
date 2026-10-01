@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Auditing;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -68,12 +69,12 @@ public static class CredentialFileHousekeeping
         }
 
         // Oldest first, so each generation is out of the way before the one below it takes its name.
-        for (var generation = KeptLogGenerations; generation > 1; generation--)
+        for (var generation = CockpitBuild.KeptLogGenerations; generation > 1; generation--)
         {
-            _KeepAs(KeptLogPath(logPath, generation - 1), KeptLogPath(logPath, generation));
+            _KeepAs(CockpitBuild.KeptLogPath(logPath, generation - 1), CockpitBuild.KeptLogPath(logPath, generation));
         }
 
-        _KeepAs(logPath, KeptLogPath(logPath, 1));
+        _KeepAs(logPath, CockpitBuild.KeptLogPath(logPath, 1));
 
         CockpitConfigPath.WriteAllTextPrivate(logPath, string.Empty);
     }
@@ -95,18 +96,6 @@ public static class CredentialFileHousekeeping
         {
         }
     }
-
-    // Appended to the log path for the copy `PrepareLogFile` keeps of the previous run.
-    public const string PreviousLogSuffix = ".previous";
-
-    // AC-1113: two quick restarts is the normal reaction to a freeze, and with a single kept copy the second
-    // one discarded the evidence of the first — which is exactly how the 21:04 and 22:03 freezes were lost.
-    public const int KeptLogGenerations = 3;
-
-    // Where `PrepareLogFile` keeps generation `generation` of the log, 1 being the run that just ended.
-    public static string KeptLogPath(string logPath, int generation) => generation <= 1
-        ? logPath + PreviousLogSuffix
-        : $"{logPath}{PreviousLogSuffix}.{generation}";
 
     // When `configFilePath` is an encrypted config, deletes any `.bak`/`.damaged-*`
     // sidecar that still holds a credential in the clear. Reads whether encryption is on straight from the config

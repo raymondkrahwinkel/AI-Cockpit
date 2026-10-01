@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
@@ -14,9 +13,9 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class NodeSessionsViewModel(
     INodeSessionsClient client,
     string nodeName,
-    NodeInboxRelay? inboxRelay = null,
+    INodeInboxRelay? inboxRelay = null,
     NodePermissionRelay? permissionRelay = null,
-    BehaviourMemorySync? behaviourSync = null) : ObservableObject, IDisposable
+    IBehaviourMemorySync? behaviourSync = null) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
     // it stays a handshake and three small calls rather than something the node's operator would notice.

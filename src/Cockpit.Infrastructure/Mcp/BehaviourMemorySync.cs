@@ -17,7 +17,7 @@ public sealed class BehaviourMemorySync(
     INodeSessionsClient nodes,
     IAssistantMemory memory,
     IAgentMessageInbox inbox,
-    ILogger<BehaviourMemorySync>? logger = null) : ISingletonService
+    ILogger<BehaviourMemorySync>? logger = null) : IBehaviourMemorySync, ISingletonService
 {
     private readonly ILogger<BehaviourMemorySync> _logger = logger ?? NullLogger<BehaviourMemorySync>.Instance;
 

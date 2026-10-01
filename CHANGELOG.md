@@ -602,6 +602,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Security and Diagnostics pages of Options, and the node cards on them, now reach the node relays
+  and the kept log paths through the cockpit's own contracts instead of its internals, a step toward the same pages
+  working against a cockpit that runs elsewhere. Nothing changes in how these pages look or behave.
 - changed: a chat session the desktop opens — a new one, one brought back after a restart, one a plugin embeds, and
   the assistant — is now put on the cockpit's own list of sessions first, and its pane appears because it is on that
   list. This is the route that later lets a session started elsewhere show up on the desktop. Nothing changes in how
