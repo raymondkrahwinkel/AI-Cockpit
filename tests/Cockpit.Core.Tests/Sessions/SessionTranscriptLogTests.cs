@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -40,12 +41,15 @@ public class SessionTranscriptLogTests : IDisposable
             new TranscriptSnapshotEntry("c", "ToolUse", "", "Bash", """{"command":"ls"}""", "tool-1", "file.txt", false, DateTimeOffset.Now),
         };
 
-        foreach (var row in rows)
-        {
-            await store.AppendAsync(Pane, row);
-        }
+        // AC-1438: what only the live view draws is never written, so the tool row's line keeps the members it always had.
+        await store.AppendAsync(Pane, rows[0]);
+        await store.AppendAsync(Pane, rows[1]);
+        await store.AppendAsync(Pane, rows[2] with { IsPendingPermission = true, StartsReply = true, TruncatedFromChars = 9 });
 
         Assert.Equal(rows, (await store.TryLoadAsync(Pane))!);
+        Assert.Equal(
+            ["Id", "Kind", "Text", "ToolName", "InputJson", "ToolUseId", "ResultText", "IsResultError", "Timestamp", "IsFailedTurnRow"],
+            JsonDocument.Parse(File.ReadLines(store.LogPath(Pane)).Last()).RootElement.EnumerateObject().Select(member => member.Name));
     }
 
     // Everything the grooming asked the format to carry beyond AC-684's eight fields, in one trip: without these a
