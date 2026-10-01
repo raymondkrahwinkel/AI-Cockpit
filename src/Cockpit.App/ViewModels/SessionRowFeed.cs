@@ -46,9 +46,15 @@ internal sealed class SessionRowFeed : IDisposable
         _resync = resync;
         _post = post;
 
-        // Built before the host's first row: everything this pane will draw comes after this point in the log.
+        // AC-1450: the host's rows as they stand at this seq, then the stream after it. Read on the thread the host folds
+        // on, so no row lands between the two reads; a pane built before the first row starts with none.
         _drawnThrough = _received = log.LastSeq;
         var from = _drawnThrough;
+        if (snapshot() is { Count: > 0 } rows)
+        {
+            post(() => resync(rows));
+        }
+
         _ = Task.Run(async () =>
         {
             try

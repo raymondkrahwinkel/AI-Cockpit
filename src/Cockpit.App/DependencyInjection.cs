@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
@@ -12,6 +13,15 @@ public static class DependencyInjection
     {
         services.AddTransient<Func<SessionViewModel>>(provider => () => ResolveOwnedPane<SessionViewModel>(provider));
         services.AddTransient<Func<TtyViewModel>>(provider => () => ResolveOwnedPane<TtyViewModel>(provider));
+
+        // AC-1450: a pane over the control the desktop made and registered before it; the pane builds on that one.
+        services.AddTransient<Func<ISessionControl, SessionViewModel>>(provider => control =>
+        {
+            var scope = provider.CreateAsyncScope();
+            var pane = ActivatorUtilities.CreateInstance<SessionViewModel>(scope.ServiceProvider, new HandedControl(control));
+            pane.OwnLifetimeScope(scope);
+            return pane;
+        });
 
         return services;
     }
@@ -26,5 +36,10 @@ public static class DependencyInjection
         pane.OwnLifetimeScope(scope);
 
         return pane;
+    }
+
+    private sealed class HandedControl(ISessionControl control) : ISessionControlFactory
+    {
+        public ISessionControl Create(Func<string> paneId) => control;
     }
 }

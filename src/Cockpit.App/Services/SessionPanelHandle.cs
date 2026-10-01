@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -7,61 +6,100 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
+// AC-1450: what the desktop knows of an SDK pane before the pane exists — the facts it registers the handle with, and
+// that the pane takes over when the registry's Changed makes it.
+internal sealed record DesktopSessionLaunch(
+    string PaneId, string Title, string? WorkspaceId, bool IsEmbedded, bool StartedByTheAssistant);
+
 // AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
 // a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
 // closed after the caller looked it up is left alone rather than written to.
-internal sealed class SessionPanelHandle(
-    SessionPanelViewModel pane, bool isEmbedded, Func<string?> firstSessionsWorkspaceId, Func<bool>? isLive = null)
-    : ISessionHandle
+// AC-1450: a desktop SDK session is registered with its control before it has a pane; until `Attach` it answers from its
+// launch facts, and whoever subscribes in the registry's Changed is hooked onto the pane once it comes.
+internal sealed class SessionPanelHandle : ISessionHandle
 {
-    public string PaneId => pane.PaneId;
+    private readonly DesktopSessionLaunch _launch;
+    private readonly Func<string?> _firstSessionsWorkspaceId;
+    private readonly Func<SessionPanelViewModel, bool>? _isLive;
+    private SessionPanelViewModel? _pane;
 
-    public string Title => pane.Title;
+    public SessionPanelHandle(
+        SessionPanelViewModel pane, bool isEmbedded, Func<string?> firstSessionsWorkspaceId, Func<bool>? isLive = null)
+    {
+        _launch = new DesktopSessionLaunch(pane.PaneId, pane.Title, pane.WorkspaceId, isEmbedded, pane.StartedByTheAssistant);
+        _firstSessionsWorkspaceId = firstSessionsWorkspaceId;
+        _isLive = isLive is null ? null : _ => isLive();
+        Attach(pane);
+    }
 
-    public string WorkspaceId => pane.WorkspaceId;
+    public SessionPanelHandle(
+        DesktopSessionLaunch launch, ISessionControl control, Func<string?> firstSessionsWorkspaceId,
+        Func<SessionPanelViewModel, bool>? isLive = null)
+    {
+        _launch = launch;
+        Control = control;
+        _firstSessionsWorkspaceId = firstSessionsWorkspaceId;
+        _isLive = isLive;
+    }
 
-    public string? PlacedWorkspaceId => SessionWorkspacePlacement.Resolve(pane, firstSessionsWorkspaceId());
+    // The session the desktop made before its pane; null for a handle registered over a pane that already existed.
+    public ISessionControl? Control { get; }
 
-    public string? WorkingDirectory => pane.WorkingDirectory;
+    public SessionPanelViewModel? Pane => _pane;
 
-    public string? WorktreeBranch => pane.WorktreeBranch;
+    public bool StartedByTheAssistant => _launch.StartedByTheAssistant;
 
-    public string? ActiveProfileLabel => pane.ActiveProfileLabel;
+    public string PaneId => _pane?.PaneId ?? _launch.PaneId;
 
-    public string? ProjectId => pane.ProjectId;
+    public string Title => _pane?.Title ?? _launch.Title;
+
+    public string WorkspaceId => _pane?.WorkspaceId ?? _launch.WorkspaceId ?? string.Empty;
+
+    public string? PlacedWorkspaceId => _pane is { } pane
+        ? SessionWorkspacePlacement.Resolve(pane, _firstSessionsWorkspaceId())
+        : _launch.WorkspaceId;
+
+    public string? WorkingDirectory => _pane?.WorkingDirectory;
+
+    public string? WorktreeBranch => _pane?.WorktreeBranch;
+
+    public string? ActiveProfileLabel => _pane?.ActiveProfileLabel;
+
+    public string? ProjectId => _pane?.ProjectId;
 
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only
     // pane that clears it, and it sets `IsTerminal` in the same breath (`TtyViewModel.LaunchTerminal`).
-    public bool IsTerminal => !pane.ShowPluginHeaderItems;
+    public bool IsTerminal => _pane is { ShowPluginHeaderItems: false };
 
-    public bool IsEmbedded => isEmbedded;
+    public bool IsEmbedded => _launch.IsEmbedded;
 
-    public SessionStatus SessionStatus => pane.SessionStatus;
+    public SessionStatus SessionStatus => _pane?.SessionStatus ?? default;
 
-    public string Statusline => pane.Statusline;
+    public string Statusline => _pane?.Statusline ?? string.Empty;
 
-    public bool CanTakeAPrompt => pane.CanTakeAPrompt;
+    public bool CanTakeAPrompt => _pane?.CanTakeAPrompt ?? false;
 
-    public bool DeliversInboxAtTurnStart => pane.DeliversInboxAtTurnStart;
+    public bool DeliversInboxAtTurnStart => _pane?.DeliversInboxAtTurnStart ?? false;
 
-    public bool HasPromptWaitingToBeDelivered => pane.HasPromptWaitingToBeDelivered;
+    public bool HasPromptWaitingToBeDelivered => _pane?.HasPromptWaitingToBeDelivered ?? false;
 
     // An SDK session answers this from its background-task list, which only the UI thread may walk.
-    public Task<bool> HasOutstandingBackgroundShellsAsync() => UiThreadCall.RunAsync(() => pane.HasOutstandingBackgroundShells);
+    public Task<bool> HasOutstandingBackgroundShellsAsync() =>
+        UiThreadCall.RunAsync(() => _pane?.HasOutstandingBackgroundShells ?? false);
 
-    public bool HasPendingConsent => pane.PendingConsent is not null;
+    public bool HasPendingConsent => _pane?.PendingConsent is not null;
 
-    public int ProcessCount => pane.ProcessCount;
+    public int ProcessCount => _pane?.ProcessCount ?? 0;
 
-    public double ProcessCpuPercent => pane.ProcessCpuPercent;
+    public double ProcessCpuPercent => _pane?.ProcessCpuPercent ?? 0;
 
-    public long ProcessMemoryBytes => pane.ProcessMemoryBytes;
+    public long ProcessMemoryBytes => _pane?.ProcessMemoryBytes ?? 0;
 
-    public int AbandonedProcessCount => pane.AbandonedProcessCount;
+    public int AbandonedProcessCount => _pane?.AbandonedProcessCount ?? 0;
 
     // The split `AssistantReadGateway.ReadTranscriptAsync` makes: an SDK transcript is sliced on the UI thread, a TTY
     // one is a file its CLI wrote and is read off it (AC-609). A plain terminal has written nothing.
-    public async Task<SessionTranscriptSlice> ReadTranscriptAsync(int count) => pane switch
+    public async Task<SessionTranscriptSlice> ReadTranscriptAsync(int count) => _pane switch
     {
         SessionViewModel sdk => await UiThreadCall.RunAsync(() => _SliceOf(sdk, count)).ConfigureAwait(false),
         TtyViewModel { IsTerminal: false } tty => await Task.Run(() => tty.ReadTranscriptEntries(count)).ConfigureAwait(false),
@@ -70,33 +108,35 @@ internal sealed class SessionPanelHandle(
 
     // AC-294: a route, not content — false for a plain terminal, for a provider with no reader, and before a TTY's
     // pty is up. An SDK session always has one; it is in-memory rather than a file that could be missing.
-    public bool HasReadableTranscript => pane switch
+    public bool HasReadableTranscript => Control is not null || _pane switch
     {
         SessionViewModel => true,
         TtyViewModel tty => tty.HasReadableTranscript,
         _ => false,
     };
 
-    public Task<bool> SendPromptAsync(string prompt) => UiThreadCall.RunAsync(() => pane.SendPromptAsync(prompt));
+    public Task<bool> SendPromptAsync(string prompt) =>
+        UiThreadCall.RunAsync(() => _pane is { } pane ? pane.SendPromptAsync(prompt) : Task.FromResult(false));
 
     // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a
     // second one arriving between the two would otherwise be held and misread as belonging to this call.
     public Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        UiThreadCall.RunAsync(() => pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt));
+        UiThreadCall.RunAsync(() => _pane is not { } pane || pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt));
 
-    public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => pane.WorktreeBranch = branch);
+    public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => _pane is { } pane ? pane.WorktreeBranch = branch : null);
 
     // Only an SDK session holds permission prompts by tool-use id; a TTY session's are the CLI's own.
-    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow) => pane is SessionViewModel sdk
+    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow) => _pane is SessionViewModel sdk
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow))
         : Task.FromResult(false);
 
     // Always dispatched, as `SessionVerifyGateway` does (AC-577): every caller arrives off the UI thread.
-    public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) =>
-        UiThreadCall.DispatchAsync(() => pane.FeedVerifyResultAsync(caption, screenshotPng));
+    public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => _pane is { } pane
+        ? UiThreadCall.DispatchAsync(() => pane.FeedVerifyResultAsync(caption, screenshotPng))
+        : Task.FromResult(false);
 
     // Only an SDK session holds permission rows; a TTY session's prompts are its CLI's own, and a plain terminal has none.
-    public Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync() => pane is SessionViewModel sdk
+    public Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync() => _pane is SessionViewModel sdk
         ? UiThreadCall.RunAsync(() => (IReadOnlyList<SessionPendingPermission>)
             [
                 .. sdk.PendingToolPermissionRows().Select(row =>
@@ -104,69 +144,77 @@ internal sealed class SessionPanelHandle(
             ])
         : Task.FromResult<IReadOnlyList<SessionPendingPermission>>([]);
 
-    public Task<bool> SetStatuslineAsync(string statusline) => _WhileLiveAsync(() => pane.Statusline = statusline ?? string.Empty);
+    public Task<bool> SetStatuslineAsync(string statusline) => _WhileLiveAsync(pane => pane.Statusline = statusline ?? string.Empty);
 
-    public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => _IsLive() && pane.SuggestName(name));
+    public Task<bool> SuggestNameAsync(string name) => UiThreadCall.RunAsync(() => _IsLive() && _pane is { } pane && pane.SuggestName(name));
 
-    public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(() => pane.SetNameDirectly(name));
+    public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(() => pane.InjectAndSubmit(text));
+    public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(pane => pane.InjectAndSubmit(text));
 
-    public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(() => pane.InjectText(text));
+    public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 
     // AC-1386: an SDK session's own rows, raised where its host raises them; a TTY pane has no host-owned transcript.
     public event Action<TranscriptRowUpsert>? RowUpserted
     {
         add
         {
-            if (pane is IAssistantSession sdk)
+            if ((Control ?? (_pane as SessionViewModel)?.Control) is { } control)
             {
-                sdk.RowUpserted += value;
+                control.RowUpserted += value;
             }
         }
 
         remove
         {
-            if (pane is IAssistantSession sdk)
+            if ((Control ?? (_pane as SessionViewModel)?.Control) is { } control)
             {
-                sdk.RowUpserted -= value;
+                control.RowUpserted -= value;
             }
         }
     }
 
     // AC-1438: the host's fold as the pane last drew it, with its signals raised on the UI thread once drawn; a TTY
     // pane and a plain terminal keep none, as the contract's defaults say.
-    public SessionLiveState LiveState => pane is SessionViewModel sdk ? sdk.LiveState : SessionLiveState.None;
+    public SessionLiveState LiveState => _pane is SessionViewModel sdk ? sdk.LiveState : SessionLiveState.None;
 
-    public event Action<SessionLiveState>? LiveStateChanged
-    {
-        add => _OnSdk(sdk => sdk.LiveStateChanged += value);
-        remove => _OnSdk(sdk => sdk.LiveStateChanged -= value);
-    }
+    // AC-1450: held here rather than on the pane, so a listener that arrives before the pane does is not lost.
+    public event Action<SessionLiveState>? LiveStateChanged;
 
-    public event Action<SessionTurnEnd>? TurnEnded
-    {
-        add => _OnSdk(sdk => sdk.TurnEnded += value);
-        remove => _OnSdk(sdk => sdk.TurnEnded -= value);
-    }
+    public event Action<SessionTurnEnd>? TurnEnded;
 
-    public event Action? ToolProgressed
-    {
-        add => _OnSdk(sdk => sdk.ToolActivity += value);
-        remove => _OnSdk(sdk => sdk.ToolActivity -= value);
-    }
+    public event Action? ToolProgressed;
 
-    public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified
-    {
-        add => _OnSdk(sdk => sdk.BackgroundTaskNotified += value);
-        remove => _OnSdk(sdk => sdk.BackgroundTaskNotified -= value);
-    }
+    public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified;
 
-    private void _OnSdk(Action<SessionViewModel> hook)
+    // AC-1450: once, on the UI thread, by whoever made the pane for this handle.
+    public void Attach(SessionPanelViewModel pane)
     {
+        if (_pane is not null)
+        {
+            throw new InvalidOperationException($"Pane '{PaneId}' already has its view.");
+        }
+
+        _pane = pane;
         if (pane is SessionViewModel sdk)
         {
-            hook(sdk);
+            sdk.LiveStateChanged += state => LiveStateChanged?.Invoke(state);
+            sdk.TurnEnded += end => TurnEnded?.Invoke(end);
+            sdk.ToolActivity += () => ToolProgressed?.Invoke();
+            sdk.BackgroundTaskNotified += notice => BackgroundTaskNotified?.Invoke(notice);
+        }
+
+        lock (_gate)
+        {
+            if (_outputTextProduced is not null)
+            {
+                pane.OutputTextProduced += _OnPaneOutputText;
+            }
+
+            if (_toolActivityProduced is not null)
+            {
+                pane.ToolActivityProduced += _OnPaneToolActivity;
+            }
         }
     }
 
@@ -182,7 +230,7 @@ internal sealed class SessionPanelHandle(
         {
             lock (_gate)
             {
-                if (_outputTextProduced is null)
+                if (_outputTextProduced is null && _pane is { } pane)
                 {
                     pane.OutputTextProduced += _OnPaneOutputText;
                 }
@@ -196,7 +244,7 @@ internal sealed class SessionPanelHandle(
             lock (_gate)
             {
                 _outputTextProduced -= value;
-                if (_outputTextProduced is null)
+                if (_outputTextProduced is null && _pane is { } pane)
                 {
                     pane.OutputTextProduced -= _OnPaneOutputText;
                 }
@@ -210,7 +258,7 @@ internal sealed class SessionPanelHandle(
         {
             lock (_gate)
             {
-                if (_toolActivityProduced is null)
+                if (_toolActivityProduced is null && _pane is { } pane)
                 {
                     pane.ToolActivityProduced += _OnPaneToolActivity;
                 }
@@ -224,7 +272,7 @@ internal sealed class SessionPanelHandle(
             lock (_gate)
             {
                 _toolActivityProduced -= value;
-                if (_toolActivityProduced is null)
+                if (_toolActivityProduced is null && _pane is { } pane)
                 {
                     pane.ToolActivityProduced -= _OnPaneToolActivity;
                 }
@@ -232,31 +280,34 @@ internal sealed class SessionPanelHandle(
         }
     }
 
-    public IReadOnlyList<ImageAttachment> CurrentTurnImages =>
-        [.. pane.CurrentTurnImages.Select(image => new ImageAttachment(image.MediaType, image.Base64Data))];
+    public IReadOnlyList<ImageAttachment> CurrentTurnImages => _pane is { } pane
+        ? [.. pane.CurrentTurnImages.Select(image => new ImageAttachment(image.MediaType, image.Base64Data))]
+        : [];
 
     private void _OnPaneOutputText(object? sender, string text) => _outputTextProduced?.Invoke(text);
 
     private void _OnPaneToolActivity(object? sender, SessionToolActivity activity) =>
         _toolActivityProduced?.Invoke(new SessionToolCall(activity.PaneId, activity.ToolName, activity.InputJson, activity.ResultContent, activity.IsError));
 
-    private bool _IsLive() => isLive?.Invoke() ?? true;
+    private bool _IsLive() => _pane is { } pane && (_isLive?.Invoke(pane) ?? true);
 
-    private Task<bool> _WhileLiveAsync(Action act) => UiThreadCall.RunAsync(() =>
+    private Task<bool> _WhileLiveAsync(Action<SessionPanelViewModel> act) => UiThreadCall.RunAsync(() =>
     {
-        if (!_IsLive())
+        if (!_IsLive() || _pane is not { } pane)
         {
             return false;
         }
 
-        act();
+        act(pane);
         return true;
     });
 
     // AC-1374: the three fields read as one dispatcher callback, so a wake decision never sees one from before a
     // change and another from after it — same deadline and UiUnavailable handling as every other hop here (AC-1138).
     public Task<SessionWakeState> ReadWakeStateAsync() =>
-        UiThreadCall.RunAsync(() => new SessionWakeState(pane.PendingConsent is not null, pane.SessionStatus, pane.CanTakeAPrompt));
+        UiThreadCall.RunAsync(() => _pane is { } pane
+            ? new SessionWakeState(pane.PendingConsent is not null, pane.SessionStatus, pane.CanTakeAPrompt)
+            : new SessionWakeState(false, default, false));
 
     private static SessionTranscriptSlice _SliceOf(SessionViewModel sdk, int count)
     {
