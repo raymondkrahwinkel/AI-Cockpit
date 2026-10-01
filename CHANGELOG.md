@@ -602,8 +602,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
-- changed: every session the desktop starts — from the New-session dialog, a project's Start, Duplicate, a plugin, or
-  the assistant putting one on a desk — now starts through the cockpit's one start path, the same one a cockpit
+- changed: every session the desktop starts — from the New-session dialog, a project's Start, Duplicate, a plugin,
+  the assistant putting one on a desk, or Resume on a session brought back after a restart — now starts through the cockpit's one start path, the same one a cockpit
   without a window uses. Which project a session belongs to, its worktree, the record that brings it back after a
   restart and the project's "last opened" are settled there for every door alike, and a session started on the
   server now gets its project's folder, instructions and servers too. The dialog asking to run a session without a
