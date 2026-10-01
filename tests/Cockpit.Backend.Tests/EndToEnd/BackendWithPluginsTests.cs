@@ -2,6 +2,7 @@ using System.Runtime.Loader;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
@@ -16,19 +17,7 @@ public sealed class BackendWithPluginsTests : IDisposable
 {
     private static readonly TimeSpan Ceiling = TimeSpan.FromSeconds(30);
 
-    private static readonly string[] BackendParts =
-    [
-        "autopilot", "claude-provider", "cli-agent-provider", "depot", "diagram", "discord", "docker", "gemini-provider",
-        "git-status", "github-actions", "github-issues", "github-models-provider", "github-pull-requests", "grok-provider",
-        "kimi-provider", "kind", "kubernetes", "local-ci", "opencode-provider", "openrouter-provider", "proxmox",
-        "session-review", "slack", "usage-trend", "workflows", "youtrack",
-    ];
-
-    private static readonly string[] UiOnly =
-    [
-        "clock", "example-companion-tool", "example-workspace", "fan-out", "prompt-library", "system-monitor",
-        "transcript-search",
-    ];
+    private const string Fixture = "ui-in-backend";
 
     private static readonly string[] PluginEndpoints =
     [
@@ -81,13 +70,23 @@ public sealed class BackendWithPluginsTests : IDisposable
         using var plugins = services.GetRequiredService<PluginManager>();
         var diagnostics = services.GetRequiredService<PluginDiagnostics>();
         Assert.Equal(
-            ["ui-in-backend (initialize): The backend part of plugin UI in backend touches Avalonia.Controls; a backend has no UI."],
+            [$"{Fixture} (initialize): The backend part of plugin UI in backend touches Avalonia.Controls; a backend has no UI."],
             diagnostics.Failures.Select(failure => $"{failure.FolderId} ({failure.Phase}): {failure.Error}"));
         Assert.Empty(diagnostics.PendingApprovals.Select(pending => pending.ToString()));
+
+        // What each in-repo manifest declares: a backend part initialised, a plugin that is only a UI part skipped.
+        var manifests = Directory.EnumerateDirectories(Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName))
+            .Select(folder => PluginManifest.TryParse(File.ReadAllText(Path.Combine(folder, "plugin.json")), out var manifest, out _) ? manifest : null)
+            .OfType<PluginManifest>()
+            .Where(manifest => manifest.Id != Fixture)
+            .ToList();
+        Assert.Equal(33, manifests.Count);
         Assert.Equal(
-            BackendParts,
+            manifests.Where(manifest => manifest.EntryAssembly is not null).Select(manifest => manifest.Id).Order(),
             plugins.LoadedParts.Where(part => part.Plugin is not null && !plugins.InitializeFailed(part.Discovered)).Select(part => part.Discovered.FolderId).Order());
-        Assert.Equal(UiOnly, plugins.LoadedParts.Where(part => part.Plugin is null).Select(part => part.Discovered.FolderId).Order());
+        Assert.Equal(
+            manifests.Where(manifest => manifest.EntryAssembly is null).Select(manifest => manifest.Id).Order(),
+            plugins.LoadedParts.Where(part => part.Plugin is null).Select(part => part.Discovered.FolderId).Order());
 
         var loaded = AppDomain.CurrentDomain.GetAssemblies()
             .Concat(AssemblyLoadContext.All.OfType<PluginLoadContext>().SelectMany(context => context.Assemblies))
