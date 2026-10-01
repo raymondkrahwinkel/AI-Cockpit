@@ -276,11 +276,12 @@ public sealed class CockpitBackend
         }
     }
 
-    // AC-1442: the teardown without App, by `Program.TearDownCockpitAsync`'s rules. Every phase gets `budget`: sessions
-    // in parallel (AC-1124), the listeners in reverse, then the container, so a caller's hard exit sits past three.
-    // A session keeps its record and worktree, as a desktop shutdown keeps them for the restore (AC-410).
+    // AC-1442: the teardown without App, by `Program.TearDownCockpitAsync`'s rules, under one deadline: the sessions in
+    // parallel get its first half (AC-1124), the listeners in reverse and the container what is left of it. A session
+    // keeps its record and worktree, as a desktop shutdown keeps them for the restore (AC-410).
     public async Task StopAsync(TimeSpan budget)
     {
+        using var deadline = new CancellationTokenSource(budget);
         IDisposable?[] planners =
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
@@ -301,28 +302,27 @@ public sealed class CockpitBackend
             sessions.Add(assistant);
         }
 
-        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, budget, logger))).ConfigureAwait(false);
+        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, budget / 2, logger))).ConfigureAwait(false);
 
-        using var listeners = new CancellationTokenSource(budget);
         foreach (var service in Services.GetServices<IHostedService>().Reverse())
         {
             try
             {
-                await service.StopAsync(listeners.Token).WaitAsync(listeners.Token).ConfigureAwait(false);
+                await service.StopAsync(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "{Service} did not stop cleanly within {Budget}.", service.GetType().Name, budget);
+                logger.LogWarning(exception, "{Service} did not stop cleanly within the stop's {Budget}.", service.GetType().Name, budget);
             }
         }
 
         try
         {
-            await Services.DisposeAsync().AsTask().WaitAsync(budget).ConfigureAwait(false);
+            await Services.DisposeAsync().AsTask().WaitAsync(deadline.Token).ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (OperationCanceledException)
         {
-            logger.LogWarning("The service container did not finish disposing within {Budget}; stopping without it.", budget);
+            logger.LogWarning("The service container did not finish disposing within the stop's {Budget}; stopping without it.", budget);
         }
     }
 

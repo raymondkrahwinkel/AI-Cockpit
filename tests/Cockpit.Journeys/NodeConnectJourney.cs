@@ -10,7 +10,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Mcp;
@@ -135,11 +134,11 @@ public sealed class NodeConnectJourney
         var child = cockpit.Drivers.Made[1].Child ?? throw new InvalidOperationException("The wedged session started no process.");
         try
         {
-            var budget = TimeSpan.FromSeconds(2);
+            var budget = TimeSpan.FromSeconds(4);
             var clock = Stopwatch.StartNew();
             await cockpit.Backend.StopAsync(budget);
 
-            Assert.True(clock.Elapsed < budget * 2, $"The stop took {clock.Elapsed}.");
+            Assert.True(clock.Elapsed < budget, $"The stop took {clock.Elapsed}.");
             Assert.Empty(registry.All);
             Assert.True(child.WaitForExit(TimeSpan.FromSeconds(5)), $"Process {child.Id} outlived the stop.");
             foreach (var port in ports)
