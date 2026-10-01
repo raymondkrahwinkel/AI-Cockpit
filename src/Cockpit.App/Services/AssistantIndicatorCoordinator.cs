@@ -5,7 +5,6 @@ using Avalonia.Threading;
 using Cockpit.App.Docking;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using Cockpit.Infrastructure.Assistant;
 using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
@@ -23,7 +22,7 @@ namespace Cockpit.App.Services;
 // Dictation outranks the rest: "Ready" showing while F9 records would be wrong in the way that costs.
 public sealed class AssistantIndicatorCoordinator : ISingletonService
 {
-    private readonly AssistantSessionHost _assistant;
+    private readonly IAssistantSessionHost _assistant;
     private readonly OpenMicCoordinator _openMic;
     private readonly VoiceOverlayCoordinator _overlay;
     private readonly IAssistantSettingsStore _settings;
@@ -50,7 +49,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     internal AssistantChatWindow? OpenChatWindow => _chatWindow;
 
     public AssistantIndicatorCoordinator(
-        AssistantSessionHost assistant,
+        IAssistantSessionHost assistant,
         OpenMicCoordinator openMic,
         VoiceOverlayCoordinator overlay,
         IAssistantSettingsStore settings,

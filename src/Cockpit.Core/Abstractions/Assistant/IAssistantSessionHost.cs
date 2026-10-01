@@ -31,6 +31,16 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     string? UnavailableReason { get; }
 
     /// <summary>
+    /// What speech-to-text is fetching right now, shown beside <see cref="AssistantActivity.Preparing"/>; null when nothing is.
+    /// </summary>
+    string? PreparationStatus => null;
+
+    /// <summary>
+    /// How far that preparation is, 0..1; null where no total is known or nothing is being prepared.
+    /// </summary>
+    double? PreparationProgress => null;
+
+    /// <summary>
     /// Idempotent lazy start: returns the running session if there is one, restarts it if it fell over, and no-ops (leaving <see cref="Activity"/> at Unavailable) if the feature is off or the slot is empty.
     /// </summary>
     Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default);
