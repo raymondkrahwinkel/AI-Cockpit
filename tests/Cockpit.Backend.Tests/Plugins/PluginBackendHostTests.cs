@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
@@ -165,6 +166,42 @@ public class PluginBackendHostTests
         Assert.Equal(("/work/two", (string?)null), (observer.GetWorkingDirectory("pane-2"), observer.GetWorkingDirectory("pane-1")));
     }
 
+    // AC-1415: a plugin in a backend without an App hears what a real session produces, through its handle: the reply,
+    // the tool call with its result, and the turn's images, which go when the turn ends.
+    [Fact]
+    public async Task TheBackendObserver_RelaysAHeadlessSessionsOutput_ToolCalls_AndTurnImages()
+    {
+        var runtime = Substitute.For<ISessionRuntime>();
+        runtime.IsRunning.Returns(true);
+        var manager = Substitute.For<ISessionManager>();
+        manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
+        var host = new SessionHost<QueuedPrompt>(() => PaneId, manager, TimeProvider.System);
+        host.Attach(new SessionProfile("Echo", new ClaudeConfig("/fake/.claude")));
+        var registry = new SessionRegistry();
+        registry.Register(new SessionHostHandle(PaneId, "Echo", nameIsChosen: false, "desk", "/work/echo", "Echo", host));
+        ICockpitSessionObserver observer = new PluginBackendSessionObserver(registry);
+        var output = new List<SessionOutputText>();
+        var tools = new List<SessionToolActivity>();
+        observer.OutputProduced += (_, text) => output.Add(text);
+        observer.ToolActivityObserved += (_, call) => tools.Add(call);
+
+        await Task.Run(() =>
+        {
+            var session = Assert.IsType<SessionHostHandle>(registry.Find(PaneId));
+            session.AddPastedImage([1, 2, 3]);
+            session.InjectAndSubmit("hello");
+            _Raise(runtime, new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+            _Raise(runtime, new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+            _Raise(runtime, new AssistantTextCompleted { SessionId = "S1", Text = "echo: hello" });
+            Assert.Equal(["pasted-image-1.png"], observer.GetCurrentTurnImages(PaneId).Select(image => image.SuggestedFileName));
+            _Raise(runtime, new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "echo: hello", IsError = false });
+        });
+
+        Assert.Equal([new SessionOutputText("ok", "/work/echo", false), new SessionOutputText("echo: hello", "/work/echo", false)], output);
+        Assert.Equal([new SessionToolActivity(PaneId, "Bash", "{}", "ok", false)], tools);
+        Assert.Empty(observer.GetCurrentTurnImages(PaneId));
+    }
+
     // What a backend has no window for does nothing and says so once per plugin.
     [Fact]
     public void AWindowlessContribution_IsANoOp_ThatLogsOncePerPlugin()
@@ -244,6 +281,9 @@ public class PluginBackendHostTests
         await Task.Run(() => registry.Unregister(PaneId));
         return decided;
     }
+
+    private static void _Raise(ISessionRuntime runtime, SessionEvent sessionEvent) =>
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(sessionEvent);
 
     private static ISessionHandle _Pane(string paneId, string title)
     {
