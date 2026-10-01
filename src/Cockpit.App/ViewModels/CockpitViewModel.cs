@@ -6053,49 +6053,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // AC-410: a restored pane starts on its own control in the folder it came back with. It never isolates, so the only
-    // admission left is re-owning the cockpit worktree that folder already is. Moves to the launcher with restore.
-    private async Task<string?> _StartRestoredPaneAsync(SessionPanelViewModel session, NewSessionResult result)
-    {
-        string? workingDirectory;
-        try
-        {
-            var admitted = await WorktreeAdmission.AdmitAsync(
-                _worktreeManager, session.PaneId, result.Profile.Label, result.WorkingDirectory, isolate: false);
-            if (admitted.WorktreeBranch is { } branch)
-            {
-                session.WorktreeBranch = branch;
-            }
-
-            workingDirectory = admitted.WorkingDirectory;
-        }
-        catch (WorktreeAdmissionException exception)
-        {
-            await CloseSessionAsync(session);
-            ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
-            return null;
-        }
-
-        var isSdk = session is SessionViewModel;
-        await _StartHostedAsync(session, _RequestOf(result, session.WorkspaceId) with
-        {
-            LaunchOptions = SessionStartComposer.WithInstructions(
-                isSdk ? result.SdkLaunchOptions : result.PluginTtyOptions, result.SystemPrompt, result.ProjectJobId is not null),
-        }, workingDirectory);
-
-        // Written once here (AC-409): isolation has resolved, so the record says which worktree this session owns.
-        _ = _sessionStateRecorder?.RecordSessionStartedAsync(
-            session.PaneId,
-            result.Profile,
-            workingDirectory,
-            worktreePath: session.WorktreeBranch is not null ? workingDirectory : null,
-            worktreeBranch: session.WorktreeBranch,
-            isSdk || result.Profile.Provider is SessionProvider.ClaudeCli ? result.Mode.Value : null);
-        await _AdoptWorktreeBadgeAsync(session, workingDirectory);
-        NoteSessionStarted(session.PaneId, result.ProjectId, result.ProjectJobId);
-        return session.PaneId;
-    }
-
     // AC-490: writes the run's `Started` line only once `saved` — the project save above, which carries the job's id —
     // has succeeded. A run recorded against an id that never reached disk would point at nothing after the next
     // load, so a failed or skipped save means no line rather than an orphan.
@@ -7228,7 +7185,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-410: the working directory a restored pane actually starts in, resolved once here from the worktree registry
     // rather than left to the start path — the restore path runs with IsolateInWorktree: false (see
-    // _BuildRestoreLaunchResult), so _StartRestoredPaneAsync never gets a chance to look this up itself.
+    // _BuildRestoreLaunchResult), so the launcher's admission never gets a chance to look this up itself.
     private readonly Dictionary<string, string?> _restoreWorkingDirectories = new(StringComparer.Ordinal);
 
     // Waits on `IWorktreeReconcileGate` first: `Program.cs` starts the startup worktree reconcile fire-and-forget so it
@@ -7325,6 +7282,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
                 session.RestoreOffer = plan;
 
+                // AC-1439: registered and recorded already, so the launcher starts this very pane once a start is picked.
+                if (_sessionRegistry?.Find(pane.Id) is SessionPanelHandle restored)
+                {
+                    restored.Hosted = new HostedPaneCalls(_StartHostedAsync, () => _StopHostedAsync(restored));
+                }
+
                 // AC-410: pane-id continuity (AdoptPaneId, above) means a restored pane's own id is the worktree's
                 // owner id, so this is the same registry lookup a live session's own worktree would be found
                 // under — not a probe of "does one exist", but "which one is already this pane's".
@@ -7403,22 +7366,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? SessionResume.BySessionId(conversationId)
             : SessionResume.New;
 
-        if (_BuildRestoreLaunchResult(plan, resume) is not { } result)
+        if (_BuildRestoreLaunchResult(plan, resume) is not { } result || _sessionLauncher?.Invoke() is not { } launcher)
         {
             return;
         }
 
-        // AC-1080: the provider resuming its own conversation says nothing about the window, which starts empty —
-        // repaint from Cockpit's own log before the launch, or roll that log aside when this start is a fresh one.
-        // Only SDK panes record a transcript; a TTY pane has none to replay (AC-1091).
-        if (session is SessionViewModel recorded)
+        // AC-1080: the launcher repaints the recorded log or rolls it aside before the start, as for any resume; the
+        // pane id names this pane, so it starts in place rather than as a second one.
+        try
         {
-            await recorded.PrepareRecordedTranscriptAsync(resume);
+            if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
+            {
+                session.RestoreOffer = null;
+            }
         }
-
-        if (await _StartRestoredPaneAsync(session, result) is not null)
+        catch (WorktreeAdmissionException exception)
         {
-            session.RestoreOffer = null;
+            await CloseSessionAsync(session);
+            ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
         }
     }
 

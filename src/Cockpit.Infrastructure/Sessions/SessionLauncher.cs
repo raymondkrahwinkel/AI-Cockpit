@@ -40,13 +40,15 @@ public sealed class SessionLauncher(
             throw new TtyLaunchRefusedException(profile.Label);
         }
 
+        // AC-410: a pane a restart brought back is registered, recorded and waiting; naming it starts that one.
         var paneId = request.PaneId ?? Guid.NewGuid().ToString("n");
-        if (registry.Find(paneId) is not null)
+        var waiting = registry.Find(paneId) as IHostedSession;
+        if (waiting is { AwaitsStart: false } || (waiting is null && registry.Find(paneId) is not null))
         {
             throw new InvalidOperationException($"Pane '{paneId}' is already running.");
         }
 
-        var name = _NameOf(request);
+        var name = waiting?.Title ?? _NameOf(request);
         var admitted = await WorktreeAdmission.AdmitAsync(
             worktrees, paneId, profile.Label, request.WorkingDirectory, request.IsolateInWorktree == true && !request.RunUnisolated).ConfigureAwait(false);
         if (admitted.Decision is { } decision)
@@ -54,33 +56,18 @@ public sealed class SessionLauncher(
             return new LaunchedSession(string.Empty, name, null, decision);
         }
 
-        // AC-1332: the handle carries who asked for it, so the pane it lands as is stamped before anything lists it.
-        var nameIsChosen = !request.NameIsComposed && !string.IsNullOrWhiteSpace(request.SessionName);
-        var hosted = hosting.Host(new SessionHostingRequest(paneId, name, nameIsChosen, kind, request, admitted.WorkingDirectory, admitted.WorktreeBranch))
-            ?? throw new TtyLaunchRefusedException(profile.Label);
-
-        // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
-        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(hosted)).ConfigureAwait(false))
+        var hosted = waiting ?? await _HostAsync(request, paneId, name, kind, admitted).ConfigureAwait(false);
+        if (hosted is null)
         {
-            await _TearDownAsync(hosted).ConfigureAwait(false);
             return null;
         }
 
-        // AC-410: written before the session starts, never after: a crash in between leaves at most a pane that does not
-        // come back, never one that comes back describing a session that never started this way.
-        var pane = new WorkspacePane(paneId, PaneKind.AiSession)
-        {
-            ProfileId = profile.Label,
-            SessionKind = kind,
-            WorkingDirectory = request.WorkingDirectory,
-            Title = name,
-            NameIsChosen = nameIsChosen,
-            ProjectId = request.ProjectId,
-            StartedByTheAssistant = request.StartedByTheAssistant,
-        };
         try
         {
-            await desks.AddPaneAsync(request.WorkspaceId, pane).ConfigureAwait(false);
+            if (waiting is not null && admitted.WorktreeBranch is { } reattached)
+            {
+                await waiting.SetWorktreeBranchAsync(reattached).ConfigureAwait(false);
+            }
 
             // AC-1080: a resumed conversation repaints its recorded log before the first turn.
             if (request.Resume is { } resume)
@@ -101,9 +88,10 @@ public sealed class SessionLauncher(
                 return null;
             }
         }
-        catch
+        catch when (waiting is null)
         {
-            // A session that never came up goes, record and all, and the reason travels to the caller.
+            // A session that never came up goes, record and all, and the reason travels to the caller. A restored pane
+            // stays, as it always did, and can be offered again.
             registry.Unregister(paneId);
             await _TearDownAsync(hosted).ConfigureAwait(false);
             await desks.RemovePaneAsync(request.WorkspaceId, paneId).ConfigureAwait(false);
@@ -116,6 +104,46 @@ public sealed class SessionLauncher(
             ? null
             : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
         return new LaunchedSession(paneId, name, promptDelivered);
+    }
+
+    // Hosted, registered and recorded, in that order; null when the desk stopped holding sessions meanwhile.
+    private async Task<IHostedSession?> _HostAsync(SessionLaunchRequest request, string paneId, string name, PaneSessionKind kind, AdmittedDirectory admitted)
+    {
+        // AC-1332: the handle carries who asked for it, so the pane it lands as is stamped before anything lists it.
+        var nameIsChosen = !request.NameIsComposed && !string.IsNullOrWhiteSpace(request.SessionName);
+        var hosted = hosting.Host(new SessionHostingRequest(paneId, name, nameIsChosen, kind, request, admitted.WorkingDirectory, admitted.WorktreeBranch))
+            ?? throw new TtyLaunchRefusedException(request.Profile.Label);
+
+        // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
+        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(hosted)).ConfigureAwait(false))
+        {
+            await _TearDownAsync(hosted).ConfigureAwait(false);
+            return null;
+        }
+
+        // AC-410: written before the session starts, never after: a crash in between leaves at most a pane that does not
+        // come back, never one that comes back describing a session that never started this way.
+        try
+        {
+            await desks.AddPaneAsync(request.WorkspaceId, new WorkspacePane(paneId, PaneKind.AiSession)
+            {
+                ProfileId = request.Profile.Label,
+                SessionKind = kind,
+                WorkingDirectory = request.WorkingDirectory,
+                Title = name,
+                NameIsChosen = nameIsChosen,
+                ProjectId = request.ProjectId,
+                StartedByTheAssistant = request.StartedByTheAssistant,
+            }).ConfigureAwait(false);
+        }
+        catch
+        {
+            registry.Unregister(paneId);
+            await _TearDownAsync(hosted).ConfigureAwait(false);
+            throw;
+        }
+
+        return hosted;
     }
 
     public async Task StopSessionAsync(string paneId)

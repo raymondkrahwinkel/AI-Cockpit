@@ -487,6 +487,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public Task StopAsync() => DisposeAsync().AsTask();
 
+    // Hosted and started in one launch; the backend brings nothing back to start later.
+    public bool AwaitsStart => false;
+
     // The permission-mode floor the desktop's assistant starts on; the profile's own mode rides the launch options.
     public async Task StartAsync(AssistantLaunch launch)
     {

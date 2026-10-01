@@ -59,10 +59,20 @@ internal sealed class SessionPanelHandle : IHostedSession
     public Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default) =>
         _pane is SessionViewModel sdk ? _OnUiThreadAsync(() => sdk.PrepareRecordedTranscriptAsync(resume, cancellationToken)) : Task.CompletedTask;
 
-    public Task StartAsync(SessionLaunchRequest request, string? workingDirectory) =>
-        Hosted is { } hosted && _pane is { } pane
-            ? _OnUiThreadAsync(() => hosted.Start(pane, request, workingDirectory))
-            : throw new InvalidOperationException($"Pane '{PaneId}' has not landed, so it cannot start.");
+    public bool AwaitsStart => Hosted is not null && !_startAsked;
+
+    private bool _startAsked;
+
+    public Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
+    {
+        if (Hosted is not { } hosted || _pane is not { } pane)
+        {
+            throw new InvalidOperationException($"Pane '{PaneId}' has not landed, so it cannot start.");
+        }
+
+        _startAsked = true;
+        return _OnUiThreadAsync(() => hosted.Start(pane, request, workingDirectory));
+    }
 
     public Task StopAsync() => Hosted is { } hosted
         ? _OnUiThreadAsync(hosted.Stop)

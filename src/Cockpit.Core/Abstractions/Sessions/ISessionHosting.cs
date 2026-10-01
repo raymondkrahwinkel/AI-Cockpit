@@ -28,6 +28,12 @@ public interface ISessionHosting
 public interface IHostedSession : ISessionHandle
 {
     /// <summary>
+    /// True for a session that is registered but not started, such as a pane a restart brought back (AC-410).
+    /// A launch naming its pane id starts this one rather than hosting another.
+    /// </summary>
+    bool AwaitsStart { get; }
+
+    /// <summary>
     /// Repaints a resumed conversation's recorded log, or rolls it aside for a new one (AC-1080).
     /// </summary>
     Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default);
