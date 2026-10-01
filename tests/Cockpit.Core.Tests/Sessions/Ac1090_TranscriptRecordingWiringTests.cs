@@ -29,7 +29,7 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddCore().AddInfrastructure().AddServices(
+        services.AddCore().AddInfrastructure().AddDesktopInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
