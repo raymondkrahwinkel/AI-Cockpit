@@ -14,8 +14,6 @@ internal sealed record DesktopSessionLaunch(
 // AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
 // a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
 // closed after the caller looked it up is left alone rather than written to.
-// AC-1450: a desktop SDK session is registered with its control before it has a pane; until `Attach` it answers from its
-// launch facts, and whoever subscribes in the registry's Changed is hooked onto the pane once it comes.
 internal sealed class SessionPanelHandle : ISessionHandle
 {
     private readonly DesktopSessionLaunch _launch;
@@ -42,7 +40,8 @@ internal sealed class SessionPanelHandle : ISessionHandle
         _isLive = isLive;
     }
 
-    // The session the desktop made before its pane; null for a handle registered over a pane that already existed.
+    // AC-1450: the session the desktop made and registered before its pane; until `Attach` the handle answers from its
+    // launch facts. Null for a handle registered over a pane that already existed.
     public ISessionControl? Control { get; }
 
     public SessionPanelViewModel? Pane => _pane;
