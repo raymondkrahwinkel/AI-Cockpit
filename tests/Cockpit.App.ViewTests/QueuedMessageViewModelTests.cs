@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -8,7 +9,7 @@ public sealed class QueuedMessageViewModelTests
     public void DisplayText_FlattensWhitespace_WithoutChangingText()
     {
         const string text = "first\r\nsecond\nthird    fourth";
-        var message = new QueuedMessageViewModel(text, [], null, _ => { });
+        var message = new QueuedMessageViewModel(new QueuedPrompt(text, []), null, _ => { });
 
         Assert.Equal(text, message.Text);
         Assert.Equal("first second third fourth", message.DisplayText);

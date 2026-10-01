@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
 
@@ -11,7 +12,9 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the composer sends, and the provider's answer is a row in that pane.
+    // J2: the dialog opens the pane, the composer sends, and the provider's answer is a row in that pane, with the
+    // status going busy and then done around it (AC-1437). A turn that fails offers Retry on its row (AC-728), which
+    // the pane can only do once that row came in from the event log (AC-1438).
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
@@ -20,14 +23,30 @@ public sealed class SessionJourney
         await cockpit.StartDesktopAsync();
 
         var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var statuses = new List<SessionStatus>();
+        TranscriptEntryViewModel? failed = null;
         await HeadlessAvalonia.RunAsync(async () =>
         {
+            session.PropertyChanged += (_, change) =>
+            {
+                if (change.PropertyName == nameof(session.SessionStatus))
+                {
+                    statuses.Add(session.SessionStatus);
+                }
+            };
             session.InputText = "hello";
             await session.SendCommand.ExecuteAsync(null);
             await Until.CollectionHolds(session.Transcript, () => session.Transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text == "echo: hello"));
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+
+            session.InputText = EchoDriver.FailingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => (failed = session.Transcript.LastOrDefault(row => row.IsFailedTurnRow))?.ActionLabel == "Retry");
         });
 
         Assert.Equal(JourneyHost.EchoProfile, cockpit.Driver.Profile?.Label);
+        Assert.Equal([SessionStatus.Busy, SessionStatus.Done], statuses.Take(2));
+        Assert.NotNull(failed);
         Assert.Contains(session, HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList()));
     }
 

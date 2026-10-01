@@ -171,6 +171,8 @@ public sealed class BackendApiClientRealNetworkTests
 
         public int Calls => _calls;
 
+        public long LastSeq => 0;
+
         public ConcurrentQueue<long> Cursors { get; } = new();
 
         public long Append(string kind, string? paneId, object data) => throw new NotSupportedException();

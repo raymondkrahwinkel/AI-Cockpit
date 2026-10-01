@@ -15,7 +15,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     private const string Divider = "Divider";
 
     private readonly Lock _gate = new();
-    private readonly SessionHost<QueuedPrompt> _host;
+    private readonly SessionHost _host;
     private bool _nameIsChosen;
     private readonly List<TranscriptSnapshotEntry> _rows = [];
     private string _title;
@@ -37,7 +37,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         string workspaceId,
         string? workingDirectory,
         string? profileLabel,
-        SessionHost<QueuedPrompt> host,
+        SessionHost host,
         string? projectId = null)
     {
         PaneId = paneId;
@@ -49,12 +49,19 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         ProjectId = projectId;
         _host = host;
         host.RowUpserted += _OnRowUpserted;
-        host.EventAppended += _OnEventAppended;
+
+        // AC-1438: the host folds its own events; this lock is the thread it folds them on.
+        host.PumpOn(_FoldUnderTheLock);
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
         host.LiveStateChanged += liveState => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(liveState));
-        host.TurnEnded += end => _RaiseOutsideTheLock(() => TurnEnded?.Invoke(end));
+        host.TurnEnded += end =>
+        {
+            // A turn's images go before the next queued turn can start and take its own (AC-116).
+            _turnImages = [];
+            _RaiseOutsideTheLock(() => TurnEnded?.Invoke(end));
+        };
         host.ToolProgressed += () => _RaiseOutsideTheLock(() => ToolProgressed?.Invoke());
         host.BackgroundTaskNotified += notice => _RaiseOutsideTheLock(() => BackgroundTaskNotified?.Invoke(notice));
         host.OutputTextProduced += text => _RaiseOutsideTheLock(() => OutputTextProduced?.Invoke(text));
@@ -629,22 +636,12 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
-    // Stream order is the runtime's; the host's fold ends a turn on a session error, as it does in the view model.
-    // The turn's images go before the next queued turn can start and take its own.
-    private void _OnEventAppended(SessionHostEvent hostEvent)
+    // Stream order is the runtime's: the host folds each event on the runtime's thread, inside this lock.
+    private void _FoldUnderTheLock(Action fold)
     {
         lock (_gate)
         {
-            _host.ApplyToTranscript(hostEvent.Event);
-            if (hostEvent.Event is TurnCompleted)
-            {
-                _turnImages = [];
-                _host.CompleteTurn();
-            }
-            else if (hostEvent.Event is SessionError)
-            {
-                _turnImages = [];
-            }
+            fold();
         }
 
         _RaisePendingStateChange();

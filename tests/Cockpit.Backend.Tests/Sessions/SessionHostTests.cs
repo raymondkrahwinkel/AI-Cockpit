@@ -17,7 +17,7 @@ public class SessionHostTests
 {
     private static readonly SessionProfile Profile = new("work", new ClaudeConfig("/fake/.claude"));
 
-    public static TheoryData<Func<SessionHost<QueuedPrompt>, Func<int>>, TimeSpan> Polls => new()
+    public static TheoryData<Func<SessionHost, Func<int>>, TimeSpan> Polls => new()
     {
         {
             host =>
@@ -73,7 +73,7 @@ public class SessionHostTests
     public async Task TheHost_NamesAndLoadsNoAvaloniaType()
     {
         const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-        var type = typeof(SessionHost<QueuedPrompt>);
+        var type = typeof(SessionHost);
         var (host, runtime) = _Started();
         await host.SubmitAsync(new QueuedPrompt("first", []));
         runtime.EventAppended += Raise.Event<Action<SessionEvent>>(_TurnCompleted());
@@ -91,7 +91,7 @@ public class SessionHostTests
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), _IsAvalonia);
     }
 
-    private static (SessionHost<QueuedPrompt> Host, ISessionRuntime Runtime) _Started(ManualClock? clock = null, ILogger? logger = null)
+    private static (SessionHost Host, ISessionRuntime Runtime) _Started(ManualClock? clock = null, ILogger? logger = null)
     {
         var runtime = Substitute.For<ISessionRuntime>();
         runtime.IsRunning.Returns(true);
@@ -100,7 +100,7 @@ public class SessionHostTests
         var loginChecker = Substitute.For<IProfileLoginChecker>();
         loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
 
-        var host = new SessionHost<QueuedPrompt>(
+        var host = new SessionHost(
             () => "pane-a", manager, clock ?? new ManualClock(), loginChecker: loginChecker, logger: logger);
         host.Attach(Profile);
         return (host, runtime);

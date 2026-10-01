@@ -97,6 +97,9 @@ internal sealed class SessionTranscriptBuilder(
     // Keep orphaned sub-agent text separate so it cannot merge into the top-level reply or be read aloud (AC-146).
     private Row? _currentOrphanedSubAgentTextRow;
 
+    // AC-1438: every top-level row as it stands, nested rows inside their anchors, in the order they were formed.
+    public IReadOnlyList<TranscriptSnapshotEntry> Rows => [.. _rows.Select(_Snapshot)];
+
     public TranscriptFold Apply(SessionEvent evt) => evt switch
     {
         AssistantTextDelta delta => _OnTextDelta(delta),

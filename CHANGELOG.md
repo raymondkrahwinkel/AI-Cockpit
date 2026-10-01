@@ -599,6 +599,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a desktop session pane now draws its conversation from the same event stream the backend API serves, and
+  the rows on that stream carry everything a pane needs to draw them — a permission prompt still waiting, how a long
+  reply was split, an output that was cut short — so a client reading the stream sees the transcript the desktop shows.
 - changed: a session on a cockpit running without a window (the server), or one started over the backend API, now
   reports the same status a desktop pane shows — needs you, working in the background, failed or done — instead of
   only busy or idle, along with its running tool calls, background tasks, token use and cost.

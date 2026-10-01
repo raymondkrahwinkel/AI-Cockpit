@@ -8,10 +8,12 @@ using Cockpit.Core.Sessions.Permissions;
 namespace Cockpit.Journeys;
 
 // The journeys' one fake: the provider, faked below the launcher where a real one spawns a CLI. Answers every
-// prompt with "echo: <prompt>" and one completed turn. `Answered` completes when the runtime comes back for the next
-// event, which it only does once it has handed the turn's end on.
+// prompt with "echo: <prompt>" and one completed turn, a failed one for `FailingPrompt`. `Answered` completes when the
+// runtime comes back for the next event, which it only does once it has handed the turn's end on.
 public sealed class EchoDriver : ISessionDriver
 {
+    public const string FailingPrompt = "fail";
+
     private readonly Channel<string> _prompts = Channel.CreateUnbounded<string>();
     private readonly TaskCompletionSource _answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -67,8 +69,12 @@ public sealed class EchoDriver : ISessionDriver
     {
         await foreach (var prompt in _prompts.Reader.ReadAllAsync(cancellationToken))
         {
+            var fails = prompt == FailingPrompt;
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {prompt}" };
-            yield return new TurnCompleted { SessionId = SessionId, Subtype = "success", Result = $"echo: {prompt}", IsError = false };
+            yield return new TurnCompleted
+            {
+                SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {prompt}", IsError = fails,
+            };
             _answered.TrySetResult();
         }
     }

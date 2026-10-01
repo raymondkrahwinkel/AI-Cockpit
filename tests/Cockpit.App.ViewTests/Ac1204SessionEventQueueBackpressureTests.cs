@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
@@ -37,7 +38,7 @@ public sealed class Ac1204SessionEventQueueBackpressureTests
     public async Task TheSameQueueOnAQuietUiThread_AppliesOneEventWithinMilliseconds()
     {
         var applied = new ConcurrentQueue<SessionEvent>();
-        var queue = new SessionEventQueue(applied.Enqueue);
+        var queue = new SessionEventQueue(applied.Enqueue, SessionViewModel.UiPost, SessionViewModel.UiPostAfterWindow);
 
         await Task.Run(() => queue.Enqueue(_Delta("x")));
 
@@ -51,7 +52,7 @@ public sealed class Ac1204SessionEventQueueBackpressureTests
     private static async Task _StarvedEnqueueStaysBounded(DispatcherPriority priority)
     {
         var applied = new ConcurrentQueue<SessionEvent>();
-        var queue = new SessionEventQueue(applied.Enqueue);
+        var queue = new SessionEventQueue(applied.Enqueue, SessionViewModel.UiPost, SessionViewModel.UiPostAfterWindow);
 
         using (var starver = StarvedDispatcher.Start(priority))
         {

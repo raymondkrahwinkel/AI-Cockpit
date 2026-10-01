@@ -7,6 +7,7 @@ using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -222,7 +223,7 @@ public sealed class TranscriptStreamingCostTests
             {
                 applies++;
                 text.Append(((AssistantTextDelta)evt).Text);
-            });
+            }, SessionViewModel.UiPost, SessionViewModel.UiPostAfterWindow);
 
             var chunk = new string('x', deltaChars);
 
@@ -283,6 +284,7 @@ public sealed class TranscriptStreamingCostTests
         // A pump that never runs anything — the state a pane detaching mid-window is in.
         var queue = new SessionEventQueue(
             evt => applied.Add(((AssistantTextDelta)evt).Text),
+            _ => { },
             _ => { });
 
         queue.Enqueue(new AssistantTextDelta { Text = "one", SessionId = "s", BlockIndex = 0 });

@@ -9,6 +9,9 @@ public interface IBackendEventLog
     /// <summary>Appends an event and assigns the backend-wide sequence number.</summary>
     long Append(string kind, string? paneId, object data);
 
+    /// <summary>The sequence number of the last event appended, or zero before the first (AC-1438).</summary>
+    long LastSeq { get; }
+
     /// <summary>Reads buffered events after the sequence, then follows live events. Minus one starts live only.</summary>
     IAsyncEnumerable<BackendEvent> ReadFromAsync(long afterSeq, CancellationToken cancellationToken);
 }

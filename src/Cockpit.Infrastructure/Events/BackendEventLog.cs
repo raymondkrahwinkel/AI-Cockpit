@@ -17,6 +17,7 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
     private readonly Queue<BackendEvent> _buffer = new();
     private readonly HashSet<Channel<BackendEvent>> _readers = [];
     private long _evictedThrough;
+    private long _lastSeq;
 
     public long Append(string kind, string? paneId, object data)
     {
@@ -25,6 +26,7 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
         lock (_gate)
         {
             var evt = new BackendEvent(SessionEventSequence.Next(), kind, paneId, json);
+            _lastSeq = evt.Seq;
             _buffer.Enqueue(evt);
             if (_buffer.Count > Capacity)
             {
@@ -44,6 +46,17 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
             }
 
             return evt.Seq;
+        }
+    }
+
+    public long LastSeq
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastSeq;
+            }
         }
     }
 

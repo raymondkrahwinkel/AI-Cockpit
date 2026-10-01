@@ -1,10 +1,10 @@
 using System.Text;
 using Cockpit.Core.Sessions;
 
-namespace Cockpit.App.ViewModels;
+namespace Cockpit.Infrastructure.Sessions;
 
 // Order is never touched: only *adjacent* events merge, and only into the run's own first event, so the sequence handed
-// to `Apply` is the arrival sequence with runs collapsed (AC-529).
+// to the host's fold is the arrival sequence with runs collapsed (AC-529).
 internal static class SessionEventCoalescer
 {
     // Returns `events` with adjacent mergeable deltas folded together, or the same instance when
