@@ -2,7 +2,6 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -276,14 +275,12 @@ public class PluginStoreBusyGateTests
     // Only the restart service is load-bearing here — it is what CanRestart's first clause reads. The rest are
     // there because the real constructor asks for them; nothing in this test reaches them.
     private static PluginManagerViewModel _ManagerThatCanRestart() =>
-        new(Substitute.For<IPluginRegistrationStore>(),
-            Substitute.For<IPluginInstaller>(),
-            new PluginBootstrap(),
+        new(Substitute.For<IPluginAdministration>(),
+            Substitute.For<IPluginRegistrationStore>(),
             Substitute.For<ISessionDialogService>(),
             Substitute.For<IPluginStoreConfigStore>(),
             Substitute.For<IPluginStoreClient>(),
             new Dictionary<string, PluginSettingsRegistration>(),
-            new PluginDiagnostics(),
             restartService: Substitute.For<IAppRestartService>());
 
     /// <summary>

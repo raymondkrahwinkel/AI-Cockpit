@@ -602,6 +602,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the plugin manager and the plugin store now install, enable, disable and remove plugins, and read the
+  installed plugins with what went wrong with them, through the same backend interface a server will offer, so a
+  cockpit without a window manages its plugins the way the desktop does. A store whose logo is an SVG now shows
+  that logo in the store dialogs instead of its default glyph.
 - changed: a desktop session pane now steers its session — start and stop, Stop, the model, permission-mode and effort
   switches, the permission buttons and the send queue — through one session control rather than reaching into the
   session's runtime itself, the step that lets a pane later steer a session that runs elsewhere. Nothing changes in

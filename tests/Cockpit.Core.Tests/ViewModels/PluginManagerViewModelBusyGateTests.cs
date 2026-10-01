@@ -119,14 +119,12 @@ public class PluginManagerViewModelBusyGateTests
         }
 
         return new PluginManagerViewModel(
+            new PluginAdministration(new PluginBootstrap(), registrationStore, installer, new PluginProvisioningService(storeClient, installer), storeClient),
             registrationStore,
-            installer,
-            new PluginBootstrap(),
             dialogService ?? Substitute.For<ISessionDialogService>(),
             Substitute.For<IPluginStoreConfigStore>(),
             storeClient,
             new Dictionary<string, PluginSettingsRegistration>(),
-            new PluginDiagnostics(),
             restartService: restartService);
     }
 

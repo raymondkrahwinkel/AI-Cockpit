@@ -3012,13 +3012,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IVoiceSettingsStore voiceSettingsStore,
         ITerminalSettingsStore terminalSettingsStore,
         IPluginRegistrationStore? pluginRegistrationStore = null,
-        IPluginInstaller? pluginInstaller = null,
-        PluginBootstrap? pluginBootstrap = null,
+        IPluginAdministration? pluginAdministration = null,
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
         IPluginStoreClient? pluginStoreClient = null,
-        // AC-510[b]: DI's own singleton, handed straight to PluginManagerViewModel below so the plugin store
-        // dialog and the first-run wizard's provider step share exactly one install path.
-        IPluginProvisioningService? pluginProvisioningService = null,
         IPluginDialogHost? pluginDialogHost = null,
         PluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
@@ -3280,13 +3276,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
-        // The full plugin manager needs its store/installer/bootstrap, store dependencies, the dialog host
-        // and the diagnostics; when they are absent (unit tests that don't exercise plugins) the design-time
-        // manager is used, so the tab is inert.
-        Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
+        // The full plugin manager needs the plugin administration, the store dependencies, the dialog host and a
+        // backend that loaded plugins (it has diagnostics); without them (unit tests that don't exercise plugins)
+        // the design-time manager is used, so the tab is inert.
+        Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService, workflowTemplateLibrary, pluginProvisioningService)
+            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
         // would keep reporting the state at startup while the Plugin manager moved on, the exact divergence the ticket

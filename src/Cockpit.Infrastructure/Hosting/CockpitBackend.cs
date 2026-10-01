@@ -111,6 +111,7 @@ public sealed class CockpitBackend
         services.AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
+        services.AddSingleton<IPluginAdministration, PluginAdministration>();
         frontend?.Invoke(services);
         if (plugins != PluginStartup.None)
         {

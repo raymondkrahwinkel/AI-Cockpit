@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Svg;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -104,6 +105,12 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             timeout.CancelAfter(TimeSpan.FromSeconds(8));
 
             var bytes = await _ReadBytesAsync(target, MaxLogoBytes, timeout.Token).ConfigureAwait(false);
+
+            // Rasterised here rather than in the store dialog (AC-1434), which can only decode raster images.
+            if (SvgRasterizer.LooksLikeSvg(bytes) && SvgRasterizer.Rasterize(bytes, 256f) is { } raster)
+            {
+                bytes = raster;
+            }
 
             return new PluginStoreImageResult(true, null, bytes);
         }
