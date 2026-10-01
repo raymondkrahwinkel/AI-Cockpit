@@ -145,7 +145,7 @@ public class AssistantCreateProjectTests : IDisposable
         // would run start to finish, `_logos` being null making `_WithStoredLogoAsync` synchronous too, before the
         // second job ever gets a turn. That "proved" the assertion by never exercising the race at all. Here
         // `SaveAsync` genuinely suspends the caller until this test releases it, so the dispatcher is forced to run
-        // the second job while the first is still awaiting inside `_PersistAsync` — the actual interleaving a lost
+        // the second job while the first is still awaiting inside the save — the actual interleaving a lost
         // update would need.
         var firstSaveReached = new TaskCompletionSource();
         var secondSaveReached = new TaskCompletionSource();
@@ -160,7 +160,7 @@ public class AssistantCreateProjectTests : IDisposable
             return releaseSaves.Task;
         });
 
-        var projects = new ProjectsViewModel(store, dialogs: null);
+        var projects = TestProjects.ViewModel(store, dialogs: null);
         await Dispatcher.UIThread.InvokeAsync(() => projects.LoadAsync());
 
         var assistantProject = Project.Create("Assistant project") with { SourceDirectories = [new(_folder)] };
@@ -169,11 +169,10 @@ public class AssistantCreateProjectTests : IDisposable
         var assistantTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(assistantProject));
         var dialogTask = Dispatcher.UIThread.InvokeAsync(() => projects.AddNewProjectAsync(dialogProject));
 
-        // Both jobs have now reached `_PersistAsync`'s `await _store.SaveAsync(settings)` and are suspended there —
-        // which proves the second call's `_settings.WithProject(stored)` read ran only after the first call's
-        // `_settings = settings;` write, exactly the ordering the production comment on `AddNewProjectAsync`
-        // depends on (see AC-799 review finding 7).
-        await Task.WhenAll(firstSaveReached.Task, secondSaveReached.Task);
+        // The first job is suspended inside the store's save while the second has already started. AC-1435: the
+        // project catalog serialises its writes, so the second reads the settings only after the first stored them.
+        await firstSaveReached.Task;
+        Assert.False(secondSaveReached.Task.IsCompleted);
 
         releaseSaves.SetResult();
         await Task.WhenAll(assistantTask, dialogTask);
@@ -353,7 +352,8 @@ public class AssistantCreateProjectTests : IDisposable
             fieldRegistry.Register(field);
         }
 
-        var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
+        var catalog = TestProjects.Catalog(store, registry);
+        var projects = TestProjects.ViewModel(catalog, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
         var sessions = new SessionRegistry();
@@ -371,7 +371,8 @@ public class AssistantCreateProjectTests : IDisposable
             worktreeManager: null,
             sharedProjectSources: registry,
             mcpServerCatalog: includeMcpCatalog ? _McpCatalog() : null,
-            projectFields: fieldRegistry));
+            projectFields: fieldRegistry,
+            projects: catalog));
 
         return (gateway, projects, store);
     }

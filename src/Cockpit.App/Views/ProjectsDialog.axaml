@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
-        xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
+        xmlns:sharedProjects="using:Cockpit.Core.Projects"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -107,7 +107,7 @@
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="sharedProjects:SharedProject">
+                                        <DataTemplate x:DataType="sharedProjects:SharedProjectOffer">
                                             <!-- $parent[Window], not $parent[ItemsControl]: this row sits inside two
                                                  nested ItemsControls (groups, then projects), so the nearest ItemsControl
                                                  ancestor is the inner one — DataContext SharedProjectGroupViewModel, not

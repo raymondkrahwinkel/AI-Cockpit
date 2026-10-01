@@ -19,7 +19,8 @@ public class ProjectsViewModelTests
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = saved });
 
         var dialogs = Substitute.For<ISessionDialogService>();
-        return (new ProjectsViewModel(store, dialogs), store, dialogs);
+        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), new _FakeSharedProjectSourceRegistry([]));
+        return (new ProjectsViewModel(catalog, catalog, dialogs), store, dialogs);
     }
 
     [Fact]
@@ -58,7 +59,8 @@ public class ProjectsViewModelTests
 
         var ownership = new ProjectOwnershipRegistry();
         var registry = new _FakeSharedProjectSourceRegistry(sources);
-        var viewModel = new ProjectsViewModel(store, dialogs, ownership: ownership, sharedSources: registry);
+        var catalog = new ProjectCatalog(store, ownership, registry);
+        var viewModel = new ProjectsViewModel(catalog, catalog, dialogs);
         return (viewModel, ownership);
     }
 

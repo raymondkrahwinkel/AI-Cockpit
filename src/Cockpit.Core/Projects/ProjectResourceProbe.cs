@@ -1,7 +1,6 @@
 using System.Diagnostics;
-using Cockpit.Core.Projects;
 
-namespace Cockpit.Infrastructure.Projects;
+namespace Cockpit.Core.Projects;
 
 // Checks a project's `ProjectResource` rows for a fully-qualified path found missing (AC-484); runs
 // synchronously on a UI thread, so its running time is a responsiveness concern. A scheme, relative, or UNC

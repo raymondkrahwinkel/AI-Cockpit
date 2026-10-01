@@ -9,7 +9,7 @@ namespace Cockpit.App.Controls;
 // a property because its two hosts nest it at different depths, so no single `$parent` path reaches both.
 public partial class SharedProjectCardView : UserControl
 {
-    // Runs with the `SharedProject` as its parameter. Null leaves the button inert, which is what the previewer and
+    // Runs with the `SharedProjectOffer` as its parameter. Null leaves the button inert, which is what the previewer and
     // the Screenshotter want.
     public static readonly StyledProperty<ICommand?> AddCommandProperty =
         AvaloniaProperty.Register<SharedProjectCardView, ICommand?>(nameof(AddCommand));

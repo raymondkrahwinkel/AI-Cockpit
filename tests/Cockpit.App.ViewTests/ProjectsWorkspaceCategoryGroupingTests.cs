@@ -49,7 +49,7 @@ public class ProjectsWorkspaceCategoryGroupingTests
             });
 
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs);
+            var projects = TestProjects.ViewModel(store, dialogs);
             await projects.LoadAsync();
 
             var cockpit = _NewCockpit(dialogs, projects);

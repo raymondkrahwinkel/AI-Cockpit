@@ -12,7 +12,8 @@ using Cockpit.Infrastructure.Sessions;
 namespace Cockpit.App.ViewTests;
 
 // AC-1375: the gateway moved to Infrastructure, and these tests still drive it over a real cockpit through the
-// adapters production wires. `sessions` must be the registry `cockpit` was built with, or the gateway sees no panes.
+// adapters production wires and, since AC-1435, the project catalog its Projects page reads. `sessions` must be the
+// registry `cockpit` was built with, or the gateway sees no panes.
 internal static class AssistantAgentGatewayGraph
 {
     public static AssistantAgentGateway Over(
@@ -29,11 +30,13 @@ internal static class AssistantAgentGatewayGraph
         IWorktreeManager? worktreeManager = null,
         ISharedProjectSourceRegistry? sharedProjectSources = null,
         IMcpServerCatalog? mcpServerCatalog = null,
-        IProjectFieldRegistry? projectFields = null) =>
+        IProjectFieldRegistry? projectFields = null,
+        ProjectCatalog? projects = null) =>
         new(
             sessions,
             new SessionLauncherAdapter(cockpit),
-            new ProjectEditorAdapter(cockpit, profiles, sharedProjectSources, mcpServerCatalog),
+            projects ?? TestProjects.Catalog(sharedSources: sharedProjectSources),
+            new ProjectComposer(profiles, mcpServerCatalog),
             watcher,
             new AssistantConversation(assistantSessionHost),
             new ExternalLinkOpener(),

@@ -321,7 +321,8 @@ public class AssistantBindSharedProjectTests : IDisposable
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? ProjectSettings.Empty);
 
         var registry = new _FakeRegistry([_Source(prepared)]);
-        var projects = new ProjectsViewModel(store, dialogs: null, sharedSources: registry);
+        var catalog = TestProjects.Catalog(store, registry);
+        var projects = TestProjects.ViewModel(catalog, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
         var sessions = new SessionRegistry();
@@ -337,7 +338,8 @@ public class AssistantBindSharedProjectTests : IDisposable
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
             Substitute.For<IAssistantSessionHost>(),
             worktreeManager: null,
-            sharedProjectSources: registry));
+            sharedProjectSources: registry,
+            projects: catalog));
 
         return (gateway, projects, store);
     }

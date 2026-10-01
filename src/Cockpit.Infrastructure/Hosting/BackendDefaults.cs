@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Projects;
@@ -58,20 +57,10 @@ internal sealed class HostAssistantConversation(IAssistantSessionHost host) : IA
     public Task<bool> ShowQuestionAsync(string question, string inputJson) => Task.FromResult(false);
 }
 
-// Reads come from the store the Projects page loads from. Composing and storing a project is that page's work until it
-// refreshes on the store (see `IProjectEditor`), so here they refuse with the reason rather than write behind it.
-internal sealed class StoreProjectEditor(IProjectStore projects, ISharedProjectSourceRegistry sharedProjectSources) : IProjectEditor
+// The project dialogs compose a project, and there are none here (AC-1435), so composing refuses with the reason.
+internal sealed class NoProjectComposer : IProjectComposer
 {
-    internal const string Refusal = "This cockpit runs without its Projects page, and adding or changing a project goes through that page.";
-
-    public async Task<(IReadOnlyList<ISharedProjectSource> Sources, IReadOnlySet<string> BoundIds, IReadOnlySet<string> HiddenIds)> ReadSharedProjectSourcesAsync()
-    {
-        var (bound, hidden) = SharedProjectSourceLister.VisibilityFilterIds(await projects.LoadAsync().ConfigureAwait(false));
-        return (sharedProjectSources.Sources, bound, hidden);
-    }
-
-    public async Task<Project?> FindProjectAsync(string projectId) =>
-        (await projects.LoadAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
+    internal const string Refusal = "This cockpit runs without its project dialogs, and composing a project goes through them.";
 
     public Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
         string sharedProjectId,
@@ -92,10 +81,4 @@ internal sealed class StoreProjectEditor(IProjectStore projects, ISharedProjectS
         string? defaultProfileLabel,
         CancellationToken cancellationToken) =>
         Task.FromResult<(Project?, string?)>((null, Refusal));
-
-    public Task<Project> AddBoundProjectAsync(Project project) => Task.FromException<Project>(new InvalidOperationException(Refusal));
-
-    public Task<Project> AddNewProjectAsync(Project project) => Task.FromException<Project>(new InvalidOperationException(Refusal));
-
-    public Task<Project?> UpdateStoredProjectAsync(Project project) => Task.FromException<Project?>(new InvalidOperationException(Refusal));
 }

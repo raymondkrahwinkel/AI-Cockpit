@@ -2,11 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
-using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -26,7 +24,7 @@ public class ProjectRowActionsTests
             store.LoadAsync(Arg.Any<CancellationToken>())
                 .Returns(ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with { DefaultProfileLabel = "personal" }));
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs);
+            var projects = TestProjects.ViewModel(store, dialogs);
             await projects.LoadAsync();
 
             var dialog = new ProjectsDialog { DataContext = projects };
@@ -40,7 +38,7 @@ public class ProjectRowActionsTests
                 Control.DoubleTappedEvent, start, null!, start, default, 0, default, default)));
 
             // The editor is the one thing a double-click on the row itself does; from a button it must do nothing.
-            await dialogs.DidNotReceive().ShowProjectDialogAsync(Arg.Any<Project?>(), Arg.Any<ISharedProjectSource?>());
+            await dialogs.DidNotReceive().ShowProjectDialogAsync(Arg.Any<Project?>(), Arg.Any<string?>());
 
             dialog.Close();
         });

@@ -32,7 +32,6 @@ using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Hosting;
-using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -433,17 +432,6 @@ public partial class App : Application
 
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
-
-        // AC-894: "Sync now" and the badge are the Projects page's, so the desktop hands the Depot watcher its project
-        // list before the backend starts it. Marshalled: `Projects` is UI-owned state, and the tick that reads and
-        // reports it runs on a threadpool thread rather than the UI thread.
-        if (Program.Services.GetService<DepotSyncWatcher>() is { } depotSyncWatcher)
-        {
-            depotSyncWatcher.BoundProjects = () => UiThreadCall.Run(() => cockpitViewModel.Projects.DepotBoundProjects());
-            depotSyncWatcher.OnChecked = (projectId, changed, logoBytes) =>
-                UiThreadCall.RunAsync(() => cockpitViewModel.Projects.SetRemoteChangeState(projectId, changed, logoBytes));
-            cockpitViewModel.Projects.SyncNow = project => depotSyncWatcher.SyncNowAsync(project.Id);
-        }
 
         // AC-1381: the planners the backend owns (AC-1380), started at the moment they always were: after the startup
         // reconcile Program ran, and ahead of the session restore below.

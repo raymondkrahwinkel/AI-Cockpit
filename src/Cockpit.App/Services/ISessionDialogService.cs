@@ -42,24 +42,25 @@ public interface ISessionDialogService
 
     /// <summary>
     /// Shows the project editor (AC-160) for <paramref name="project"/>, or a new one when null; returns what was
-    /// saved, or null if cancelled (persisting is the caller's). <paramref name="sharedSource"/> (AC-247), when
-    /// set, reads a fresh <see cref="SharedProjectBinding"/> first so Save writes a claimed field back correctly.
+    /// saved, or null if cancelled (persisting is the caller's). The source under <paramref name="sharedSourceKey"/> (AC-247),
+    /// when set, reads a fresh <see cref="SharedProjectBinding"/> first so Save writes a claimed field back correctly.
     /// </summary>
-    Task<Project?> ShowProjectDialogAsync(Project? project, ISharedProjectSource? sharedSource = null);
+    Task<Project?> ShowProjectDialogAsync(Project? project, string? sharedSourceKey = null);
 
     /// <summary>
-    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, not yet bound on this
-    /// machine. Reads the full definition through <paramref name="source"/> first; returns null both on cancel and
-    /// on a failed read (shown as an error either way). Persisting the result is the caller's.
+    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProjectId"/>, not yet bound on this
+    /// machine. Reads the full definition through the source under <paramref name="sourceKey"/> first; returns null both
+    /// on cancel and on a failed read (shown as an error either way). Persisting the result is the caller's.
     /// </summary>
-    Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source);
+    Task<Project?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey);
 
     /// <summary>
     /// Shows AC-620's confirmation screen for publishing <paramref name="project"/> — a local project not yet bound
-    /// — to one of <paramref name="publishSources"/> (registered sources with <see cref="ISharedProjectSource.CanPublish"/>).
-    /// Returns <paramref name="project"/> with its new binding row on success, or null when cancelled.
+    /// — to one of the sources under <paramref name="publishSourceKeys"/> (registered sources with
+    /// <see cref="ISharedProjectSource.CanPublish"/>). Returns <paramref name="project"/> with its new binding row on
+    /// success, or null when cancelled.
     /// </summary>
-    Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources);
+    Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<string> publishSourceKeys);
 
     /// <summary>
     /// Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.

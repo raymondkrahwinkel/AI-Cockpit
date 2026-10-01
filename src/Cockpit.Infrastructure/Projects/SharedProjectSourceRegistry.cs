@@ -10,21 +10,39 @@ internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry
 {
     private readonly Dictionary<string, ISharedProjectSource> _sources = new(StringComparer.Ordinal);
 
-    public IReadOnlyList<ISharedProjectSource> Sources => [.. _sources.Values];
+    // AC-1435: read off the UI thread by the project catalog and the assistant, while plugin screens register on it.
+    public IReadOnlyList<ISharedProjectSource> Sources
+    {
+        get
+        {
+            lock (_sources)
+            {
+                return [.. _sources.Values];
+            }
+        }
+    }
 
     public event Action<ISharedProjectSource>? Registered;
 
     public bool Register(ISharedProjectSource source)
     {
-        if (string.IsNullOrWhiteSpace(source.Key) || _sources.ContainsKey(source.Key))
+        lock (_sources)
         {
-            return false;
+            if (string.IsNullOrWhiteSpace(source.Key) || !_sources.TryAdd(source.Key, source))
+            {
+                return false;
+            }
         }
 
-        _sources.Add(source.Key, source);
         Registered?.Invoke(source);
         return true;
     }
 
-    public void Remove(string key) => _sources.Remove(key);
+    public void Remove(string key)
+    {
+        lock (_sources)
+        {
+            _sources.Remove(key);
+        }
+    }
 }

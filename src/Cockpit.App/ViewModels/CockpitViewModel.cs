@@ -5812,11 +5812,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task ShareProjectAsync(Project? project) =>
         project is null ? Task.CompletedTask : Projects.ToggleSharingAsync(project);
 
-    // AC-894: the ⋯ menu's own "Sync now" — one immediate `DepotSyncWatcher` check for this project, outside its
-    // 15-minute timer. `Projects.SyncNow` is null under the previewer and until `App.axaml.cs` wires the watcher.
+    // AC-894: the ⋯ menu's own "Sync now" — one immediate Depot check for this project, outside the watcher's
+    // 15-minute timer. Inert under the previewer, whose projects have no Depot to ask.
     [RelayCommand]
     private Task SyncProjectNowAsync(Project? project) =>
-        project is null || Projects.SyncNow is null ? Task.CompletedTask : Projects.SyncNow(project);
+        project is null ? Task.CompletedTask : Projects.SyncNowAsync(project);
 
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording the result on
     // the panel so the context-menu Duplicate can replay it (AC-96, AC-545, AC-719).

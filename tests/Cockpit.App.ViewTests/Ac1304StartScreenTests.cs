@@ -90,7 +90,7 @@ public sealed class Ac1304StartScreenTests
             store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [invoices] });
 
             var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = new ProjectsViewModel(store, dialogs);
+            var projects = TestProjects.ViewModel(store, dialogs);
             projects.LoadAsync().GetAwaiter().GetResult();
 
             var cockpit = _Cockpit(dialogs, projects);

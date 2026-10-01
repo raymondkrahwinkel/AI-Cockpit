@@ -105,7 +105,8 @@ public class AssistantUpdateProjectTests
         var store = Substitute.For<IProjectStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? ProjectSettings.Empty);
 
-        var projects = new ProjectsViewModel(store, dialogs: null);
+        var catalog = TestProjects.Catalog(store);
+        var projects = TestProjects.ViewModel(catalog, dialogs: null);
         Dispatcher.UIThread.Invoke(() => projects.LoadAsync()).GetAwaiter().GetResult();
 
         var sessions = new SessionRegistry();
@@ -121,7 +122,8 @@ public class AssistantUpdateProjectTests
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
             Substitute.For<IAssistantSessionHost>(),
             mcpServerCatalog: _McpCatalog(),
-            projectFields: new ProjectFieldRegistry()));
+            projectFields: new ProjectFieldRegistry(),
+            projects: catalog));
 
         return (gateway, projects, store);
     }

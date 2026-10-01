@@ -421,7 +421,7 @@ public sealed class CockpitBackend
                 provider.GetService<ISessionTranscriptStore>(),
                 provider.GetService<IWorktreeManager>());
         });
-        services.AddSingleton<IProjectEditor, StoreProjectEditor>();
+        services.AddSingleton<IProjectComposer, NoProjectComposer>();
         services.AddSingleton<IAssistantConversation, HostAssistantConversation>();
         services.AddSingleton<IExternalLinkOpener, NoBrowserLinkOpener>();
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();
