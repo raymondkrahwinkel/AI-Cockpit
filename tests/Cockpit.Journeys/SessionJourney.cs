@@ -12,9 +12,9 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the composer sends, and the provider's answer is a row in that pane, with the
-    // status going busy and then done around it (AC-1437). A turn that fails offers Retry on its row (AC-728), which
-    // the pane can only do once that row came in from the event log (AC-1438).
+    // J2: the dialog opens the pane, the composer sends, the answer is a row in that pane, busy then done (AC-1437).
+    // Stop breaks a turn off through the session control, not drawn as a failure (AC-1031, AC-1449). A failed turn
+    // offers Retry on its row (AC-728), which the pane can only do once that row came in from the event log (AC-1438).
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
@@ -25,6 +25,8 @@ public sealed class SessionJourney
         var session = await cockpit.StartSessionThroughTheDialogAsync(project);
         var statuses = new List<SessionStatus>();
         TranscriptEntryViewModel? failed = null;
+        string? afterStop = null;
+        var failedAfterStop = true;
         await HeadlessAvalonia.RunAsync(async () =>
         {
             session.PropertyChanged += (_, change) =>
@@ -39,6 +41,13 @@ public sealed class SessionJourney
             await Until.CollectionHolds(session.Transcript, () => session.Transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text == "echo: hello"));
             await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
 
+            session.InputText = EchoDriver.WaitingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await session.StopCommand.ExecuteAsync(null);
+            afterStop = session.Status;
+            await Until.Holds(session, () => !session.IsBusy);
+            failedAfterStop = session.Transcript.Any(row => row.IsFailedTurnRow);
+
             session.InputText = EchoDriver.FailingPrompt;
             await session.SendCommand.ExecuteAsync(null);
             await Until.Holds(session, () => (failed = session.Transcript.LastOrDefault(row => row.IsFailedTurnRow))?.ActionLabel == "Retry");
@@ -46,6 +55,8 @@ public sealed class SessionJourney
 
         Assert.Equal(JourneyHost.EchoProfile, cockpit.Driver.Profile?.Label);
         Assert.Equal([SessionStatus.Busy, SessionStatus.Done], statuses.Take(2));
+        Assert.Equal("Interrupted.", afterStop);
+        Assert.False(failedAfterStop);
         Assert.NotNull(failed);
         Assert.Contains(session, HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList()));
     }

@@ -602,6 +602,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a desktop session pane now steers its session — start and stop, Stop, the model, permission-mode and effort
+  switches, the permission buttons and the send queue — through one session control rather than reaching into the
+  session's runtime itself, the step that lets a pane later steer a session that runs elsewhere. Nothing changes in
+  how a pane looks or behaves.
 - changed: a desktop session pane now draws its conversation from the same event stream the backend API serves, and
   the rows on that stream carry everything a pane needs to draw them — a permission prompt still waiting, how a long
   reply was split, an output that was cut short — so a client reading the stream sees the transcript the desktop shows.

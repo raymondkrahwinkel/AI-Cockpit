@@ -21,8 +21,10 @@ public sealed class FrontendBoundaryTests
         .Concat(typeof(SessionEvent).Assembly.GetTypes()
             .Where(type => type.IsSubclassOf(typeof(SessionEvent)))
             .Select(type => type.Name));
+        // AC-1449: a member that shares an event's name (`TranscriptEntryKind.TurnCompleted`) is no dependency on it;
+        // a name qualified by its namespace (`Core.Sessions.SessionError`) still is.
         var forbiddenReference = new Regex(
-            $@"\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b|\bSessionHost\s*<",
+            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b|\bSessionHost\b",
             RegexOptions.CultureInvariant);
         var infrastructureUsing = new Regex(
             @"^\s*using\s+Cockpit\.Infrastructure(?:[.;])",

@@ -27,6 +27,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -124,7 +125,7 @@ public sealed class AssistantFailedStartLoopTests
                 throw new InvalidOperationException("the assistant is being started in a loop");
             }
 
-            return new SessionViewModel(new SessionManager(factory));
+            return TestSessions.Pane(new SessionManager(factory));
         }, panels);
         stand.Cockpit = cockpit;
         stand.Panels = panels;

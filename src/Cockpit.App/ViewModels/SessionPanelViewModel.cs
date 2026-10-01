@@ -12,6 +12,7 @@ using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -1323,7 +1324,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public IReadOnlyList<SessionImageAttachment> CurrentTurnImages => _currentTurnImages;
 
     // Records the images the just-sent message carried as this turn's images (AC-116).
-    protected void SetCurrentTurnImages(IReadOnlyList<SessionImageAttachment> images) => _currentTurnImages = images;
+    protected void SetCurrentTurnImages(IReadOnlyList<ImageAttachment> images) => _currentTurnImages = SessionImageAttachments.From(images);
 
     // Drops the current turn's images (AC-116) — called when the turn completes, so a later image-less turn attaches nothing.
     protected void ClearCurrentTurnImages() => _currentTurnImages = [];

@@ -8,6 +8,7 @@ using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -228,12 +229,10 @@ public class WorkspaceAgentGatewayWakeTests
             var from = new TtyViewModel();
             // Wired for delivery but never started. Its send path accepts a turn and hands back a completed task
             // with nothing having gone anywhere, so only the readiness check separates this from a false wake.
-            var to = new SessionViewModel(
+            var to = TestSessions.Pane(
                 Substitute.For<ISessionManager>(),
-                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>())
-            {
-                SessionStatus = SessionStatus.Idle,
-            };
+                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
+            to.SessionStatus = SessionStatus.Idle;
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (registry, from, to);
@@ -254,13 +253,11 @@ public class WorkspaceAgentGatewayWakeTests
             var registry = new SessionRegistry();
             var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel();
-            var to = new SessionViewModel(
+            var to = TestSessions.Pane(
                 Substitute.For<ISessionManager>(),
-                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>())
-            {
-                SessionStatus = SessionStatus.Idle,
-                TurnsHeldBecause = "a paired controller is driving this session",
-            };
+                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
+            to.SessionStatus = SessionStatus.Idle;
+            to.TurnsHeldBecause = "a paired controller is driving this session";
             vm.Sessions.Add(from);
             vm.Sessions.Add(to);
             return (registry, from, to);

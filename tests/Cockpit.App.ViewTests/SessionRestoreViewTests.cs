@@ -20,6 +20,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -559,7 +560,7 @@ public class SessionRestoreViewTests
             workspaceStore,
             stateStore,
             new SessionRestorePlanner(profileStore),
-            sessionFactory: () => new SessionViewModel(new SessionManager(factory)));
+            sessionFactory: () => TestSessions.Pane(new SessionManager(factory)));
 
         await vm.Workspaces.InitializeAsync();
         await vm.RestoreSessionPanesAsync();
@@ -691,7 +692,7 @@ public class SessionRestoreViewTests
             stateStore,
             new SessionRestorePlanner(profileStore),
             worktreeManager: worktreeManager,
-            sessionFactory: () => new SessionViewModel(new SessionManager(factory), transcriptStore: transcriptStore));
+            sessionFactory: () => TestSessions.Pane(new SessionManager(factory), transcriptStore: transcriptStore));
 
         await vm.Workspaces.InitializeAsync();
         await vm.RestoreSessionPanesAsync();

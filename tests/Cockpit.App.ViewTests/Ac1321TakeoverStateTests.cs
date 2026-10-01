@@ -13,6 +13,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -228,7 +229,7 @@ public class Ac1321TakeoverStateTests
     {
         var factory = Substitute.For<ISessionDriverFactory>();
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-        var session = new SessionViewModel(new SessionManager(factory));
+        var session = TestSessions.Pane(new SessionManager(factory));
         await session.StartConfiguredAsync(
             new SessionProfile("assistant-local", new ClaudeConfig("/tmp/claude")),
             SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);

@@ -30,8 +30,8 @@ public partial class SessionViewModel : IAssistantSession
 
     event Action<TranscriptRowUpsert>? IAssistantSession.RowUpserted
     {
-        add => _host.RowUpserted += value;
-        remove => _host.RowUpserted -= value;
+        add => _control.RowUpserted += value;
+        remove => _control.RowUpserted -= value;
     }
 
     // Read on the UI thread, capped like the gateway's own hop was (AC-1138): a channel can open from an MCP request thread.

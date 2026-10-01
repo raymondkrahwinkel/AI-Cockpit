@@ -19,7 +19,6 @@ ViewModels/QuickNoteViewModel.cs
 ViewModels/SecurityOptionsViewModel.cs
 ViewModels/SessionPanelViewModel.cs
 ViewModels/SessionProviderCatalog.cs
-ViewModels/SessionViewModel.cs
 ViewModels/TranscriptEntryViewModel.cs
 Views/FilePreviewWindow.axaml.cs
 Views/Onboarding/AssistantStep.cs

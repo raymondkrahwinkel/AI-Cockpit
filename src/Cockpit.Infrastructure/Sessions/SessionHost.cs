@@ -1,9 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -59,8 +62,8 @@ public readonly record struct SessionHostEvent(long Seq, SessionEvent Event);
 
 // AC-1376/1438: one SDK session's backend half: runtime, turn gate and queue, the send funnel, the clocks, and the one
 // consumer of its runtime's events. Members run on the consumer's thread (`PumpOn`) and awaits resume there (no
-// ConfigureAwait(false)); only the timer events arrive on the thread pool.
-public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDisposable
+// ConfigureAwait(false)); only the timer events arrive on the thread pool. AC-1449: the desktop pane's control.
+public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISessionControl
 {
     // Same as `ClaudeLoginStatus.MaxAge`: a tick mostly re-reads a cache another poll already refreshed (AC-713).
     public static readonly TimeSpan LoginPollInterval = TimeSpan.FromMinutes(1);
@@ -81,6 +84,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISharedUsageCache? _sharedUsageCache;
     private readonly ILogger? _logger;
+    private readonly SessionStateRecorder? _stateRecorder;
 
     // AC-1090: Cockpit's own copy of the conversation, written from here so a session without a view has one too.
     private readonly ISessionTranscriptStore? _transcriptStore;
@@ -115,7 +119,8 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
         IProfileLoginChecker? loginChecker = null,
         ISharedUsageCache? sharedUsageCache = null,
         ILogger? logger = null,
-        ISessionTranscriptStore? transcriptStore = null)
+        ISessionTranscriptStore? transcriptStore = null,
+        SessionStateRecorder? stateRecorder = null)
     {
         _paneId = paneId;
         _manager = manager;
@@ -125,6 +130,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
         _sharedUsageCache = sharedUsageCache;
         _logger = logger;
         _transcriptStore = transcriptStore;
+        _stateRecorder = stateRecorder;
         _transcript = new SessionTranscriptBuilder(time, TryAutoAllow, () => InterruptRequested, _OnRowChanged);
         _deliver = Pump;
     }
@@ -178,8 +184,26 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
     // Whether this host can launch at all; the design-time graph builds one without a manager.
     public bool CanLaunch => _manager is not null;
 
+    public bool IsAttached => Runtime is not null;
+
+    public bool IsRunning => Runtime is { IsRunning: true };
+
     // Mutated on the consumer's thread only; the desktop pane mirrors it into its chips.
     public ObservableCollection<QueuedPrompt> Queue { get; } = [];
+
+    IReadOnlyList<QueuedPrompt> ISessionControl.Queue => Queue;
+
+    public event NotifyCollectionChangedEventHandler? QueueChanged
+    {
+        add => Queue.CollectionChanged += value;
+        remove => Queue.CollectionChanged -= value;
+    }
+
+    public void Enqueue(QueuedPrompt prompt) => Queue.Add(prompt);
+
+    public bool Withdraw(QueuedPrompt prompt) => Queue.Remove(prompt);
+
+    public void ClearQueue() => Queue.Clear();
 
     // AC-935: the text a prompt leaves with, read when it leaves rather than when it was queued; a consumer that sends
     // more than it shows, such as a reply's citation, says so here.
@@ -243,7 +267,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
 
     // AC-1378: the one start both the desktop pane and the backend launcher run, in the order the pane always ran it.
     // Null when this host cannot launch; a launch that throws leaves the attached runtime in `Runtime`.
-    public async Task<ISessionRuntime?> StartAsync(SessionStart start)
+    public async Task<SessionLaunched?> StartAsync(SessionStart start)
     {
         if (start.Profile is { } profile)
         {
@@ -251,7 +275,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
         }
 
         PreApprove(start.PreApprovedTools, start.PreApproveAllTools);
-        var launchOptions = SessionStart.WithPaneId(start.LaunchOptions, _paneId());
+        var launchOptions = _WithPaneId(start.LaunchOptions, _paneId());
         if (!CanLaunch)
         {
             return null;
@@ -263,7 +287,17 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
             start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
             launchOptions, start.ProjectId);
         StartUsageCatchUp();
-        return runtime;
+        return new SessionLaunched(runtime.IsRunning, runtime.ProcessId, runtime.Capabilities, runtime.LiveOptions);
+    }
+
+    // AC-13: the pane's own id rides along, which the provider's plugin turns into COCKPIT_PANE_ID for `set_status`.
+    private static IReadOnlyDictionary<string, string> _WithPaneId(IReadOnlyDictionary<string, string>? launchOptions, string paneId)
+    {
+        var merged = launchOptions is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(launchOptions, StringComparer.OrdinalIgnoreCase);
+        merged[WellKnownPluginSessionOptions.PaneId] = paneId;
+        return merged;
     }
 
     // Creates the runtime and starts listening to it; the caller starts it.
@@ -615,6 +649,44 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, IAsyncDi
         _ = _transcriptStore?.AppendAsync(_paneId(), row, CancellationToken.None);
         RowUpserted?.Invoke(new TranscriptRowUpsert(SessionEventSequence.Next(), version, row));
     }
+
+    // AC-1031: marked only once the interrupt went through, so a failed one leaves the turn's failure drawn as one.
+    public async Task InterruptAsync()
+    {
+        if (Runtime is { } runtime)
+        {
+            await runtime.InterruptAsync();
+            InterruptRequested = true;
+        }
+    }
+
+    // AC-409: recorded only once the switch took; recording a failed one would have a restart bring back a mode this
+    // session never ran under.
+    public async Task SetPermissionModeAsync(string mode)
+    {
+        if (Runtime is { } runtime)
+        {
+            await runtime.SetPermissionModeAsync(mode);
+            _ = _stateRecorder?.RecordPermissionModeChangedAsync(_paneId(), mode);
+        }
+    }
+
+    public Task SetModelAsync(string? model) => Runtime?.SetModelAsync(model) ?? Task.CompletedTask;
+
+    public Task SetMaxThinkingTokensAsync(int maxThinkingTokens) =>
+        Runtime?.SetMaxThinkingTokensAsync(maxThinkingTokens) ?? Task.CompletedTask;
+
+    public Task SetLiveOptionAsync(string key, string value) => Runtime?.SetLiveOptionAsync(key, value) ?? Task.CompletedTask;
+
+    public Task SetAutoApproveToolsAsync(bool autoApprove) => Runtime?.SetAutoApproveToolsAsync(autoApprove) ?? Task.CompletedTask;
+
+    public Task CompactContextAsync() => Runtime?.CompactContextAsync() ?? Task.CompletedTask;
+
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson) =>
+        Runtime?.RespondToPermissionAsync(toolUseId, allow, answersJson, CancellationToken.None) ?? Task.CompletedTask;
+
+    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope) =>
+        Runtime?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope) ?? Task.CompletedTask;
 
     // AC-215: the tools a self-driving run allows without asking, since it has no one to answer a prompt.
     public void PreApprove(IReadOnlyList<string>? tools, bool allTools)
