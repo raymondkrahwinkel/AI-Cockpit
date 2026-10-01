@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -191,7 +192,7 @@ public class AssistantChatComposerTests
         driver.Events.Returns(_EmptyEvents());
         var factory = Substitute.For<ISessionDriverFactory>();
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-        var session = new SessionViewModel(new SessionManager(factory));
+        var session = TestSessions.Pane(new SessionManager(factory));
         await session.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 

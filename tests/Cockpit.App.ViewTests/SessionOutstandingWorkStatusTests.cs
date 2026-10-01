@@ -1,7 +1,9 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewTests;
 
@@ -31,8 +33,12 @@ public class SessionOutstandingWorkStatusTests
 
     // The Claude SDK driver as the host sees it: it keeps its own input queue (AC-739), which is the one capability
     // that lets a turn the host never sent exist. A driver without it never starts a turn by itself (AC-1319).
-    private static SessionViewModel _ClaudeSdkSession() =>
-        new(Substitute.For<ISessionManager>()) { Capabilities = SessionCapabilities.ClaudeCli with { SupportsMidTurnInput = true } };
+    private static SessionViewModel _ClaudeSdkSession()
+    {
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
+        session.Capabilities = SessionCapabilities.ClaudeCli with { SupportsMidTurnInput = true };
+        return session;
+    }
 
     [Fact]
     public void ATurnEndingWhileASubAgentRuns_ReadsAsWorkingBackground_NotDone() => HeadlessAvalonia.Run(() =>
@@ -231,7 +237,7 @@ public class SessionOutstandingWorkStatusTests
     [Fact]
     public void AStrayDeltaFromADriverWithoutMidTurnInput_LeavesAFinishedSessionDone() => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
         session.IsBusy = true;
         session.Apply(Turn());
 

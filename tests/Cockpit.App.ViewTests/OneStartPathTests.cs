@@ -24,6 +24,7 @@ using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -99,7 +100,7 @@ public class OneStartPathTests
                 SessionOptionCatalog.DefaultEffort, "one"));
 
         var registry = new SessionRegistry();
-        var cockpit = _Cockpit(() => new SessionViewModel(manager, loginChecker: loginChecker, timeProvider: time), dialogs, registry);
+        var cockpit = _Cockpit(() => TestSessions.Pane(manager, loginChecker: loginChecker, timeProvider: time), dialogs, registry);
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
         cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id };
 

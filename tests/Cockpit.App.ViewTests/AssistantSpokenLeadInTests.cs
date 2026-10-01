@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Voice;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -75,12 +76,12 @@ public class AssistantSpokenLeadInTests
     }
 
     private static SessionViewModel _Session(IVoicePlaybackQueue queue, bool readAloud) =>
-        Dispatcher.UIThread.Invoke(() => new SessionViewModel(
-            Substitute.For<ISessionManager>(),
-            voicePlaybackQueue: queue)
+        Dispatcher.UIThread.Invoke(() =>
         {
-            ReadResponsesAloud = readAloud,
-            ReadAloudLanguage = "nl",
+            var session = TestSessions.Pane(Substitute.For<ISessionManager>(), voicePlaybackQueue: queue);
+            session.ReadResponsesAloud = readAloud;
+            session.ReadAloudLanguage = "nl";
+            return session;
         });
 
     private sealed class RecordingPlaybackQueue : IVoicePlaybackQueue

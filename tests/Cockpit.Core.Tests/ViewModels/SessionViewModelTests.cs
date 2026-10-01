@@ -5,8 +5,10 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -26,7 +28,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -44,7 +46,7 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -60,7 +62,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -82,7 +84,7 @@ public class SessionViewModelTests
             "ollama",
             new OllamaConfig("http://localhost:11434", "llama3.1"),
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -104,7 +106,7 @@ public class SessionViewModelTests
         var localProfile = new SessionProfile(
             "ollama",
             new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -178,7 +180,7 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
         var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
             preApprovedTools: [preApproved]);
@@ -205,7 +207,7 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
         var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
             preApprovedTools: ["mcp__cockpit-autopilot-run__autopilot_step_done"]);
@@ -230,7 +232,7 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
         var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
             preApprovedTools: null, preApproveAllTools: true);
@@ -289,7 +291,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        return new SessionViewModel(new SessionManager(FactoryFor(session)));
+        return TestSessions.Pane(new SessionManager(FactoryFor(session)));
     }
 
     private sealed class ThrowingLogger : ILogger<SessionViewModel>
@@ -306,7 +308,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         return (vm, session);

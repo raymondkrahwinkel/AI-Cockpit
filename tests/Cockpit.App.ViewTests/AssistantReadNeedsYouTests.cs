@@ -9,7 +9,9 @@ using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewTests;
 
@@ -69,7 +71,7 @@ public class AssistantReadNeedsYouTests
             var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             // The parameterless constructor is the previewer's — it seeds sample transcript rows, including one
             // with IsPendingPermission set, which would make this assertion meaningless either way.
-            var sdk = new SessionViewModel(Substitute.For<ISessionManager>());
+            var sdk = TestSessions.Pane(Substitute.For<ISessionManager>());
             sdk.Apply(new SessionStatusChanged { SessionId = "s1", NeedsAction = "needs_action" });
             cockpit.Sessions.Add(sdk);
             return (_Gateway(sessions), sdk);

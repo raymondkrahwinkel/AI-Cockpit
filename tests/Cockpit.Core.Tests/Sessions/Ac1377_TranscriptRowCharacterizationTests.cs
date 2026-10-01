@@ -4,6 +4,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -28,7 +29,7 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
     public async Task TheFixedStream_FormsTheseRows_AndRestoresThemFromWhatItWrote()
     {
         var log = _Log();
-        var vm = new SessionViewModel(Substitute.For<ISessionManager>(), transcriptStore: log);
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>(), transcriptStore: log);
 
         _Play(vm);
         var ids = _Flatten(vm.Transcript).Select(row => row.Id).ToList();
@@ -48,7 +49,7 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
     public async Task TheLogWrittenNow_IsTheLogMainWrote_AndMainsLogStillRestoresToTheSameRows()
     {
         var log = _Log();
-        var vm = new SessionViewModel(Substitute.For<ISessionManager>(), transcriptStore: log);
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>(), transcriptStore: log);
         _Play(vm);
         await log.DisposeAsync();
         var main = Path.Combine(AppContext.BaseDirectory, "Sessions", "Fixtures", "ac1377-main-format.jsonl");

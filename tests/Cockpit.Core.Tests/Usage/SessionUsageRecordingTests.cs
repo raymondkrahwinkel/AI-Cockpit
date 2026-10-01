@@ -7,6 +7,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Usage;
 using Cockpit.Tests.Shared;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.Usage;
 
@@ -41,7 +42,7 @@ public class SessionUsageRecordingTests
     }
 
     private static SessionViewModel _Session(IUsageHistory history) =>
-        new(Substitute.For<ISessionManager>(), usageHistory: history);
+        TestSessions.Pane(Substitute.For<ISessionManager>(), usageHistory: history);
 
     private static async IAsyncEnumerable<SessionEvent> _NoEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -68,7 +69,7 @@ public class SessionUsageRecordingTests
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_NoEvents());
         var profile = new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude"));
-        var vm = new SessionViewModel(new SessionManager(_FactoryFor(driver)));
+        var vm = TestSessions.Pane(new SessionManager(_FactoryFor(driver)));
 
         await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -211,7 +212,7 @@ public class SessionUsageRecordingTests
     public void ASessionWithNoTrail_StillKeepsItsMeter()
     {
         // The design-time and test graphs have no usage history; the header must not lose its meter over it.
-        var session = new SessionViewModel(Substitute.For<ISessionManager>());
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
 
         session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 

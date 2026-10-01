@@ -19,7 +19,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Usage;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
@@ -30,12 +29,9 @@ namespace Cockpit.App.ViewModels;
 // read-only-so-far allow/deny affordances for tool use.
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
-    // AC-1376: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This view
-    // model draws what it reports and hands it what the operator does.
-    private readonly SessionHost _host;
-
-    // AC-409: written on a live permission-mode switch (see `OnSelectedPermissionModeChanged`). Null in the design-time/unit-test graph, where the switch simply is not persisted.
-    private readonly SessionStateRecorder? _sessionStateRecorder;
+    // AC-1376/1449: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This
+    // view model draws what it reports and hands it what the operator does.
+    private readonly ISessionControl _control;
 
     // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
     // straight back would append a second version of every row on every restart.
@@ -80,10 +76,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // The session id the CLI reports on its events, which is what it names its transcript file.
     private string? _cliSessionId;
-
-    // The session itself — driver, event pump, lifetime — lives in the runtime (#68), which the host creates once the
-    // profile is known and the manager owns. This panel is one of its consumers, not its owner.
-    private ISessionRuntime? _Runtime => _host.Runtime;
 
     // The offer this pane was restored with, captured at the top of `StartConfiguredAsync` when it is still set
     // (AC-410).
@@ -407,7 +399,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public bool HasTranscript => Transcript.Count > 0;
 
     // Gates the empty-state's "type to start" prompt so it only invites input once the session is actually ready.
-    public virtual bool IsSessionReady => _Runtime is { IsRunning: true };
+    public virtual bool IsSessionReady => _control.IsRunning;
 
     // The headless route is the one with no `/clear` of its own, so this is where the action belongs (AC-564).
     public override bool SupportsClearContext => true;
@@ -477,8 +469,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the turn completes (AC-145), instead of one-per-turn.
     public bool CombineQueuedMessages
     {
-        get => _host.CombineQueued;
-        set => _host.CombineQueued = value;
+        get => _control.CombineQueued;
+        set => _control.CombineQueued = value;
     }
 
     // True when there is text or an image to act on, so Send is enabled exactly when it will do
@@ -550,8 +542,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The host's turn-in-flight flag; its change notifications are raised from `_OnHostBusyChanged`.
     public bool IsBusy
     {
-        get => _host.IsBusy;
-        set => _host.IsBusy = value;
+        get => _control.IsBusy;
+        set => _control.IsBusy = value;
     }
 
 
@@ -931,7 +923,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         if (!_replayingRecordedTranscript && !_applyingHostRow)
         {
-            _host.RecordRow(TranscriptSnapshot.Capture(entry));
+            _control.RecordRow(TranscriptSnapshot.Capture(entry));
         }
     }
 
@@ -947,12 +939,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // difference, is the restore path's call, not this one's.
     public async Task ReplayRecordedTranscriptAsync(CancellationToken cancellationToken = default)
     {
-        if (!_host.RecordsTranscript)
+        if (!_control.RecordsTranscript)
         {
             return;
         }
 
-        var recorded = await _host.LoadRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
+        var recorded = await _control.LoadRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
         if (recorded is null)
         {
             // AC-1080: the session still starts, so without this row the operator faces an empty window that looks
@@ -974,7 +966,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             // AC-1377: the host holds what was repainted, not the raw log — a row this build skipped, or one the log
             // left waiting on a prompt, must not come back the moment the host next touches it.
-            _host.SeedTranscript([.. restored.Select(TranscriptSnapshot.Capture)]);
+            _control.SeedTranscript([.. restored.Select(TranscriptSnapshot.Capture)]);
         }
         finally
         {
@@ -985,7 +977,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1090: rolls this pane's recorded conversation aside, for a launch that starts a new one rather than
     // continuing this one — a new conversation is a new log.
     public Task ArchiveRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
-        _host.ArchiveRecordedTranscriptAsync(cancellationToken);
+        _control.ArchiveRecordedTranscriptAsync(cancellationToken);
 
     // Searched from the end: the row a permission lands on is the turn's newest, so this stops within a few rows
     // rather than walking a transcript that grows all session. -1 for a row already dropped from the transcript.
@@ -1125,7 +1117,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
-        _host = _BuildHost(sessionManager: null, turnInboxDelivery: null, loginChecker: null, sharedUsageCache: null, logger: null, transcriptStore: null, TimeProvider.System);
+        _control = _BindControl(SessionControls.DesignTime);
         _rowFeed = _FollowRows(eventLog: null, logger: null);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
@@ -1186,39 +1178,34 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _TrackPendingAttachments();
 
         // A sample queued message so the previewer/Screenshotter render the send-queue strip (T8).
-        _host.Queue.Add(new QueuedPrompt("run the tests once the build finishes", []));
+        _control.Enqueue(new QueuedPrompt("run the tests once the build finishes", []));
     }
 
     public SessionViewModel(
-        ISessionManager sessionManager,
+        ISessionControlFactory sessionControls,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
-        SessionStateRecorder? sessionStateRecorder = null,
-        ISessionTranscriptStore? transcriptStore = null,
         IPluginProviderRegistry? pluginProviderRegistry = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
         IProfileLoginStarter? loginStarter = null,
         IMentionFileSource? mentionFileSource = null,
-        ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
-        TimeProvider? timeProvider = null,
         IBackendEventLog? eventLog = null)
         : base(usageHistory)
     {
         _transcriptReader = transcriptReader;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
-        // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the host writes it (AC-1377).
-        _host = _BuildHost(sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore, timeProvider ?? TimeProvider.System);
+        // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the control writes it (AC-1377, AC-1449).
+        _control = _BindControl(sessionControls);
 
         _rowFeed = _FollowRows(eventLog, logger);
         _turnInboxDelivery = turnInboxDelivery;
-        _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
@@ -1227,25 +1214,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
-        CloseRequested += (_, _) => _host.StopPolling();
+        CloseRequested += (_, _) => _control.StopPolling();
     }
 
-    // The host reports on the consumer's thread except for its clocks, which tick on the pool and are posted here.
-    private SessionHost _BuildHost(
-        ISessionManager? sessionManager,
-        IAgentTurnInboxDelivery? turnInboxDelivery,
-        IProfileLoginChecker? loginChecker,
-        ISharedUsageCache? sharedUsageCache,
-        ILogger? logger,
-        ISessionTranscriptStore? transcriptStore,
-        TimeProvider time)
+    // The control reports on the consumer's thread except for its clocks, which tick on the pool and are posted here.
+    private ISessionControl _BindControl(ISessionControlFactory controls)
     {
-        var host = new SessionHost(
-            () => PaneId, sessionManager, time, turnInboxDelivery, loginChecker, sharedUsageCache, logger, transcriptStore)
-        {
-            Capabilities = Capabilities,
-            OutgoingText = prompt => BuildOutgoingText(prompt.Text, _RowOf(prompt.ReplyToRowId)),
-        };
+        var host = controls.Create(() => PaneId);
+        host.Capabilities = Capabilities;
+        host.OutgoingText = prompt => BuildOutgoingText(prompt.Text, _RowOf(prompt.ReplyToRowId));
         // AC-1319: the host decides a mid-turn start on this pane's capabilities, which settle once the driver started.
         PropertyChanged += (_, args) =>
         {
@@ -1257,7 +1234,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-1438: the host folds its runtime's events itself, on this thread, a frame's worth at a time (AC-529).
         host.PumpOn(UiPost, UiPostAfterWindow);
         host.Folded += fold => _InOrder(() => _OnFolded(fold));
-        host.Queue.CollectionChanged += (_, change) => _MirrorQueue(change);
+        host.QueueChanged += (_, change) => _MirrorQueue(change);
         // AC-251: the session's working life starts with its runtime; whatever the launch waited on is setup, not work.
         host.Started += startedAt => _startedAt = startedAt;
         host.BusyChanged += _OnHostBusyChanged;
@@ -1290,12 +1267,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         if (eventLog is null)
         {
-            _host.RowUpserted += upsert => _DrawHostRow(upsert.Row);
+            _control.RowUpserted += upsert => _DrawHostRow(upsert.Row);
             return null;
         }
 
         return new SessionRowFeed(
-            eventLog, () => PaneId, () => _host.Rows, _DrawHostRow, _Resync, UiPost,
+            eventLog, () => PaneId, () => _control.Rows, _DrawHostRow, _Resync, UiPost,
             exception => logger?.LogError(exception, "The pane stopped reading its rows from the event log."));
     }
 
@@ -1316,7 +1293,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         if (AutoCloseOnExit && prompt.Text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
         {
-            _host.EndsAfterThisTurn = true;
+            _control.EndsAfterThisTurn = true;
         }
     }
 
@@ -1355,7 +1332,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             default:
                 QueuedMessages.Clear();
-                foreach (var prompt in _host.Queue)
+                foreach (var prompt in _control.Queue)
                 {
                     QueuedMessages.Add(_ChipFor(prompt));
                 }
@@ -1365,7 +1342,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     private QueuedMessageViewModel _ChipFor(QueuedPrompt prompt) =>
-        new(prompt, _RowOf(prompt.ReplyToRowId), chip => _host.Queue.Remove(chip.Prompt));
+        new(prompt, _RowOf(prompt.ReplyToRowId), chip => _control.Withdraw(chip.Prompt));
 
     // AC-935: the row a queued reply answers, while this pane still holds it.
     private TranscriptEntryViewModel? _RowOf(string? rowId) =>
@@ -1374,7 +1351,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // A DispatcherTimer stopped on close ticked no more; a pool tick posted just before the close still lands here.
     private void _WhilePolling(Action action)
     {
-        if (_host.IsPolling)
+        if (_control.IsPolling)
         {
             action();
         }
@@ -1405,15 +1382,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // controller holds the line. The hold itself, and sending what waited behind it, is the session host's.
     public string? TurnsHeldBecause
     {
-        get => _host.TurnsHeldBecause;
+        get => _control.TurnsHeldBecause;
         set
         {
-            if (_host.TurnsHeldBecause == value)
+            if (_control.TurnsHeldBecause == value)
             {
                 return;
             }
 
-            _host.TurnsHeldBecause = value;
+            _control.TurnsHeldBecause = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanTakeAPrompt));
         }
@@ -1450,7 +1427,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // this replaces the old in-panel Start button and inline profile picker.
     public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null, IReadOnlyList<string>? preApprovedTools = null, bool preApproveAllTools = false)
     {
-        if (_Runtime is not null)
+        if (_control.IsAttached)
         {
             return;
         }
@@ -1478,7 +1455,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // applies before resolving the registry), so a caller that passed none — but whose profile has one — is not
         // read back as "nothing" for the header.
         McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        _launchOptions = SessionStart.WithPaneId(launchOptions, PaneId);
+        _launchOptions = launchOptions;
 
         // AC-661: the same cap the runtime hands the OS, so the bar can warn on the approach to it.
         MemoryCapBytes = SessionMemoryCap.ResolveBytes(profile, _launchOptions);
@@ -1495,13 +1472,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // The runtime is left un-started when the CLI never came up. Unlock and reset the mode so a failed bypass
         // launch doesn't strand the panel on a phantom, disabled "Bypass permissions" with no session.
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             // AC-1239: the quieter half — StartAsync returned without throwing and nothing is running, which used to
             // leave Status reading "Session started." on a session that never did. A launch that threw already spoke.
             // Only with a runtime in hand: a null one means no launch was attempted (the design-time graph) or that a
             // teardown took it mid-start, and neither of those failed to start.
-            if (StartFailure is null && _Runtime is not null)
+            if (StartFailure is null && _control.IsAttached)
             {
                 StartFailure = "The provider returned without a running session.";
                 _logger?.LogWarning("A session under profile {Profile} is not running after its start.", profile?.Label ?? "(none)");
@@ -1531,7 +1508,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // (AC-564).
     public async Task ClearContextAsync(SessionProfile profile)
     {
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
@@ -1566,8 +1543,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             resume: null,
             _launchOptions,
             ReadingLevel,
-            [.. _host.PreApprovedTools],
-            _host.PreApprovesAllTools);
+            [.. _control.PreApprovedTools],
+            _control.PreApprovesAllTools);
     }
 
     // Everything that described the conversation just dropped (AC-564). The turn's live state and the queue aimed
@@ -1575,15 +1552,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // empty context is a figure that actively lies (decision 3). The transcript is deliberately not among them.
     private void _ResetForNewConversation()
     {
-        _host.Queue.Clear();
-        _host.ResetTranscriptStreaming();
+        _control.ClearQueue();
+        _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
         _readAloudFlushedLength = 0;
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         ClearCurrentTurnImages();
         IsBusy = false;
-        _host.ResetLiveState();
+        _control.ResetLiveState();
 
         _usage.Reset();
         HasUsage = _usage.HasData;
@@ -1622,9 +1599,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private async Task StartWithProfileAsync(SessionStart start)
     {
         // A host that cannot launch (the design-time graph) still arms its login poll and pre-approvals, as it always did.
-        if (!_host.CanLaunch)
+        if (!_control.CanLaunch)
         {
-            await _host.StartAsync(start);
+            await _control.StartAsync(start);
             return;
         }
 
@@ -1654,7 +1631,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // Inside the try: a profile referencing a missing or unresolvable plugin provider (or an invalid persisted
             // ConfigJson) throws during the runtime's start.
-            if (await _host.StartAsync(start) is not { } runtime)
+            if (await _control.StartAsync(start) is not { } launched)
             {
                 return;
             }
@@ -1665,17 +1642,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _RefreshLimits();
 
             // The process the meter weighs (#78) exists only once the driver started it.
-            ProcessId = runtime.ProcessId;
+            ProcessId = launched.ProcessId;
 
             // Capabilities (notably SupportsTools) only settle once the driver has actually started.
-            if (runtime.Capabilities is { } capabilities)
+            if (launched.Capabilities is { } capabilities)
             {
                 Capabilities = capabilities;
             }
 
             // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
             // lists them once its session is up (Codex resolves its model list on start) — so read them here too.
-            _PopulateLiveControls();
+            _PopulateLiveControls(launched.LiveOptions);
 
             OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
@@ -1690,7 +1667,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             if (AutoApproveTools && wasAlreadyOn)
             {
-                await runtime.SetAutoApproveToolsAsync(true);
+                await _control.SetAutoApproveToolsAsync(true);
             }
 
             // ActiveProfileLabel is already set (before the launch attempt, above); the profile is shown
@@ -1722,13 +1699,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-toggles auto-approval of tool calls on the running session's driver (local sessions).
     partial void OnAutoApproveToolsChanged(bool value)
     {
-        _ = _Runtime?.SetAutoApproveToolsAsync(value);
+        _ = _control.SetAutoApproveToolsAsync(value);
     }
 
     // Live-switches the running session's permission mode. No-op before the session has started.
     partial void OnSelectedPermissionModeChanged(PermissionModeOption value)
     {
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             return;
         }
@@ -1739,7 +1716,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-switches the running session's model. No-op before the session has started.
     partial void OnSelectedModelChanged(ModelOption value)
     {
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             return;
         }
@@ -1767,7 +1744,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-switches the running session's thinking budget. No-op before the session has started.
     partial void OnSelectedEffortChanged(EffortOption value)
     {
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             return;
         }
@@ -1778,16 +1755,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             return;
         }
 
         try
         {
-            await _Runtime.InterruptAsync();
+            await _control.InterruptAsync();
             Status = "Interrupted.";
-            _host.InterruptRequested = true;
 
             // AC-943: a turn parked on a permission prompt is answered on the wire by the driver where it can be
             // (Claude, Codex); this sweep is the driver-agnostic half, clearing the row for every driver alike.
@@ -1808,7 +1784,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // a real turn like any other (`_StartTurnAsync`), and the turn-completed event clears it the same way.
     public async Task<bool> CompactContextAsync()
     {
-        if (_Runtime is not { IsRunning: true } || TurnsHeldBecause is not null || !Capabilities.SupportsContextCompaction)
+        if (!_control.IsRunning || TurnsHeldBecause is not null || !Capabilities.SupportsContextCompaction)
         {
             return false;
         }
@@ -1817,7 +1793,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            await _Runtime.CompactContextAsync();
+            await _control.CompactContextAsync();
             return true;
         }
         catch (Exception ex)
@@ -1839,19 +1815,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetPermissionModeSafeAsync(string mode)
     {
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
 
         try
         {
-            await _Runtime.SetPermissionModeAsync(mode);
-
-            // AC-409: only once the switch actually took — a failed one leaves the running session on its old
-            // mode, and recording the requested one anyway would tell a restart to bring back a mode this session
-            // never ran under.
-            _ = _sessionStateRecorder?.RecordPermissionModeChangedAsync(PaneId, mode);
+            // AC-409: the control records the mode once the switch took.
+            await _control.SetPermissionModeAsync(mode);
         }
         catch (Exception ex)
         {
@@ -1861,14 +1833,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetModelSafeAsync(string model)
     {
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
 
         try
         {
-            await _Runtime.SetModelAsync(model);
+            await _control.SetModelAsync(model);
         }
         catch (Exception ex)
         {
@@ -1878,14 +1850,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetMaxThinkingTokensSafeAsync(int maxThinkingTokens)
     {
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
 
         try
         {
-            await _Runtime.SetMaxThinkingTokensAsync(maxThinkingTokens);
+            await _control.SetMaxThinkingTokensAsync(maxThinkingTokens);
         }
         catch (Exception ex)
         {
@@ -1894,15 +1866,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Rebuilds the generic live-control panel from the running driver's declared options (#45 D4).
-    private void _PopulateLiveControls()
+    private void _PopulateLiveControls(IReadOnlyList<SessionLiveOption> options)
     {
         LiveControls.Clear();
-        if (_Runtime is null)
-        {
-            return;
-        }
-
-        foreach (var option in _Runtime.LiveOptions)
+        foreach (var option in options)
         {
             LiveControls.Add(new LiveControlViewModel(option, _SetLiveOptionSafeAsync));
         }
@@ -1911,14 +1878,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-switches one of the provider's generic controls on the running session's driver (#45 D4).
     private async Task _SetLiveOptionSafeAsync(string key, string value)
     {
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
 
         try
         {
-            await _Runtime.SetLiveOptionAsync(key, value);
+            await _control.SetLiveOptionAsync(key, value);
         }
         catch (Exception ex)
         {
@@ -1994,14 +1961,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // agent on the tool result.
     public override async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
     {
-        if (_Runtime is not { IsRunning: true } || !CanPasteImages)
+        if (!_control.IsRunning || !CanPasteImages)
         {
             return false;
         }
 
         IReadOnlyList<Core.Sessions.ImageAttachment> images = [Core.Sessions.ImageAttachment.FromBytes(screenshotPng, "image/png")];
 
-        await _host.SubmitAsync(new QueuedPrompt(caption, images));
+        await _control.SubmitAsync(new QueuedPrompt(caption, images));
         return true;
     }
 
@@ -2015,7 +1982,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // Sending before the session has started reaches the CLI process before its I/O is wired and surfaces a raw
         // "Start must be called before I/O" error (#16).
-        if (_Runtime is not { IsRunning: true })
+        if (!_control.IsRunning)
         {
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, "The session has not started yet — nothing was sent."));
@@ -2035,7 +2002,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-739: measured 3x that the CLI delivers a mid-turn message to the model. SupportsMidTurnInput gates
         // straight-through writing versus the local send-queue chip (T8), driver by driver.
-        await _host.SubmitAsync(new QueuedPrompt(text, images, replyTo?.Id), Capabilities.SupportsMidTurnInput);
+        await _control.SubmitAsync(new QueuedPrompt(text, images, replyTo?.Id), Capabilities.SupportsMidTurnInput);
     }
 
     // Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
@@ -2106,7 +2073,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         ClearCurrentTurnImages();
         Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.Error, SendFailureMessage(exception, _Runtime is { IsRunning: true })));
+            TranscriptEntryKind.Error, SendFailureMessage(exception, _control.IsRunning)));
     }
 
     // AC-935: the only difference between the wire text and the row is this prefix — same "model sees ≠ row
@@ -2150,7 +2117,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        SetCurrentTurnImages(SessionImageAttachments.From(images));
+        SetCurrentTurnImages(images);
     }
 
     // The clarifying-question tool, which arrives over the permission callback like any other tool but wants an
@@ -2230,13 +2197,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        if (_Runtime is null || entry.ToolUseId is null)
+        if (!_control.IsAttached || entry.ToolUseId is null)
         {
             return;
         }
 
         _MarkDecided(entry, answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied");
-        await _Runtime.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson, CancellationToken.None);
+        await _control.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson);
     }
 
     // AC-1324: three outcomes, each told on the row itself. Answered there: closed with the machine named. No
@@ -2300,13 +2267,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // session runs on from here, so it stops flagging itself the moment the click lands, not at the next message.
         if (!_PendingRows().Any())
         {
-            _host.ClearNeedsAttention();
+            _control.ClearNeedsAttention();
         }
     }
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (_Runtime is null || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
+        if (!_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
         {
             return;
         }
@@ -2315,7 +2282,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? $"Always allowed ({entry.ToolName}:*)"
             : $"Always allowed (exact: {entry.ToolName})");
 
-        await _Runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
+        await _control.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
     // Called both when the turn finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a
@@ -2379,13 +2346,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        _host.RestartSignOfLife(AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat));
+        _control.RestartSignOfLife(AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat));
     }
 
     // One tick of the host's clock, on the UI thread; an arm a restart or stop has since replaced says nothing.
     private void _OnSignOfLife(int arm)
     {
-        if (!_host.IsCurrentSignOfLife(arm))
+        if (!_control.IsCurrentSignOfLife(arm))
         {
             return;
         }
@@ -2405,12 +2372,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _ = EnqueueReadAloudAsync(filler);
         }
 
-        _host.RestartSignOfLife(AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat));
+        _control.RestartSignOfLife(AssistantSpokenFillers.SignOfLifeDelay(_signOfLifeRepeat));
     }
 
     private void _StopSignOfLifeClock()
     {
-        _host.StopSignOfLife();
+        _control.StopSignOfLife();
         _signOfLifeRepeat = 0;
     }
 
@@ -2427,8 +2394,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private SessionUsageTotals _shownUsage = SessionUsageTotals.None;
     private IReadOnlyList<SessionActiveToolCall> _shownToolCalls = [];
 
-    // The seam the tests drive in place of a runtime: the host's own pump step, without the UI dispatcher between.
-    internal void Apply(SessionEvent evt) => _host.Pump(evt);
+    // AC-1449: what `SessionControls.Apply`, the seam tests and renders drive in place of a runtime, pumps through.
+    internal ISessionControl Control => _control;
 
     // AC-1437/1438: the host folds the event, its rows and what `_OnLiveStateChanged` and `_OnTurnEnded` draw, and ends
     // the turn itself; what is left here is what this pane does with the row the event landed on.
@@ -2478,7 +2445,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         if (_closeAfterTurn)
         {
             _closeAfterTurn = false;
-            _host.EndsAfterThisTurn = false;
+            _control.EndsAfterThisTurn = false;
             RaiseCloseRequested();
         }
     }
@@ -2531,7 +2498,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 failedRow.ActionLabel = "Retry";
                 failedRow.ActionCommand = new RelayCommand(
-                    () => _host.DispatchInBackground(new QueuedPrompt(lastTurn.Text, lastTurn.Images)));
+                    () => _control.DispatchInBackground(new QueuedPrompt(lastTurn.Text, lastTurn.Images)));
             }
         }
 
@@ -2704,7 +2671,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         // A runtime whose driver never came up is still held by the pane, and it accepts a send and hands back a
         // completed task with nothing having gone anywhere.
-        if (_Runtime is not { IsRunning: true } || !CanTakeAPrompt)
+        if (!_control.IsRunning || !CanTakeAPrompt)
         {
             return false;
         }
@@ -2718,7 +2685,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // Through the host's one funnel, as the composer's own sends are: a scheduled resume is a real turn on a real
             // session, so mail waiting for this pane belongs on it just as much.
-            await _host.SendPromptAsync(prompt);
+            await _control.SendPromptAsync(prompt);
         }
         catch
         {
@@ -2791,7 +2758,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // merge survives an incomplete snapshot and gets a threshold (AC-660, AC-775).
     private void _RefreshLimits()
     {
-        var status = _host.ReadUsageStatus(_profile?.ProviderConfig);
+        var status = _control.ReadUsageStatus(_profile?.ProviderConfig);
         if (status is not { HasAny: true })
         {
             return;
@@ -2833,7 +2800,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-713, AC-786: the host's clocks stop here — the sign of life's own !IsBusy guard never fires once the
         // runtime is torn down mid-turn — and a running flow's subprocess must not outlive the pane that started it.
-        await _host.DisposeAsync();
+        await _control.DisposeAsync();
         _signOfLifeRepeat = 0;
         foreach (var entry in Transcript)
         {
@@ -2847,29 +2814,29 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Ends this panel's runtime and detaches from it, leaving the panel itself intact (AC-564).
     private async Task _StopRuntimeAsync()
     {
-        _host.StopListening();
+        _control.StopListening();
 
         // AC-529: ahead of the null guard, because a teardown that finds the runtime already gone still has the last
         // window's events queued.
-        if (_host.HasPumpedWork)
+        if (_control.HasPumpedWork)
         {
             if (Dispatcher.UIThread.CheckAccess())
             {
-                _host.FlushPumped();
+                _control.FlushPumped();
             }
             else
             {
-                Dispatcher.UIThread.Post(_host.FlushPumped);
+                Dispatcher.UIThread.Post(_control.FlushPumped);
             }
         }
 
-        if (_Runtime is null)
+        if (!_control.IsAttached)
         {
             return;
         }
 
         // The host clears its runtime before its first await, so readiness reads false by the time this is raised.
-        var stopping = _host.StopAsync();
+        var stopping = _control.StopAsync();
         OnPropertyChanged(nameof(IsSessionReady));
         await stopping;
     }

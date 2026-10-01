@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\UsageSnapshotContract.cs" Link="UsageSnapshotContract.cs" />
+    <Compile Include="..\Shared\TestSessions.cs" Link="TestSessions.cs" />
     <AdditionalFiles Include="BannedSymbols.Avalonia.txt" />
   </ItemGroup>
 

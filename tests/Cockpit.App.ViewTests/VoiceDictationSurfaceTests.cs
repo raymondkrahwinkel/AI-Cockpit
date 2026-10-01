@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
+using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -118,7 +119,7 @@ public class VoiceDictationSurfaceTests
         var settings = Substitute.For<IVoiceSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
             .Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", GlobalPushToTalk = false });
-        return new SessionViewModel(
+        return TestSessions.Pane(
             Substitute.For<ISessionManager>(), transcriber, settings, voiceOverlay: pill);
     }
 

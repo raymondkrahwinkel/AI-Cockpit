@@ -3,7 +3,9 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Events;
+using Cockpit.Tests.Shared;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewTests;
 
@@ -16,7 +18,7 @@ public sealed class SessionRowFeedResyncTests
     public Task RowsTheReaderMissed_AreDrawnAfterTheLogResetIt_EachOnceAndInTheHostsOrder() => HeadlessAvalonia.RunAsync(async () =>
     {
         var log = new BackendEventLog();
-        var session = new SessionViewModel(Substitute.For<ISessionManager>(), eventLog: log);
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>(), eventLog: log);
 
         // The bridge's own shape (`SessionEventsBridge`), switched off for the stretch the reader misses.
         var publishing = true;

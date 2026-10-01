@@ -5,7 +5,9 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -294,7 +296,7 @@ public class SessionViewModelAskUserQuestionTests
 
         var factory = Substitute.For<ISessionDriverFactory>();
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-        var vm = new SessionViewModel(new SessionManager(factory));
+        var vm = TestSessions.Pane(new SessionManager(factory));
         await vm.StartConfiguredAsync(
             new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
             SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);

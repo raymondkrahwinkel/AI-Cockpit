@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -33,7 +34,7 @@ public class WorkspaceAgentGatewayDeliveryTests
             // it is on the roster like any other. That is exactly the pane this ticket cannot deliver to. The session
             // is built with the delivery seam because that is what makes its answer true; one built without it would
             // report false, which is the whole point of asking the pane rather than its type.
-            var session = new SessionViewModel(
+            var session = TestSessions.Pane(
                 Substitute.For<ISessionManager>(),
                 turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
             var terminal = new TtyViewModel();

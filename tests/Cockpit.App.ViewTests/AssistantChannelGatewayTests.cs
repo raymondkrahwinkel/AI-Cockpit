@@ -10,6 +10,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewTests;
 

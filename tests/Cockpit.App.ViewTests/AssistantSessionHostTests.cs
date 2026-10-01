@@ -17,6 +17,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -657,7 +658,7 @@ public class AssistantSessionHostTests
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
 
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-            () => new SessionViewModel(new SessionManager(factory))));
+            () => TestSessions.Pane(new SessionManager(factory))));
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
 
         var first = Dispatcher.UIThread.Invoke(() => (SessionViewModel?)host.EnsureStartedAsync().GetAwaiter().GetResult());
@@ -1034,7 +1035,7 @@ public class AssistantSessionHostTests
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
 
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-            () => new SessionViewModel(new SessionManager(factory), transcriptStore: transcript)));
+            () => TestSessions.Pane(new SessionManager(factory), transcriptStore: transcript)));
         var host = Dispatcher.UIThread.Invoke(() => _Host(
             enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
 
@@ -1329,7 +1330,7 @@ public class AssistantSessionHostTests
             var factory = Substitute.For<ISessionDriverFactory>();
             factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
             var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-                () => new SessionViewModel(new SessionManager(factory))));
+                () => TestSessions.Pane(new SessionManager(factory))));
             var host = Dispatcher.UIThread.Invoke(() => _Host(
                 enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, memory: memory));
 

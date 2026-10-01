@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -35,7 +36,7 @@ public class SessionMentionPickerViewTests
 
     private static SessionViewModel _Session(string? workingDirectory = "/repo", IMentionFileSource? fileSource = null)
     {
-        var session = new SessionViewModel(Substitute.For<ISessionManager>(), mentionFileSource: fileSource);
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>(), mentionFileSource: fileSource);
         session.QueuedMessages.Clear();
         session.PendingAttachments.Clear();
         session.WorkingDirectory = workingDirectory;
