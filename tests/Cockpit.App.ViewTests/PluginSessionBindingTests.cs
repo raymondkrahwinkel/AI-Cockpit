@@ -128,7 +128,7 @@ public class PluginSessionBindingTests
         var services = new ServiceCollection()
             .AddSingleton(cockpit)
             .AddSingleton<ISessionRegistry>(registry)
-            .AddSingleton<ISessionLauncher>(new SessionLauncherAdapter(cockpit))
+            .AddSingleton<ISessionLauncher>(DesktopLauncher.Over(cockpit, registry))
             .BuildServiceProvider();
         var host = new DesktopBackendHost(
             "diagram",

@@ -1,11 +1,5 @@
-using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
-using Cockpit.Core.Assistant;
-using Cockpit.Core.Configuration;
-using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
@@ -14,56 +8,34 @@ using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1378: `ISessionLauncher` without a frontend. It starts SDK sessions through `SessionHost.StartAsync`, the start the
-// desktop pane runs too, and refuses a TTY one with the reason; the desktop keeps its own launcher until F4 (AC-1372).
-// Registered by the backend bootstrap (AC-1381) over the saved desks; worktree admission is the desktop's rule (AC-1448).
+// AC-1378/AC-1439: the one start path, for the desktop, the assistant, the node tools and the API alike. It composes,
+// admits, persists and records; `ISessionHosting` only makes the session, so a frontend's pane is its host's one owner.
 public sealed class SessionLauncher(
-    WorkspaceSettings workspaces,
-    IWorkspaceSettingsStore workspaceStore,
-    IProjectStore projectStore,
+    ISessionDesks desks,
+    ISessionHosting hosting,
     SessionRegistry registry,
-    ISessionManager sessionManager,
-    TimeProvider time,
+    SessionStartComposer composer,
     ITtySessionProviderResolver? ttyProviders = null,
-    ISessionTranscriptStore? transcriptStore = null,
-    IWorktreeManager? worktrees = null) : ISessionLauncher
+    IWorktreeManager? worktrees = null,
+    SessionStateRecorder? stateRecorder = null,
+    ISessionStartObserver? startObserver = null) : ISessionLauncher
 {
-    // The desktop's exclusion is its UI thread; this is the backend's. Sections are synchronous, so it is never held
-    // across an await.
-    private readonly Lock _gate = new();
-    private readonly SemaphoreSlim _saving = new(1, 1);
-    private WorkspaceSettings _workspaces = workspaces;
+    public Task<T> RunExclusiveAsync<T>(Func<T> decision) => desks.RunExclusiveAsync(decision);
 
-    public Task<T> RunExclusiveAsync<T>(Func<T> decision)
-    {
-        lock (_gate)
-        {
-            return Task.FromResult(decision());
-        }
-    }
+    public WorkspaceSettings Workspaces => desks.Workspaces;
 
-    public WorkspaceSettings Workspaces
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _workspaces;
-            }
-        }
-    }
-
-    public bool CanCloseWorkspace(string workspaceId) => Workspaces.CanClose(workspaceId);
+    public bool CanCloseWorkspace(string workspaceId) => desks.CanCloseWorkspace(workspaceId);
 
     public bool ProfileHasTtyRoute(SessionProfile profile) => TtyRoute.Exists(profile, ttyProviders);
 
-    public async Task<Project?> FindProjectByIdAsync(string projectId) =>
-        (await projectStore.LoadAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
+    public Task<Project?> FindProjectByIdAsync(string projectId) => composer.FindProjectAsync(projectId);
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
+        request = await composer.ComposeAsync(request).ConfigureAwait(false);
         var profile = request.Profile;
-        if (request.Kind == PaneSessionKind.Tty || (request.Kind is null && TtyRoute.IsDefault(profile, ttyProviders)))
+        var kind = request.Kind ?? PaneSessionKind.Sdk;
+        if (!hosting.CanHost(kind))
         {
             throw new TtyLaunchRefusedException(profile.Label);
         }
@@ -74,102 +46,165 @@ public sealed class SessionLauncher(
             throw new InvalidOperationException($"Pane '{paneId}' is already running.");
         }
 
-        var name = string.IsNullOrWhiteSpace(request.SessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : request.SessionName.Trim();
+        var name = _NameOf(request);
         var admitted = await WorktreeAdmission.AdmitAsync(
-            worktrees, paneId, profile.Label, request.WorkingDirectory, request.IsolateInWorktree == true).ConfigureAwait(false);
+            worktrees, paneId, profile.Label, request.WorkingDirectory, request.IsolateInWorktree == true && !request.RunUnisolated).ConfigureAwait(false);
         if (admitted.Decision is { } decision)
         {
             return new LaunchedSession(string.Empty, name, null, decision);
         }
 
-        var host = new SessionHost(() => paneId, sessionManager, time, transcriptStore: transcriptStore);
-        var handle = new SessionHostHandle(
-            paneId, name, !string.IsNullOrWhiteSpace(request.SessionName), request.WorkspaceId, admitted.WorkingDirectory, profile.Label, host, request.ProjectId);
-        await handle.SetWorktreeBranchAsync(admitted.WorktreeBranch).ConfigureAwait(false);
+        // AC-1332: the handle carries who asked for it, so the pane it lands as is stamped before anything lists it.
+        var nameIsChosen = !request.NameIsComposed && !string.IsNullOrWhiteSpace(request.SessionName);
+        var hosted = hosting.Host(new SessionHostingRequest(paneId, name, nameIsChosen, kind, request, admitted.WorkingDirectory, admitted.WorktreeBranch))
+            ?? throw new TtyLaunchRefusedException(profile.Label);
 
         // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
-        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(handle)).ConfigureAwait(false))
+        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(hosted)).ConfigureAwait(false))
         {
-            await _TearDownAsync(handle).ConfigureAwait(false);
+            await _TearDownAsync(hosted).ConfigureAwait(false);
             return null;
         }
 
+        // AC-410: written before the session starts, never after: a crash in between leaves at most a pane that does not
+        // come back, never one that comes back describing a session that never started this way.
+        var pane = new WorkspacePane(paneId, PaneKind.AiSession)
+        {
+            ProfileId = profile.Label,
+            SessionKind = kind,
+            WorkingDirectory = request.WorkingDirectory,
+            Title = name,
+            NameIsChosen = nameIsChosen,
+            ProjectId = request.ProjectId,
+            StartedByTheAssistant = request.StartedByTheAssistant,
+        };
         try
         {
+            await desks.AddPaneAsync(request.WorkspaceId, pane).ConfigureAwait(false);
+
             // AC-1080: a resumed conversation repaints its recorded log before the first turn.
-            var resume = request.Resume ?? SessionResume.New;
-            if (request.Resume is not null)
+            if (request.Resume is { } resume)
             {
-                await handle.PrepareRecordedTranscriptAsync(resume).ConfigureAwait(false);
+                await hosted.PrepareRecordedTranscriptAsync(resume).ConfigureAwait(false);
             }
 
-            var runtime = await host.StartAsync(new SessionStart(
-                profile, request.PermissionMode, request.Model,
-                McpServerRegistryFilter.EffectiveSessionSelection(null, profile.EnabledMcpServerNames),
-                admitted.WorkingDirectory, resume, request.LaunchOptions, request.ProjectId)).ConfigureAwait(false);
-            if (runtime is not { IsRunning: true })
+            var instructed = request with
             {
-                throw new InvalidOperationException("The provider returned without a running session.");
-            }
+                LaunchOptions = SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null),
+            };
+            await hosted.StartAsync(instructed, admitted.WorkingDirectory).ConfigureAwait(false);
 
             // Stopped while it came up: the stop found no runtime yet, so this one would run with no pane to reach it.
-            if (registry.Find(paneId) != handle)
+            if (registry.Find(paneId) != hosted)
             {
-                await _TearDownAsync(handle).ConfigureAwait(false);
+                await _TearDownAsync(hosted).ConfigureAwait(false);
                 return null;
             }
         }
         catch
         {
-            // A pane that never came up has no view to say so on: it goes, and the reason travels to the caller.
+            // A session that never came up goes, record and all, and the reason travels to the caller.
             registry.Unregister(paneId);
-            await _TearDownAsync(handle).ConfigureAwait(false);
+            await _TearDownAsync(hosted).ConfigureAwait(false);
+            await desks.RemovePaneAsync(request.WorkspaceId, paneId).ConfigureAwait(false);
             throw;
         }
 
+        await _RecordStartAsync(hosted, request, kind, admitted).ConfigureAwait(false);
+
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
-            : await handle.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
+            : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
         return new LaunchedSession(paneId, name, promptDelivered);
-    }
-
-    // AC-1379: the assistant on no desk, as the registry's `Assistant`, never in `All`. Its host starts it and holds
-    // the only reference; nothing here stops it, since only that host ever ends it.
-    public IAssistantSession? CreateAssistantSession()
-    {
-        var host = new SessionHost(() => AssistantIdentity.PaneId, sessionManager, time, transcriptStore: transcriptStore);
-        var handle = new SessionHostHandle(
-            AssistantIdentity.PaneId, AssistantProfileSlot.DisplayName, nameIsChosen: true,
-            Workspaces.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? string.Empty,
-            CockpitBuild.StateRoot, AssistantProfileSlot.DisplayName, host);
-        registry.RegisterAssistant(handle);
-        return handle;
-    }
-
-    // Forgotten only while it is still the one held, as `CockpitViewModel.ReleaseAssistantSession` does on the desktop.
-    public void ReleaseAssistantSession(IAssistantSession session)
-    {
-        if (ReferenceEquals(registry.Assistant, session))
-        {
-            registry.UnregisterAssistant();
-        }
     }
 
     public async Task StopSessionAsync(string paneId)
     {
-        if (registry.Find(paneId) is not SessionHostHandle handle)
+        if (registry.Find(paneId) is not IHostedSession hosted)
         {
             return;
         }
 
+        // A frontend's pane closes itself, record and worktree included; a backend host is the launcher's to clear.
+        if (hosted is not SessionHostHandle)
+        {
+            await hosted.StopAsync().ConfigureAwait(false);
+            return;
+        }
+
         registry.Unregister(paneId);
-        await _TearDownAsync(handle).ConfigureAwait(false);
+        await _TearDownAsync(hosted).ConfigureAwait(false);
+        await desks.RemovePaneAsync(hosted.WorkspaceId, paneId).ConfigureAwait(false);
+    }
+
+    public async Task<bool> SetSessionNameAsync(string paneId, string name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && registry.Find(paneId) is { IsEmbedded: false } handle
+        && await handle.SetNameAsync(name).ConfigureAwait(false);
+
+    public Task<Workspace> CreateSessionsWorkspaceAsync(string name) => desks.CreateSessionsWorkspaceAsync(name);
+
+    public Task RenameWorkspaceAsync(string workspaceId, string name) => desks.RenameWorkspaceAsync(workspaceId, name);
+
+    public Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId) => desks.CloseWorkspaceIfEmptyAsync(workspaceId);
+
+    // A second session on the same project is "Cockpit 2", not a second "Cockpit" (AC-324). Only a composed name is
+    // numbered: a name somebody typed starts exactly as typed.
+    private string _NameOf(SessionLaunchRequest request)
+    {
+        var given = request.SessionName?.Trim();
+        var name = string.IsNullOrEmpty(given) ? request.Profile.Label : given;
+        if (!request.NameIsComposed && !string.IsNullOrEmpty(given))
+        {
+            return name;
+        }
+
+        var taken = registry.All.Where(handle => !handle.IsEmbedded).Select(handle => handle.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unique = name;
+        for (var number = 2; taken.Contains(unique); number++)
+        {
+            unique = $"{name} {number}";
+        }
+
+        return unique;
+    }
+
+    // Written once, after the start: which worktree this session owns (AC-409), then the badge for a folder that is a
+    // cockpit worktree it does not own (AC-633), then what the frontend keeps about the project (AC-490).
+    private async Task _RecordStartAsync(IHostedSession hosted, SessionLaunchRequest request, PaneSessionKind kind, AdmittedDirectory admitted)
+    {
+        var permissionMode = kind == PaneSessionKind.Sdk || request.Profile.Provider is SessionProvider.ClaudeCli
+            ? request.PermissionMode ?? SessionPermissionModes.Default
+            : null;
+        _ = stateRecorder?.RecordSessionStartedAsync(
+            hosted.PaneId, request.Profile, admitted.WorkingDirectory,
+            worktreePath: admitted.WorktreeBranch is not null ? admitted.WorkingDirectory : null,
+            worktreeBranch: admitted.WorktreeBranch,
+            permissionMode);
+
+        if (admitted.WorktreeBranch is null && admitted.WorkingDirectory is { Length: > 0 } directory)
+        {
+            try
+            {
+                if ((await WorktreeAdmission.MatchingAsync(worktrees, directory).ConfigureAwait(false))?.Branch is { } branch)
+                {
+                    await hosted.SetWorktreeBranchAsync(branch).ConfigureAwait(false);
+                }
+            }
+            catch (Exception)
+            {
+                // A badge is never worth a started session: an unreadable registry or a path git rejects leaves it off.
+            }
+        }
+
+        startObserver?.SessionStarted(hosted.PaneId, request.ProjectId, request.ProjectJobId);
     }
 
     // Keyed on the pane, as the desktop's close is: a clean worktree goes with its branch, one holding work is retained.
-    private async Task _TearDownAsync(SessionHostHandle handle)
+    // Released here too for a pane that never landed, which no close will ever reach.
+    private async Task _TearDownAsync(IHostedSession hosted)
     {
-        await handle.DisposeAsync().ConfigureAwait(false);
+        await hosted.StopAsync().ConfigureAwait(false);
         if (worktrees is null)
         {
             return;
@@ -177,7 +212,7 @@ public sealed class SessionLauncher(
 
         try
         {
-            await worktrees.ReleaseAsync(handle.PaneId).ConfigureAwait(false);
+            await worktrees.ReleaseAsync(hosted.PaneId).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -185,64 +220,12 @@ public sealed class SessionLauncher(
         }
     }
 
-    public async Task<bool> SetSessionNameAsync(string paneId, string name) =>
-        registry.Find(paneId) is SessionHostHandle handle && await handle.SuggestNameAsync(name).ConfigureAwait(false);
-
-    public async Task<Workspace> CreateSessionsWorkspaceAsync(string name)
-    {
-        var created = Workspace.Create(name, WorkspaceType.Sessions);
-        await _ApplyAsync(() => _workspaces.WithWorkspace(created)).ConfigureAwait(false);
-        return created;
-    }
-
-    public Task RenameWorkspaceAsync(string workspaceId, string name) =>
-        _ApplyAsync(() => string.IsNullOrWhiteSpace(name)
-            || _workspaces.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
-                ? _workspaces
-                : _workspaces.WithUpdated(workspace with { Name = name.Trim() }));
-
-    public async Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId)
-    {
-        var occupants = 0;
-        await _ApplyAsync(() =>
-        {
-            occupants = registry.All.Count(handle => string.Equals(handle.PlacedWorkspaceId, workspaceId, StringComparison.Ordinal));
-            return occupants == 0 ? _workspaces.WithoutWorkspace(workspaceId) : _workspaces;
-        }).ConfigureAwait(false);
-        return occupants;
-    }
-
     private bool _IsSessionsDesk(string workspaceId) =>
-        _workspaces.Workspaces.Any(workspace => workspace.Id == workspaceId && workspace.Type == WorkspaceType.Sessions);
+        desks.Workspaces.Workspaces.Any(workspace => workspace.Id == workspaceId && workspace.Type == WorkspaceType.Sessions);
 
     private bool _Register(ISessionHandle handle)
     {
         registry.Register(handle);
         return true;
-    }
-
-    // Decided and swapped in one section; saved after it, only when something changed. One save at a time, in the
-    // order the changes were made, so an older state never lands on disk after a newer one.
-    private async Task _ApplyAsync(Func<WorkspaceSettings> change)
-    {
-        await _saving.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            var (before, after) = await RunExclusiveAsync(() =>
-            {
-                var previous = _workspaces;
-                _workspaces = change();
-                return (previous, _workspaces);
-            }).ConfigureAwait(false);
-
-            if (!ReferenceEquals(before, after))
-            {
-                await workspaceStore.SaveAsync(after).ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            _saving.Release();
-        }
     }
 }

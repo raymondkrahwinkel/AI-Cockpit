@@ -219,7 +219,7 @@ public class Ac1321TakeoverStateTests
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>([]);
 
         return new AssistantSessionHost(
-            new SessionLauncherAdapter(cockpit), new UiThreadControllerPresence(presence), settings, profiles, sessionState,
+            new DesktopSessionSeams(() => cockpit), new UiThreadControllerPresence(presence), settings, profiles, sessionState,
             new SessionStateRecorder(sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             catalog, Substitute.For<IAssistantMemory>(), NullLogger<AssistantSessionHost>.Instance);
     }

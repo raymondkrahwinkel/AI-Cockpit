@@ -48,7 +48,7 @@ public sealed class AssistantDockHostSwapTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger<SessionStateRecorder>.Instance);
 
         var assistant = new AssistantSessionHost(
-            new SessionLauncherAdapter(cockpit),
+            new DesktopSessionSeams(() => cockpit),
             new NodeControllerPresence(),
             settings,
             Substitute.For<IAssistantProfileStore>(),

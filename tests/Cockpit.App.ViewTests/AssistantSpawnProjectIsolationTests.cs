@@ -457,8 +457,8 @@ public class AssistantSpawnProjectIsolationTests
             whileComposing?.Invoke(composingFor ?? throw new InvalidOperationException("Composed before the cockpit was built."));
             return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
         });
-        var quickStart = new ProjectQuickStart(
-            profileStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
+        var quickStart = new ProjectQuickStart(profileStore, new SessionStartComposer(
+            projectStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry(), worktreeManager));
 
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -507,7 +507,9 @@ public class AssistantSpawnProjectIsolationTests
                 Substitute.For<IAgentNotifyAuditLog>(),
                 Substitute.For<IPluginProviderRegistry>(),
                 new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
-                Substitute.For<IAssistantSessionHost>()),
+                Substitute.For<IAssistantSessionHost>(),
+                worktreeManager,
+                mcpServerCatalog: mcpCatalog),
             cockpit,
             trail,
             desk.Id);

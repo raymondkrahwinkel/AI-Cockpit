@@ -25,7 +25,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // Infrastructure hosts those tools and two copies of a guardrail constant is one that can stop matching.
     internal const string AssistantPaneId = AssistantIdentity.PaneId;
 
-    private readonly ISessionLauncher _launcher;
+    private readonly IAssistantSessionFactory _sessions;
     private readonly INodeControllerPresence _presence;
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
@@ -51,7 +51,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private Task? _defaultWorkingDirectoryLoad;
 
     public AssistantSessionHost(
-        ISessionLauncher launcher,
+        IAssistantSessionFactory sessions,
         INodeControllerPresence presence,
         IAssistantSettingsStore settings,
         IAssistantProfileStore profiles,
@@ -61,7 +61,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         IAssistantMemory memory,
         ILogger<AssistantSessionHost> logger)
     {
-        _launcher = launcher;
+        _sessions = sessions;
         _presence = presence;
         _settings = settings;
         _profiles = profiles;
@@ -437,7 +437,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return null;
         }
 
-        var session = _launcher.CreateAssistantSession();
+        var session = _sessions.CreateAssistantSession();
         if (session is null)
         {
             _SetUnavailable("This cockpit cannot start sessions.");
@@ -1014,7 +1014,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
         session.StateChanged -= _OnSessionStateChanged;
-        _launcher.ReleaseAssistantSession(session);
+        _sessions.ReleaseAssistantSession(session);
 
         // AC-1013: An unanswered consent card is answered here, and answered No — the broker has no timeout of
         // its own, so a card left open would hang its tool call for the life of the process. Denied, not dropped:

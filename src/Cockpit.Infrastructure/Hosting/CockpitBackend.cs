@@ -10,7 +10,6 @@ using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
@@ -400,27 +399,22 @@ public sealed class CockpitBackend
             cache.CreateFor(discovered.FolderId));
     }
 
-    // AC-1378: the launcher is built over the desks as saved, the first time something asks for it; a desktop that
-    // registers its own never reads them here.
+    // AC-1378/AC-1439: the one launcher everywhere; without a frontend it keeps the desks as saved and hosts its sessions
+    // itself. A desktop registers its own desks, hosting and assistant factory, and never reads the saved desks here.
     private static void _AddNoFrontendDefaults(IServiceCollection services)
     {
-        services.AddSingleton<ISessionLauncher>(provider =>
+        services.AddSingleton<ISessionDesks>(provider =>
         {
             var workspaces = provider.GetRequiredService<IWorkspaceSettingsStore>();
 
             // ponytail: blocks on the desk load; safe while the backend path has no SynchronizationContext to deadlock on.
             // Ceiling: a host that resolves this on a context thread (a UI thread) could hang; then load the desks in Start.
-            return new SessionLauncher(
-                workspaces.LoadAsync().GetAwaiter().GetResult(),
-                workspaces,
-                provider.GetRequiredService<IProjectStore>(),
-                provider.GetRequiredService<SessionRegistry>(),
-                provider.GetRequiredService<ISessionManager>(),
-                TimeProvider.System,
-                provider.GetService<ITtySessionProviderResolver>(),
-                provider.GetService<ISessionTranscriptStore>(),
-                provider.GetService<IWorktreeManager>());
+            return new StoreSessionDesks(
+                workspaces.LoadAsync().GetAwaiter().GetResult(), workspaces, provider.GetRequiredService<ISessionRegistry>());
         });
+        services.AddSingleton<ISessionHosting, BackendSessionHosting>();
+        services.AddSingleton<IAssistantSessionFactory, BackendAssistantSessions>();
+        services.AddSingleton<ISessionLauncher, SessionLauncher>();
         services.AddSingleton<IProjectComposer, NoProjectComposer>();
         services.AddSingleton<IAssistantConversation, HostAssistantConversation>();
         services.AddSingleton<IExternalLinkOpener, NoBrowserLinkOpener>();

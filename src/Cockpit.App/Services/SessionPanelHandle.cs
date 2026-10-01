@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -11,10 +12,14 @@ namespace Cockpit.App.Services;
 internal sealed record DesktopSessionLaunch(
     string PaneId, string Title, string? WorkspaceId, bool IsEmbedded, bool StartedByTheAssistant);
 
+// AC-1439: how a pane the launcher hosts starts and stops; the cockpit's to do, on the UI thread.
+internal sealed record HostedPaneCalls(
+    Func<SessionPanelViewModel, SessionLaunchRequest, string?, Task> Start, Func<Task> Stop);
+
 // AC-1373: one pane as `ISessionRegistry` hands it out. Plain fields are read where the caller is; anything that walks
 // a UI-owned collection or acts takes `UiThreadCall`. AC-1392: an act asks `isLive` in that same callback, so a pane
 // closed after the caller looked it up is left alone rather than written to.
-internal sealed class SessionPanelHandle : ISessionHandle
+internal sealed class SessionPanelHandle : IHostedSession
 {
     private readonly DesktopSessionLaunch _launch;
     private readonly Func<string?> _firstSessionsWorkspaceId;
@@ -45,6 +50,26 @@ internal sealed class SessionPanelHandle : ISessionHandle
     public ISessionControl? Control { get; }
 
     public SessionPanelViewModel? Pane => _pane;
+
+    // AC-1439: set on a pane the launcher hosts. Without it the pane was not started by the launcher, and a stop is a close.
+    public HostedPaneCalls? Hosted { get; set; }
+
+    // The launcher calls these once the pane has landed. Dispatched without the request-thread cap: a start takes as long
+    // as its provider does, as it always did from the dialog.
+    public Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default) =>
+        _pane is SessionViewModel sdk ? _OnUiThreadAsync(() => sdk.PrepareRecordedTranscriptAsync(resume, cancellationToken)) : Task.CompletedTask;
+
+    public Task StartAsync(SessionLaunchRequest request, string? workingDirectory) =>
+        Hosted is { } hosted && _pane is { } pane
+            ? _OnUiThreadAsync(() => hosted.Start(pane, request, workingDirectory))
+            : throw new InvalidOperationException($"Pane '{PaneId}' has not landed, so it cannot start.");
+
+    public Task StopAsync() => Hosted is { } hosted
+        ? _OnUiThreadAsync(hosted.Stop)
+        : UiThreadCall.RunAsync(() => _pane?.RequestSelfClose());
+
+    private static Task _OnUiThreadAsync(Func<Task> work) =>
+        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
 
     public bool StartedByTheAssistant => _launch.StartedByTheAssistant;
 

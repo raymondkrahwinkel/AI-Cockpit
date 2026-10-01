@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -8,7 +9,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // AC-1378: one SDK session without a view model and the consumer its host asks for, doing `SessionViewModel.Apply`'s
 // duties; one lock stands in for the UI thread so the fold, the turn gate and the reads never interleave.
 // AC-1379: also the assistant's session without the app, as `AssistantSessionHost` drives it.
-public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
+public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 {
     // `TranscriptEntryKind.UserText` and `.Divider` as the transcript store spells them, like `SessionTranscriptBuilder`'s kinds.
     private const string UserText = "UserText";
@@ -470,6 +471,21 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
             }
         }
     }
+
+    // AC-1439: the launcher's start; a session that did not come up goes, with the reason, since no view shows it.
+    public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
+    {
+        var runtime = await _host.StartAsync(new SessionStart(
+            request.Profile, request.PermissionMode, request.Model,
+            McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames),
+            workingDirectory, request.Resume ?? SessionResume.New, request.LaunchOptions, request.ProjectId)).ConfigureAwait(false);
+        if (runtime is not { IsRunning: true })
+        {
+            throw new InvalidOperationException("The provider returned without a running session.");
+        }
+    }
+
+    public Task StopAsync() => DisposeAsync().AsTask();
 
     // The permission-mode floor the desktop's assistant starts on; the profile's own mode rides the launch options.
     public async Task StartAsync(AssistantLaunch launch)

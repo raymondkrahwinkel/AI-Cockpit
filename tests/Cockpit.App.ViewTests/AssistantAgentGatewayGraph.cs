@@ -34,7 +34,7 @@ internal static class AssistantAgentGatewayGraph
         ProjectCatalog? projects = null) =>
         new(
             sessions,
-            new SessionLauncherAdapter(cockpit),
+            DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
             projects ?? TestProjects.Catalog(sharedSources: sharedProjectSources),
             new ProjectComposer(profiles, mcpServerCatalog),
             watcher,

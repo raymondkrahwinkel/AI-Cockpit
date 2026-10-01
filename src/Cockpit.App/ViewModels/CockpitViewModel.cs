@@ -115,8 +115,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Null in the design-time and unit-test graphs, which keep making the pane first.
     private readonly ISessionControlFactory? _sessionControls;
     private readonly Func<ISessionControl, SessionViewModel>? _sdkPaneOver;
-    private readonly Dictionary<SessionPanelHandle, Action<SessionViewModel>> _panesToMake = [];
-    private readonly Dictionary<SessionPanelHandle, SessionViewModel> _panesMade = [];
+    private readonly Dictionary<SessionPanelHandle, Action<SessionPanelViewModel>> _panesToMake = [];
+    private readonly Dictionary<SessionPanelHandle, SessionPanelViewModel> _panesMade = [];
+
+    // AC-1439: the one start path, resolved when first used, since the launcher's hosting reaches back into this view model.
+    private readonly Func<ISessionLauncher>? _sessionLauncher;
+
+    // The panes a start from this window asked to select, by the id it minted; selected when they land.
+    private readonly HashSet<string> _selectOnLanding = new(StringComparer.Ordinal);
     private readonly ISessionDialogService? _dialogService;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
@@ -3138,7 +3144,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IBehaviourMemorySync? behaviourSync = null,
         SessionRegistry? sessionRegistry = null,
         ISessionControlFactory? sessionControls = null,
-        Func<ISessionControl, SessionViewModel>? sdkPaneOver = null)
+        Func<ISessionControl, SessionViewModel>? sdkPaneOver = null,
+        Func<ISessionLauncher>? sessionLauncher = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3241,6 +3248,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.CollectionChanged += _FeedSessionRegistry;
         _sessionControls = sessionControls;
         _sdkPaneOver = sdkPaneOver;
+        _sessionLauncher = sessionLauncher;
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -5762,24 +5770,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // `title` if no session carries it, else "`title` 2", "… 3" — the first free one.
-    private string _UniqueSessionTitle(string title)
-    {
-        var taken = Sessions.Select(session => session.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!taken.Contains(title))
-        {
-            return title;
-        }
-
-        var suffix = 2;
-        while (taken.Contains($"{title} {suffix}"))
-        {
-            suffix++;
-        }
-
-        return $"{title} {suffix}";
-    }
-
     // Opens `project`'s folder in the operating system's own file manager — the same shell hand-off the worktrees
     // dialog uses.
     [RelayCommand]
@@ -5818,184 +5808,292 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task SyncProjectNowAsync(Project? project) =>
         project is null ? Task.CompletedTask : Projects.SyncNowAsync(project);
 
-    // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording the result on
-    // the panel so the context-menu Duplicate can replay it (AC-96, AC-545, AC-719).
-    private async Task<string?> _LaunchSessionFromResultAsync(
-        NewSessionResult result, string? targetWorkspaceId = null, bool interactive = true)
+    // AC-1439: every start the desktop makes goes through the launcher, which composes nothing here: the dialog, the
+    // quick start and Duplicate settled it. A worktree the launcher could not make is the one question it hands back.
+    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result, string? targetWorkspaceId = null)
     {
-        if (_sessionFactory is null || _ttySessionFactory is null)
+        if (_sessionLauncher?.Invoke() is not { } launcher)
         {
             return null;
         }
 
-        // A second session on the same project is named "Cockpit 2", not a second "Cockpit": two identical rows in the
-        // sidebar is exactly the confusion numbering exists to prevent. Only a composed name is numbered — a name the
-        // operator typed is theirs and is started exactly as typed (#AC-324).
-        if (!result.NameIsChosen && result.SessionName is { Length: > 0 } composed)
+        // Started while only a dashboard exists, it would otherwise run on a desk that cannot show it.
+        var request = _RequestOf(result, targetWorkspaceId ?? Workspaces.EnsureSessionWorkspace());
+        var paneId = request.PaneId ?? string.Empty;
+        if (targetWorkspaceId is null)
         {
-            result = result with { SessionName = _UniqueSessionTitle(composed) };
+            _selectOnLanding.Add(paneId);
         }
 
-        void Attach(SessionPanelViewModel pane)
+        try
         {
-            pane.LaunchResult = result;
-            AddSession(pane, result.SessionName, result.Profile.Label, result.NameIsChosen, targetWorkspaceId);
-        }
+            var launched = await launcher.StartSessionAsync(request);
+            if (launched?.WorktreeDecision is { } decision)
+            {
+                // Ask, and only run unisolated on an explicit yes; a no starts nothing rather than contaminating the tree.
+                if (!await _ConfirmRunInFolderAsync(decision))
+                {
+                    return null;
+                }
 
-        // AC-1332: stamped before AddSession, not after — the rail rebuilds off Sessions' own CollectionChanged
-        // (AssistantChatViewModel._RebuildLiveSessions), so an unstamped session lands unseen and never gets a
-        // second look. AC-1450: an SDK session carries it on its handle, and its pane takes it over when made.
-        SessionPanelViewModel session;
-        if (result.Kind == SessionKind.Sdk)
+                launched = await launcher.StartSessionAsync(request with { WorkingDirectory = decision.WorkingDirectory, RunUnisolated = true });
+            }
+
+            return launched?.PaneId is { Length: > 0 } started ? started : null;
+        }
+        catch (WorktreeAdmissionException exception)
         {
-            session = _MakeSdkPane(
-                new DesktopSessionLaunch(Guid.NewGuid().ToString("n"), result.SessionName ?? string.Empty, targetWorkspaceId,
-                    IsEmbedded: false, result.StartedByTheAssistant),
-                Attach);
+            ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
+            return null;
         }
-        else
+        finally
         {
-            session = _ttySessionFactory();
-            session.StartedByTheAssistant = result.StartedByTheAssistant;
-            Attach(session);
+            _selectOnLanding.Remove(paneId);
         }
-
-        // AC-410: written now, before the session actually starts — see _PersistNewSessionPane for why this order
-        // is the crash-safe one.
-        _PersistNewSessionPane(session, result);
-
-        return await _StartSessionAsync(session, result, interactive);
     }
 
-    // Split out so a restore (which only ever attaches, never starts) does not carry this half, and reused as-is by the
-    // fresh-launch path above (AC-410).
-    private async Task<string?> _StartSessionAsync(SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
+    private async Task<bool> _ConfirmRunInFolderAsync(NeedsWorktreeDecision decision) =>
+        _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
+            "Could not isolate this session",
+            $"A git worktree could not be created for this session ({decision.Reason}). Run it directly in '{decision.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
+            "Run in folder");
+
+    // The dialog's answers as the launcher takes them, composed. The pane id is minted here, so the pane it lands as can
+    // be selected the moment it lands.
+    private static SessionLaunchRequest _RequestOf(NewSessionResult result, string workspaceId)
     {
-        string paneId;
-        string? startedWorkingDirectory;
-        string? startedPermissionMode;
-        if (session is SessionViewModel sdkSession)
+        var isSdk = result.Kind == SessionKind.Sdk;
+        return new SessionLaunchRequest(
+            workspaceId,
+            result.Profile,
+            Prompt: null,
+            result.WorkingDirectory,
+            result.SessionName,
+            isSdk ? PaneSessionKind.Sdk : PaneSessionKind.Tty,
+            isSdk ? result.SdkLaunchOptions : result.PluginTtyOptions,
+            result.IsolateInWorktree,
+            result.ProjectId,
+            result.StartedByTheAssistant,
+            result.Resume,
+            result.Model.Value,
+            result.Mode.Value,
+            PaneId: Guid.NewGuid().ToString("n"))
         {
-            string? workingDirectory;
-            try
+            IsComposed = true,
+            NameIsComposed = result.NameIsComposed,
+            Effort = result.Effort.Value,
+            EnabledMcpServerNames = result.EnabledMcpServerNames,
+            ReadingLevel = result.ReadingLevel,
+            ProjectJobId = result.ProjectJobId,
+            SystemPrompt = result.SystemPrompt,
+        };
+    }
+
+    // What the pane keeps for Duplicate and Clear context (AC-96): the start it was given, back in the dialog's terms.
+    private static NewSessionResult _ResultOf(SessionHostingRequest hosting)
+    {
+        var request = hosting.Request;
+        var isSdk = hosting.Kind == PaneSessionKind.Sdk;
+        return new NewSessionResult(
+            isSdk ? SessionKind.Sdk : SessionKind.Tty,
+            request.Profile,
+            SessionOptionCatalog.ResolvePermissionMode(request.PermissionMode),
+            SessionOptionCatalog.ModelForValue(request.Model),
+            SessionOptionCatalog.ResolveEffort(request.Effort),
+            hosting.Name,
+            request.EnabledMcpServerNames,
+            request.WorkingDirectory,
+            request.Resume,
+            PluginTtyOptions: isSdk ? null : request.LaunchOptions,
+            SdkLaunchOptions: isSdk ? request.LaunchOptions : null,
+            IsolateInWorktree: request.IsolateInWorktree == true,
+            ReadingLevel: request.ReadingLevel,
+            ProjectId: request.ProjectId,
+            SystemPrompt: request.SystemPrompt)
+        {
+            NameIsComposed = request.NameIsComposed,
+            StartedByTheAssistant = request.StartedByTheAssistant,
+            ProjectJobId = request.ProjectJobId,
+        };
+    }
+
+    // AC-1439: `ISessionHosting`'s desktop half. Only the pane is made here; the launcher registers it, and it lands on
+    // the registry's Changed (AC-1450), stamped with who asked before anything lists it (AC-1332).
+    internal bool CanHostSession(PaneSessionKind kind) =>
+        kind == PaneSessionKind.Sdk ? _sessionFactory is not null : _ttySessionFactory is not null;
+
+    internal IHostedSession? HostSession(SessionHostingRequest hosting)
+    {
+        var request = hosting.Request;
+        var result = _ResultOf(hosting);
+        void Land(SessionPanelViewModel pane)
+        {
+            pane.LaunchResult = result;
+            pane.ProjectId = request.ProjectId;
+            pane.WorktreeBranch = hosting.WorktreeBranch;
+            AddSession(pane, hosting.Name, request.Profile.Label, hosting.NameIsChosen, request.WorkspaceId);
+            if (_selectOnLanding.Remove(pane.PaneId))
             {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(sdkSession, result, interactive);
+                SelectedSession = pane;
             }
-            catch (Exception exception)
-            {
-                // Isolation failed — declined, or a non-interactive caller was refused outright. Either way undo
-                // the half-added session (CloseSessionAsync also removes its pane record) rather than starting it
-                // in the operator's real working tree.
-                await CloseSessionAsync(sdkSession);
-                if (exception is OperationCanceledException)
-                {
-                    return null;
-                }
+        }
 
-                // Not a decline — a non-interactive refusal with a reason worth keeping. Rethrow so the caller (the
-                // assistant gateway) reports it rather than the caller seeing a session that silently is not there.
-                if (exception is WorktreeAdmissionException && interactive)
-                {
-                    ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
-                    return null;
-                }
-
-                throw;
-            }
-
-            sdkSession.ProjectId = result.ProjectId;
-            await sdkSession.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
-            paneId = sdkSession.PaneId;
-            startedWorkingDirectory = workingDirectory;
-            startedPermissionMode = result.Mode.Value;
+        SessionPanelHandle handle;
+        if (hosting.Kind == PaneSessionKind.Sdk && _sessionControls is { } controls && _sdkPaneOver is not null)
+        {
+            handle = new SessionPanelHandle(
+                new DesktopSessionLaunch(hosting.PaneId, hosting.Name, request.WorkspaceId, IsEmbedded: false, request.StartedByTheAssistant),
+                controls.Create(() => hosting.PaneId), _FirstSessionsWorkspaceId, pane => ReferenceEquals(FindSession(pane.PaneId), pane));
+        }
+        else if ((hosting.Kind == PaneSessionKind.Sdk ? (SessionPanelViewModel?)_sessionFactory?.Invoke() : _ttySessionFactory?.Invoke()) is { } made)
+        {
+            // A TTY pane holds its own pty, and a graph without controls (design-time, unit tests) makes the pane first.
+            made.AdoptPaneId(hosting.PaneId);
+            made.StartedByTheAssistant = request.StartedByTheAssistant;
+            handle = new SessionPanelHandle(made, isEmbedded: false, _FirstSessionsWorkspaceId, () => ReferenceEquals(FindSession(made.PaneId), made));
         }
         else
         {
-            var ttySession = (TtyViewModel)session;
-            string? workingDirectory;
-            try
-            {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(ttySession, result, interactive);
-            }
-            catch (Exception exception)
-            {
-                // Same reasoning as the SDK branch above: cleanup happens whichever of the two the failure is, only
-                // a decline swallows it silently.
-                await CloseSessionAsync(ttySession);
-                if (exception is OperationCanceledException)
-                {
-                    return null;
-                }
-
-                if (exception is WorktreeAdmissionException && interactive)
-                {
-                    ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
-                    return null;
-                }
-
-                throw;
-            }
-
-            // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
-            // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
-            // both for the same launch (see NewSessionResult.PluginTtyOptions).
-            var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
-            ttySession.ProjectId = result.ProjectId;
-
-            // AC-165: what the plugins give this session, resolved from the pane now that it has a project — the
-            // same contribution the SDK route folds in at start, so a TTY session gets the same answer.
-            var contributed = _sessionResourceResolver is null
-                ? SessionResources.Empty
-                : await _sessionResourceResolver.ResolveAsync(ttySession.PaneId);
-
-            ttySession.LaunchConfigured(
-                result.Profile,
-                isClaudeProfile ? result.Mode.Value : null,
-                isClaudeProfile ? result.Model.Value : null,
-                isClaudeProfile ? result.Effort.Value : null,
-                workingDirectory,
-                result.Resume,
-                result.TtyLaunchOptionsWithInstructions,
-                // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
-                // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
-                result.EnabledMcpServerNames,
-                contributed);
-            paneId = ttySession.PaneId;
-            startedWorkingDirectory = workingDirectory;
-            startedPermissionMode = isClaudeProfile ? result.Mode.Value : null;
+            return null;
         }
 
+        handle.Hosted = new HostedPaneCalls(_StartHostedAsync, () => _StopHostedAsync(handle));
+        _panesToMake[handle] = Land;
+        return handle;
+    }
+
+    // The launcher's start, on the pane: the steps the dialog's start always ran, with the folder admission gave.
+    private async Task _StartHostedAsync(SessionPanelViewModel session, SessionLaunchRequest request, string? workingDirectory)
+    {
+        if (session is SessionViewModel sdk)
+        {
+            sdk.ProjectId = request.ProjectId;
+            await sdk.StartConfiguredAsync(
+                request.Profile,
+                SessionOptionCatalog.ResolvePermissionMode(request.PermissionMode),
+                SessionOptionCatalog.ModelForValue(request.Model),
+                SessionOptionCatalog.ResolveEffort(request.Effort),
+                request.EnabledMcpServerNames,
+                workingDirectory,
+                request.Resume,
+                request.LaunchOptions,
+                request.ReadingLevel);
+            return;
+        }
+
+        var tty = (TtyViewModel)session;
+        tty.ProjectId = request.ProjectId;
+
+        // Claude's permission-mode/model/effort are its own vocabulary; a plugin TTY provider gets its declared options
+        // through the launch options instead, never both for the same launch.
+        var isClaudeProfile = request.Profile.Provider is SessionProvider.ClaudeCli;
+
+        // AC-165: what the plugins give this session, resolved now that the pane has a project, as the SDK route does.
+        var contributed = _sessionResourceResolver is null
+            ? SessionResources.Empty
+            : await _sessionResourceResolver.ResolveAsync(tty.PaneId);
+        tty.LaunchConfigured(
+            request.Profile,
+            isClaudeProfile ? SessionOptionCatalog.ResolvePermissionMode(request.PermissionMode).Value : null,
+            isClaudeProfile ? SessionOptionCatalog.ModelForValue(request.Model).Value : null,
+            isClaudeProfile ? SessionOptionCatalog.ResolveEffort(request.Effort).Value : null,
+            workingDirectory,
+            request.Resume,
+            request.LaunchOptions,
+            request.EnabledMcpServerNames,
+            contributed);
+    }
+
+    // A landed pane closes as the operator's close does; one that never landed lets go of what was made for it.
+    private async Task _StopHostedAsync(SessionPanelHandle handle)
+    {
+        if (handle.Pane is { } pane && Sessions.Contains(pane))
+        {
+            await CloseSessionAsync(pane);
+            return;
+        }
+
+        _panesToMake.Remove(handle);
+        if (handle.Pane is { } unlanded)
+        {
+            await unlanded.DisposeAsync();
+        }
+        else if (handle.Control is { } control)
+        {
+            await control.DisposeAsync();
+        }
+    }
+
+    // AC-410: the launcher writes the pane record before the start; flagged first, so a rename from now on reaches it (AC-514).
+    internal Task PersistLaunchedPaneAsync(string workspaceId, WorkspacePane pane)
+    {
+        if (FindSession(pane.Id) is { } session)
+        {
+            session.HasPersistedPane = true;
+        }
+
+        return Workspaces.AddPaneAsync(workspaceId, pane);
+    }
+
+    // AC-1439: `ISessionStartObserver`'s desktop half, on the UI thread.
+    internal void NoteSessionStarted(string paneId, string? projectId, string? projectJobId)
+    {
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
 
-        // Written once here rather than at two separate "session started"/"worktree coupled" moments: by this point
-        // isolation has already resolved (session.WorktreeBranch is set when it applied), so a second write immediately
-        // after this one would say nothing new (AC-409).
-        _ = _sessionStateRecorder?.RecordSessionStartedAsync(
-            paneId,
-            result.Profile,
-            startedWorkingDirectory,
-            worktreePath: session.WorktreeBranch is not null ? startedWorkingDirectory : null,
-            worktreeBranch: session.WorktreeBranch,
-            startedPermissionMode);
-
-        // Kept below the state write on purpose: the record above says which worktree this session *owns*, which
-        // this does not change — only what the header shows about where it runs.
-        await _AdoptWorktreeBadgeAsync(session, startedWorkingDirectory);
-
-        // Record that this project was worked on, whichever door the session came through, so the overview can
-        // lead with what is actually used. Fire-and-forget like the worktree count: a small config write must not
-        // hold up a session that has already started, and a failed one costs an ordering, not the work.
-        if (result.ProjectId is { Length: > 0 } projectId
+        // Record that this project was worked on, whichever door the session came through. Fire-and-forget: a small
+        // config write must not hold up a session that already started, and a failed one costs an ordering.
+        if (projectId is { Length: > 0 }
             && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
         {
             var marked = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
-            _ = result.ProjectJobId is { } jobId
+            _ = projectJobId is { } jobId
                 ? _RecordJobStartedAfterAsync(marked, paneId, projectId, jobId)
                 : marked;
         }
+    }
 
-        return paneId;
+    // AC-410: a restored pane starts on its own control in the folder it came back with. It never isolates, so the only
+    // admission left is re-owning the cockpit worktree that folder already is. Moves to the launcher with restore.
+    private async Task<string?> _StartRestoredPaneAsync(SessionPanelViewModel session, NewSessionResult result)
+    {
+        string? workingDirectory;
+        try
+        {
+            var admitted = await WorktreeAdmission.AdmitAsync(
+                _worktreeManager, session.PaneId, result.Profile.Label, result.WorkingDirectory, isolate: false);
+            if (admitted.WorktreeBranch is { } branch)
+            {
+                session.WorktreeBranch = branch;
+            }
+
+            workingDirectory = admitted.WorkingDirectory;
+        }
+        catch (WorktreeAdmissionException exception)
+        {
+            await CloseSessionAsync(session);
+            ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
+            return null;
+        }
+
+        var isSdk = session is SessionViewModel;
+        await _StartHostedAsync(session, _RequestOf(result, session.WorkspaceId) with
+        {
+            LaunchOptions = SessionStartComposer.WithInstructions(
+                isSdk ? result.SdkLaunchOptions : result.PluginTtyOptions, result.SystemPrompt, result.ProjectJobId is not null),
+        }, workingDirectory);
+
+        // Written once here (AC-409): isolation has resolved, so the record says which worktree this session owns.
+        _ = _sessionStateRecorder?.RecordSessionStartedAsync(
+            session.PaneId,
+            result.Profile,
+            workingDirectory,
+            worktreePath: session.WorktreeBranch is not null ? workingDirectory : null,
+            worktreeBranch: session.WorktreeBranch,
+            isSdk || result.Profile.Provider is SessionProvider.ClaudeCli ? result.Mode.Value : null);
+        await _AdoptWorktreeBadgeAsync(session, workingDirectory);
+        NoteSessionStarted(session.PaneId, result.ProjectId, result.ProjectJobId);
+        return session.PaneId;
     }
 
     // AC-490: writes the run's `Started` line only once `saved` — the project save above, which carries the job's id —
@@ -6032,45 +6130,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             _logger?.LogWarning(ex, "The job run for pane {PaneId} could not be written to the job history.", paneId);
         }
-    }
-
-    // Isolation keyed on the session's pane, the branch shown as a header chip (AC-85, AC-938). The rule is
-    // `WorktreeAdmission`'s, shared with the backend launcher (AC-1448); the dialog is this desktop's.
-    private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(
-        SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
-    {
-        var admitted = await WorktreeAdmission.AdmitAsync(
-            _worktreeManager, session.PaneId, result.Profile.Label, result.WorkingDirectory, result.IsolateInWorktree);
-        if (admitted.Decision is not { } decision)
-        {
-            if (admitted.WorktreeBranch is { } branch)
-            {
-                session.WorktreeBranch = branch;
-            }
-
-            return admitted.WorkingDirectory;
-        }
-
-        // A non-interactive caller (AC-719: an assistant spawn) never gets the dialog below — a modal it cannot see
-        // or answer — so it is refused with the reason.
-        if (!interactive)
-        {
-            throw new InvalidOperationException(
-                $"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}");
-        }
-
-        // Ask, and only run unisolated on an explicit yes. A no throws OperationCanceledException, which the
-        // launch path turns into a cancelled start rather than contaminating the working tree.
-        var runInFolder = _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
-            "Could not isolate this session",
-            $"A git worktree could not be created for this session ({decision.Reason}). Run it directly in '{decision.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
-            "Run in folder");
-        if (runInFolder)
-        {
-            return decision.WorkingDirectory;
-        }
-
-        throw new OperationCanceledException("Session start cancelled: worktree isolation failed and running unisolated was declined.");
     }
 
     private Task<WorktreeRecord?> _MatchingWorktreeAsync(string workingDirectory) =>
@@ -7136,7 +7195,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.Add(session);
     }
 
-    // Guarded on HasPersistedPane, which _PersistNewSessionPane/_AttachRestoredSession set synchronously before
+    // Guarded on HasPersistedPane, which PersistLaunchedPaneAsync/_AttachRestoredSession set synchronously before
     // Title/HasGeneratedName can ever change — so this only ever skips a session with no pane record at all (a plain
     // terminal), never races the pane's own creation write (AC-514).
     private void OnSessionNameChanged(object? sender, EventArgs e)
@@ -7162,30 +7221,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _AttachSession(session);
     }
 
-    // The `WorkspacePane` record for a just-started AI session (AC-410) — the operator's *intention*: which profile and
-    // kind it runs under, and the folder it was asked to run in, before isolation may have moved it into a worktree.
-    private static WorkspacePane _BuildSessionPane(SessionPanelViewModel session, NewSessionResult result) =>
-        new(session.PaneId, PaneKind.AiSession)
-        {
-            ProfileId = result.Profile.Label,
-            SessionKind = result.Kind == SessionKind.Sdk ? PaneSessionKind.Sdk : PaneSessionKind.Tty,
-            WorkingDirectory = result.WorkingDirectory,
-            Title = session.Title,
-            NameIsChosen = result.NameIsChosen,
-            ProjectId = result.ProjectId,
-            StartedByTheAssistant = result.StartedByTheAssistant,
-        };
-
-    // Persists `session`'s pane record right after `AddSession` — deliberately before `_StartSessionAsync` runs, not
-    // after: a crash in between leaves at most one config write, so the worst case is a pane that never comes back, not
-    // one that comes back describing a session that never actually started this way (AC-410).
-    private void _PersistNewSessionPane(SessionPanelViewModel session, NewSessionResult result)
-    {
-        session.StartedByTheAssistant = result.StartedByTheAssistant;
-        session.HasPersistedPane = true;
-        _ = Workspaces.AddPaneAsync(session.WorkspaceId, _BuildSessionPane(session, result));
-    }
-
     // AC-410: the restore plan composed for each pane brought back this run, kept by pane id — read by the banner
     // (SessionPanelViewModel.RestoreOffer, set from here) and again by _StartRestoredSessionAsync once the
     // operator picks a start, so the plan is composed exactly once per pane per run.
@@ -7193,7 +7228,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-410: the working directory a restored pane actually starts in, resolved once here from the worktree registry
     // rather than left to the start path — the restore path runs with IsolateInWorktree: false (see
-    // _BuildRestoreLaunchResult), so _ResolveIsolatedWorkingDirectoryAsync never gets a chance to look this up itself.
+    // _BuildRestoreLaunchResult), so _StartRestoredPaneAsync never gets a chance to look this up itself.
     private readonly Dictionary<string, string?> _restoreWorkingDirectories = new(StringComparer.Ordinal);
 
     // Waits on `IWorktreeReconcileGate` first: `Program.cs` starts the startup worktree reconcile fire-and-forget so it
@@ -7381,7 +7416,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await recorded.PrepareRecordedTranscriptAsync(resume);
         }
 
-        if (await _StartSessionAsync(session, result) is not null)
+        if (await _StartRestoredPaneAsync(session, result) is not null)
         {
             session.RestoreOffer = null;
         }
@@ -7542,7 +7577,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void _FollowSessionRegistry()
     {
-        if (_sessionRegistry is not { } registry || _sdkPaneOver is not { } paneOver)
+        if (_sessionRegistry is not { } registry)
         {
             return;
         }
@@ -7560,15 +7595,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var handle in live)
         {
-            if (handle.Control is not { } control || !_panesToMake.Remove(handle, out var attach))
+            if (!_panesToMake.Remove(handle, out var attach))
             {
                 continue;
             }
 
-            var pane = paneOver(control);
-            pane.AdoptPaneId(handle.PaneId);
-            pane.StartedByTheAssistant = handle.StartedByTheAssistant;
-            handle.Attach(pane);
+            // AC-1439: a TTY pane, and one from a graph without controls, was made with its handle and only lands here.
+            if (handle.Pane is not { } pane)
+            {
+                if (handle.Control is not { } control || _sdkPaneOver is not { } paneOver)
+                {
+                    continue;
+                }
+
+                var made = paneOver(control);
+                made.AdoptPaneId(handle.PaneId);
+                made.StartedByTheAssistant = handle.StartedByTheAssistant;
+                handle.Attach(made);
+                pane = made;
+            }
+
             _panesMade[handle] = pane;
             attach(pane);
         }
@@ -7583,7 +7629,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var handle = new SessionPanelHandle(
                 launch, controls.Create(() => launch.PaneId), _FirstSessionsWorkspaceId,
                 isAssistant ? null : pane => ReferenceEquals(FindSession(pane.PaneId), pane));
-            _panesToMake[handle] = attach;
+            _panesToMake[handle] = pane =>
+            {
+                if (pane is SessionViewModel sdk)
+                {
+                    attach(sdk);
+                }
+            };
             if (isAssistant)
             {
                 registry.RegisterAssistant(handle);
@@ -8623,122 +8675,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Whether `profile` has a terminal route of its own — Claude's, or one a plugin registered.
-    // Asked by the spawn service before honouring a request for a TTY session, so "that profile cannot run as a
-    // terminal" is a sentence the assistant can say rather than a launch that silently comes up as something else.
-    internal bool ProfileHasTtyRoute(SessionProfile profile) =>
-        SessionKindDefaults.HasTtyRoute(profile, _ttyProviderResolver);
-
-    // *What is deliberately different.* Only the desk: `workspaceId` is stamped rather than worked out, the workspace
-    // is not activated and `SelectedSession` does not move (AC-545, AC-410).
-    internal async Task<(string PaneId, string Name, bool? PromptDelivered)?> StartSessionOnWorkspaceAsync(
-        string workspaceId,
-        SessionProfile profile,
-        string? prompt,
-        string? workingDirectory,
-        string? sessionName,
-        // The operator's own words override the profile's route, exactly as the New-session dialog's Kind toggle
-        // does — "the same profile, but as an SDK session" is an ordinary request and this is where it lands.
-        SessionKind? requestedKind = null,
-        // The provider options this one session starts with, already merged over the profile's own and already
-        // validated (AC-648) — null for "whatever the profile says", which is what every spawn but an overriding one
-        // hands in.
-        IReadOnlyDictionary<string, string>? launchOptions = null,
-        // Tri-state (AC-719): null inherits the resolved project's own default, true may isolate on top of it.
-        // `false` never reaches here in practice — the assistant gateway refuses it before a launch is composed —
-        // but is honoured the same way false always is if it ever does.
-        bool? isolateInWorktree = null,
-        // This is the sole thing that changes about how a project is found: given, it is looked up directly and the
-        // folder map-match below never runs; left out, the folder decides exactly as it always has (AC-773).
-        string? explicitProjectId = null,
-        // AC-1300: true only when the assistant itself asked. A coordinator's or a paired controller's spawn comes
-        // through this same door but is somebody else's session, so it is stamped like an operator's own.
-        bool startedByTheAssistant = false)
-    {
-        var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
-
-        // Resolved from the folder as given, or the profile's own default when nobody named one (AC-320) — the same
-        // rule the embedded and plugin start paths are placed by, and never the isolated worktree a start later
-        // derives from it.
-        var profileOnlyDefaults = SessionStartDefaults.Resolve(project: null, profile);
-        var lookupDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? profileOnlyDefaults.WorkingDirectory : workingDirectory;
-        var projectId = explicitProjectId is { Length: > 0 } ? explicitProjectId : await _ProjectIdForDirectoryAsync(lookupDirectory);
-        var project = await FindProjectByIdAsync(projectId);
-
-        // Composed through the same door the launcher's Start button and the sidebar's ▶ use (AC-719): a resolved
-        // project's isolation, behaviour prompt, instruction/memory/reference rows and MCP selection all come along
-        // in one pass. No project falls back below to the profile's own half, unchanged from before this ticket.
-        var composed = project is not null && _projectQuickStart is not null
-            ? await _projectQuickStart.ComposeAsync(project, profile)
-            : null;
-
-        // This started as a hardcoded SDK launch, and a profile set to TTY came up as an SDK session with the profile's
-        // own start options applied to the wrong vocabulary: it looked like it had worked, which is the only reason it
-        // took a live test to notice.
-        var kind = requestedKind ?? composed?.Kind ?? SessionKindDefaults.ResolveDefaultKind(profile, _ttyProviderResolver);
-        var isSdk = kind == SessionKind.Sdk;
-        var directory = string.IsNullOrWhiteSpace(workingDirectory)
-            ? composed?.WorkingDirectory ?? profileOnlyDefaults.WorkingDirectory
-            : workingDirectory;
-
-        var result = (composed ?? new NewSessionResult(
-                kind,
-                profile,
-                // The typed Claude vocabulary is migration-only, and the dialog seeds it with the app defaults
-                // whatever the profile says; a spawn has no operator at the dialog to override them either.
-                SessionOptionCatalog.DefaultPermissionMode,
-                SessionOptionCatalog.DefaultModel,
-                SessionOptionCatalog.DefaultEffort,
-                name,
-                SystemPrompt: profileOnlyDefaults.SystemPrompt))
-            with
-        {
-            Kind = kind,
-            SessionName = name,
-            NameIsComposed = string.IsNullOrWhiteSpace(sessionName),
-            WorkingDirectory = directory,
-            // The provider's own declared start defaults, saved on the profile — or those with this spawn's
-            // overrides already folded in. Only ever for the kind that is actually starting: the two vocabularies
-            // never both apply. A project carries no provider options of its own, so composed's are the profile's.
-            PluginTtyOptions = isSdk ? null : launchOptions ?? profile.Defaults?.OptionDefaults,
-            SdkLaunchOptions = isSdk ? launchOptions ?? profile.Defaults?.OptionDefaults : null,
-            ReadingLevel = isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
-            ProjectId = projectId,
-            // The tri-state override applied last, over whatever the project resolved (or false, with no project).
-            IsolateInWorktree = isolateInWorktree ?? composed?.IsolateInWorktree ?? false,
-            StartedByTheAssistant = startedByTheAssistant,
-        };
-
-        // AC-1375: asked again after the last await above, since the desk the caller decided on can close while the
-        // project resolves and composes. Nothing awaits between here and AddSession, so no pane lands where no tab shows it.
-        if (!Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == workspaceId && workspace.Type == WorkspaceType.Sessions))
-        {
-            return null;
-        }
-
-        // Non-interactive (AC-719): a failed isolation refuses with a reason instead of raising a modal on the main
-        // window — the chat window's Allow row is answered by an operator who may be looking at another desk
-        // entirely, and a dialog they never see would stall this turn on a question it cannot report (criterion 7).
-        if (await _LaunchSessionFromResultAsync(result, workspaceId, interactive: false) is not { } paneId)
-        {
-            return null;
-        }
-
-        bool? promptDelivered = null;
-        if (!string.IsNullOrWhiteSpace(prompt))
-        {
-            // By pane id rather than "the one just added": a session the operator opened at the same moment must not
-            // catch a brief meant for this one (AC-760).
-            promptDelivered = FindSession(paneId)?.SubmitPromptWhenReady(prompt);
-        }
-
-        return (paneId, name, promptDelivered);
-    }
-
-    // The gateway settles what may be closed (an agent session, never the assistant's own); this carries it out
-    // (AC-545).
-    internal Task StopSessionForAssistantAsync(SessionPanelViewModel session) => CloseSessionAsync(session);
-
     // Instead the host holds them here, keyed by the plugin workspace that owns them, and tears them down when that
     // workspace (or the app) closes (AC-122).
     private readonly Dictionary<string, List<SessionPanelViewModel>> _embeddedSessions = new(StringComparer.Ordinal);
@@ -9098,23 +9034,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.ProjectId = await _ProjectIdForDirectoryAsync(directory);
         }
-    }
-
-    // Internal so `AssistantAgentGateway` can resolve a project before its own profile/TTY/option checks run, without
-    // growing a second copy of "how a project is found" next to this one (AC-773).
-    internal async Task<Project?> FindProjectByIdAsync(string? projectId)
-    {
-        if (string.IsNullOrWhiteSpace(projectId))
-        {
-            return null;
-        }
-
-        if (Projects.Projects.Count == 0)
-        {
-            await Projects.LoadAsync();
-        }
-
-        return Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId);
     }
 
     // The directory as requested, never the isolated one a start derives from it: a run's own worktree belongs to no

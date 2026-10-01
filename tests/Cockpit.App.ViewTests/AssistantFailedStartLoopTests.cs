@@ -182,7 +182,7 @@ public sealed class AssistantFailedStartLoopTests
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>([]);
 
         var host = new AssistantSessionHost(
-            new SessionLauncherAdapter(cockpit), new NodeControllerPresence(), settings, profiles, sessionState,
+            new DesktopSessionSeams(() => cockpit), new NodeControllerPresence(), settings, profiles, sessionState,
             new SessionStateRecorder(sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             catalog, Substitute.For<IAssistantMemory>(), NullLogger<AssistantSessionHost>.Instance);
 
