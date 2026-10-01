@@ -210,7 +210,45 @@ public interface ISessionHandle
         {
         }
     }
+
+    /// <summary>
+    /// Raised for each chunk of text the session produces for the operator: a top-level reply or a top-level tool's
+    /// output (AC-1415). Raised outside the handle's own lock, on whichever thread produced it.
+    /// </summary>
+    event Action<string>? OutputTextProduced
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised when the session's agent completes a top-level tool call, its name and input coupled with its result
+    /// (AC-1415). Never raised by a plain terminal.
+    /// </summary>
+    event Action<SessionToolCall>? ToolActivityProduced
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// The images the message that started the current turn carried (AC-1415); empty when it carried none or no turn runs.
+    /// </summary>
+    IReadOnlyList<ImageAttachment> CurrentTurnImages => [];
 }
+
+// AC-1415: one completed top-level tool call, as ISessionHandle.ToolActivityProduced reports it.
+public sealed record SessionToolCall(string PaneId, string ToolName, string InputJson, string ResultContent, bool IsError);
 
 // AC-1324: one open Allow/Deny question on a session, as its own handle reports it — the same shape
 // IAssistantReadGateway's AssistantPendingPermission carries minus the pane id, which the caller already has.

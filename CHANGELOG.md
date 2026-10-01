@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: on a cockpit running without a window (the server), plugins now hear what its sessions produce — the
+  replies, each finished tool call with its result, and the images the current turn's message carried — so a
+  plugin that watches for a pull-request link or attaches pasted images to a new issue works there as well.
 - added: a cockpit running without a window (the server) loads every plugin's backend part, and turns away one
   whose backend part reaches for the user interface, naming the plugin and the reason in the plugin manager
   instead of failing later with a missing-file error.

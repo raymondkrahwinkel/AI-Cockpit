@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -132,6 +133,76 @@ internal sealed class SessionPanelHandle(
             }
         }
     }
+
+    // AC-1415: the pane's own signals, which stay their source on the desktop until AC-1437 moves them to the host. The
+    // pane is hooked while anyone listens, so a handle nobody follows holds no handler on it.
+    private readonly Lock _gate = new();
+    private Action<string>? _outputTextProduced;
+    private Action<SessionToolCall>? _toolActivityProduced;
+
+    public event Action<string>? OutputTextProduced
+    {
+        add
+        {
+            lock (_gate)
+            {
+                if (_outputTextProduced is null)
+                {
+                    pane.OutputTextProduced += _OnPaneOutputText;
+                }
+
+                _outputTextProduced += value;
+            }
+        }
+
+        remove
+        {
+            lock (_gate)
+            {
+                _outputTextProduced -= value;
+                if (_outputTextProduced is null)
+                {
+                    pane.OutputTextProduced -= _OnPaneOutputText;
+                }
+            }
+        }
+    }
+
+    public event Action<SessionToolCall>? ToolActivityProduced
+    {
+        add
+        {
+            lock (_gate)
+            {
+                if (_toolActivityProduced is null)
+                {
+                    pane.ToolActivityProduced += _OnPaneToolActivity;
+                }
+
+                _toolActivityProduced += value;
+            }
+        }
+
+        remove
+        {
+            lock (_gate)
+            {
+                _toolActivityProduced -= value;
+                if (_toolActivityProduced is null)
+                {
+                    pane.ToolActivityProduced -= _OnPaneToolActivity;
+                }
+            }
+        }
+    }
+
+    public IReadOnlyList<ImageAttachment> CurrentTurnImages =>
+        [.. pane.CurrentTurnImages.Select(image => new ImageAttachment(image.MediaType, image.Base64Data))];
+
+    private void _OnPaneOutputText(object? sender, string text) => _outputTextProduced?.Invoke(text);
+
+    private void _OnPaneToolActivity(object? sender, SessionToolActivity activity) =>
+        _toolActivityProduced?.Invoke(new SessionToolCall(activity.PaneId, activity.ToolName, activity.InputJson, activity.ResultContent, activity.IsError));
 
     private bool _IsLive() => isLive?.Invoke() ?? true;
 

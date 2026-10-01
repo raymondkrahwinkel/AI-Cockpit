@@ -13,6 +13,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     // `TranscriptEntryKind.UserText` and `.Divider` as the transcript store spells them, like `SessionTranscriptBuilder`'s kinds.
     private const string UserText = "UserText";
     private const string Divider = "Divider";
+    private const string ToolUse = "ToolUse";
 
     private readonly Lock _gate = new();
     private readonly SessionHost<QueuedPrompt> _host;
@@ -22,6 +23,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     private string _statusline = string.Empty;
     private string? _worktreeBranch;
     private readonly List<ImageAttachment> _pendingImages = [];
+    private IReadOnlyList<ImageAttachment> _turnImages = [];
     private string _failureReason = "Not started.";
     private bool _wasWaitingOnOperator;
     private bool _stateChangePending;
@@ -47,6 +49,7 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         host.RowUpserted += _OnRowUpserted;
         host.EventAppended += _OnEventAppended;
         host.TurnStarting += _OnTurnStarting;
+        host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
     }
 
@@ -386,6 +389,21 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
         remove => _host.RowUpserted -= value;
     }
 
+    public event Action<string>? OutputTextProduced;
+
+    public event Action<SessionToolCall>? ToolActivityProduced;
+
+    public IReadOnlyList<ImageAttachment> CurrentTurnImages
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _turnImages;
+            }
+        }
+    }
+
     public IReadOnlyList<TranscriptSnapshotEntry> Rows
     {
         get
@@ -552,30 +570,65 @@ public sealed class SessionHostHandle : ISessionHandle, IAssistantSession
     }
 
     // Stream order is the runtime's, and a session error ends the turn it broke, as it does in the view model.
+    // The turn's images go before the next queued turn can start and take its own.
     private void _OnEventAppended(SessionHostEvent hostEvent)
     {
+        (string? Text, SessionToolCall? ToolCall) produced;
         lock (_gate)
         {
-            _host.ApplyToTranscript(hostEvent.Event);
+            produced = _Produced(hostEvent.Event, _host.ApplyToTranscript(hostEvent.Event));
             if (hostEvent.Event is TurnCompleted)
             {
+                _turnImages = [];
                 _host.CompleteTurn();
             }
             else if (hostEvent.Event is SessionError)
             {
+                _turnImages = [];
                 _host.IsBusy = false;
             }
         }
 
         _RaisePendingStateChange();
+        if (!string.IsNullOrEmpty(produced.Text))
+        {
+            OutputTextProduced?.Invoke(produced.Text);
+        }
+
+        if (produced.ToolCall is { } toolCall)
+        {
+            ToolActivityProduced?.Invoke(toolCall);
+        }
     }
+
+    // `SessionViewModel.Apply`'s output signals: a sub-agent's own text or result never raises them (AC-146).
+    private (string? Text, SessionToolCall? ToolCall) _Produced(SessionEvent sessionEvent, TranscriptFold fold) => sessionEvent switch
+    {
+        AssistantTextCompleted { ParentToolUseId: null or "" } completed => (completed.Text, null),
+        ToolResult { ParentToolUseId: null or "" } result when !fold.InSubAgentLane => (result.Content,
+            fold.Row is { Kind: ToolUse, ToolName: { Length: > 0 } toolName } row
+                ? new SessionToolCall(PaneId, toolName, row.InputJson ?? "{}", result.Content, result.IsError)
+                : null),
+        _ => (null, null),
+    };
 
     // The operator's own row, which the desktop pane forms itself (`SessionViewModel._OnTurnStarting`). A turn starts
     // from a send or from the end of the previous turn, both under the lock.
-    private void _OnTurnStarting(QueuedPrompt prompt) =>
+    private void _OnTurnStarting(QueuedPrompt prompt)
+    {
+        _turnImages = prompt.Images;
         _host.RecordRow(new TranscriptSnapshotEntry(
             Guid.NewGuid().ToString("n"), UserText, prompt.Text, ToolName: null, InputJson: null,
             ToolUseId: null, ResultText: null, IsResultError: false, DateTimeOffset.Now));
+    }
+
+    private void _OnTurnFailedToStart(QueuedPrompt prompt, Exception exception)
+    {
+        lock (_gate)
+        {
+            _turnImages = [];
+        }
+    }
 
     // Raised inside the fold or a recorded row, so under the same lock; a row keeps the place it first took.
     private void _OnRowUpserted(TranscriptRowUpsert upsert)
