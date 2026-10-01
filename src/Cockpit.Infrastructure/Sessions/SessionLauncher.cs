@@ -37,7 +37,8 @@ public sealed class SessionLauncher(
         var kind = request.Kind ?? PaneSessionKind.Sdk;
         if (!hosting.CanHost(kind))
         {
-            throw new TtyLaunchRefusedException(profile.Label);
+            // A host that runs no sessions at all starts nothing; one that runs them but no terminal says why.
+            return kind == PaneSessionKind.Tty && hosting.CanHost(PaneSessionKind.Sdk) ? throw new TtyLaunchRefusedException(profile.Label) : null;
         }
 
         // AC-410: a pane a restart brought back is registered, recorded and waiting; naming it starts that one.
@@ -111,13 +112,26 @@ public sealed class SessionLauncher(
     {
         // AC-1332: the handle carries who asked for it, so the pane it lands as is stamped before anything lists it.
         var nameIsChosen = !request.NameIsComposed && !string.IsNullOrWhiteSpace(request.SessionName);
-        var hosted = hosting.Host(new SessionHostingRequest(paneId, name, nameIsChosen, kind, request, admitted.WorkingDirectory, admitted.WorktreeBranch))
-            ?? throw new TtyLaunchRefusedException(request.Profile.Label);
-
-        // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
-        if (!await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(hosted)).ConfigureAwait(false))
+        IHostedSession? hosted = null;
+        bool registered;
+        try
         {
-            await _TearDownAsync(hosted).ConfigureAwait(false);
+            hosted = hosting.Host(new SessionHostingRequest(paneId, name, nameIsChosen, kind, request, admitted.WorkingDirectory, admitted.WorktreeBranch));
+
+            // Registered in the same section that checks the desk, so a close counting its sessions sees this one.
+            registered = hosted is not null
+                && await RunExclusiveAsync(() => _IsSessionsDesk(request.WorkspaceId) && registry.Find(paneId) is null && _Register(hosted)).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A UI that did not answer in time: the worktree admitted for this pane and whatever was made go with it.
+            await _AbandonAsync(paneId, hosted).ConfigureAwait(false);
+            throw;
+        }
+
+        if (hosted is null || !registered)
+        {
+            await _AbandonAsync(paneId, hosted).ConfigureAwait(false);
             return null;
         }
 
@@ -138,17 +152,34 @@ public sealed class SessionLauncher(
         }
         catch
         {
-            registry.Unregister(paneId);
-            await _TearDownAsync(hosted).ConfigureAwait(false);
+            await _AbandonAsync(paneId, hosted).ConfigureAwait(false);
             throw;
         }
 
         return hosted;
     }
 
+    // Unregistered only while it is still this one, then stopped, with its admitted worktree released.
+    private async Task _AbandonAsync(string paneId, IHostedSession? hosted)
+    {
+        if (hosted is not null && registry.Find(paneId) == hosted)
+        {
+            registry.Unregister(paneId);
+        }
+
+        if (hosted is not null)
+        {
+            await _TearDownAsync(hosted).ConfigureAwait(false);
+        }
+        else if (worktrees is not null)
+        {
+            await _ReleaseWorktreeAsync(paneId).ConfigureAwait(false);
+        }
+    }
+
     public async Task StopSessionAsync(string paneId)
     {
-        if (registry.Find(paneId) is not IHostedSession hosted)
+        if (registry.Find(paneId) is not IHostedSession { IsEmbedded: false } hosted)
         {
             return;
         }
@@ -156,7 +187,7 @@ public sealed class SessionLauncher(
         // A frontend's pane closes itself, record and worktree included; a backend host is the launcher's to clear.
         if (hosted is not SessionHostHandle)
         {
-            await hosted.StopAsync().ConfigureAwait(false);
+            await hosting.StopAsync(hosted).ConfigureAwait(false);
             return;
         }
 
@@ -232,7 +263,12 @@ public sealed class SessionLauncher(
     // Released here too for a pane that never landed, which no close will ever reach.
     private async Task _TearDownAsync(IHostedSession hosted)
     {
-        await hosted.StopAsync().ConfigureAwait(false);
+        await hosting.StopAsync(hosted).ConfigureAwait(false);
+        await _ReleaseWorktreeAsync(hosted.PaneId).ConfigureAwait(false);
+    }
+
+    private async Task _ReleaseWorktreeAsync(string paneId)
+    {
         if (worktrees is null)
         {
             return;
@@ -240,7 +276,7 @@ public sealed class SessionLauncher(
 
         try
         {
-            await worktrees.ReleaseAsync(hosted.PaneId).ConfigureAwait(false);
+            await worktrees.ReleaseAsync(paneId).ConfigureAwait(false);
         }
         catch (Exception)
         {

@@ -5957,7 +5957,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        handle.Hosted = new HostedPaneCalls(_StartHostedAsync, () => _StopHostedAsync(handle));
+        handle.Start = _StartHostedAsync;
         _panesToMake[handle] = Land;
         return handle;
     }
@@ -6005,7 +6005,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // A landed pane closes as the operator's close does; one that never landed lets go of what was made for it.
-    private async Task _StopHostedAsync(SessionPanelHandle handle)
+    internal async Task StopHostedAsync(SessionPanelHandle handle)
     {
         if (handle.Pane is { } pane && Sessions.Contains(pane))
         {
@@ -6024,12 +6024,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // AC-410: the launcher writes the pane record before the start; flagged first, so a rename from now on reaches it (AC-514).
+    // AC-410: the launcher writes the pane record before the start. Its name is the pane's as it stands now, so a rename
+    // since landing is kept, and the flag goes up in the same step, so every rename after it reaches the record (AC-514).
     internal Task PersistLaunchedPaneAsync(string workspaceId, WorkspacePane pane)
     {
         if (FindSession(pane.Id) is { } session)
         {
             session.HasPersistedPane = true;
+            pane = pane with { Title = session.Title, NameIsChosen = !session.HasGeneratedName };
         }
 
         return Workspaces.AddPaneAsync(workspaceId, pane);
@@ -7285,7 +7287,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 // AC-1439: registered and recorded already, so the launcher starts this very pane once a start is picked.
                 if (_sessionRegistry?.Find(pane.Id) is SessionPanelHandle restored)
                 {
-                    restored.Hosted = new HostedPaneCalls(_StartHostedAsync, () => _StopHostedAsync(restored));
+                    restored.Start = _StartHostedAsync;
                 }
 
                 // AC-410: pane-id continuity (AdoptPaneId, above) means a restored pane's own id is the worktree's

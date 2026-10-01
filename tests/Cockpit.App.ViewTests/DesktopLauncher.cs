@@ -2,6 +2,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
@@ -15,7 +16,8 @@ namespace Cockpit.App.ViewTests;
 internal static class DesktopLauncher
 {
     public static SessionLauncher Over(
-        CockpitViewModel cockpit, SessionRegistry registry, IWorktreeManager? worktrees = null, IMcpServerCatalog? mcpServers = null)
+        CockpitViewModel cockpit, SessionRegistry registry, IWorktreeManager? worktrees = null, IMcpServerCatalog? mcpServers = null,
+        SessionStateRecorder? stateRecorder = null)
     {
         var seams = new DesktopSessionSeams(() => cockpit);
         var catalog = mcpServers ?? Substitute.For<IMcpServerCatalog>();
@@ -26,7 +28,15 @@ internal static class DesktopLauncher
 
         return new SessionLauncher(
             seams, seams, registry, new SessionStartComposer(new CockpitProjects(cockpit), catalog, worktrees: worktrees),
-            worktrees: worktrees, startObserver: seams);
+            worktrees: worktrees, stateRecorder: stateRecorder, startObserver: seams);
+    }
+
+    // For a cockpit that starts through the launcher: handed to it before the launcher, which needs the cockpit, exists.
+    public sealed class Slot
+    {
+        public SessionLauncher? Launcher { get; set; }
+
+        public ISessionLauncher Get() => Launcher ?? throw new InvalidOperationException("The launcher was not wired yet.");
     }
 
     private sealed class CockpitProjects(CockpitViewModel cockpit) : IProjectStore

@@ -19,6 +19,11 @@ public interface ISessionHosting
     /// Null when this host cannot run that kind of session.
     /// </summary>
     IHostedSession? Host(SessionHostingRequest request);
+
+    /// <summary>
+    /// Ends <paramref name="session"/> as closing it here would, and lets go of what it holds.
+    /// </summary>
+    Task StopAsync(IHostedSession session);
 }
 
 /// <summary>
@@ -43,11 +48,6 @@ public interface IHostedSession : ISessionHandle
     /// Throws when the start failed and the session should go; a pane that shows its own failure returns.
     /// </summary>
     Task StartAsync(SessionLaunchRequest request, string? workingDirectory);
-
-    /// <summary>
-    /// Ends the session and lets go of what it holds.
-    /// </summary>
-    Task StopAsync();
 }
 
 // AC-1439: one session to host, as the launcher settled it: its id, name, kind and the folder and branch admission gave.

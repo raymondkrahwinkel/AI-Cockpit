@@ -26,6 +26,9 @@ public sealed class BackendSessionHosting(SessionControlFactory controls) : ISes
         _ = handle.SetWorktreeBranchAsync(request.WorktreeBranch);
         return handle;
     }
+
+    public Task StopAsync(IHostedSession session) =>
+        session is SessionHostHandle handle ? handle.DisposeAsync().AsTask() : Task.CompletedTask;
 }
 
 // AC-1379: the assistant on no desk, as the registry's `Assistant`, never in `All`. Its host starts it and holds the only

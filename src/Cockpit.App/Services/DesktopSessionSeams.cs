@@ -42,8 +42,9 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
             return occupants;
         });
 
+    // Uncapped: the start waits on this write (AC-410), and a slow save must not turn into a failed start.
     public Task AddPaneAsync(string workspaceId, WorkspacePane pane) =>
-        UiThreadCall.RunAsync(() => cockpit().PersistLaunchedPaneAsync(workspaceId, pane));
+        UiThreadCall.Uncapped(() => cockpit().PersistLaunchedPaneAsync(workspaceId, pane));
 
     public Task RemovePaneAsync(string workspaceId, string paneId) =>
         UiThreadCall.RunAsync(() => cockpit().Workspaces.RemovePaneAsync(workspaceId, paneId));
@@ -51,6 +52,9 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
     public bool CanHost(PaneSessionKind kind) => cockpit().CanHostSession(kind);
 
     public IHostedSession? Host(SessionHostingRequest request) => UiThreadCall.Run(() => cockpit().HostSession(request));
+
+    public Task StopAsync(IHostedSession session) =>
+        session is SessionPanelHandle handle ? UiThreadCall.RunAsync(() => cockpit().StopHostedAsync(handle)) : Task.CompletedTask;
 
     public void SessionStarted(string paneId, string? projectId, string? projectJobId) =>
         Dispatcher.UIThread.Post(() => cockpit().NoteSessionStarted(paneId, projectId, projectJobId));

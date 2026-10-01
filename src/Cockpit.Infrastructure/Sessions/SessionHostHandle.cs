@@ -485,8 +485,6 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    public Task StopAsync() => DisposeAsync().AsTask();
-
     // Hosted and started in one launch; the backend brings nothing back to start later.
     public bool AwaitsStart => false;
 
