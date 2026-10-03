@@ -128,7 +128,6 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
             await server.DisposeAsync().ConfigureAwait(false);
         }
 
-        _reload.Dispose();
     }
 
     private bool _IsDisconnected(string name)
@@ -165,9 +164,6 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     private RemoteServerState _state = new(false, null, null);
     private RemoteBackend? _backend;
     private Task _connecting = Task.CompletedTask;
-
-    // The stream's first open follows the /whoami the connect just made; only a later one asks again.
-    private bool _streamOpened;
 
     public RemoteServer(string name, McpServerConfig row, ILogger logger)
     {
@@ -217,10 +213,11 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
 
     public void Start() => _connecting = _ConnectAsync();
 
+    // Not waiting for a connect still out: a server that stalls must not hold up a Disconnect. That connect sees the
+    // cancellation and lets its backend go.
     public async ValueTask DisposeAsync()
     {
         await _stop.CancelAsync().ConfigureAwait(false);
-        await _connecting.ConfigureAwait(false);
         RemoteBackend? backend;
         lock (_gate)
         {
@@ -234,7 +231,6 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
         }
 
         _client.Dispose();
-        _stop.Dispose();
     }
 
     private async Task _ConnectAsync()
@@ -245,19 +241,22 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             try
             {
                 await _ReadKeyAsync().ConfigureAwait(false);
+                // Connected is the stream's word, raised when its headers come back; this only hands the registry over.
                 var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection).ConfigureAwait(false);
-                if (_stop.IsCancellationRequested)
+                bool stopped;
+                lock (_gate)
+                {
+                    stopped = _stop.IsCancellationRequested;
+                    _backend = stopped ? null : backend;
+                }
+
+                if (stopped)
                 {
                     await backend.DisposeAsync().ConfigureAwait(false);
                     return;
                 }
 
-                lock (_gate)
-                {
-                    _backend = backend;
-                }
-
-                _Set(state => state with { IsConnected = true });
+                StateChanged?.Invoke(this, EventArgs.Empty);
                 return;
             }
             catch (BackendApiException exception) when (exception.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
@@ -293,17 +292,9 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     {
         if (!connected)
         {
-            _Set(state => state with { IsConnected = false });
+            var refused = Sessions is RemoteBackend { KeyRefused: true };
+            _Set(state => state with { IsConnected = false, KeyRefused = state.KeyRefused || refused });
             return;
-        }
-
-        lock (_gate)
-        {
-            if (!_streamOpened)
-            {
-                _streamOpened = true;
-                return;
-            }
         }
 
         _ = _ReturnAsync();

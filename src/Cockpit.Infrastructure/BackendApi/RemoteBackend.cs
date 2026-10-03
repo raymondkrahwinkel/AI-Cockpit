@@ -101,6 +101,9 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
     }
 
+    // AC-1456: true once the backend turned the key away; the stream then stays down until someone connects anew.
+    public bool KeyRefused { get; private set; }
+
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
     public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null)
     {
@@ -220,12 +223,14 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
                     _refreshed.TrySetException(exception);
                 }
 
+                KeyRefused = true;
                 _connectionChanged?.Invoke(false);
                 return;
             }
             catch (Exception)
             {
-                // Falls through to the reload below, which brings every handle back to what the backend holds.
+                // A failed refresh is a drop the stream did not see; the reload below brings every handle back.
+                _connectionChanged?.Invoke(false);
             }
 
             try

@@ -138,7 +138,7 @@
                     <Button Content="Keep running" Classes="Subtle Compact"
                             Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).CancelCloseSessionCommand}"
                             CommandParameter="{Binding}"/>
-                    <Button Content="Stop on server" Classes="Compact" Foreground="White"
+                    <Button Content="Stop on server" Classes="Compact" Foreground="{DynamicResource CockpitTextOnStatusBrush}"
                             Background="{DynamicResource CockpitStatusErrorBrush}"
                             Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
                             CommandParameter="{Binding}"/>

@@ -9358,6 +9358,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _embeddedSessions.Clear();
+
+        // AC-1456: the remote panes hold nothing on this machine but their handles' listeners.
+        foreach (var remote in _remotePanes.ToList())
+        {
+            await remote.DisposeAsync();
+        }
+
+        _remotePanes.Clear();
         _embeddedSessionViews.Clear();
         Sessions.Clear();
         _lastStatus.Clear();

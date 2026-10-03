@@ -136,6 +136,8 @@ public partial class CockpitViewModel
         foreach (var server in servers.Where(server => ServerGroups.All(group => !ReferenceEquals(group.Server, server))))
         {
             var group = new ServerGroupViewModel(server);
+
+            // Subscribed before the state is read again below, so a change raised in between is not lost.
             group.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(ServerGroupViewModel.IsExpanded))
@@ -161,6 +163,7 @@ public partial class CockpitViewModel
                 OnPropertyChanged(nameof(ServerStatusLabels));
             });
             Follow();
+            group.State = server.State;
             ServerGroups.Add(group);
             _ReconcileServerGroup(group);
         }
@@ -283,9 +286,19 @@ public partial class CockpitViewModel
     [RelayCommand]
     private async Task DisconnectServerAsync(ServerGroupViewModel group)
     {
-        if (_remoteServers is not null)
+        if (_remoteServers is null)
+        {
+            return;
+        }
+
+        try
         {
             await _remoteServers.DisconnectAsync(group.Name);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not disconnect from {Server}.", group.Name);
+            ToastHost.Add($"Could not disconnect from {group.Name}: {exception.Message}", ToastSeverity.Error, null, null);
         }
     }
 
@@ -314,6 +327,10 @@ public partial class CockpitViewModel
             group.Start.Fill(
                 snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
                 snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
+        }
+        catch (Exception exception)
+        {
+            group.Start.Error = exception.Message;
         }
         finally
         {
