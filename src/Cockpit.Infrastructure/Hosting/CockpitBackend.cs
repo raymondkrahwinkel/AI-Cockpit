@@ -282,6 +282,8 @@ public sealed class CockpitBackend
     public async Task StopAsync(TimeSpan budget)
     {
         using var deadline = new CancellationTokenSource(budget);
+        using var sessionsDeadline = new CancellationTokenSource(budget / 2);
+        var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
         IDisposable?[] planners =
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
@@ -289,68 +291,84 @@ public sealed class CockpitBackend
         ];
         foreach (var planner in planners)
         {
-            planner?.Dispose();
+            try
+            {
+                planner?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "{Planner} failed to stop.", planner?.GetType().Name);
+            }
         }
 
-        var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
         var registry = Services.GetRequiredService<SessionRegistry>();
         var hosting = Services.GetRequiredService<ISessionHosting>();
         var sessions = registry.All.OfType<IHostedSession>().Where(session => !session.IsEmbedded).ToList();
         if (registry.Assistant is IHostedSession assistant)
         {
-            registry.UnregisterAssistant();
             sessions.Add(assistant);
         }
 
-        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, budget / 2, logger))).ConfigureAwait(false);
+        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, sessionsDeadline.Token, logger))).ConfigureAwait(false);
 
         foreach (var service in Services.GetServices<IHostedService>().Reverse())
         {
-            try
-            {
-                await service.StopAsync(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "{Service} did not stop cleanly within the stop's {Budget}.", service.GetType().Name, budget);
-            }
+            await _WithinAsync(service.StopAsync(deadline.Token), deadline.Token, service.GetType().Name, logger).ConfigureAwait(false);
         }
 
+        await _WithinAsync(Services.DisposeAsync().AsTask(), deadline.Token, "The service container", logger).ConfigureAwait(false);
+    }
+
+    // A step cut off by the deadline is left to finish on its own, and a fault it ends in later is still logged.
+    private static async Task _WithinAsync(Task step, CancellationToken deadline, string what, ILogger logger)
+    {
         try
         {
-            await Services.DisposeAsync().AsTask().WaitAsync(deadline.Token).ConfigureAwait(false);
+            await step.WaitAsync(deadline).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            logger.LogWarning("The service container did not finish disposing within the stop's {Budget}; stopping without it.", budget);
+            logger.LogWarning("{What} did not stop within the stop's deadline; stopping without it.", what);
+            _ = step.ContinueWith(
+                late => logger.LogWarning(late.Exception, "{What} failed to stop after the deadline.", what),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "{What} failed to stop.", what);
         }
     }
 
-    // The stop the launcher's own teardown starts with. One that outlasts the budget has its process tree ended, as
+    // The stop the launcher's own teardown starts with. One still going at the deadline has its process tree ended, as
     // taken before the stop let go of the runtime; the anchors close only at the end of a dispose that is wedged.
-    private static async Task _StopSessionAsync(IHostedSession session, SessionRegistry registry, ISessionHosting hosting, TimeSpan budget, ILogger logger)
+    private static async Task _StopSessionAsync(IHostedSession session, SessionRegistry registry, ISessionHosting hosting, CancellationToken deadline, ILogger logger)
     {
         using var process = _ProcessOf(session);
-        if (registry.Find(session.PaneId) == session)
-        {
-            registry.Unregister(session.PaneId);
-        }
-
-        var stop = hosting.StopAsync(session);
+        var stop = Task.CompletedTask;
         try
         {
-            await stop.WaitAsync(budget).ConfigureAwait(false);
+            if (ReferenceEquals(registry.Assistant, session))
+            {
+                registry.UnregisterAssistant();
+            }
+            else if (registry.Find(session.PaneId) == session)
+            {
+                registry.Unregister(session.PaneId);
+            }
+
+            stop = hosting.StopAsync(session);
+            await stop.WaitAsync(deadline).ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            logger.LogWarning("Session {PaneId} did not stop within {Budget}; ending its process tree.", session.PaneId, budget);
+            logger.LogWarning("Session {PaneId} did not stop within its share of the deadline; ending its process tree.", session.PaneId);
             if (process is not null)
             {
                 CommandRunnerProcess._KillTree(process);
             }
 
             _ = stop.ContinueWith(
-                late => logger.LogWarning(late.Exception, "Session {PaneId} failed to stop after its budget.", session.PaneId),
+                late => logger.LogWarning(late.Exception, "Session {PaneId} failed to stop after the deadline.", session.PaneId),
                 CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         }
         catch (Exception exception)

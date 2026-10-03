@@ -108,7 +108,6 @@ public sealed class NodeConnectJourney
     private static string? _RowOf(Cockpit.Core.Abstractions.Events.BackendEvent evt) =>
         evt.Kind == "row" && evt.Data.TryGetProperty("PaneId", out var pane) ? pane.GetString() : null;
 
-    // A desk to land on, an SDK profile to run (a TTY one needs a window) and the node door on a port of the OS's choosing.
     // AC-1442: the backend's stop without App. Of two sessions one has a CLI that never lets go; within the budget the
     // register is empty, the listeners' ports are free, and that CLI's process is ended rather than left behind.
     [Fact]
@@ -121,7 +120,11 @@ public sealed class NodeConnectJourney
         cockpit.Backend.Start();
         cockpit.Backend.StartPlanners();
         var endpoints = services.GetRequiredService<CockpitMcpEndpointHost>();
-        int[] ports = [new Uri(Assert.Single(endpoints.GetNodeAddresses()).Url).Port, new Uri(endpoints.GetServers()[0].Url ?? "").Port];
+        (IPAddress Address, int Port)[] listeners =
+        [
+            (IPAddress.Any, new Uri(Assert.Single(endpoints.GetNodeAddresses()).Url).Port),
+            (IPAddress.Loopback, new Uri(endpoints.GetServers()[0].Url ?? "").Port),
+        ];
         var registry = services.GetRequiredService<ISessionRegistry>();
         var launcher = services.GetRequiredService<ISessionLauncher>();
         var profile = Assert.Single(await services.GetRequiredService<ISessionProfileStore>().LoadAsync());
@@ -141,9 +144,9 @@ public sealed class NodeConnectJourney
             Assert.True(clock.Elapsed < budget, $"The stop took {clock.Elapsed}.");
             Assert.Empty(registry.All);
             Assert.True(child.WaitForExit(TimeSpan.FromSeconds(5)), $"Process {child.Id} outlived the stop.");
-            foreach (var port in ports)
+            foreach (var (address, port) in listeners)
             {
-                var probe = new TcpListener(IPAddress.Any, port);
+                var probe = new TcpListener(address, port);
                 probe.Start();
                 probe.Stop();
             }
@@ -154,9 +157,12 @@ public sealed class NodeConnectJourney
             {
                 child.Kill(entireProcessTree: true);
             }
+
+            child.Dispose();
         }
     }
 
+    // A desk to land on, an SDK profile to run (a TTY one needs a window) and the node door on a port of the OS's choosing.
     private static async Task _SaveAFreshNodeAsync(IServiceProvider services)
     {
         var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
