@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 
@@ -23,6 +24,40 @@ public static class Until
             NotifyCollectionChangedEventHandler handler = (_, _) => changed();
             subject.CollectionChanged += handler;
             return () => subject.CollectionChanged -= handler;
+        });
+
+    // As CollectionHolds, and also when an item already in it changes: a row added empty and filled in afterwards, as a
+    // transcript row arrives in two upserts, changes no collection the second time.
+    public static Task ItemsHold<T>(ObservableCollection<T> items, Func<bool> condition)
+        where T : INotifyPropertyChanged =>
+        _Holds(condition, changed =>
+        {
+            PropertyChangedEventHandler itemChanged = (_, _) => changed();
+            var watched = new List<T>();
+            void Watch()
+            {
+                foreach (var item in items.Except(watched).ToList())
+                {
+                    item.PropertyChanged += itemChanged;
+                    watched.Add(item);
+                }
+            }
+
+            NotifyCollectionChangedEventHandler collectionChanged = (_, _) =>
+            {
+                Watch();
+                changed();
+            };
+            Watch();
+            items.CollectionChanged += collectionChanged;
+            return () =>
+            {
+                items.CollectionChanged -= collectionChanged;
+                foreach (var item in watched)
+                {
+                    item.PropertyChanged -= itemChanged;
+                }
+            };
         });
 
     private static Task _Holds(Func<bool> condition, Func<Action, Action> subscribe)

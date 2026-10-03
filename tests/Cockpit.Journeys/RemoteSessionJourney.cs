@@ -80,7 +80,7 @@ public sealed class RemoteSessionJourney
                 var row = group.Sessions.Single();
                 paneId = row.Handle.PaneId;
                 pane = row.Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
-                await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: hello") == 1);
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: hello") == 1);
 
                 // The line drops: Reconnecting, the pane stays, and the server answers on without anyone watching.
                 relay.Cut();
@@ -95,7 +95,7 @@ public sealed class RemoteSessionJourney
                 await Until.Holds(group, () => group.IsConnected);
                 try
                 {
-                    await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: again") > 0);
+                    await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: again") > 0);
                 }
                 catch (TimeoutException)
                 {
