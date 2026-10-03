@@ -135,10 +135,9 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
         await Task.CompletedTask;
     }
 
-    // SIGTERM to the direct child, then a short wait; true when that ended it. Under the server image the child is
-    // `sudo -u agent` (AC-1464): it keeps the cockpit's real uid, so the cockpit may signal it and it relays the
-    // SIGTERM to claude, while a SIGKILL — all `Process.Kill` sends — cannot be relayed and would orphan claude.
-    // Measured 03-10 on aspnet:10.0 with sudo 1.9.15p5. On the desktop the child is claude itself. Windows has no SIGTERM.
+    // SIGTERM to the direct child, true when it then ends. Under the server image that child is `sudo -u agent`, which
+    // keeps the cockpit's real uid and relays a SIGTERM to claude; a SIGKILL (all Process.Kill sends) would orphan it.
+    // Measured 03-10 on aspnet:10.0, sudo 1.9.15p5 (AC-1468). On the desktop the child is claude itself.
     private static bool _Terminate(Process process)
     {
         const int sigterm = 15;

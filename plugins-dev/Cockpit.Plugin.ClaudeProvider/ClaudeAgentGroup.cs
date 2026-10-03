@@ -2,12 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// AC-1468: the server image runs claude under its own uid (AC-1464), which shares one group with the cockpit. The
-// image names that group's numeric gid in COCKPIT_AGENT_GROUP, and the files this plugin hands the CLI by path (the
-// mcp-config, the prompt file, the statusline relay) are then opened to that group, and to nobody else. Unset, which
-// is every desktop, nothing here acts and the owner-only modes stay exactly as they were. A value that is not a gid,
-// or a chgrp the kernel refuses, also leaves the owner-only mode: the session then misses its files, which shows,
-// rather than having a secret opened to a group nobody chose.
+// AC-1468: the server image runs claude under an agent uid sharing one group with the cockpit (AC-1464); its gid in
+// COCKPIT_AGENT_GROUP opens the files this plugin hands the CLI to that group only. Unset (every desktop), a non-gid
+// value or a refused chgrp keeps them owner-only: a session missing its files shows, an opened secret does not.
 internal static class ClaudeAgentGroup
 {
     public const string EnvironmentVariable = "COCKPIT_AGENT_GROUP";
