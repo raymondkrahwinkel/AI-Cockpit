@@ -145,6 +145,7 @@ public partial class CockpitViewModel
                     _OnOpenServerGroupsChanged();
                 }
             };
+            group.Health.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
             ISessionRegistry? followed = null;
             void Follow()
             {
@@ -206,6 +207,21 @@ public partial class CockpitViewModel
         foreach (var row in group.Reconcile())
         {
             _ = _CloseRemotePaneAsync(row);
+        }
+    }
+
+    [RelayCommand]
+    private static void ToggleServerHealth(ServerGroupViewModel group) => group.Health.IsOpen = !group.Health.IsOpen;
+
+    // A run waiting for a permission is a session of the same name on that server; without one, the first session
+    // that needs attention stands in.
+    private void _OpenWorkflowSession(ServerGroupViewModel group, string workflow)
+    {
+        var row = group.Sessions.FirstOrDefault(candidate => string.Equals(candidate.Title, workflow, StringComparison.OrdinalIgnoreCase))
+            ?? group.Sessions.FirstOrDefault(candidate => candidate.Status == SessionStatus.NeedsAttention);
+        if (row is not null)
+        {
+            OpenServerSessionCommand.Execute(row);
         }
     }
 

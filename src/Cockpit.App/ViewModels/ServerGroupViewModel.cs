@@ -17,6 +17,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         Name = server.Name;
         _state = server.State;
         Start = new ServerStartViewModel(server.Name);
+        Health = new ServerHealthViewModel(server);
     }
 
     public IRemoteServer Server { get; }
@@ -26,6 +27,8 @@ public sealed partial class ServerGroupViewModel : ObservableObject
     public ObservableCollection<ServerSessionRowViewModel> Sessions { get; } = [];
 
     public ServerStartViewModel Start { get; }
+
+    public ServerHealthViewModel Health { get; }
 
     // While open, the server's header line stands above the grid (variant A, decided 2026-10-01).
     [ObservableProperty]

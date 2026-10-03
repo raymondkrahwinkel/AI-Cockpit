@@ -1527,8 +1527,8 @@
                         ToolTip.Tip="Put the assistant back in this column"/>
 
                 <!-- AC-1456: an open server group's header line, the assistant line and, when asked for, the start
-                     card. Health and "scheduled · Discord" (S18, AC-1457) stay out until they are filled; Admin opens
-                     Options on the server for an admin key (AC-1446), and an operate key sees it locked. -->
+                     card. Health opens the server's health tab, with "scheduled · Discord" beside the name (AC-1457);
+                     Admin opens Options on the server for an admin key (AC-1446), and an operate key sees it locked. -->
                 <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding OpenServerGroups}" IsVisible="{Binding !SimpleView}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ServerGroupViewModel">
@@ -1538,6 +1538,19 @@
                                         CornerRadius="{StaticResource CockpitControlRadius}">
                                     <DockPanel>
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button Classes="Subtle Compact" IsVisible="{Binding IsConnected}"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ToggleServerHealthCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="The server's sign-ins, scheduled runs and facts">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Health"/>
+                                                    <Border CornerRadius="9" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding Health.HasBadge}"
+                                                            Background="{DynamicResource CockpitStatusErrorChipTintBrush}">
+                                                        <TextBlock Text="{Binding Health.BadgeText}" FontSize="11"
+                                                                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Button>
                                             <Border Classes="tag" IsVisible="{Binding IsOperateKey}" VerticalAlignment="Center"
                                                     ToolTip.Tip="Admin needs an admin key; this key may operate only">
                                                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -1567,9 +1580,16 @@
                                             </Border>
                                             <TextBlock Text="{Binding HeaderDetail}" FontSize="12" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="{Binding Health.Summary}" FontSize="12" VerticalAlignment="Center"
+                                                       IsVisible="{Binding Health.HasSummary}"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
+
+                                <StackPanel IsVisible="{Binding Health.IsOpen}">
+                                    <controls:ServerHealthView DataContext="{Binding Health}"/>
+                                </StackPanel>
 
                                 <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding HasAssistantLine}"
                                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
