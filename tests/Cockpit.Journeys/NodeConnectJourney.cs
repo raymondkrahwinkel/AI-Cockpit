@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -70,7 +71,7 @@ public sealed class NodeConnectJourney
 
     // The HTTPS door: a session started over the backend API answers, and its row reaches the event stream. A key
     // whose scope lacks the profile gets a 404 on the pane and never sees its rows, though it does see the next
-    // session's arrival that follows them.
+    // session's arrival that follows them. AC-1388: a client that attaches after the answer gets every row once.
     [Fact]
     public async Task ASessionStartedOverTheApi_StreamsItsAnswer_OnlyToAKeyThatMaySeeIt()
     {
@@ -93,6 +94,31 @@ public sealed class NodeConnectJourney
         var paneId = started["paneId"]?.GetValue<string>() ?? "";
         var answer = await admin.StreamEventsAsync(0, timeout.Token)
             .FirstAsync(evt => _RowOf(evt) == paneId && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
+        await admin.StreamEventsAsync(answer.Seq, timeout.Token)
+            .FirstAsync(evt => evt.Kind == "live-state" && evt.PaneId == paneId && _StatusOf(evt) is SessionStatus.Done or SessionStatus.Idle, timeout.Token);
+
+        // Late: the answer it missed comes from the snapshot, the next one from the stream after the snapshot's seq.
+        await using (var late = await RemoteBackend.ConnectAsync(admin))
+        {
+            var handle = late.Find(paneId) as RemoteSessionHandle ?? throw new InvalidOperationException("The late client has no handle for the pane.");
+            var streamed = new ConcurrentQueue<string>();
+            var again = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            handle.RowUpserted += upsert =>
+            {
+                streamed.Enqueue(upsert.Row.Text);
+                if (upsert.Row.Text == "echo: again")
+                {
+                    again.TrySetResult();
+                }
+            };
+            await handle.SendPromptAsync("again");
+            await again.Task.WaitAsync(timeout.Token);
+
+            Assert.Single(handle.Rows, row => row.Text == "echo: hello");
+            Assert.Single(handle.Rows, row => row.Text == "echo: again");
+            Assert.DoesNotContain("echo: hello", streamed);
+        }
+
         var refused = await Assert.ThrowsAsync<BackendApiException>(() => outsider.GetAsync<JsonObject>($"api/v1/sessions/{paneId}/transcript"));
         // A second start as the marker: its registration is announced to every key, while the first pane is still live.
         await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = Profile });
@@ -107,6 +133,9 @@ public sealed class NodeConnectJourney
     // The pane a row event belongs to, from its data: an SSE frame has no pane of its own.
     private static string? _RowOf(Cockpit.Core.Abstractions.Events.BackendEvent evt) =>
         evt.Kind == "row" && evt.Data.TryGetProperty("PaneId", out var pane) ? pane.GetString() : null;
+
+    private static SessionStatus? _StatusOf(Cockpit.Core.Abstractions.Events.BackendEvent evt) =>
+        evt.Data.TryGetProperty("LiveState", out var state) && state.TryGetProperty("Status", out var status) ? (SessionStatus)status.GetInt32() : null;
 
     // AC-1442: the backend's stop without App. Of two sessions one has a CLI that never lets go; within the budget the
     // register is empty, the listeners' ports are free, and that CLI's process is ended rather than left behind.

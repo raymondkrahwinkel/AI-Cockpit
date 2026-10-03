@@ -129,18 +129,22 @@ public sealed class SessionsEndpointsTests
         var first = _Upsert(SessionEventSequence.Next(), "row-1");
         var second = _Upsert(SessionEventSequence.Next(), "row-2");
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var read = log.ReadFromAsync(0, stop.Token).Take(3).ToListAsync(stop.Token);
+        var read = log.ReadFromAsync(0, stop.Token).Take(4).ToListAsync(stop.Token);
+        // AC-1388: a tool's output past the row's budget does not reach the stream by the tool event either.
+        var output = new string('x', 200 * 1024);
 
         registry.Register(session);
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(second);
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(first);
+        session.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(new SessionToolCall("pane-a", "Bash", "{}", output, false));
         var events = await read;
         await bridge.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["sessions-changed", "row", "row"], events.Select(evt => evt.Kind));
+        Assert.Equal(["sessions-changed", "row", "row", "tool"], events.Select(evt => evt.Kind));
         Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
-        Assert.Equal(3, events.Select(evt => evt.Seq).Distinct().Count());
-        Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
+        Assert.Equal(4, events.Select(evt => evt.Seq).Distinct().Count());
+        Assert.True(events[3].Data.GetProperty("Call").GetProperty("ResultContent").GetString()?.Length <= ToolOutputBudget.Clamp(output).Length);
+        Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Take(2).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
     }
 
     private static TranscriptRowUpsert _Upsert(long seq, string id) =>

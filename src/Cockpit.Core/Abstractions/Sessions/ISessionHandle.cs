@@ -122,6 +122,12 @@ public interface ISessionHandle
     Task<SessionTranscriptSlice> ReadTranscriptAsync(int count);
 
     /// <summary>
+    /// The host-owned transcript rows with the event-log seq <paramref name="lastSeq"/> gives in the same instant, so a reader following the log after it gets each later upsert once (AC-1388).
+    /// Null for a handle whose session keeps no host-owned transcript.
+    /// </summary>
+    Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq) => Task.FromResult<SessionRowSnapshot?>(null);
+
+    /// <summary>
     /// Whether this session has a record <see cref="ReadTranscriptAsync"/> can read back at all — a route, not
     /// content (AC-294). False for a plain terminal, for a provider that records nothing readable, and before a
     /// TTY session's pty is up; true for a session that has a route and has simply written nothing to it yet.
@@ -309,6 +315,9 @@ public interface ISessionHandle
         }
     }
 }
+
+// AC-1388: a pane's rows as they stood at log seq `Seq`; every upsert after it has a higher seq.
+public sealed record SessionRowSnapshot(IReadOnlyList<TranscriptSnapshotEntry> Rows, long Seq);
 
 // AC-1415: one completed top-level tool call, as ISessionHandle.ToolActivityProduced reports it.
 public sealed record SessionToolCall(string PaneId, string ToolName, string InputJson, string ResultContent, bool IsError);

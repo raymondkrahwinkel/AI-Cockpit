@@ -180,8 +180,9 @@ public sealed class BackendApiClient : IDisposable
 
         using var document = JsonDocument.Parse(string.Join('\n', data));
         var payload = document.RootElement.Clone();
+        // The events bridge writes `PaneId`; either spelling names the pane.
         var paneId = payload.ValueKind == JsonValueKind.Object
-            && payload.TryGetProperty("paneId", out var pane)
+            && (payload.TryGetProperty("PaneId", out var pane) || payload.TryGetProperty("paneId", out pane))
             && pane.ValueKind == JsonValueKind.String
                 ? pane.GetString()
                 : null;

@@ -39,6 +39,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   error text is never passed on. An operate key is refused, and the access audit records who signed which profile in.
 - added: the cockpit checks every five minutes whether each provider profile is still signed in, and says so once
   when a sign-in expires and once when it is back: as a notification and in the inbox of the controlling cockpit.
+- added: a cockpit can drive the sessions of another cockpit over its backend API: list, start and stop them,
+  prompt them, answer their permission prompts and read their transcripts. One event stream carries each session's
+  status, usage and tool calls along with its transcript rows, and a client that connects to a session that has
+  already written rows gets each row exactly once. Those events follow the connect key's scope, as rows do.
+  A remote start cannot pick its pane or resume a recorded conversation.
 - added: the cockpit without a window (the server) now turns its node endpoint on by itself, since connect keys are its only way in, and exits with the reason when that endpoint does not listen (the port held, say) instead of reporting that it runs.
 - added: a container image of the headless cockpit (Cockpit.Server) with a compose file for any Docker host: Node, the Claude Code and Codex CLIs, git, gh, ssh and ripgrep, no docker CLI and no window libraries, running as a non-root user on one port with its secrets as files. CI builds it, runs it as a container and checks that it answers with the connect key, keeps its certificate over a restart, refuses to start without the unlock secret and holds no secret in a layer or log, and that a held node port stops it instead of leaving a server that says it runs, then publishes it to GitHub Packages as `:sha-<commit>`. It is never deployed from a moving tag.
 - added: an address that is locked out of the node endpoint after repeated failed attempts stays locked out when

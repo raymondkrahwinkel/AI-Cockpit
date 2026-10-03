@@ -453,6 +453,15 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
+    // AC-1388: under the lock the fold, its row upserts and the events bridge's append of them all run under.
+    public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. _rows], lastSeq()));
+        }
+    }
+
     // `SessionViewModel.PrepareRecordedTranscriptAsync`'s rule: a resumed conversation repaints its log, a new one rolls it.
     public async Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default)
     {

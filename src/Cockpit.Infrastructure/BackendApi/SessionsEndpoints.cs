@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -24,14 +25,19 @@ internal static class SessionsEndpoints
         IAssistantReadGateway read() => services.GetRequiredService<IAssistantReadGateway>();
         IAssistantAgentGateway gateway() => services.GetRequiredService<IAssistantAgentGateway>();
         ISessionRegistry sessions() => services.GetRequiredService<ISessionRegistry>();
+        IBackendEventLog log() => services.GetRequiredService<IBackendEventLog>();
         NodeCallerSessionPolicy policy() => new(read(), gateway(), services.GetRequiredService<INodePairingBroker>(), services.GetRequiredService<ISessionProfileStore>());
 
+        // AC-1388: `seq` is read before the list, so a reader following the stream after it misses no change to it.
         api.MapGet("/sessions", async () =>
         {
+            var seq = log().LastSeq;
             var visible = await policy().VisibleSessionsAsync(_Caller()).ConfigureAwait(false);
             var pending = (await read().ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
             return Results.Json(new
             {
+                seq,
+                assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
                 sessions = visible.Select(session => new
                 {
                     paneId = session.PaneId,
@@ -61,12 +67,15 @@ internal static class SessionsEndpoints
                 return Results.NotFound();
             }
 
+            var snapshot = sessions().Find(paneId) is { } handle ? await handle.ReadRowsAtAsync(() => log().LastSeq).ConfigureAwait(false) : null;
             return Results.Json(new
             {
                 paneId = transcript.PaneId,
                 name = transcript.Name,
                 totalEntries = transcript.TotalEntries,
                 entries = transcript.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult }),
+                rows = snapshot?.Rows,
+                seq = snapshot?.Seq,
             });
         }).RequireOperate();
 
@@ -164,12 +173,15 @@ internal static class SessionsEndpoints
             }
 
             var slice = await assistant.ReadTranscriptAsync(_Count(count)).ConfigureAwait(false);
+            var snapshot = await assistant.ReadRowsAtAsync(() => log().LastSeq).ConfigureAwait(false);
             return Results.Json(new
             {
                 paneId = assistant.PaneId,
                 name = assistant.Title,
                 totalEntries = slice.TotalEntries,
                 entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult }),
+                rows = snapshot?.Rows,
+                seq = snapshot?.Seq,
             });
         }).RequireOperate();
 
