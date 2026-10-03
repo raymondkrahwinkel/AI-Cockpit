@@ -157,7 +157,10 @@ dc exec -T -u agent cockpit rm /home/agent/.claude/.smoke-login
 echo "== the boundaries the wrapper does not draw itself"
 # The real binaries are agent-run's alone, so neither a profile pin nor a direct call from the server skips the wrapper.
 for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/git-core/git; do
-  refused -u app cockpit "$binary" --version || fail "the server's user can run $binary itself"
+  refused -u app cockpit "$binary" --version || {
+    dc exec -T cockpit sh -c "id app; ls -l $binary; target=\$(readlink -f $binary); ls -l \$target; namei -l \$target"
+    fail "the server's user can run $binary itself"
+  }
   dc exec -T -u agent cockpit "$binary" --version >/dev/null || fail "control: agent cannot run $binary"
 done
 refused -u agent cockpit /usr/bin/sudo -n -u app /usr/bin/id || fail "agent can use sudo"
