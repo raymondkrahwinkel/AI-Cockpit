@@ -36,8 +36,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   sign-in (signed in, expired or not checked, and when an expiry was announced), the server's version, image, start
   time, who holds the assistant, and the usable keys by label and capability, never a key prefix. It also shows the
   plugins' health rows, only for the projects the key may reach. A health row can offer an action, such as running a
-  workflow now, which the key runs through `POST /api/v1/health/{section}/actions/{action}`. Changing anything still
-  takes an admin key. Both are recorded in the access audit. The anonymous `/healthz` is unchanged. Cockpit 0.69.0,
+  workflow now, which the key runs through `POST /api/v1/health/{section}/actions/{action}`. Running such an action is
+  deliberately allowed for an operate key; changing anything still takes an admin key. A plugin that does not answer
+  within ten seconds is reported as timed out. Every run and every refusal is recorded in the access audit. The anonymous `/healthz` is unchanged. Cockpit 0.69.0,
   plugin SDK 3.2.0.
 - added: the Claude provider can run its CLI under a separate user that shares a group with the cockpit, the way the
   server image will: with `COCKPIT_AGENT_GROUP` set to that group's id, the MCP config, the prompt file and the

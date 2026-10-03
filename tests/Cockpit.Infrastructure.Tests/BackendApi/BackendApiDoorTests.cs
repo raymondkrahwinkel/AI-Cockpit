@@ -271,6 +271,12 @@ public sealed class BackendApiDoorTests
         Assert.Equal(["run-a"], section.Runs);
         Assert.Contains("\"api:health_action\"", audit, StringComparison.Ordinal);
         Assert.Contains("workflows/run-a", audit, StringComparison.Ordinal);
+        Assert.Equal(
+            ["workflows/run-b", "workflows/run-z", "nothing/run-a", "workflows/run-shared"],
+            audit.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonNode.Parse(line))
+                .Where(line => line?["Tool"]?.GetValue<string>() == "api:health_action" && line?["Outcome"]?.GetValue<string>() == "not found"
+                    && line?["KeyPrefix"]?.GetValue<string>() == key.Key.Prefix)
+                .Select(line => line?["SubjectPrefix"]?.GetValue<string>()));
     }
 
     // AC-1470 criterion 2, with criterion 3 as the rows: nothing in /health or an action's answer is a token, a
@@ -285,7 +291,7 @@ public sealed class BackendApiDoorTests
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
         door.LoginHealth.Current.Returns([new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn }]);
-        var label = "a\nb\u0007\u202E\u2028" + new string('x', 494);
+        var label = "a\nb\u0007\u202E\u2028\U000E0001\uD800" + new string('x', 491);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 

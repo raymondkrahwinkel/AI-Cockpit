@@ -23,6 +23,9 @@ internal static partial class HealthEndpoints
 {
     public const int MaxLabelLength = 120;
 
+    // A run only has to start; one that has not answered by then is reported as timed out and audited.
+    public static readonly TimeSpan RunBudget = TimeSpan.FromSeconds(10);
+
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
         api.MapGet("/health", async (CancellationToken cancellationToken) =>
@@ -97,51 +100,65 @@ internal static partial class HealthEndpoints
                 return Results.NotFound();
             }
 
-            var succeeded = false;
+            // On the thread pool and within the budget, like a read: a plugin that blocks or never completes cannot hold
+            // the request. The run's own failure is caught inside it, so a run left behind never faults unobserved.
+            var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(HealthEndpoints));
+            var run = Task.Run(async () =>
+            {
+                try
+                {
+                    return (await actions.RunAsync(actionId, cancellationToken).ConfigureAwait(false))?.Succeeded == true;
+                }
+                catch (Exception exception)
+                {
+                    logger?.LogWarning(exception, "Health action {Action} of section {HealthSection} failed.", actionId, reading.Name);
+                    return false;
+                }
+            });
+
+            var subject = $"{reading.Name}/{actionId}";
             try
             {
-                succeeded = (await actions.RunAsync(actionId, cancellationToken).ConfigureAwait(false))?.Succeeded == true;
+                var succeeded = await run.WaitAsync(RunBudget, cancellationToken).ConfigureAwait(false);
+                await _AuditAsync(services, caller, "api:health_action", succeeded ? "succeeded" : "failed", subject, CancellationToken.None).ConfigureAwait(false);
+                return Results.Json(new { section = reading.Name, actionId, succeeded });
             }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            catch (TimeoutException)
             {
-                services.GetService<ILoggerFactory>()?.CreateLogger(typeof(HealthEndpoints)).LogWarning(exception, "Health action {Action} of section {HealthSection} failed.", actionId, reading.Name);
+                logger?.LogWarning("Health action {Action} of section {HealthSection} did not answer within {RunBudget}.", actionId, reading.Name, RunBudget);
+                await _AuditAsync(services, caller, "api:health_action", "timeout", subject, CancellationToken.None).ConfigureAwait(false);
+                return Results.Json(new { section = reading.Name, actionId, succeeded = false, reason = "timeout" });
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                await _AuditAsync(services, caller, "api:health_action", "cancelled", $"{reading.Name}/{actionId}", CancellationToken.None).ConfigureAwait(false);
-                throw;
+                // The caller went away; there is nobody to answer, so no 500 either.
+                await _AuditAsync(services, caller, "api:health_action", "cancelled", subject, CancellationToken.None).ConfigureAwait(false);
+                return Results.Empty;
             }
-
-            await _AuditAsync(services, caller, "api:health_action", succeeded ? "succeeded" : "failed", $"{reading.Name}/{actionId}", CancellationToken.None).ConfigureAwait(false);
-            return Results.Json(new { section = reading.Name, actionId, succeeded });
         }).RequireOperate();
     }
 
     // AC-1470: set by deploy/compose.yaml from the image the container runs; absent elsewhere.
     public const string ImageVariable = "COCKPIT_IMAGE_REF";
 
-    // A plugin's label, made safe to show elsewhere: no control, format or line/paragraph separator characters (line
-    // breaks, bidi overrides) and at most MaxLabelLength characters, never split inside a surrogate pair.
+    // A plugin's label, made safe to show elsewhere: per code point, no control, format or separator characters (line
+    // breaks, bidi overrides, tags such as U+E0001) and no lone surrogate, which reads as U+FFFD; at most MaxLabelLength
+    // UTF-16 characters, never split inside a pair.
     public static string Clean(string? text)
     {
         var kept = new StringBuilder();
-        foreach (var character in text ?? "")
+        foreach (var rune in (text ?? "").EnumerateRunes())
         {
-            if (kept.Length == MaxLabelLength)
+            if (kept.Length + rune.Utf16SequenceLength > MaxLabelLength)
             {
                 break;
             }
 
-            if (!char.IsControl(character)
-                && CharUnicodeInfo.GetUnicodeCategory(character) is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
+            if (rune != Rune.ReplacementChar
+                && Rune.GetUnicodeCategory(rune) is not (UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
             {
-                kept.Append(character);
+                kept.Append(rune.ToString());
             }
-        }
-
-        if (kept.Length > 0 && char.IsHighSurrogate(kept[^1]))
-        {
-            kept.Length--;
         }
 
         return kept.ToString();
