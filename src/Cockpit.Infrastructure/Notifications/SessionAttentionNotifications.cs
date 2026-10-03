@@ -55,39 +55,49 @@ internal sealed class SessionAttentionNotifications(
                 _watched.Remove(gone);
             }
 
-            foreach (var handle in registry.All.Where(handle => !_watched.ContainsKey(handle)))
+            foreach (var handle in live.Where(handle => !_watched.ContainsKey(handle)))
             {
-                var previous = handle.LiveState;
-                var stateGate = new Lock();
-                Action<SessionLiveState> onLiveState = state =>
-                {
-                    SessionLiveState before;
-                    lock (stateGate)
-                    {
-                        before = previous;
-                        previous = state;
-                    }
-
-                    _OnLiveState(handle, before, state);
-                };
+                var watch = new Watch(handle.LiveState);
+                Action<SessionLiveState> onLiveState = _ => _Decide(handle, watch, turnEnded: false);
+                Action<SessionTurnEnd> onTurnEnded = _ => _Decide(handle, watch, turnEnded: true);
                 handle.LiveStateChanged += onLiveState;
-                _watched[handle] = () => handle.LiveStateChanged -= onLiveState;
+                handle.TurnEnded += onTurnEnded;
+                _watched[handle] = () =>
+                {
+                    handle.LiveStateChanged -= onLiveState;
+                    handle.TurnEnded -= onTurnEnded;
+                };
             }
         }
     }
 
-    // The edges of CockpitViewModel's own handler; a shell holds back "Done" until it ends (AC-276).
-    private void _OnLiveState(ISessionHandle handle, SessionLiveState before, SessionLiveState state)
+    // CockpitViewModel's edges, read from the handle's current state: two threads may raise its signals out of order.
+    // A turn that ended arms "Done" once, so a raise that comes late neither loses nor repeats it; a shell holds it
+    // back until it ends (AC-276).
+    private void _Decide(ISessionHandle handle, Watch watch, bool turnEnded)
     {
-        if (state.Status == SessionStatus.NeedsAttention && before.Status != SessionStatus.NeedsAttention)
+        bool attention;
+        bool finished;
+        lock (watch.Gate)
+        {
+            var current = handle.LiveState;
+            watch.TurnEnded |= turnEnded;
+            attention = current.Status == SessionStatus.NeedsAttention && watch.Last.Status != SessionStatus.NeedsAttention;
+            finished = current.Status == SessionStatus.Done && !_HasShells(current)
+                && (watch.TurnEnded || (watch.Last.Status == SessionStatus.Done && _HasShells(watch.Last)));
+            if (finished || current.Status is SessionStatus.Failed or SessionStatus.NeedsAttention)
+            {
+                watch.TurnEnded = false;
+            }
+
+            watch.Last = current;
+        }
+
+        if (attention)
         {
             _Deliver(handle, () => notifier.NotifyAttentionAsync(new AttentionNotification(handle.Title, "Needs attention")));
         }
 
-        var hadShells = _HasShells(before);
-        var hasShells = _HasShells(state);
-        var finished = state.Status == SessionStatus.Done && !hasShells
-            && (before.Status is SessionStatus.Busy or SessionStatus.WorkingBackground || (before.Status == SessionStatus.Done && hadShells));
         if (finished)
         {
             _Deliver(handle, () => notifier.NotifySessionFinishedAsync(new AttentionNotification(handle.Title, "Done"), isSelected: false, isWindowActive: false));
@@ -109,5 +119,15 @@ internal sealed class SessionAttentionNotifications(
         {
             logger.LogWarning(exception, "Session {Pane}: its attention notification could not be delivered.", paneId);
         }
+    }
+
+    // One pane's last read state and whether a turn ended since its last "Done", under its own gate.
+    private sealed class Watch(SessionLiveState last)
+    {
+        public Lock Gate { get; } = new();
+
+        public SessionLiveState Last { get; set; } = last;
+
+        public bool TurnEnded { get; set; }
     }
 }
