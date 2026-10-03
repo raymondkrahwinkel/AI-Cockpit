@@ -30,9 +30,10 @@ cleanup() {
 trap cleanup EXIT
 
 is_non_root() { [ "$(docker run --rm --entrypoint id "$1" -u)" != 0 ]; }
-history_leaks() { docker history --no-trunc --format '{{.CreatedBy}}' "$1" | grep -qF "$2"; }
+# Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
+history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
-log_has() { dc logs --no-color cockpit | grep -qF "$1"; }
+log_has() { local out; out=$(dc logs --no-color cockpit); grep -qF "$1" <<< "$out"; }
 fingerprint_of_log() { dc logs --no-color cockpit | sed -n 's/.*presents certificate fingerprint \([0-9A-Fa-f]*\)\..*/\1/p' | tail -n 1; }
 # Bounded at 60 s; ends early when the container is gone.
 wait_running() {
@@ -112,7 +113,7 @@ grep -qF 'the node door is not listening' <<< "$held" || fail "the held-port ref
 echo "== encryption on: unlocks from the secret, refused without it"
 dotnet run --project tests/Cockpit.ServerSeed --configuration Release -- "$work/seed" "$COCKPIT_UNLOCK_PASSWORD_PATH"
 start seed
-log_has 'Unlocked the credentials from the password file.' || fail "the server did not unlock from the secret"
+log_has 'Unlocked the credentials from the password file.' || { dc logs --no-color cockpit | tail -n 15; fail "the server did not unlock from the secret"; }
 collect_logs
 dc down >/dev/null
 set +e
