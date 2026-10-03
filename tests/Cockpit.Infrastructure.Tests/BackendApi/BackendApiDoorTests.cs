@@ -231,8 +231,8 @@ public sealed class BackendApiDoorTests
         Assert.True(waited < PluginHealthSections.ReadBudget + TimeSpan.FromSeconds(2), $"A hanging section held /healthz for {waited}.");
     }
 
-    // AC-1470 criterion 1: an operate key scoped to project-a and profile "mine" reads only what lies in that scope,
-    // and an action on a row outside it gets the very answer of an action that does not exist.
+    // AC-1470 criterion 1: an operate key scoped to project-a and profile "mine" reads only what lies in that scope, of
+    // the keys only itself, and an action on a row outside it gets the very answer of an action that does not exist.
     [Fact]
     public async Task Health_ShowsAnOperateKeyOnlyItsScope_AndAnActionOutsideItIsTheSame404AsOneThatDoesNotExist()
     {
@@ -261,6 +261,7 @@ public sealed class BackendApiDoorTests
         var audit = await File.ReadAllTextAsync(door.AuditPath);
 
         Assert.Equal(["mine"], health?["profiles"]?.AsArray().Select(profile => profile?["label"]?.GetValue<string>()) ?? []);
+        Assert.Equal(["reader"], health?["server"]?["keys"]?.AsArray().Select(shownKey => shownKey?["label"]?.GetValue<string>()) ?? []);
         Assert.Equal(["Scheduler", "Nightly A", "Shared A"], health?["sections"]?[0]?["rows"]?.AsArray().Select(row => row?["label"]?.GetValue<string>()) ?? []);
         Assert.Equal(new _Answer(HttpStatusCode.NotFound, ""), outside);
         Assert.Equal(outside, missing);

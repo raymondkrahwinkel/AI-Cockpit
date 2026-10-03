@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
@@ -32,6 +33,9 @@ internal static partial class HealthEndpoints
             var keys = await services.GetRequiredService<ConnectKeyVerifier>().ListAsync(cancellationToken).ConfigureAwait(false);
             var assistant = services.GetService<NodeControllerPresence>()?.Current;
             var now = DateTimeOffset.UtcNow;
+
+            // A key with a narrowed scope does not learn which other keys exist; it sees only itself.
+            var seesAllKeys = (caller.Scope ?? ConnectKeyScope.Default) is { AllowAllProfiles: true, AllowAllProjects: true };
             await _AuditAsync(services, caller, "api:health", "called", null, cancellationToken).ConfigureAwait(false);
 
             return Results.Json(new
@@ -54,7 +58,7 @@ internal static partial class HealthEndpoints
                     startedAt = BackendApiRoutes.StartedAt,
                     address = _Address(),
                     assistant = assistant is null ? null : new { holder = assistant.Name, since = assistant.SinceUtc },
-                    keys = keys.Where(entry => entry.Key.IsUsableAt(now)).Select(entry => new
+                    keys = keys.Where(entry => entry.Key.IsUsableAt(now) && (seesAllKeys || entry.Key.Prefix == caller.KeyPrefix)).Select(entry => new
                     {
                         label = entry.Key.Label,
                         capability = BackendApiRoutes.CapabilityName(entry.Key.Capability),
