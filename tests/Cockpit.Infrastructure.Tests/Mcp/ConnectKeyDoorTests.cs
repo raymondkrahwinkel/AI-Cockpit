@@ -356,6 +356,79 @@ public sealed class ConnectKeyDoorTests
         Assert.Equal(HttpStatusCode.OK, afterDoubleLockout.Status);
     }
 
+    // AC-1459 criterion 1: a lockout outlives a restart with the same end, and the next one is still doubled. The
+    // restart is a second verifier over the same state directory, as the next process builds it.
+    [Fact]
+    public async Task ALockout_OutlivesARestart_AndTheNextOneIsStillDoubled()
+    {
+        await using var door = new _Door();
+        const string address = "203.0.113.7";
+        var policy = ConnectKeyPolicy.Default;
+        var before = door.Verifier(_Environment());
+        for (var failure = 0; failure < policy.FailuresBeforeLockout; failure++)
+        {
+            await before.AuthenticateAsync("", PairingSecret, address);
+        }
+
+        var lockedUntil = Assert.Single(await before.ListLockoutsAsync()).LockedUntil;
+
+        var after = door.Verifier(_Environment());
+        var restored = Assert.Single(await after.ListLockoutsAsync());
+        var duringLockout = await after.AuthenticateAsync(PairingSecret, PairingSecret, address);
+        door.Clock.Advance(policy.FirstLockout);
+        var afterLockout = await after.AuthenticateAsync(PairingSecret, PairingSecret, address);
+        for (var failure = 0; failure < policy.FailuresBeforeLockout; failure++)
+        {
+            await after.AuthenticateAsync("", PairingSecret, address);
+        }
+
+        var next = Assert.Single(await after.ListLockoutsAsync());
+
+        Assert.Equal((address, lockedUntil), (restored.Bucket, restored.LockedUntil));
+        Assert.Null(duringLockout);
+        Assert.NotNull(afterLockout);
+        Assert.Equal(door.Clock.GetUtcNow() + (policy.FirstLockout * 2), next.LockedUntil);
+    }
+
+    // AC-1459 criterion 2: lifting is admin's. The pairing secret and an operate key get the node tool's admin
+    // refusal and the API's one forbidden; the admin key lifts, the address may try again at once, and the audit
+    // names who lifted.
+    [Fact]
+    public async Task LiftingALockout_IsForAnAdminKeyOnly_OpensTheAddressAtOnce_AndIsAudited()
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
+        var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
+        JsonNode pairingByTool;
+        await using (var paired = await door.ClientAsync(PairingSecret))
+        {
+            pairingByTool = await _CallAsync(paired, "lift_connect_lockout", new() { ["address"] = "127.0.0.1" });
+        }
+
+        var pairingByApi = await door.LiftByApiAsync("127.0.0.1", PairingSecret);
+        await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout).Select(_ => door.AnswerAsync(null)));
+        await using var admin = await door.ClientAsync(Bootstrap);
+        var address = (await _CallAsync(admin, "list_connect_keys", new()))["lockouts"]?[0]?["address"]?.GetValue<string>() ?? "";
+        await using var operateClient = await door.ClientAsync(operate.Secret);
+
+        var operateByTool = await _CallAsync(operateClient, "lift_connect_lockout", new() { ["address"] = address });
+        var operateByApi = await door.LiftByApiAsync(address, operate.Secret);
+        var lockedOut = await door.AnswerAsync(PairingSecret);
+        var adminByApi = await door.LiftByApiAsync(address, Bootstrap);
+        var afterLift = await door.AnswerAsync(PairingSecret);
+        var audit = await File.ReadAllTextAsync(door.AuditPath);
+
+        Assert.Equal(NodeSessionMcpTools.AdminRefusal, pairingByTool["error"]?.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Forbidden, pairingByApi);
+        Assert.NotEqual("", address);
+        Assert.Equal(NodeSessionMcpTools.AdminRefusal, operateByTool["error"]?.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Forbidden, operateByApi);
+        Assert.Equal(HttpStatusCode.Unauthorized, lockedOut.Status);
+        Assert.Equal(HttpStatusCode.OK, adminByApi);
+        Assert.Equal(HttpStatusCode.OK, afterLift.Status);
+        Assert.Contains("lockout lifted by bootstra", audit, StringComparison.Ordinal);
+    }
+
     private static Dictionary<string, string> _Environment() => new() { [ConnectKeyVerifier.BootstrapVariable] = Bootstrap };
 
     private static async Task<JsonNode> _CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
@@ -484,6 +557,15 @@ public sealed class ConnectKeyDoorTests
                 AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearer}" },
             });
             return await McpClient.CreateAsync(transport);
+        }
+
+        // The backend API's lift route on the same listener, the address escaped as a client would send it.
+        public async Task<HttpStatusCode> LiftByApiAsync(string address, string bearer)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{NodeUrl[..^"/mcp".Length]}/api/v1/lockouts/{Uri.EscapeDataString(address)}/lift");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            using var response = await _http.SendAsync(request);
+            return response.StatusCode;
         }
 
         public Task<HttpResponseMessage> InitializeAsync(string? bearer) =>

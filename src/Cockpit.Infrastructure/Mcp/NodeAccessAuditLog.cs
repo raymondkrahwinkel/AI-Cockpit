@@ -6,6 +6,7 @@ namespace Cockpit.Infrastructure.Mcp;
 
 // AC-1351: one line per refused attempt, tool call, or key issued/revoked at the node door. A prefix goes only in
 // `KeyPrefix` (the caller's key) and `SubjectPrefix` (the key issued or revoked), never part of an unmatched secret.
+// AC-1459: for a lifted lockout `SubjectPrefix` is the address that was lifted.
 internal sealed record NodeAccessAuditEntry(DateTimeOffset At, string Credential, string? KeyPrefix, string RemoteAddress, string? Tool, string Outcome, string? SubjectPrefix = null);
 
 internal sealed class NodeAccessAuditLog : JsonlAuditLog<NodeAccessAuditEntry>, ISingletonService

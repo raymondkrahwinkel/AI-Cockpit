@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
@@ -21,6 +22,9 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     public const string BootstrapFileVariable = "COCKPIT_CONNECT_KEY_FILE";
 
     public const string BootstrapVariable = "COCKPIT_CONNECT_KEY";
+
+    // AC-1459: runtime state an attacker brings about, so beside cockpit.json rather than in the operator's config.
+    public const string LockoutsFileName = "node-lockouts.json";
 
     // Characters after `ck_` kept as the key's public handle: enough to tell keys apart in a list, far too few to
     // matter for guessing the rest (48 of 256 bits).
@@ -41,9 +45,11 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly Lock _lockoutsSaveGate = new();
+    private readonly string _lockoutsPath;
 
-    // Per address, an IPv6 /64 as one. ponytail: in memory, so a restart forgets every lockout, and past
-    // `MaxTrackedAddresses` an attacker with that many /64s can push a locked one out. Persist it past LAN/Tailscale (B2).
+    // Per address, an IPv6 /64 as one. ponytail: past `MaxTrackedAddresses` an attacker with that many /64s can push
+    // a locked one out. Bound it past LAN/Tailscale (B2). AC-1459: lockouts outlive a restart, the failures do not.
     private readonly Dictionary<string, _AddressState> _addresses = new(StringComparer.Ordinal);
 
     // Per key, what its in-flight requests are aborted by. The MCP transport is stateless, so that is all it has open.
@@ -68,6 +74,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     internal ConnectKeyVerifier(string configFilePath, Func<string, string?> environment, Action<string> forgetEnvironment, TimeProvider time, NodeAccessAuditLog audit, ILogger logger)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath);
+        _lockoutsPath = Path.Combine(Path.GetDirectoryName(configFilePath) ?? "", LockoutsFileName);
         _environment = environment;
         _forgetEnvironment = forgetEnvironment;
         _time = time;
@@ -88,6 +95,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             var section = (await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false))?.NodeConnectKeys;
             var persisted = (section?.Keys ?? []).Where(_IsWellFormed).ToList();
             var bootstrap = await _LoadBootstrapAsync(persisted, cancellationToken).ConfigureAwait(false);
+            var policy = section?.Policy ?? ConnectKeyPolicy.Default;
+            var lockouts = await _ReadLockoutsAsync(cancellationToken).ConfigureAwait(false);
 
             // Read once and let go, whether it was usable or not: the secret has no business outliving this.
             _forgetEnvironment(BootstrapFileVariable);
@@ -97,7 +106,15 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             {
                 _persisted = persisted;
                 _bootstrap = bootstrap;
-                _policy = section?.Policy ?? ConnectKeyPolicy.Default;
+                _policy = policy;
+
+                // A bucket that is already quiet is dropped, by the rule `_MakeRoom` uses.
+                var now = _time.GetUtcNow();
+                foreach (var lockout in lockouts.Where(lockout => lockout.LockedUntil > now - policy.MaxLockout).OrderByDescending(lockout => lockout.LockedUntil).Take(policy.MaxTrackedAddresses))
+                {
+                    _addresses[lockout.Bucket] = new _AddressState { Lockouts = lockout.Lockouts, LockedUntil = lockout.LockedUntil };
+                }
+
                 _loaded = true;
             }
         }
@@ -116,6 +133,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         var now = _time.GetUtcNow();
         var bucket = _BucketOf(remoteAddress);
         NodeCaller? caller = null;
+        var lockoutStarted = false;
         List<NodeAccessAuditEntry> audit = [];
         lock (_gate)
         {
@@ -161,9 +179,23 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                     // wipe an attacker's count every 20 s.
                     if (_RecordFailure(bucket, now) is { } lockedUntil)
                     {
+                        lockoutStarted = true;
                         audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, $"lockout started until {lockedUntil:O}"));
                     }
                 }
+            }
+        }
+
+        // Written only when a lockout starts, never per failure: an attacker must not be able to drive a write stream.
+        if (lockoutStarted)
+        {
+            try
+            {
+                _SaveLockouts();
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "The lockout of {RemoteAddress} holds for this run only: it could not be saved.", bucket);
             }
         }
 
@@ -173,6 +205,57 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         }
 
         return caller;
+    }
+
+    // AC-1459: false when the address is not locked out. Clears the lockout and the failures in the window but keeps
+    // the doubling, so lifting is no free reset of how long the next lockout lasts.
+    public async Task<bool> LiftLockoutAsync(string address, NodeCaller liftedBy, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = _time.GetUtcNow();
+        var bucket = _BucketOf(address.Trim());
+        int refused;
+        lock (_gate)
+        {
+            if (!_addresses.TryGetValue(bucket, out var state) || state.LockedUntil <= now)
+            {
+                return false;
+            }
+
+            refused = state.RefusedWhileLockedOut;
+            state.LockedUntil = now;
+            state.Failures.Clear();
+            state.RefusedWhileLockedOut = 0;
+        }
+
+        var outcome = $"lockout lifted by {liftedBy.KeyPrefix ?? liftedBy.Credential}: {refused} attempts refused during it";
+        try
+        {
+            _SaveLockouts();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Lifted the lockout of {RemoteAddress} for this run only: it could not be saved.", bucket);
+            await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", $"{outcome}; WARNING for this run only: not saved, the lockout returns after a restart until it runs out", bucket), CancellationToken.None).ConfigureAwait(false);
+            throw new InvalidOperationException("The lockout is lifted, but that could not be saved, so it returns after a restart until it runs out.", exception);
+        }
+
+        _logger.LogInformation("Lifted the lockout of {RemoteAddress}.", bucket);
+        await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", outcome, bucket), CancellationToken.None).ConfigureAwait(false);
+        return true;
+    }
+
+    // The addresses locked out right now, each with the attempts refused during its lockout so far.
+    public async Task<IReadOnlyList<(string Bucket, DateTimeOffset LockedUntil, int RefusedWhileLockedOut)>> ListLockoutsAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = _time.GetUtcNow();
+        lock (_gate)
+        {
+            return [.. _addresses.Where(pair => pair.Value.LockedUntil > now).Select(pair => (pair.Key, pair.Value.LockedUntil, pair.Value.RefusedWhileLockedOut))];
+        }
     }
 
     // The raw key is in the return value and nowhere else — not in the log, the audit or cockpit.json.
@@ -474,6 +557,42 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true, Scope: ConnectKeyScope.Everything);
     }
 
+    // An unreadable file starts this run without lockouts rather than shutting the door on everyone. JSON fills a
+    // missing bucket with null, so an entry without one is skipped rather than thrown on at every request.
+    private async Task<List<_StoredLockout>> _ReadLockoutsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(_lockoutsPath))
+            {
+                return [];
+            }
+
+            var stored = JsonSerializer.Deserialize<List<_StoredLockout>>(await File.ReadAllTextAsync(_lockoutsPath, cancellationToken).ConfigureAwait(false)) ?? [];
+            return [.. stored.Where(lockout => lockout is { Bucket.Length: > 0 })];
+        }
+        catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
+        {
+            _logger.LogError(exception, "The node lockouts in {Path} could not be read; this run starts without them.", _lockoutsPath);
+            return [];
+        }
+    }
+
+    // The whole file from memory as it is now; the gate keeps an older snapshot from landing over a newer one.
+    private void _SaveLockouts()
+    {
+        lock (_lockoutsSaveGate)
+        {
+            List<_StoredLockout> snapshot;
+            lock (_gate)
+            {
+                snapshot = [.. _addresses.Where(pair => pair.Value.Lockouts > 0).Select(pair => new _StoredLockout(pair.Key, pair.Value.LockedUntil, pair.Value.Lockouts))];
+            }
+
+            CockpitConfigPath.ReplaceAtomicallyPrivate(_lockoutsPath, JsonSerializer.Serialize(snapshot));
+        }
+    }
+
     private Task _SaveAsync(List<ConnectKey> keys, CancellationToken cancellationToken) =>
         _configFile.UpdateAsync(
             file =>
@@ -502,6 +621,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     // strings returns early on a length mismatch and tells a caller how long the secret is.
     internal static bool ConstantTimeEquals(string a, string b) =>
         CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(a)), SHA256.HashData(Encoding.UTF8.GetBytes(b)));
+
+    private sealed record _StoredLockout(string Bucket, DateTimeOffset LockedUntil, int Lockouts);
 
     private sealed class _AddressState
     {
