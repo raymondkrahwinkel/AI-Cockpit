@@ -23,7 +23,8 @@ The package is **private**, so the host logs in once with a token that has `read
 2. Put the two secrets in files, readable by uid 1654 (mode 0644, or `chown 1654`):
    `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
    `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
-3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit.
+3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit. These are plain
+   environment variables, so `docker inspect` shows them; only the two secrets above are files.
 4. `COCKPIT_TAG=sha-<commit> docker compose -f deploy/compose.yaml up -d`
 
 ## What it keeps

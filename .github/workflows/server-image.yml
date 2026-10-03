@@ -6,9 +6,9 @@ name: Server image
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'plugins-dev/**', 'Dockerfile', '.dockerignore', 'deploy/**', 'tests/Cockpit.ServerSeed/**', 'Directory.Build.*', '.github/workflows/server-image.yml']
+    paths: ['src/**', 'plugins-dev/**', 'Dockerfile', '.dockerignore', 'deploy/**', 'tests/Cockpit.ServerSeed/**', 'Directory.Build.*', 'Directory.Packages.props', 'global.json', 'nuget.config', '.github/workflows/server-image.yml']
   pull_request:
-    paths: ['src/**', 'plugins-dev/**', 'Dockerfile', '.dockerignore', 'deploy/**', 'tests/Cockpit.ServerSeed/**', 'Directory.Build.*', '.github/workflows/server-image.yml']
+    paths: ['src/**', 'plugins-dev/**', 'Dockerfile', '.dockerignore', 'deploy/**', 'tests/Cockpit.ServerSeed/**', 'Directory.Build.*', 'Directory.Packages.props', 'global.json', 'nuget.config', '.github/workflows/server-image.yml']
   workflow_dispatch:
 
 jobs:
@@ -58,17 +58,14 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=sha-
 
-      - name: Push the runtime image
+      # The image that was smoked, retagged: a second build could differ in what the Dockerfile leaves unpinned.
+      - name: Push the smoked image
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: runtime
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker tag cockpit-server:smoke "$tag"
+            docker push "$tag"
+          done
 
       - name: Dev metadata
         id: meta-dev

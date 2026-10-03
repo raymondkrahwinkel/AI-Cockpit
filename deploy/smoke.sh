@@ -63,7 +63,8 @@ docker image inspect --format 'size: {{.Size}} bytes' "$image"
 is_non_root "$image" || fail "the image runs as uid 0"
 if docker run --rm --entrypoint sh "$image" -c 'command -v docker' >/dev/null; then fail "the image carries a docker binary"; fi
 [ -z "$(docker run --rm --entrypoint find "$image" / -xdev -iname 'Avalonia*.dll')" ] || fail "the image carries an Avalonia assembly"
-if dc config | grep -q 'docker.sock'; then fail "compose mounts the docker socket"; fi
+compose_config=$(dc config)
+if grep -q 'docker.sock' <<< "$compose_config"; then fail "compose mounts the docker socket"; fi
 
 echo "== controls: the checks above must be able to go red"
 printf 'FROM %s\nUSER root\n' "$image" | docker build -q -t "$project-control-root" - >/dev/null
