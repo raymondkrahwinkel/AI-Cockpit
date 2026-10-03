@@ -26,12 +26,17 @@ public sealed class InProcBackendContractTests : BackendContractTests
             new SessionStartComposer(Substitute.For<IProjectStore>(), Substitute.For<IMcpServerCatalog>()));
         return new ContractBackend(launcher, registry, events, async () =>
         {
-            foreach (var handle in registry.All.ToList())
+            try
             {
-                await launcher.StopSessionAsync(handle.PaneId);
+                foreach (var handle in registry.All.ToList())
+                {
+                    await launcher.StopSessionAsync(handle.PaneId);
+                }
             }
-
-            await bridge.StopAsync(CancellationToken.None);
+            finally
+            {
+                await bridge.StopAsync(CancellationToken.None);
+            }
         });
     }
 
