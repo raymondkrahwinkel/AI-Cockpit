@@ -18,6 +18,11 @@ public interface IRemoteServers
     event EventHandler? Changed;
 
     /// <summary>
+    /// Whether <paramref name="name"/> is a connect-key row as of the last reload, connected or disconnected for this run.
+    /// </summary>
+    bool Knows(string name);
+
+    /// <summary>
     /// Connects every connect-key row in the MCP registry that is not connected yet, and drops those that are gone.
     /// </summary>
     Task ReloadAsync(CancellationToken cancellationToken = default);

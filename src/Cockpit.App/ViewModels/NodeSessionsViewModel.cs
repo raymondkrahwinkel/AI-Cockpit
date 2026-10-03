@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.App.ViewModels;
 
@@ -40,6 +41,12 @@ public sealed partial class NodeSessionsViewModel(
 
     // AC-1458: the running refresh's token; Disconnect cancels it, so nothing more leaves for this node.
     private CancellationTokenSource? _tickCancel;
+
+    // AC-1456: a connect server's card shows its session-list group's connection instead of polling one of its own.
+    private IRemoteServers? _servers;
+    private IRemoteServer? _followed;
+
+    public bool IsServerGroup => _servers is not null;
 
     public string NodeName { get; } = nodeName;
 
@@ -305,6 +312,16 @@ public sealed partial class NodeSessionsViewModel(
 
     public void Dispose()
     {
+        if (_servers is not null)
+        {
+            _servers.Changed -= _OnServersChanged;
+        }
+
+        if (_followed is not null)
+        {
+            _followed.StateChanged -= _OnServerStateChanged;
+        }
+
         _tickCancel?.Cancel();
         if (_countdownTimer is not null)
         {
@@ -323,6 +340,59 @@ public sealed partial class NodeSessionsViewModel(
         _pollTimer = null;
     }
 
+    // AC-1456: the group's stream is the one connection; Disconnect and Connect here are the group's own.
+    public void FollowServer(IRemoteServers servers)
+    {
+        _servers = servers;
+        servers.Changed += _OnServersChanged;
+        Status = $"Its sessions are in the session list, under {NodeName}.";
+        OnPropertyChanged(nameof(IsServerGroup));
+        _ShowServer();
+    }
+
+    private void _OnServersChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(_ShowServer);
+
+    private void _OnServerStateChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(_ShowServer);
+
+    private void _ShowServer()
+    {
+        var server = _servers?.Servers.FirstOrDefault(candidate => string.Equals(candidate.Name, NodeName, StringComparison.Ordinal));
+        if (!ReferenceEquals(server, _followed))
+        {
+            if (_followed is not null)
+            {
+                _followed.StateChanged -= _OnServerStateChanged;
+            }
+
+            _followed = server;
+            if (server is not null)
+            {
+                server.StateChanged += _OnServerStateChanged;
+            }
+        }
+
+        var now = DateTimeOffset.Now;
+        var state = server?.State;
+        var next = state switch
+        {
+            null => NodeConnectionState.Disconnected,
+            { KeyRefused: true } => NodeConnectionState.KeyExpired,
+            { IsConnected: true } => NodeConnectionState.Connected,
+            _ => NodeConnectionState.Reconnecting,
+        };
+        if (next != ConnectionState)
+        {
+            _connectedSince = next == NodeConnectionState.Connected ? now : _connectedSince;
+            _lostAt = next == NodeConnectionState.Reconnecting ? now : _lostAt;
+            _disconnectedAt = next == NodeConnectionState.Disconnected ? now : _disconnectedAt;
+        }
+
+        _latencyMs = state?.LatencyMs ?? _latencyMs;
+        _version = state?.Key?.Version ?? _version;
+        ConnectionState = next;
+        _DescribeConnection();
+    }
+
     private void _OnCountdownTick(object? sender, EventArgs e)
     {
         if (ConnectionState == NodeConnectionState.Reconnecting)
@@ -334,8 +404,14 @@ public sealed partial class NodeSessionsViewModel(
     // AC-1458: stops this card's poll, and with it the relays that ride it. For this run only; the node is told
     // nothing, and what runs there keeps running.
     [RelayCommand]
-    private void Disconnect()
+    private async Task DisconnectAsync()
     {
+        if (_servers is not null)
+        {
+            await _servers.DisconnectAsync(NodeName).ConfigureAwait(true);
+            return;
+        }
+
         ShowDisconnected(DateTimeOffset.Now);
         DisconnectedChanged?.Invoke(_disconnectedAt);
     }
@@ -352,6 +428,12 @@ public sealed partial class NodeSessionsViewModel(
     [RelayCommand]
     private async Task ReconnectAsync()
     {
+        if (_servers is not null)
+        {
+            await _servers.ReconnectAsync(NodeName).ConfigureAwait(true);
+            return;
+        }
+
         DisconnectedChanged?.Invoke(null);
         ConnectionState = NodeConnectionState.Unknown;
         ConnectionDetail = "";
@@ -396,6 +478,8 @@ public sealed partial class NodeSessionsViewModel(
     {
         NodeConnectionState.Connected =>
             $"since {_Clock(_connectedSince)} · {_latencyMs} ms · {NetworkOf(Url)}{(_version is { Length: > 0 } version ? $" · v{version}" : "")}",
+        NodeConnectionState.Reconnecting when IsServerGroup =>
+            $"lost at {_Clock(_lostAt)} · sessions on the server keep running",
         NodeConnectionState.Reconnecting =>
             $"lost at {_Clock(_lostAt)}, retry {_retries} of ∞ in {Math.Max(0, (int)Math.Ceiling((_nextAttemptAt - DateTimeOffset.Now).TotalSeconds))} s · sessions on the server keep running",
         NodeConnectionState.KeyExpired when KeyExpiresAt is { } expiresAt =>

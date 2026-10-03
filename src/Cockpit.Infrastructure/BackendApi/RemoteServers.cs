@@ -18,6 +18,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _reload = new(1, 1);
     private readonly HashSet<string> _disconnected = new(StringComparer.Ordinal);
+    private IReadOnlySet<string> _known = new HashSet<string>(StringComparer.Ordinal);
     private IReadOnlyList<RemoteServer> _servers = [];
 
     public IReadOnlyList<IRemoteServer> Servers
@@ -32,6 +33,14 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
     }
 
     public event EventHandler? Changed;
+
+    public bool Knows(string name)
+    {
+        lock (_gate)
+        {
+            return _known.Contains(name);
+        }
+    }
 
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
@@ -61,6 +70,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
             lock (_gate)
             {
                 _servers = [.. kept, .. added];
+                _known = rows.Select(entry => entry.Name ?? "").ToHashSet(StringComparer.Ordinal);
             }
 
             foreach (var server in gone)

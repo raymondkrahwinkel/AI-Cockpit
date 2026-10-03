@@ -18,6 +18,9 @@ internal static class ServerGroupScene
     // An operate key with a scope: "Admin" locked, the assistant held elsewhere, and the start card with one profile.
     public static MainWindow Operate(int width, int height) => _Render(width, height, admin: false);
 
+    // One stand-in server, for a scene that shows what follows a group rather than the group itself.
+    public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
+
     private static MainWindow _Render(int width, int height, bool admin)
     {
         var cockpit = new CockpitViewModel();
@@ -76,6 +79,8 @@ internal static class ServerGroupScene
             {
             }
         }
+
+        public bool Knows(string name) => Servers.Any(server => server.Name == name);
 
         public Task ReloadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

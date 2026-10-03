@@ -10,6 +10,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
@@ -50,7 +51,9 @@ public sealed partial class SecurityOptionsViewModel(
     NodePermissionRelay? nodePermissionRelay = null,
     // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
     // design-time/unit-test graph like the relays above.
-    IBehaviourMemorySync? behaviourSync = null) : ObservableObject
+    IBehaviourMemorySync? behaviourSync = null,
+    // AC-1456: the connect servers the session list shows as groups; their cards follow those instead of polling.
+    IRemoteServers? remoteServers = null) : ObservableObject
 {
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
@@ -454,6 +457,13 @@ public sealed partial class SecurityOptionsViewModel(
 
             // AC-1458: the row behind each card, for its address and its key's expiry.
             IReadOnlyList<McpServerConfig> rows = mcpServers is null ? [] : await mcpServers.LoadAsync().ConfigureAwait(true);
+
+            // AC-1456: a row just connected, rotated or removed reaches the session list here too.
+            if (remoteServers is not null)
+            {
+                await remoteServers.ReloadAsync().ConfigureAwait(true);
+            }
+
             foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
             {
                 var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
@@ -466,6 +476,13 @@ public sealed partial class SecurityOptionsViewModel(
                     DisconnectedChanged = at => _NoteDisconnected(node, at),
                     KeyExpiryChanged = expiresAt => _StoreKeyExpiryAsync(node, expiresAt),
                 };
+                if (remoteServers?.Knows(node) == true)
+                {
+                    card.FollowServer(remoteServers);
+                    PairedNodes.Add(card);
+                    continue;
+                }
+
                 if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
                 {
                     card.ShowDisconnected(disconnectedAt);

@@ -3197,7 +3197,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeInboxRelay,
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
             nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
-            behaviourSync);
+            behaviourSync,
+            remoteServers);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with

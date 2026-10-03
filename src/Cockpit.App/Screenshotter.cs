@@ -1375,6 +1375,13 @@ internal static class Screenshotter
         disconnected.RefreshAsync().GetAwaiter().GetResult();
         disconnected.DisconnectCommand.Execute(null);
 
+        // AC-1456: a connect server's card follows its session-list group, connected and with the stream lost.
+        var key = new Core.Abstractions.Remote.RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", null);
+        var streamed = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        streamed.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(true, 38, key)));
+        var streamLost = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        streamLost.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(false, 38, key)));
+
         var mismatch = new NodeCertificatePinMismatchException(SceneFingerprint, "B1076E3D000000000000000000000000000000000000000000000000" + "9C11A40F");
         var outcomes = new[]
         {
@@ -1387,6 +1394,12 @@ internal static class Screenshotter
         var panel = new StackPanel { Spacing = 8, Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "Connection status", FontWeight = Avalonia.Media.FontWeight.SemiBold });
         foreach (var card in new[] { connected, reconnecting, expired, disconnected })
+        {
+            panel.Children.Add(new NodeConnectionStatusView { DataContext = card });
+        }
+
+        panel.Children.Add(new TextBlock { Text = "A connect server, as its session-list group reports it", FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        foreach (var card in new[] { streamed, streamLost })
         {
             panel.Children.Add(new NodeConnectionStatusView { DataContext = card });
         }
