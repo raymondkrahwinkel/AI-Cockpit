@@ -59,6 +59,7 @@ served_fingerprint() {
 }
 
 echo "== the image"
+docker image inspect --format 'size: {{.Size}} bytes' "$image"
 is_non_root "$image" || fail "the image runs as uid 0"
 if docker run --rm --entrypoint sh "$image" -c 'command -v docker' >/dev/null; then fail "the image carries a docker binary"; fi
 [ -z "$(docker run --rm --entrypoint find "$image" / -xdev -iname 'Avalonia*.dll')" ] || fail "the image carries an Avalonia assembly"
