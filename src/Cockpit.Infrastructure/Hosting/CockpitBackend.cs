@@ -114,7 +114,7 @@ public sealed class CockpitBackend
         services.AddSingleton<IPluginAdministration, PluginAdministration>();
         if (frontend is null)
         {
-            // AC-1357: after AddInfrastructure, whose own detector would otherwise win; a desktop keeps that one.
+            // AC-1357: nobody sits at a backend without a frontend, so it is away; a host with one keeps its own detector.
             services.AddSingleton<IPresenceDetector, AwayPresenceDetector>();
         }
 
@@ -571,6 +571,7 @@ public sealed class CockpitBackend
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();
         services.AddSingleton<IDesktopDisplays, NoDesktopDisplays>();
         services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
+        services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
     }
 }
 

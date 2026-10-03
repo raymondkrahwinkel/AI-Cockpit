@@ -39,6 +39,12 @@ public sealed class ServerJourney
     // While this file exists the EchoSignIn profile reads as signed in.
     private const string SignedInFile = "echo-signed-in";
 
+    // The Discord lines for that profile. Other profiles may alarm too: the Claude plugin's cached check reads a
+    // profile without credentials as expired a poll after it first guessed it signed in.
+    private const string Expired = "The sign-in of profile 'EchoSignIn'";
+
+    private const string Restored = "Profile 'EchoSignIn' on";
+
     // What a `docker stop` waits before it kills.
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
 
@@ -92,16 +98,15 @@ public sealed class ServerJourney
             await using var controller = await _ControllerAsync(_McpPort(run.Output), controllerKey, fingerprint);
             await _ReadNodeInboxAsync(controller);
             File.Delete(Path.Combine(root, SignedInFile));
-            await discord.WaitForAsync("sign-in expired", 1, timeout.Token);
+            await discord.WaitForAsync(Expired, 1, timeout.Token);
             await Task.Delay(3 * LoginCheckInterval, timeout.Token);
-            Assert.Equal(1, discord.Count("sign-in expired"));
+            Assert.Equal(1, discord.Count(Expired));
             File.WriteAllText(Path.Combine(root, SignedInFile), "");
-            await discord.WaitForAsync("signed in again", 1, timeout.Token);
-            Assert.Equal(1, discord.Count("sign-in expired"));
-            Assert.Contains("'EchoSignIn'", discord.Posts.Single(post => post.Contains("sign-in expired", StringComparison.Ordinal)), StringComparison.Ordinal);
+            await discord.WaitForAsync(Restored, 1, timeout.Token);
+            Assert.Equal(1, discord.Count(Expired));
             var inbox = await _ReadNodeInboxAsync(controller);
-            Assert.Equal(1, inbox.Count(kind => kind == "login-expired"));
-            Assert.Equal(1, inbox.Count(kind => kind == "login-restored"));
+            Assert.Equal(1, inbox.Count(message => message.Kind == "login-expired" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
+            Assert.Equal(1, inbox.Count(message => message.Kind == "login-restored" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
 
             // SIGTERM has no Windows counterpart a test can send to another process; there the cleanup below ends it.
             if (!OperatingSystem.IsWindows())
@@ -190,13 +195,13 @@ public sealed class ServerJourney
         }));
     }
 
-    // The kinds of what waits in the controller's inbox on the node, read from the start.
-    private static async Task<List<string>> _ReadNodeInboxAsync(McpClient controller)
+    // What waits in the controller's inbox on the node, read from the start.
+    private static async Task<List<(string Kind, string Body)>> _ReadNodeInboxAsync(McpClient controller)
     {
         var result = await controller.CallToolAsync("read_node_inbox", new Dictionary<string, object?>());
         var answer = JsonNode.Parse(string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text)));
         Assert.True(answer?["ok"]?.GetValue<bool>(), answer?.ToJsonString());
-        return answer?["messages"]?.AsArray().Select(message => message?["kind"]?.GetValue<string>() ?? "").ToList() ?? [];
+        return answer?["messages"]?.AsArray().Select(message => (message?["kind"]?.GetValue<string>() ?? "", message?["body"]?.GetValue<string>() ?? "")).ToList() ?? [];
     }
 
     // Discord as the server reaches it: a webhook on loopback that keeps every post.
@@ -209,7 +214,7 @@ public sealed class ServerJourney
         app.MapPost("/webhook", async (HttpRequest request) =>
         {
             using var reader = new StreamReader(request.Body);
-            discord.Add(await reader.ReadToEndAsync());
+            discord.Add(JsonNode.Parse(await reader.ReadToEndAsync())?["content"]?.GetValue<string>() ?? "");
             return Results.NoContent();
         });
         await app.StartAsync();

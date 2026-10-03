@@ -12,9 +12,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1357: asks every provider profile whether it is still signed in. Without a frontend it says so once when a sign-in
-// runs out and once when it is back, to the attention channel and the controller's inbox as CiWatcher does; a desktop
-// gets only the data, as its auth-expiry bar says it already. A first poll that reads expired is shown, not alarmed.
+// AC-1357: asks every provider profile whether it is still signed in; without a frontend it says once when a sign-in
+// runs out and once when it is back, to the attention channel and the controller inbox. A desktop gets the data only
+// (its auth-expiry bar says it). A cached check (Claude, Codex) reads its real state a poll late, and that alarms too.
 internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLoginHealth, ISingletonService
 {
     // Who the message is from. Not a pane: the cockpit itself noticed this.
@@ -63,8 +63,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync(stoppingToken).ConfigureAwait(false);
-            using var timer = new PeriodicTimer(settings.LoginCheckInterval);
+            using var timer = new PeriodicTimer(await _IntervalAsync(stoppingToken).ConfigureAwait(false));
             do
             {
                 await _CheckAsync(stoppingToken).ConfigureAwait(false);
@@ -78,6 +77,19 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         catch (Exception exception)
         {
             _logger.LogError(exception, "The provider sign-in check stopped; sign-in health is no longer updated this run.");
+        }
+    }
+
+    private async Task<TimeSpan> _IntervalAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false)).LoginCheckInterval;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Could not read the sign-in check interval; using the default.");
+            return NotificationSettings.DefaultLoginCheckInterval;
         }
     }
 
@@ -158,6 +170,13 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             _logger.LogWarning(exception, "Could not deliver the {Kind} notification.", kind);
         }
 
-        _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body);
+        try
+        {
+            _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not deliver the {Kind} message to the controller inbox.", kind);
+        }
     }
 }

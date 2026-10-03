@@ -64,6 +64,9 @@ internal sealed class ProfileSignIn
     // A device code as Codex and OpenAI print one (QX7K-2M9P): two short upper-case groups. Nothing longer passes.
     private static readonly Regex DeviceCode = new(@"\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b", RegexOptions.Compiled);
 
+    // Codex colours its code and link; the escapes would sit against them and break both matches.
+    private static readonly Regex AnsiEscape = new(@"\x1b\[[0-9;]*m", RegexOptions.Compiled);
+
     private readonly ILoginFlow _flow;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cancel = new();
@@ -104,12 +107,13 @@ internal sealed class ProfileSignIn
         _ => "The sign-in has ended.",
     };
 
-    // running, succeeded, failed or expired.
+    // running, succeeded, failed, expired, or replaced by a newer start for the same profile.
     public string Status => _status;
 
     public string? Error => _status switch
     {
         "failed" => "The sign-in did not complete. Start it again.",
+        "replaced" => "A newer sign-in for this profile has replaced this one.",
         "expired" => "The sign-in was not finished in time and has been ended. Start it again.",
         _ => null,
     };
@@ -117,7 +121,10 @@ internal sealed class ProfileSignIn
     public Task SubmitAsync(string value, CancellationToken cancellationToken) => _flow.SubmitAsync(value, cancellationToken);
 
     internal static string? DeviceCodeIn(string message) =>
-        DeviceCode.Match(UrlPattern.Replace(message, " ")) is { Success: true } match ? match.Value : null;
+        DeviceCode.Match(UrlPattern.Replace(AnsiEscape.Replace(message, " "), " ")) is { Success: true } match ? match.Value : null;
+
+    private static Uri? _Clean(Uri? link) =>
+        link is null || !Uri.TryCreate(AnsiEscape.Replace(link.OriginalString, ""), UriKind.Absolute, out var clean) ? link : clean;
 
     // Not awaited: the flow outlives the request that started it. _RunAsync catches everything it can meet.
     internal void Run(Func<ProfileSignIn, Task> ended) => _ = _RunAsync(ended);
@@ -135,7 +142,7 @@ internal sealed class ProfileSignIn
         {
             await foreach (var step in _flow.Steps.WithCancellation(expiry.Token).ConfigureAwait(false))
             {
-                _url = step.LinkToOpen ?? _url;
+                _url = _Clean(step.LinkToOpen) ?? _url;
                 _code = DeviceCodeIn(step.Message) ?? _code;
                 _awaitsInput = step.AwaitsInput;
                 _firstStep.TrySetResult();
@@ -146,7 +153,7 @@ internal sealed class ProfileSignIn
         }
         catch (OperationCanceledException)
         {
-            _status = _cancel.IsCancellationRequested ? "failed" : "expired";
+            _status = _cancel.IsCancellationRequested ? "replaced" : "expired";
         }
         catch (Exception exception)
         {

@@ -45,7 +45,7 @@ internal static class SignInEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "no_sign_in", "This profile's provider offers no sign-in without a browser.");
             }
 
-            await _AuditAsync(services, caller, "sign-in started", profile.Label, cancellationToken).ConfigureAwait(false);
+            await _AuditAsync(services, caller, "sign-in started", profile.Label, CancellationToken.None).ConfigureAwait(false);
             return Results.Json(_View(signIn), statusCode: StatusCodes.Status201Created);
         }).RequireAdmin();
 
@@ -56,18 +56,30 @@ internal static class SignInEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "text is required.");
             }
 
-            if (signIns().Find(label, flowId) is not { Status: "running" } signIn)
+            if (!inScope(label) || signIns().Find(label, flowId) is not { Status: "running" } signIn)
             {
                 return Results.NotFound();
             }
 
-            await signIn.SubmitAsync(body.Text, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await signIn.SubmitAsync(body.Text, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The CLI ended between the status read and this write; its stdin is gone.
+                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_running", "This sign-in has already ended.");
+            }
+
             await _AuditAsync(services, _Caller(), "sign-in input sent", label, cancellationToken).ConfigureAwait(false);
             return Results.Json(_View(signIn));
         }).RequireAdmin();
 
         api.MapGet("/profiles/{label}/sign-in/{flowId}", (string label, string flowId) =>
-            signIns().Find(label, flowId) is { } signIn ? Results.Json(_View(signIn)) : Results.NotFound()).RequireAdmin();
+            inScope(label) && signIns().Find(label, flowId) is { } signIn ? Results.Json(_View(signIn)) : Results.NotFound()).RequireAdmin();
+
+        // The start route's scope check, for the routes that name a flow: a profile outside the key's scope is a 404.
+        bool inScope(string label) => _Caller().AllowsProfile(label, services.GetRequiredService<INodePairingBroker>());
     }
 
     // Written out field by field, so nothing the flow holds crosses by default.
