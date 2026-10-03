@@ -14,8 +14,10 @@ namespace Cockpit.Server;
 // listeners already run in the node-endpoint host; `IHost` once a second hosted lifecycle joins.
 internal static class Program
 {
-    // Within the ten seconds a `docker stop` waits before it kills.
-    private static readonly TimeSpan StopBudget = TimeSpan.FromSeconds(8);
+    // The container's grace (compose `stop_grace_period`) sets it; the default stays within a `docker stop`'s ten seconds.
+    private const string StopBudgetVariable = "COCKPIT_STOP_BUDGET_SECONDS";
+
+    private static readonly TimeSpan DefaultStopBudget = TimeSpan.FromSeconds(8);
 
     public static async Task<int> Main()
     {
@@ -33,6 +35,8 @@ internal static class Program
         }));
         var logger = loggerFactory.CreateLogger("Cockpit.Server");
         logger.LogInformation("Cockpit.Server {Version} starting: pid {ProcessId}.", HostVersionInfo.Current, Environment.ProcessId);
+        var stopBudget = _StopBudget(logger);
+        logger.LogInformation("Stop budget: {Budget}.", stopBudget);
         CockpitBackend.RepairProcess(loggerFactory);
 
         var backend = CockpitBackend.Build(loggerFactory, frontend: null, PluginStartup.Load);
@@ -58,8 +62,8 @@ internal static class Program
             "Cockpit.Server running; UI assemblies loaded: {UiAssemblies}.", uiAssemblies.Count == 0 ? "none" : string.Join(", ", uiAssemblies));
 
         await stopRequested.Task;
-        logger.LogInformation("Stop requested; stopping within {Budget}.", StopBudget);
-        await backend.StopAsync(StopBudget);
+        logger.LogInformation("Stop requested; stopping within {Budget}.", stopBudget);
+        await backend.StopAsync(stopBudget);
         logger.LogInformation("Cockpit.Server stopped.");
         return 0;
     }
@@ -69,6 +73,23 @@ internal static class Program
     {
         context.Cancel = true;
         stopRequested.TrySetResult();
+    }
+
+    private static TimeSpan _StopBudget(ILogger logger)
+    {
+        var value = Environment.GetEnvironmentVariable(StopBudgetVariable);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return DefaultStopBudget;
+        }
+
+        if (int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds > 0)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        logger.LogWarning("{Variable} is not a positive whole number of seconds; using {Budget}.", StopBudgetVariable, DefaultStopBudget);
+        return DefaultStopBudget;
     }
 
     private static bool _IsUi(string name) =>

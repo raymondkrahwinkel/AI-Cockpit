@@ -45,6 +45,7 @@ public sealed class ServerJourney
         var port = _FreePortPair();
         var fingerprint = await _PrepareStateRootAsync(stateRoot, port, root);
         var keyFile = _Secret(root, "connect-key", key);
+        string[] secrets = [File.ReadAllText(Path.Combine(root, "unlock")), key];
         Process? server = null;
         try
         {
@@ -54,6 +55,7 @@ public sealed class ServerJourney
             refusedRun.Process.WaitForExit();
             Assert.NotEqual(0, refusedRun.Process.ExitCode);
             Assert.Contains("The password in the unlock password file is not correct.", refusedRun.Output, StringComparison.Ordinal);
+            _AssertCarriesNoSecret(refusedRun, secrets);
             refusedRun.Process.Dispose();
 
             // The right one: it runs, with no UI assembly loaded.
@@ -89,6 +91,8 @@ public sealed class ServerJourney
                 Assert.Contains("Cockpit.Server stopped.", run.Output, StringComparison.Ordinal);
                 Assert.False(_IsRunning(cli), $"The session's process {cli} outlived the server.");
             }
+
+            _AssertCarriesNoSecret(run, secrets);
         }
         finally
         {
@@ -157,6 +161,10 @@ public sealed class ServerJourney
         run.Process.BeginErrorReadLine();
         return run;
     }
+
+    // Redaction is a second layer; without this, a later log line with a raw secret stays green. The message names none.
+    private static void _AssertCarriesNoSecret(ServerRun run, string[] secrets) =>
+        Assert.False(secrets.Any(secret => run.Output.Contains(secret, StringComparison.Ordinal)), "The server's output carries the unlock password or the connect key.");
 
     private static string _Secret(string root, string name, string value)
     {
