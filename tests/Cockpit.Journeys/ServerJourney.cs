@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Security;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
@@ -52,7 +53,7 @@ public sealed class ServerJourney
     private static readonly TimeSpan LoginCheckInterval = TimeSpan.FromSeconds(1);
 
     [Fact]
-    public async Task TheServer_StartsOnlyWithItsUnlockFile_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AndStopsOnSigterm()
+    public async Task TheServer_StartsOnlyWithItsUnlockFile_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
     {
         var serverDirectory = _Metadata("CockpitServerDirectory");
         Assert.Empty(Directory.EnumerateFiles(serverDirectory, "Avalonia*.dll", SearchOption.AllDirectories).Select(Path.GetFileName));
@@ -107,6 +108,17 @@ public sealed class ServerJourney
             var inbox = await _ReadNodeInboxAsync(controller);
             Assert.Equal(1, inbox.Count(message => message.Kind == "login-expired" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
             Assert.Equal(1, inbox.Count(message => message.Kind == "login-restored" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
+
+            // AC-1466: Docker's probe needs no key and hears only that the Workflows scheduler holds; the API does not
+            // answer without one. Last before the stop, so this refusal counts toward no lockout a step above meets.
+            using var anonymous = new HttpClient(new SocketsHttpHandler { SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = (_, _, _, _) => true } });
+            var node = $"https://127.0.0.1:{_McpPort(run.Output)}";
+            using var health = await anonymous.GetAsync($"{node}/healthz", timeout.Token);
+            Assert.Equal(
+                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"workflows-scheduler","healthy":true}]}"""),
+                (health.StatusCode, await health.Content.ReadAsStringAsync(timeout.Token)));
+            using var whoami = await anonymous.GetAsync($"{node}/api/v1/whoami", timeout.Token);
+            Assert.Equal(HttpStatusCode.Unauthorized, whoami.StatusCode);
 
             // SIGTERM has no Windows counterpart a test can send to another process; there the cleanup below ends it.
             if (!OperatingSystem.IsWindows())
@@ -166,13 +178,16 @@ public sealed class ServerJourney
             await services.GetRequiredService<ISecretProtectionService>().EnableAsync(password);
             _Secret(root, "unlock", password);
 
-            var plugin = Directory.CreateDirectory(Path.Combine(root, "bundled", "echo-provider")).FullName;
-            foreach (var file in Directory.EnumerateFiles(_Metadata("EchoProviderDirectory")))
+            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") })
             {
-                File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
+                var plugin = Directory.CreateDirectory(Path.Combine(root, "bundled", id)).FullName;
+                foreach (var file in Directory.EnumerateFiles(_Metadata(directory)))
+                {
+                    File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
+                }
             }
 
-            Assert.Equal("echo-provider", Assert.Single(await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)));
+            Assert.Equal(["echo-provider", "workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
             var issuer = new NodeCaller("journey", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
             var controllerKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("controller", ConnectKeyCapability.Admin, 1, issuer, holdsAssistant: true);
             return (services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, controllerKey.Secret);

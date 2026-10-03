@@ -8,7 +8,10 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.47.0: a backend without a frontend refuses a plugin's backend part that reaches for Avalonia (AC-1403), with
+    <!-- 0.65.0: plugins report their own health (AC-1466): ICockpitHost.AddHealthSection and the Health types in
+         Cockpit.Plugins.Abstractions 3.1.0, read by the anonymous GET /healthz on the node port. A plugin that calls it
+         sets minHostVersion 0.65.0.
+         0.47.0: a backend without a frontend refuses a plugin's backend part that reaches for Avalonia (AC-1403), with
          the reason in the plugin manager instead of a bare FileNotFoundException; the desktop is unchanged.
          0.46.0: the plugin contract flips to abstractionsVersion 3 (AC-1402): Avalonia leaves Cockpit.Plugins.Abstractions,
          which now names no window type, and the window half lives in Cockpit.Plugins.Abstractions.UI. A plugin built
@@ -310,7 +313,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.64.0</VersionPrefix>
+    <VersionPrefix>0.65.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

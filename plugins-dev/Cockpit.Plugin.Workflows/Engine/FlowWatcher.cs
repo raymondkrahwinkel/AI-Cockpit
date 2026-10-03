@@ -62,8 +62,11 @@ internal sealed class FlowWatcher : IDisposable
         _host.Sessions.OutputProduced += _OnOutput;
         _host.WorkflowTriggerRaised += _OnPluginTrigger;
 
+        Health = new SchedulerHealth(_time, Tick);
         _timer = _time.CreateTimer(_ => _OnClock(_time.GetUtcNow()), null, TimeSpan.Zero, Tick);
     }
+
+    public SchedulerHealth Health { get; }
 
     public void Dispose()
     {
@@ -178,6 +181,9 @@ internal sealed class FlowWatcher : IDisposable
                 _Deactivate(workflow);
             }
         }
+
+        // Last, so a tick that throws or hangs part-way never counts as one that ran.
+        Health.Beat();
     }
 
     // Read fresh: the flows are edited in a dialog this object cannot see.

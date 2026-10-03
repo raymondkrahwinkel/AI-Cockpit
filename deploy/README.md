@@ -44,6 +44,10 @@ One port: **20383** (the node door, HTTPS with a self-signed certificate). The l
 
     Node listener for ... presents certificate fingerprint <SHA-256 hex>.
 
+`GET /healthz` on that port answers without a key: 200 or 503, with only each check's name and whether it holds. The
+compose health check uses it. It turns 503 when the Workflows scheduler misses two ticks; without the Workflows plugin
+there is no check and it stays 200. An expired sign-in is an alarm, not a reason to restart, so it never counts here.
+
 There is no docker socket and no docker CLI in the image. `COCKPIT_STOP_BUDGET_SECONDS` (default 8) stays below
 `stop_grace_period` (15 s).
 

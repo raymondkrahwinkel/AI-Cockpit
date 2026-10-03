@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -19,8 +20,10 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
+using Cockpit.Plugins.Abstractions.Health;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
@@ -184,7 +187,75 @@ public sealed class BackendApiDoorTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
+    // AC-1466 criterion 2: only a GET of /healthz needs no key. It is 200 with no section, names only slug-named
+    // sections, and is 503 once one is unhealthy or hangs past the budget; anything else without a key stays 401.
+    [Fact]
+    public async Task Healthz_AnswersWithoutAKey_WithOnlyStatusAndSectionNames_WhileEveryOtherPathStays401()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+        var empty = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var section = new _Section("probe");
+        door.Health.Add("test", section);
+        door.Health.Add("test", new _Section("/home/operator/.ssh"));
+        door.Health.Add("test", new _Section("probe\n"));
+        door.Health.Add("test", new _Section("probe"));
+        string[] others = ["/healthz/", "/healthzx", "/healthz/rows", "/HEALTHZ", "/health", "/api/v1/health", "/api/v1/healthz", "/api/v1/whoami", "/mcp"];
+
+        var healthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        section.Healthy = false;
+        var unhealthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var refused = new List<(string Path, HttpStatusCode Status)>();
+        foreach (var path in others)
+        {
+            refused.Add((path, (await door.GetAsync(door.NodeBase, path, bearer: null)).Status));
+        }
+
+        var post = await door.SendAsync(HttpMethod.Post, "/healthz", bearer: null);
+        var head = await door.SendAsync(HttpMethod.Head, "/healthz", bearer: null);
+        section.Healthy = true;
+        using var hanging = new _HangingSection();
+        door.Health.Add("test", hanging);
+        var clock = Stopwatch.StartNew();
+        var hung = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var waited = clock.Elapsed;
+
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[]}"""), empty);
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"probe","healthy":true}]}"""), healthy);
+        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
+        Assert.Equal(others.Select(path => (path, HttpStatusCode.Unauthorized)), refused);
+        Assert.Equal((HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized), (post.Status, head.Status));
+        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":true},{"name":"hang","healthy":false}]}"""), hung);
+        Assert.True(waited < PluginHealthSections.ReadBudget + TimeSpan.FromSeconds(2), $"A hanging section held /healthz for {waited}.");
+    }
+
     internal sealed record _Answer(HttpStatusCode Status, string Body);
+
+    // A section with a row that must never reach /healthz.
+    private sealed class _Section(string name) : IPluginHealthSection
+    {
+        public bool Healthy { get; set; } = true;
+
+        public string Name => name;
+
+        public PluginHealthReport Read() => new(Healthy, [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
+    }
+
+    // A section whose read never returns until the test ends.
+    private sealed class _HangingSection : IPluginHealthSection, IDisposable
+    {
+        private readonly ManualResetEventSlim _released = new();
+
+        public string Name => "hang";
+
+        public PluginHealthReport Read()
+        {
+            _released.Wait();
+            return new PluginHealthReport(true, []);
+        }
+
+        public void Dispose() => _released.Set();
+    }
 
     // One node in a temp directory: cockpit.json, the audit trail and the certificate, and once started the real
     // endpoint host with cockpit-node on loopback and on an HTTPS port of its own.
@@ -223,6 +294,8 @@ public sealed class BackendApiDoorTests
         public SessionMcpKeyring Keyring { get; } = new();
 
         public NodeControllerPresence Presence { get; } = new();
+
+        public PluginHealthSections Health { get; } = new(NullLogger<PluginHealthSections>.Instance);
 
         public NodeSessionMcpToolsTests.RecordingReadGateway ReadGateway { get; } = new();
 
@@ -272,6 +345,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(_audit);
             services.AddSingleton(verifier);
             services.AddSingleton(Presence);
+            services.AddSingleton(Health);
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],
@@ -289,18 +363,26 @@ public sealed class BackendApiDoorTests
             return verifier;
         }
 
-        public async Task<_Answer> GetAsync(string baseUrl, string path, string bearer)
+        public async Task<_Answer> GetAsync(string baseUrl, string path, string? bearer)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (bearer is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
+
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
-        public async Task<_Answer> SendAsync(HttpMethod method, string path, string bearer, string? json = null)
+        public async Task<_Answer> SendAsync(HttpMethod method, string path, string? bearer, string? json = null)
         {
             using var request = new HttpRequestMessage(method, NodeBase + path);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (bearer is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
+
             request.Content = json is null ? null : new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
