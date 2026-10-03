@@ -41,11 +41,20 @@ RUN groupadd --gid 1700 agent \
     && chown -R app:agent /work \
     && chmod 2770 /work /work/clones /work/worktrees \
     && git config --system --add safe.directory '*'
+# Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
+# the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
+RUN groupadd --gid 1701 agent-run \
+    && usermod --append --groups agent-run agent \
+    && chgrp -R agent-run /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
+    && chmod -R o-rwx /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-*
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/claude
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/codex
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/git
 COPY --chmod=0440 deploy/sudoers-agent /etc/sudoers.d/cockpit-agent
 COPY --chmod=0755 deploy/entrypoint.sh /opt/cockpit/entrypoint.sh
+COPY --chmod=0755 deploy/start-server.sh /opt/cockpit/start-server.sh
 RUN visudo --check --file=/etc/sudoers.d/cockpit-agent
 ENV HOME=/home/app
 ENV PATH=/opt/cockpit/bin:$PATH

@@ -17,19 +17,20 @@ services:
       # AC-1464: a blank clone or worktree root takes these, since agent sessions cannot enter /state.
       COCKPIT_CLONE_ROOT: /work/clones
       COCKPIT_WORKTREE_ROOT: /work/worktrees
-    # Sessions inherit this (GH_TOKEN, AIHUB_*, ...). Optional, so a host with nothing to pass needs no file.
-    env_file:
-      - path: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
-        required: false
     secrets:
       - cockpit_unlock_password
       - cockpit_connect_key
+      # AC-1464: what the sessions inherit (GH_TOKEN, AIHUB_*, ...), KEY=VALUE per line; may be empty. A file rather than
+      # an env_file, so it reaches only the server and its sessions, not the container's environment that `docker exec`
+      # and the health check run with.
+      - cockpit_session_env
     ports:
       - "${COCKPIT_PORT:-20383}:20383"
     # AC-1466: /healthz needs no key; node is in the image, curl and wget are not. No certificate check, because this
     # talks only to the container's own loopback and its self-signed certificate: never copy it for a remote check.
+    # AC-1464: Docker runs it as the container's user, root, so it drops to app with an empty environment first.
     healthcheck:
-      test: ["CMD", "node", "-e", "require('https').get({host:'127.0.0.1',port:20383,path:'/healthz',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "/usr/bin/setpriv", "--reuid=app", "--regid=app", "--init-groups", "--", "/usr/bin/env", "-i", "/usr/local/bin/node", "-e", "require('https').get({host:'127.0.0.1',port:20383,path:'/healthz',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 60s
@@ -58,6 +59,8 @@ secrets:
     file: ${COCKPIT_UNLOCK_PASSWORD_PATH:-./secrets/unlock-password}
   cockpit_connect_key:
     file: ${COCKPIT_CONNECT_KEY_PATH:-./secrets/connect-key}
+  cockpit_session_env:
+    file: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
 
 volumes:
   state:

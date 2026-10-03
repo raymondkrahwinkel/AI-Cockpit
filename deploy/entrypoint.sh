@@ -18,7 +18,20 @@ for var in COCKPIT_UNLOCK_PASSWORD_FILE COCKPIT_CONNECT_KEY_FILE; do
     export "$var=$copies/${source##*/}"
   fi
 done
+# The session environment is a file too, loaded only after the drop (start-server.sh): as a compose env_file it was the
+# container's own environment, which `docker exec` and the health check run with as root.
+if [ -f /run/secrets/cockpit_session_env ]; then
+  install -o app -g app -m 0400 /run/secrets/cockpit_session_env "$copies/session.env"
+fi
 if [ -d /run/secrets ]; then chmod 0700 /run/secrets; fi
+
+# A managed CLI install runs as app, past the wrapper. /state/cli is root's and never empty, so the server can neither
+# install one nor find one there and falls back to PATH; an install from before AC-1464 is moved aside.
+if [ -e /state/cli ] && [ "$(stat -c %U /state/cli)" != root ]; then mv /state/cli "/state/cli.disabled-$(date +%s)"; fi
+mkdir -p /state/cli
+chown root:root /state/cli
+chmod 0755 /state/cli
+touch /state/cli/.root-owned
 
 # Volumes from before AC-1464 belong to `app`; the CLIs that write them now run as `agent`.
 for home in /home/agent/.claude /home/agent/.codex; do
@@ -31,4 +44,4 @@ COCKPIT_AGENT_GROUP=$(id -g agent)
 export COCKPIT_AGENT_GROUP
 # Group-writable, so a worktree under /work stays writable for both users; nothing for anyone else.
 umask 007
-exec setpriv --reuid=app --regid=app --init-groups -- /app/Cockpit.Server "$@"
+exec /usr/bin/setpriv --reuid=app --regid=app --init-groups -- /opt/cockpit/start-server.sh "$@"

@@ -23,8 +23,9 @@ The package is **private**, so the host logs in once with a token that has `read
 2. Put the two secrets in files, owner-only is fine (the entrypoint reads them as root):
    `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
    `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
-3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit. These are plain
-   environment variables, so `docker inspect` shows them; only the two secrets above are files.
+3. `session.env` (or `COCKPIT_SESSION_ENV_FILE`), required but may be empty: `GH_TOKEN` and anything else the agent
+   sessions should inherit, `KEY=VALUE` per line. It is a file like the secrets: it reaches the server and its sessions
+   only, never the container's environment, so `docker inspect`, `docker exec` and the health check do not see it.
 4. `COCKPIT_TAG=sha-<commit> docker compose -f deploy/compose.yaml up -d`
 
 The clone and worktree roots start out at `/work/clones` and `/work/worktrees` (`COCKPIT_CLONE_ROOT`,
@@ -77,5 +78,8 @@ the MCP settings, `GH_TOKEN`) and has its own `HOME`.
   `/run/secrets`, and then drops to `app` for good. Do not set `no-new-privileges`: the wrapper needs sudo.
 - All sessions share the one `agent` uid, so a session can read another session's environment, MCP config and
   transcripts. The line drawn here is between the sessions and the server, not between sessions.
-- A profile with a pinned `ExecutablePath`, or a cockpit-managed CLI install, bypasses the wrapper and runs as `app`.
-  Leave both empty on the server.
+- The health check drops to `app` with an empty environment before it runs node, since Docker runs it as root.
+- Only `agent` may run the real `claude`, `codex` and `git` (group `agent-run`), so a profile that pins one of them
+  fails instead of running it as `app`. `/state/cli` belongs to root, so the server can neither install a managed CLI
+  nor find one; an older install there is moved aside on start. A pin to any other program still runs as `app`: leave
+  `ExecutablePath` empty on the server.

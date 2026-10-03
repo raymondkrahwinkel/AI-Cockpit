@@ -18,6 +18,7 @@ const out = {
   original: can('/run/secrets/cockpit_connect_key'),
   environ: server ? can(`/proc/${server}/environ`) : 'no-server',
 };
+try { fs.readdirSync('/home/app'); out.apphome = 'read'; } catch (e) { out.apphome = e.code; }
 
 const tree = process.env.SMOKE_WORKTREE;
 if (tree) {

@@ -16,8 +16,11 @@ unlock=$(openssl rand -hex 16)
 key="ck_$(openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n')"
 printf '%s' "$unlock" > "$COCKPIT_UNLOCK_PASSWORD_PATH"
 printf '%s' "$key" > "$COCKPIT_CONNECT_KEY_PATH"
+# What the sessions inherit; it must reach the server and stay out of the container's environment (AC-1464).
+export COCKPIT_SESSION_ENV_FILE=$work/session.env
+printf '# smoke\nSMOKE_SESSION_VAR=reached\n' > "$COCKPIT_SESSION_ENV_FILE"
 # Owner-only on the host: the entrypoint reads them as root and hands the server its own copies (AC-1464).
-chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH"
+chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH" "$COCKPIT_SESSION_ENV_FILE"
 : > "$work/logs.txt"
 
 dc() { docker compose -p "$project" -f deploy/compose.yaml "$@"; }
@@ -34,12 +37,15 @@ trap cleanup EXIT
 server_uid() { docker top "$1" -eo pid,uid,args | awk '$3 == "/app/Cockpit.Server" { print $2 }'; }
 # One field of a probe's JSON line (deploy/smoke-probe.js).
 field() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]]))' "$1" "$2"; }
-# The probe, loaded into the codex launcher of whatever `docker compose exec` starts here, as the server's user.
-# Under the server's umask (007, deploy/entrypoint.sh), which `exec` does not inherit. Usage: probe <cli> [exec options].
+# The probe, loaded into whatever node process `<command>` starts, as the server's user and under its umask (007,
+# deploy/entrypoint.sh), which `exec` does not inherit. Usage: probe '<command>' [exec options].
 probe() {
-  local cli=$1; shift
-  dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane -e NODE_OPTIONS=--require=/work/smoke-probe.js "$@" cockpit     sh -c "umask 007 && exec $cli --version" | sed -n 's/^PROBE //p'
+  local command=$1; shift
+  dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane -e NODE_OPTIONS=--require=/work/smoke-probe.js "$@" cockpit \
+    sh -c "umask 007 && exec $command" | sed -n 's/^PROBE //p'
 }
+# Fails when the command, run in the container with the given exec options, succeeds.
+refused() { if dc exec -T "$@" >/dev/null 2>&1; then return 1; fi; }
 # Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
 history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
@@ -98,9 +104,16 @@ log_has 'Clone root set to /work/clones from COCKPIT_CLONE_ROOT.' || fail "the s
 container=$(dc ps -q cockpit)
 uid=$(server_uid "$container")
 [ -n "$uid" ] && [ "$uid" != 0 ] || fail "the server runs as uid '${uid:-none}'"
-# The compose health check, run the way Docker runs it: as the container's user, which is now root (AC-1466).
-health=$(docker inspect -f '{{index .Config.Healthcheck.Test 3}}' "$container")
-dc exec -T cockpit node -e "$health" || fail "the compose health check fails"
+# The compose health check, run the way Docker runs it: as the container's user, root, with the container's env (AC-1466).
+mapfile -t health < <(docker inspect -f '{{json .Config.Healthcheck.Test}}' "$container" | node -e 'JSON.parse(require("fs").readFileSync(0)).slice(1).forEach(a => console.log(a))')
+dc exec -T cockpit "${health[@]}" || fail "the compose health check fails"
+# AC-1464: everything before node drops to app with an empty env; the same prefix in front of `id -u` says who it is.
+health_uid=$(dc exec -T cockpit "${health[@]:0:${#health[@]}-3}" /usr/bin/id -u)
+[ "$health_uid" = "$(dc exec -T cockpit id -u app)" ] || fail "the health check runs as uid $health_uid"
+# The session env reaches the server, and not the container's environment the health check and `docker exec` get.
+if docker inspect -f '{{json .Config.Env}}' "$container" | grep -qF SMOKE_SESSION_VAR; then fail "session.env is in the container's environment"; fi
+server_env=$(dc exec -T cockpit sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < $p/cmdline 2>/dev/null)" in "/app/Cockpit.Server"*) tr "\0" "\n" < $p/environ ;; esac; done')
+grep -qx 'SMOKE_SESSION_VAR=reached' <<< "$server_env" || fail "session.env did not reach the server"
 collect_logs
 
 echo "== agent sessions run as agent (AC-1464)"
@@ -112,12 +125,12 @@ tree=/work/worktrees/smoke
 git_as() { echo "-c user.name=$1 -c user.email=$1@smoke"; }
 dc exec -T -u app cockpit sh -c "umask 007 && git init -q $tree && git -C $tree $(git_as cockpit) commit -q --allow-empty -m init \
   && touch $tree/agent.txt && git -C $tree add agent.txt"
-agent=$(probe codex -e SMOKE_WORKTREE=$tree)
+agent=$(probe 'codex --version' -e SMOKE_WORKTREE=$tree)
 echo "through the wrapper: $agent"
 [ "$(field "$agent" uid)" = "$agent_uid" ] || fail "codex through the wrapper does not run as agent"
 [ "$(field "$agent" pane)" = smoke-pane ] || fail "COCKPIT_PANE_ID did not reach the CLI through the wrapper"
 [ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"
-for what in config certificate secret original environ; do
+for what in config certificate secret original environ apphome; do
   [ "$(field "$agent" $what)" = EACCES ] || fail "an agent session can reach $what ($(field "$agent" $what))"
 done
 [ "$(field "$agent" worktree)" = committed ] || fail "an agent session cannot commit in a worktree under /work ($(field "$agent" worktree))"
@@ -127,11 +140,11 @@ dc exec -T -u app cockpit sh -c "umask 007 && echo cockpit >> $tree/agent.txt &&
   || fail "the cockpit cannot commit in a worktree the agent wrote in"
 hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
 [ "$hook_uid" = "$agent_uid" ] || fail "a hook the agent planted ran as uid $hook_uid on the cockpit's git"
-# Control: the same commit with the real git, as the server's user, runs the agent's hook as that user.
-dc exec -T -u app cockpit sh -c "umask 007 && /usr/bin/git -C $tree $(git_as cockpit) commit -q --allow-empty -m control"
+# Control: the real git, run by whoever may still run it (root, since app no longer can), runs the hook as that user.
+dc exec -T cockpit sh -c "/usr/bin/git -C $tree $(git_as cockpit) commit -q --allow-empty -m control"
 hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
-[ "$hook_uid" = "$(dc exec -T cockpit id -u app)" ] || fail "control: the planted hook did not run on a git without the wrapper (uid $hook_uid)"
-echo "a planted hook ran as uid $agent_uid through the wrapper and as uid $hook_uid without it"
+[ "$hook_uid" = 0 ] || fail "control: the planted hook did not run on a git without the wrapper (uid $hook_uid)"
+echo "a planted hook ran as uid $agent_uid through the wrapper and as uid $hook_uid on the real git"
 dc exec -T -u app cockpit sh -c "rm -rf $tree /work/hook-uid" || fail "the cockpit cannot remove a worktree the agent wrote in"
 dc exec -T -u app cockpit claude --version || fail "claude does not start through its wrapper"
 # A sign-in writes its file as agent, owner-only; the server's login check only asks whether it exists (AC-1357).
@@ -139,10 +152,21 @@ dc exec -T -u agent cockpit sh -c 'umask 077 && : > /home/agent/.claude/.smoke-l
 dc exec -T -u app cockpit test -e /home/app/.claude/.smoke-login || fail "the server cannot see a file the agent's CLI wrote"
 dc exec -T -u agent cockpit rm /home/agent/.claude/.smoke-login
 
+echo "== the boundaries the wrapper does not draw itself"
+# The real binaries are agent-run's alone, so neither a profile pin nor a direct call from the server skips the wrapper.
+for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/git-core/git; do
+  refused -u app cockpit "$binary" --version || fail "the server's user can run $binary itself"
+  dc exec -T -u agent cockpit "$binary" --version >/dev/null || fail "control: agent cannot run $binary"
+done
+refused -u agent cockpit /usr/bin/sudo -n -u app /usr/bin/id || fail "agent can use sudo"
+# A managed CLI would install under /state/cli and run as app: the directory is root's.
+refused -u app cockpit mkdir /state/cli/claude || fail "the server's user can install a managed CLI under /state/cli"
+dc exec -T -u app cockpit sh -c 'mkdir /state/smoke-control && rmdir /state/smoke-control' || fail "control: the server's user cannot write /state at all"
+
 echo "== controls: without the wrapper the probe reads it all, and a bare sudo loses the session env"
-direct=$(probe /usr/local/bin/codex)
+direct=$(probe '/usr/local/bin/node -e 0')
 echo "without the wrapper: $direct"
-for what in certificate secret environ; do
+for what in certificate secret environ apphome; do
   [ "$(field "$direct" $what)" = read ] || fail "control: the server's own user cannot read $what ($(field "$direct" $what)), so the denial proves nothing"
 done
 bare=$(dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane cockpit \
