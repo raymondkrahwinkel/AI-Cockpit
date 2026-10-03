@@ -33,9 +33,14 @@ internal static class BackendApiRoutes
         SignInEndpoints.Map(api, services);
         HealthEndpoints.Map(api, services);
 
-        api.MapGet("/whoami", () =>
+        api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {
             var caller = _Caller();
+
+            // AC-1456: who holds the assistant, by label only, so a key that does not can say where it went.
+            var keys = await services.GetRequiredService<ConnectKeyVerifier>().ListAsync(cancellationToken).ConfigureAwait(false);
+            var holder = keys.Select(entry => entry.Key)
+                .FirstOrDefault(key => key.HoldsAssistant && key.IsUsableAt(DateTimeOffset.UtcNow))?.Label;
             return Results.Json(new
             {
                 keyPrefix = caller.KeyPrefix,
@@ -47,6 +52,7 @@ internal static class BackendApiRoutes
                 holdsAssistant = caller.HoldsAssistant,
                 version = HostVersion(),
                 startedAt = StartedAt,
+                assistantHeldBy = holder,
             });
         }).RequireOperate();
 

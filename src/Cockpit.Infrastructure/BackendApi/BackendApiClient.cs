@@ -11,6 +11,9 @@ namespace Cockpit.Infrastructure.BackendApi;
 public sealed class BackendApiClient : IDisposable
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    // AC-1456: the events route pings every 15 s, so three missed pings is a connection that died without a reset.
+    private static readonly TimeSpan SilenceLimit = TimeSpan.FromSeconds(45);
     private readonly HttpClient _http;
     private readonly TimeProvider _time;
 
@@ -43,15 +46,17 @@ public sealed class BackendApiClient : IDisposable
     public Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken) =>
         _SendAsync<T>(method, path, body, cancellationToken);
 
+    // AC-1456: `connected` hears true when a connection's headers came back and false each time one ended or failed.
     public async IAsyncEnumerable<BackendEvent> StreamEventsAsync(
         long? afterSeq,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken,
+        Action<bool>? connected = null)
     {
         var cursor = afterSeq;
         var backoff = TimeSpan.FromSeconds(1);
         while (true)
         {
-            await using var events = _ReadConnectionAsync(cursor, cancellationToken).GetAsyncEnumerator(cancellationToken);
+            await using var events = _ReadConnectionAsync(cursor, () => connected?.Invoke(true), cancellationToken).GetAsyncEnumerator(cancellationToken);
             while (true)
             {
                 bool moved;
@@ -83,6 +88,7 @@ public sealed class BackendApiClient : IDisposable
                 yield return evt;
             }
 
+            connected?.Invoke(false);
             await Task.Delay(backoff, _time, cancellationToken).ConfigureAwait(false);
             backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 30));
         }
@@ -114,6 +120,7 @@ public sealed class BackendApiClient : IDisposable
 
     private async IAsyncEnumerable<BackendEvent> _ReadConnectionAsync(
         long? cursor,
+        Action opened,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/events");
@@ -131,13 +138,31 @@ public sealed class BackendApiClient : IDisposable
             throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
         }
 
+        opened();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
+        using var silence = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         string? id = null;
         string? kind = null;
         var data = new List<string>();
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        while (true)
         {
+            silence.CancelAfter(SilenceLimit);
+            string? line;
+            try
+            {
+                line = await reader.ReadLineAsync(silence.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new IOException("The event stream stayed silent past three heartbeats.");
+            }
+
+            if (line is null)
+            {
+                break;
+            }
+
             if (line.Length == 0)
             {
                 var evt = _Frame(id, kind, data);
@@ -229,7 +254,7 @@ public sealed class BackendApiClient : IDisposable
     }
 }
 
-// AC-1458: the last four are additive; a server that predates them leaves them at their defaults.
+// AC-1458: the last four are additive, as is AC-1456's holder; a server that predates them leaves them at their defaults.
 public sealed record BackendWhoAmI(
     string KeyPrefix,
     string Label,
@@ -239,4 +264,5 @@ public sealed record BackendWhoAmI(
     DateTimeOffset? ExpiresAt = null,
     bool HoldsAssistant = false,
     string? Version = null,
-    DateTimeOffset? StartedAt = null);
+    DateTimeOffset? StartedAt = null,
+    string? AssistantHeldBy = null);
