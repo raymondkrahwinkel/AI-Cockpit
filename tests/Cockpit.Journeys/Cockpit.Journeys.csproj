@@ -30,6 +30,17 @@
     <ProjectReference Include="..\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
+  <!-- AC-1444: J8 runs Cockpit.Server from its own output, as a process of its own, with the echo fixture installed into
+       its state root. Both are built and never referenced, so neither lands in this output or in the server's. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Server\Cockpit.Server.csproj"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="..\Cockpit.Plugin.EchoProvider\Cockpit.Plugin.EchoProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <AssemblyMetadata Include="CockpitServerDirectory" Value="$(MSBuildThisFileDirectory)..\..\src\Cockpit.Server\bin\$(Configuration)\$(TargetFramework)\" />
+    <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
+  </ItemGroup>
+
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->
   <Import Project="..\..\src\BundledPlugins.targets" />
 

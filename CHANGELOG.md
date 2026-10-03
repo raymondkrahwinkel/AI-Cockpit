@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Cockpit.Server, the cockpit as a program without a window, for running in a container. It unlocks the
+  stored credentials from a password file, takes connect keys only (no LAN discovery and no pairing), loads the
+  plugins without their UI parts, runs SDK sessions (a TTY profile is refused with the reason), and stops cleanly
+  on SIGTERM within a stop budget of 8 seconds, which `COCKPIT_STOP_BUDGET_SECONDS` changes to match the
+  container's stop grace period. A start that arrives while it stops is refused with the reason instead of left
+  running.
 - added: what the desktop asks of the cockpit's backend — starting a session, prompting it, seeing its replies on
   the event stream, answering a permission prompt, stopping it, and picking the stream up again from where a reader
   left off — is now checked by one set of tests that a remote backend will have to pass as well.

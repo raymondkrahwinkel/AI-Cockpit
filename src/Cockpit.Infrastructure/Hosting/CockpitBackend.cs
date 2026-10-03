@@ -285,6 +285,14 @@ public sealed class CockpitBackend
         using var deadline = new CancellationTokenSource(budget);
         using var sessionsDeadline = new CancellationTokenSource(budget / 2);
         var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
+
+        // AC-1444: the doors stay open until the listeners stop, so the launcher closes first: a start through any of
+        // them (the node API, delegation, a plugin) is refused, and one already registered is in the count below.
+        if (Services.GetService<ISessionLauncher>() is SessionLauncher launcher)
+        {
+            await launcher.CloseAsync().ConfigureAwait(false);
+        }
+
         IDisposable?[] planners =
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
