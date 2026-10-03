@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- AC-1356: writes what an operator sets up before a headless first start (the node door on, credential encryption
-       on) into a state root, for the container smoke. Core and Infrastructure only, like Cockpit.Server. -->
+  <!-- AC-1356: turns credential encryption on in a state root, for the container smoke's fail-closed control
+       (the server needs an unlock password only once encryption is on). Core and Infrastructure only, like Cockpit.Server. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

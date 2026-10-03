@@ -17,13 +17,9 @@ The package is **private**, so the host logs in once with a token that has `read
 
 ## First start
 
-1. Seed `/state` once, before the first start. The node door (`/api/v1`, port 20383) is off on a fresh state and has no
-   environment switch, and the unlock password is only asked for once credential encryption is on. Both are
-   settings in `cockpit.json`; the smoke seeds them with `tests/Cockpit.ServerSeed`:
-
-       dotnet run --project tests/Cockpit.ServerSeed -- <absolute state dir> <unlock password file>
-
-   then copy that directory into the `state` volume owned by uid 1654 (`app`).
+1. Nothing to set up in `/state`: the server turns the node door on itself, and mints its certificate on the first
+   start. If the node port is held, or the door does not listen for any other reason, the server logs why and exits 1
+   rather than reporting `running`.
 2. Put the two secrets in files, readable by uid 1654 (mode 0644, or `chown 1654`):
    `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
    `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
@@ -49,6 +45,12 @@ One port: **20383** (the node door, HTTPS with a self-signed certificate). The l
 
 There is no docker socket and no docker CLI in the image. `COCKPIT_STOP_BUDGET_SECONDS` (default 8) stays below
 `stop_grace_period` (15 s).
+
+## Open question
+
+Credential encryption is off on a fresh state, and then the unlock password is not used (the server logs a warning).
+With encryption on, the server starts only with the unlock secret, and exits 1 without it. Turning encryption on for a
+headless first start is not solved here.
 
 ## Not here yet
 
