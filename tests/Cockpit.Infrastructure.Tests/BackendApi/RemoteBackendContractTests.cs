@@ -29,38 +29,26 @@ public sealed class RemoteBackendContractTests : BackendContractTests
     {
         var previousStateRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         var stateRoot = Path.Combine(Path.GetTempPath(), $"remote-contract-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(stateRoot);
-        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.AddSingleton<ISessionDriverFactory>(new ContractDrivers()));
-        var services = backend.Services;
-        var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
-        await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });
-        var profile = new SessionProfile(ContractBackend.Profile, new ClaudeConfig(Path.Combine(stateRoot, "profile"))) { DefaultKind = ProfileSessionKind.Sdk };
-        await services.GetRequiredService<ISessionProfileStore>().SaveAsync([profile]);
-        await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = 0 });
-        backend.Start();
+        CockpitBackend? backend = null;
+        BackendApiClient? client = null;
+        RemoteBackend? remote = null;
 
-        var issuer = new NodeCaller("contract", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
-        var key = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("contract", ConnectKeyCapability.Operate, 30, issuer);
-        var nodeUrl = new Uri(Assert.Single(services.GetRequiredService<CockpitMcpEndpointHost>().GetNodeAddresses()).Url);
-        var client = new BackendApiClient(new Uri(nodeUrl, "/"), key.Secret, services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, TimeProvider.System);
-        var remote = await RemoteBackend.ConnectAsync(client);
-
-        // Criterion 4: a chosen pane or a resume is refused before a request leaves, so the backend starts nothing.
-        var registry = services.GetRequiredService<ISessionRegistry>();
-        var launch = new SessionLaunchRequest(RemoteBackend.NodeDeskId, profile, null, null, null, PaneSessionKind.Sdk, null, null, null, false);
-        await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { PaneId = "chosen" }));
-        await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { Resume = SessionResume.MostRecent }));
-        Assert.Empty(registry.All);
-
-        return new ContractBackend(remote, remote, remote, async () =>
+        // Also run when the start itself fails, so a broken start leaves neither the state root nor a listener behind.
+        async ValueTask shutdown()
         {
             try
             {
-                await remote.DisposeAsync();
-                client.Dispose();
-                await backend.StopAsync(TimeSpan.FromSeconds(10));
-                await services.DisposeAsync();
+                if (remote is not null)
+                {
+                    await remote.DisposeAsync();
+                }
+
+                client?.Dispose();
+                if (backend is not null)
+                {
+                    await backend.StopAsync(TimeSpan.FromSeconds(10));
+                    await backend.Services.DisposeAsync();
+                }
             }
             finally
             {
@@ -74,7 +62,41 @@ public sealed class RemoteBackendContractTests : BackendContractTests
                     // A store's debounced write may still hold a file there; a temp folder the OS clears is fine.
                 }
             }
-        });
+        }
+
+        try
+        {
+            Directory.CreateDirectory(stateRoot);
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+            backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.AddSingleton<ISessionDriverFactory>(new ContractDrivers()));
+            var services = backend.Services;
+            var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
+            await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });
+            var profile = new SessionProfile(ContractBackend.Profile, new ClaudeConfig(Path.Combine(stateRoot, "profile"))) { DefaultKind = ProfileSessionKind.Sdk };
+            await services.GetRequiredService<ISessionProfileStore>().SaveAsync([profile]);
+            await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = 0 });
+            backend.Start();
+
+            var issuer = new NodeCaller("contract", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+            var key = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("contract", ConnectKeyCapability.Operate, 30, issuer);
+            var nodeUrl = new Uri(Assert.Single(services.GetRequiredService<CockpitMcpEndpointHost>().GetNodeAddresses()).Url);
+            client = new BackendApiClient(new Uri(nodeUrl, "/"), key.Secret, services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, TimeProvider.System);
+            remote = await RemoteBackend.ConnectAsync(client);
+
+            // Criterion 4: a chosen pane or a resume is refused before a request leaves, so the backend starts nothing.
+            var registry = services.GetRequiredService<ISessionRegistry>();
+            var launch = new SessionLaunchRequest(RemoteBackend.NodeDeskId, profile, null, null, null, PaneSessionKind.Sdk, null, null, null, false);
+            await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { PaneId = "chosen" }));
+            await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { Resume = SessionResume.MostRecent }));
+            Assert.Empty(registry.All);
+
+            return new ContractBackend(remote, remote, remote, shutdown);
+        }
+        catch
+        {
+            await shutdown();
+            throw;
+        }
     }
 
     private sealed class ContractDrivers : ISessionDriverFactory

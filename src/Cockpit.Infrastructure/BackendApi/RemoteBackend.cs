@@ -172,36 +172,68 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
     }
 
+    // Anything that breaks the loop, a failed refresh or a throwing listener, starts it again from a full reload; only a
+    // refused key ends it, and a waiting start or stop hears why.
     private async Task _FollowAsync(long afterSeq)
     {
-        try
+        var backoff = TimeSpan.FromSeconds(1);
+        while (true)
         {
-            await foreach (var evt in _client.StreamEventsAsync(afterSeq, _stop.Token).ConfigureAwait(false))
+            try
+            {
+                await _ReadAsync(afterSeq).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (BackendApiException exception) when (exception.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 lock (_gate)
                 {
-                    _lastSeq = Math.Max(_lastSeq, evt.Seq);
+                    _refreshed.TrySetException(exception);
                 }
 
-                if (evt.Kind is "sessions-changed" or "reset")
-                {
-                    await _RefreshAsync(reload: evt.Kind == "reset").ConfigureAwait(false);
-                }
-                else if (evt.PaneId is { } paneId && (_Find(paneId) ?? _AssistantAt(paneId)) is { } handle)
-                {
-                    handle.Apply(evt);
-                }
+                return;
+            }
+            catch (Exception)
+            {
+                // Falls through to the reload below, which brings every handle back to what the backend holds.
+            }
+
+            try
+            {
+                await Task.Delay(backoff, _stop.Token).ConfigureAwait(false);
+                afterSeq = await _RefreshAsync(reload: true).ConfigureAwait(false);
+                backoff = TimeSpan.FromSeconds(1);
+            }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 30));
             }
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+    }
+
+    private async Task _ReadAsync(long afterSeq)
+    {
+        await foreach (var evt in _client.StreamEventsAsync(afterSeq, _stop.Token).ConfigureAwait(false))
         {
-        }
-        catch (Exception exception)
-        {
-            // A waiting start or stop hears it; the registry stays as it last stood.
             lock (_gate)
             {
-                _refreshed.TrySetException(exception);
+                _lastSeq = Math.Max(_lastSeq, evt.Seq);
+            }
+
+            if (evt.Kind is "sessions-changed" or "reset")
+            {
+                await _RefreshAsync(reload: evt.Kind == "reset").ConfigureAwait(false);
+            }
+            else if (evt.PaneId is { } paneId && (_Find(paneId) ?? _AssistantAt(paneId)) is { } handle)
+            {
+                handle.Apply(evt);
             }
         }
     }

@@ -213,13 +213,34 @@ public sealed class RemoteSessionHandle : ISessionHandle
             }
         }
 
-        var transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1").ConfigureAwait(false);
+        RemoteTranscript transcript;
+        try
+        {
+            transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1").ConfigureAwait(false);
+        }
+        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
+        {
+            // Closed since the list was read; the next sessions-changed takes it off the registry.
+            return;
+        }
+
+        IReadOnlyList<TranscriptSnapshotEntry> rows = transcript.Rows ?? [];
+        var seq = transcript.Seq ?? 0;
         lock (_gate)
         {
             _rows.Clear();
-            _rows.AddRange(transcript.Rows ?? []);
-            _snapshotSeq = transcript.Seq ?? 0;
+            _rows.AddRange(rows);
+            _snapshotSeq = seq;
             _loaded = true;
+        }
+
+        // A reload replaces rows a listener already drew; it hears each again as it now stands.
+        if (reload)
+        {
+            foreach (var row in rows)
+            {
+                RowUpserted?.Invoke(new TranscriptRowUpsert(seq, 0, row));
+            }
         }
     }
 
