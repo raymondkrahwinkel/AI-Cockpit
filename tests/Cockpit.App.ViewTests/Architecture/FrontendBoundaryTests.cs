@@ -23,10 +23,18 @@ public sealed class FrontendBoundaryTests
             .Where(type => type.IsSubclassOf(typeof(SessionEvent)))
             .Select(type => type.Name));
         // AC-1449: a member that shares an event's name (`TranscriptEntryKind.TurnCompleted`) is no dependency on it;
-        // a name qualified by its namespace (`Core.Sessions.SessionError`) still is. AC-1441: neither is a declaration
-        // that shares one: an enum member alone on its line (`Question,`) or a property (`Question { get; }`).
+        // a name qualified by its namespace (`Core.Sessions.SessionError`) still is.
+        var notAMember = @"(?:(?<!\.)|(?<=Sessions\.))";
+
+        // AC-1441: a declaration that shares a name is none either. An enum member alone on its line (`Question,`, a
+        // last `TurnCompleted`, `Question = 3`), but not a type in a list (`Func<SessionEvent, bool>`) or an arm (`=>`).
+        var enumMember = @"(?<=^[ \t]*\w+)[ \t]*(?:[,}\r\n]|=(?!>))";
+
+        // A property named like one (`public string Question { get; }`).
+        var propertyName = @"\s*\{\s*get";
+        var names = string.Join("|", forbiddenNames.Select(Regex.Escape));
         var forbiddenReference = new Regex(
-            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b(?!(?<=^[ \t]*\w+)[ \t]*(?:[,}}\r\n]|=(?!>)))(?!\s*\{{\s*get)|\bSessionHost\b",
+            $@"{notAMember}\b(?:{names})\b(?!{enumMember})(?!{propertyName})|\bSessionHost\b",
             RegexOptions.Multiline | RegexOptions.CultureInvariant);
         var commentLine = new Regex(@"^\s*//.*$", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
@@ -52,19 +60,25 @@ public sealed class FrontendBoundaryTests
         // surface beyond the contracts it implements, a static class keeps no state. Logic belongs elsewhere.
         var markers = new[] { typeof(Cockpit.Core.Abstractions.ISingletonService), typeof(IDisposable), typeof(IAsyncDisposable) };
         var composition = typeof(Cockpit.App.Composition.DesktopComposition).Assembly.GetTypes()
-            .Where(type => type.Namespace == "Cockpit.App.Composition" && !type.IsNested
+            .Where(type => type.Namespace?.StartsWith("Cockpit.App.Composition", StringComparison.Ordinal) == true
                 && !type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false));
         var thick = composition
             .Where(type =>
             {
-                if (type.IsPublic)
+                if (type.IsPublic || type.IsNestedPublic)
                 {
                     return true;
                 }
 
+                if (type.IsNested)
+                {
+                    return false;
+                }
+
                 if (type is { IsAbstract: true, IsSealed: true })
                 {
-                    return type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Any(field => !field.IsInitOnly);
+                    return type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                        .Any(field => !field.IsInitOnly && !field.IsLiteral);
                 }
 
                 var contracts = type.GetInterfaces().Except(markers).ToArray();
