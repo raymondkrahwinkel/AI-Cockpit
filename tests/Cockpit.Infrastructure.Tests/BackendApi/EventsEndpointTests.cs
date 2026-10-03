@@ -30,10 +30,11 @@ public sealed class EventsEndpointTests
     public async Task HeaderAndQueryCursorWriteAnSseFrame()
     {
         var log = new BackendEventLog();
-        var first = log.Append("row", "pane-a", new { value = 1 });
-        var second = log.Append("row", "pane-a", new { value = 2 });
+        var first = log.Append("row", "pane-a", new { value = 1 }, "profile-a", "project-a");
+        var second = log.Append("row", "pane-a", new { value = 2 }, "profile-a", "project-a");
         var sessions = new SessionRegistry();
         sessions.Register(_Session("pane-a", "profile-a", "project-a"));
+        sessions.Unregister("pane-a");
         var services = new ServiceCollection()
             .AddSingleton<IBackendEventLog>(log)
             .AddSingleton<ISessionRegistry>(sessions)
@@ -81,11 +82,13 @@ public sealed class EventsEndpointTests
     public async Task ScopedKeyReceivesItsSessionAndSkipsTheOther(string otherProject, string otherProfile)
     {
         var log = new BackendEventLog();
-        var first = log.Append("row", "pane-b", new { value = "outside" });
-        var second = log.Append("row", "pane-a", new { value = "inside" });
+        var first = log.Append("row", "pane-b", new { value = "outside" }, otherProfile, otherProject);
+        var second = log.Append("row", "pane-a", new { value = "inside" }, "profile-a", "project-a");
         var sessions = new SessionRegistry();
         sessions.Register(_Session("pane-b", otherProfile, otherProject));
         sessions.Register(_Session("pane-a", "profile-a", "project-a"));
+        sessions.Unregister("pane-b");
+        sessions.Unregister("pane-a");
         var services = new ServiceCollection()
             .AddSingleton<IBackendEventLog>(log)
             .AddSingleton<ISessionRegistry>(sessions)
