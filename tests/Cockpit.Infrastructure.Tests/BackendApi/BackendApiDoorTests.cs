@@ -186,15 +186,18 @@ public sealed class BackendApiDoorTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    // AC-1466 criterion 2: /healthz needs no key and says only the status and each section's name, 503 once one is
-    // unhealthy; every other path without a key, its neighbours and other spellings included, stays 401.
+    // AC-1466 criterion 2: /healthz needs no key, is 200 with no section, says only the status and each slug-named
+    // section's name, and is 503 once one is unhealthy; every other path without a key stays 401.
     [Fact]
     public async Task Healthz_AnswersWithoutAKey_WithOnlyStatusAndSectionNames_WhileEveryOtherPathStays401()
     {
         await using var door = new _Door();
         await door.StartAsync();
-        var section = new _Section();
+        var empty = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var section = new _Section("probe");
         door.Health.Add(section);
+        door.Health.Add(new _Section("/home/operator/.ssh"));
+        door.Health.Add(new _Section("probe"));
         string[] others = ["/healthz/", "/healthzx", "/healthz/rows", "/HEALTHZ", "/health", "/api/v1/health", "/api/v1/healthz", "/api/v1/whoami", "/mcp"];
 
         var healthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
@@ -206,6 +209,7 @@ public sealed class BackendApiDoorTests
             refused.Add((path, (await door.GetAsync(door.NodeBase, path, bearer: null)).Status));
         }
 
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[]}"""), empty);
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"probe","healthy":true}]}"""), healthy);
         Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
         Assert.Equal(others.Select(path => (path, HttpStatusCode.Unauthorized)), refused);
@@ -214,11 +218,11 @@ public sealed class BackendApiDoorTests
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
     // A section with a row that must never reach /healthz.
-    private sealed class _Section : IPluginHealthSection
+    private sealed class _Section(string name) : IPluginHealthSection
     {
         public bool Healthy { get; set; } = true;
 
-        public string Name => "probe";
+        public string Name => name;
 
         public PluginHealthReport Read() => new(Healthy, [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
     }

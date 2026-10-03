@@ -5,7 +5,8 @@ namespace Cockpit.Plugins.Abstractions.Health;
 public interface IPluginHealthSection
 {
     /// <summary>
-    /// The section's name as /healthz lists it: short, stable and unique to this plugin, like "workflows-scheduler".
+    /// The section's name as /healthz lists it: a lowercase slug of at most 40 characters, like "workflows-scheduler".
+    /// Any other name, or one already registered, is ignored.
     /// </summary>
     string Name { get; }
 

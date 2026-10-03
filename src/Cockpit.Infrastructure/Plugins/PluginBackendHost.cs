@@ -211,8 +211,13 @@ public class PluginBackendHost(
     public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
         services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
 
-    public void AddHealthSection(IPluginHealthSection section) =>
-        services.GetRequiredService<PluginHealthSections>().Add(section);
+    public void AddHealthSection(IPluginHealthSection section)
+    {
+        if (!services.GetRequiredService<PluginHealthSections>().Add(section))
+        {
+            _Logger()?.LogWarning("Health section '{HealthSection}' of plugin {PluginId} is not a lowercase slug or is already registered; it is ignored", section.Name, pluginId);
+        }
+    }
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {

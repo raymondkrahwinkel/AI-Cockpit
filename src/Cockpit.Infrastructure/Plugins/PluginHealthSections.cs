@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Health;
@@ -6,15 +7,28 @@ namespace Cockpit.Infrastructure.Plugins;
 
 // AC-1466: the health sections plugins register (ICockpitHost.AddHealthSection), read fresh on every health request.
 // Empty without plugins, which is a healthy cockpit: a plugin that is not installed is nothing a restart fixes.
-internal sealed class PluginHealthSections(ILogger<PluginHealthSections> logger) : ISingletonService
+internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections> logger) : ISingletonService
 {
     private readonly List<IPluginHealthSection> _sections = [];
 
-    public void Add(IPluginHealthSection section)
+    // The name is the one plugin string an anonymous caller reads, so it is held to a slug: no path or host fits.
+    // A name already taken is refused, first one wins.
+    public bool Add(IPluginHealthSection section)
     {
+        if (!_Slug().IsMatch(section.Name))
+        {
+            return false;
+        }
+
         lock (_sections)
         {
+            if (_sections.Any(existing => existing.Name == section.Name))
+            {
+                return false;
+            }
+
             _sections.Add(section);
+            return true;
         }
     }
 
@@ -42,4 +56,7 @@ internal sealed class PluginHealthSections(ILogger<PluginHealthSections> logger)
             return new PluginHealthReport(false, []);
         }
     }
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,39}$")]
+    private static partial Regex _Slug();
 }
