@@ -309,7 +309,7 @@ public sealed class CockpitBackend
             sessions.Add(assistant);
         }
 
-        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, sessionsDeadline.Token, logger))).ConfigureAwait(false);
+        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, sessionsDeadline.Token, budget / 4, logger))).ConfigureAwait(false);
 
         foreach (var service in Services.GetServices<IHostedService>().Reverse())
         {
@@ -341,7 +341,7 @@ public sealed class CockpitBackend
 
     // The stop the launcher's own teardown starts with. One still going at the deadline has its process tree ended, as
     // taken before the stop let go of the runtime; the anchors close only at the end of a dispose that is wedged.
-    private static async Task _StopSessionAsync(IHostedSession session, SessionRegistry registry, ISessionHosting hosting, CancellationToken deadline, ILogger logger)
+    private static async Task _StopSessionAsync(IHostedSession session, SessionRegistry registry, ISessionHosting hosting, CancellationToken deadline, TimeSpan killGrace, ILogger logger)
     {
         using var process = _ProcessOf(session);
         var stop = Task.CompletedTask;
@@ -365,6 +365,7 @@ public sealed class CockpitBackend
             if (process is not null)
             {
                 CommandRunnerProcess._KillTree(process);
+                await _ConfirmEndedAsync(process, session.PaneId, killGrace, logger).ConfigureAwait(false);
             }
 
             _ = stop.ContinueWith(
@@ -374,6 +375,25 @@ public sealed class CockpitBackend
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Session {PaneId} failed to stop.", session.PaneId);
+        }
+    }
+
+    // The tree kill swallows a refusal (access denied), so whether the process is really gone is checked here, within
+    // a grace taken from the same deadline: one still running is named in the log rather than left running unseen.
+    private static async Task _ConfirmEndedAsync(System.Diagnostics.Process process, string paneId, TimeSpan grace, ILogger logger)
+    {
+        using var settle = new CancellationTokenSource(grace);
+        try
+        {
+            await process.WaitForExitAsync(settle.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Session {PaneId}: process {ProcessId} is still running after its tree was ended; it is left behind.", paneId, process.Id);
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(exception, "Session {PaneId}: whether process {ProcessId} ended could not be checked.", paneId, process.Id);
         }
     }
 
