@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: what the desktop asks of the cockpit's backend — starting a session, prompting it, seeing its replies on
+  the event stream, answering a permission prompt, stopping it, and picking the stream up again from where a reader
+  left off — is now checked by one set of tests that a remote backend will have to pass as well.
 - added: a cockpit running without a window (the server) can now be stopped cleanly. Every session stops in
   parallel within one time budget, and one that does not stop in time has its process tree ended rather than left
   running. After that the listeners and the services stop. The sessions keep their record and worktree, as on the
