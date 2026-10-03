@@ -5,7 +5,8 @@ namespace Cockpit.Plugins.Abstractions.Health;
 public interface IPluginHealthActions
 {
     /// <summary>
-    /// Runs the action a row of this section named as its ActionId, once the host has found that row in the caller's scope.
+    /// Starts the action a row of this section named as its ActionId, once the host has found that row in the caller's scope.
+    /// It returns once the action has started, not when it has finished.
     /// </summary>
     Task<PluginHealthActionResult> RunAsync(string actionId, CancellationToken cancellationToken);
 }

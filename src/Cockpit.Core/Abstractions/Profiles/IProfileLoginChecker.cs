@@ -17,5 +17,5 @@ public interface IProfileLoginChecker
     /// <summary>
     /// True when the profile's provider declares a sign-in check, so <see cref="IsLoggedIn"/> asked something.
     /// </summary>
-    bool HasLoginCheck(SessionProfile profile) => true;
+    bool HasLoginCheck(SessionProfile profile) => false;
 }

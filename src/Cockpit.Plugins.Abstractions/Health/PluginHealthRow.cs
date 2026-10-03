@@ -9,6 +9,6 @@ public sealed record PluginHealthRow(string Label, PluginHealthStatus Status, Da
     public string? ProjectId { get; init; }
 
     // AC-1470: the action this line offers, run through the section's IPluginHealthActions. A slug-like id of at most
-    // 64 characters; any other id is not offered.
+    // 64 characters, unique to this line: an id that a line outside the caller's scope also offers is not run.
     public string? ActionId { get; init; }
 }

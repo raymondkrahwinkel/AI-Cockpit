@@ -247,21 +247,25 @@ public sealed class BackendApiDoorTests
         var section = new _ActionSection(
             new PluginHealthRow("Scheduler", PluginHealthStatus.Ok),
             new PluginHealthRow("Nightly A", PluginHealthStatus.Ok) { ProjectId = "project-a", ActionId = "run-a" },
-            new PluginHealthRow("Nightly B", PluginHealthStatus.Failed) { ProjectId = "project-b", ActionId = "run-b" });
+            new PluginHealthRow("Nightly B", PluginHealthStatus.Failed) { ProjectId = "project-b", ActionId = "run-b" },
+            new PluginHealthRow("Shared A", PluginHealthStatus.Ok) { ProjectId = "project-a", ActionId = "run-shared" },
+            new PluginHealthRow("Shared B", PluginHealthStatus.Ok) { ProjectId = "project-b", ActionId = "run-shared" });
         door.Health.Add("test", section);
 
         var health = JsonNode.Parse((await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret)).Body);
         var outside = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-b", key.Secret);
         var missing = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-z", key.Secret);
         var noSection = await door.SendAsync(HttpMethod.Post, "/api/v1/health/nothing/actions/run-a", key.Secret);
+        var shared = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-shared", key.Secret);
         var inside = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-a", key.Secret);
         var audit = await File.ReadAllTextAsync(door.AuditPath);
 
         Assert.Equal(["mine"], health?["profiles"]?.AsArray().Select(profile => profile?["label"]?.GetValue<string>()) ?? []);
-        Assert.Equal(["Scheduler", "Nightly A"], health?["sections"]?[0]?["rows"]?.AsArray().Select(row => row?["label"]?.GetValue<string>()) ?? []);
+        Assert.Equal(["Scheduler", "Nightly A", "Shared A"], health?["sections"]?[0]?["rows"]?.AsArray().Select(row => row?["label"]?.GetValue<string>()) ?? []);
         Assert.Equal(new _Answer(HttpStatusCode.NotFound, ""), outside);
         Assert.Equal(outside, missing);
         Assert.Equal(outside, noSection);
+        Assert.Equal(outside, shared);
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"section":"workflows","actionId":"run-a","succeeded":true}"""), inside);
         Assert.Equal(["run-a"], section.Runs);
         Assert.Contains("\"api:health_action\"", audit, StringComparison.Ordinal);
@@ -280,7 +284,7 @@ public sealed class BackendApiDoorTests
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
         door.LoginHealth.Current.Returns([new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn }]);
-        var label = "a\nb\u0007\u202E" + new string('x', 495);
+        var label = "a\nb\u0007\u202E\u2028" + new string('x', 494);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 

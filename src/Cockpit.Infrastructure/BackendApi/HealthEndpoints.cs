@@ -78,17 +78,18 @@ internal static partial class HealthEndpoints
         }).RequireOperate();
 
         // A row outside the key's scope, an unknown section or action, and a section without actions all get one
-        // answer: the 404 of "does not exist", so a key cannot learn what lies outside its scope.
+        // answer: the 404 of "does not exist". An id that any out-of-scope row also offers is out of scope as a whole.
         api.MapPost("/health/{section}/actions/{actionId}", async (string section, string actionId, CancellationToken cancellationToken) =>
         {
             var caller = _Caller();
             var pairing = services.GetRequiredService<INodePairingBroker>();
             var reading = (await services.GetRequiredService<PluginHealthSections>().ReadAsync().ConfigureAwait(false))
                 .FirstOrDefault(candidate => string.Equals(candidate.Name, section, StringComparison.Ordinal));
-            if (reading.Actions is not { } actions
-                || !_IsActionId(actionId)
-                || !_RowsInScope(reading.Report, caller, pairing).Any(row => string.Equals(row.ActionId, actionId, StringComparison.Ordinal)))
+            var offering = (reading.Report?.Rows ?? []).Where(row => row is not null && string.Equals(row.ActionId, actionId, StringComparison.Ordinal)).ToList();
+            var inScope = _RowsInScope(reading.Report, caller, pairing).Count(row => string.Equals(row.ActionId, actionId, StringComparison.Ordinal));
+            if (reading.Actions is not { } actions || !_IsActionId(actionId) || offering.Count == 0 || inScope != offering.Count)
             {
+                await _AuditAsync(services, caller, "api:health_action", "not found", Clean($"{section}/{actionId}"), CancellationToken.None).ConfigureAwait(false);
                 return Results.NotFound();
             }
 
@@ -97,9 +98,14 @@ internal static partial class HealthEndpoints
             {
                 succeeded = (await actions.RunAsync(actionId, cancellationToken).ConfigureAwait(false))?.Succeeded == true;
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 services.GetService<ILoggerFactory>()?.CreateLogger(typeof(HealthEndpoints)).LogWarning(exception, "Health action {Action} of section {HealthSection} failed.", actionId, reading.Name);
+            }
+            catch (OperationCanceledException)
+            {
+                await _AuditAsync(services, caller, "api:health_action", "cancelled", $"{reading.Name}/{actionId}", CancellationToken.None).ConfigureAwait(false);
+                throw;
             }
 
             await _AuditAsync(services, caller, "api:health_action", succeeded ? "succeeded" : "failed", $"{reading.Name}/{actionId}", CancellationToken.None).ConfigureAwait(false);
@@ -110,8 +116,8 @@ internal static partial class HealthEndpoints
     // AC-1470: set by deploy/compose.yaml from the image the container runs; absent elsewhere.
     public const string ImageVariable = "COCKPIT_IMAGE_REF";
 
-    // A plugin's label, made safe to show elsewhere: no control or format characters (line breaks, bidi overrides)
-    // and at most MaxLabelLength characters, never split inside a surrogate pair.
+    // A plugin's label, made safe to show elsewhere: no control, format or line/paragraph separator characters (line
+    // breaks, bidi overrides) and at most MaxLabelLength characters, never split inside a surrogate pair.
     public static string Clean(string? text)
     {
         var kept = new StringBuilder();
@@ -122,7 +128,8 @@ internal static partial class HealthEndpoints
                 break;
             }
 
-            if (!char.IsControl(character) && CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.Format)
+            if (!char.IsControl(character)
+                && CharUnicodeInfo.GetUnicodeCategory(character) is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
             {
                 kept.Append(character);
             }
