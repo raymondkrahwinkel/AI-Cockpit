@@ -40,9 +40,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Reconnecting and the panes stay; it comes back by itself and nothing is shown twice. The status bar shows each
   server's connection, and the server's card in Options › Nodes follows the same connection instead of polling.
 - added: the Health tab now shows every active scheduled workflow's latest structured outcome and next run in the
-  schedule's time zone, and an operate key can run it immediately even when it has no manual trigger. Discord reports
-  whether its bot is online, its name, DM delivery and the time of the latest message. Workflows 0.33.0 and Discord
-  1.6.0; both need cockpit 0.69.0.
+  schedule's time zone, and an operate key can run it immediately even when it has no manual trigger. Workflows
+  0.33.0, needs cockpit 0.69.0.
+- added: Discord reports whether its bot is online, its name, DM delivery and the time of the latest message. Discord
+  1.6.0, needs cockpit 0.69.0.
 - added: an operate connect key can read the server's health through `GET /api/v1/health`. It shows each profile's
   sign-in (signed in, expired or not checked, and when an expiry was announced), the server's version, image, start
   time, who holds the assistant, and the usable keys by label and capability, never a key prefix. It also shows the
