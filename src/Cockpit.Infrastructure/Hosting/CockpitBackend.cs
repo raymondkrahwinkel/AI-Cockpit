@@ -112,6 +112,12 @@ public sealed class CockpitBackend
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
         services.AddSingleton<IPluginAdministration, PluginAdministration>();
+        if (frontend is null)
+        {
+            // AC-1357: after AddInfrastructure, whose own detector would otherwise win; a desktop keeps that one.
+            services.AddSingleton<IPresenceDetector, AwayPresenceDetector>();
+        }
+
         frontend?.Invoke(services);
         if (plugins != PluginStartup.None)
         {
@@ -565,7 +571,6 @@ public sealed class CockpitBackend
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();
         services.AddSingleton<IDesktopDisplays, NoDesktopDisplays>();
         services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
-        services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
     }
 }
 

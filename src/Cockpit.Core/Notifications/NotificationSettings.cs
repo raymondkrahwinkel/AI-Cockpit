@@ -38,5 +38,11 @@ public sealed record NotificationSettings
     // `TimeSpan.Zero` turns the idle transition off.
     public TimeSpan SessionIdleThreshold { get; init; } = SessionIdleDecision.DefaultIdleThreshold;
 
+    // AC-1357: how often the host asks every provider profile whether it is still signed in. Five minutes, not the ten
+    // AI-Hub used: a scheduled run is missed for at most one interval, and the Claude check is cached for one minute.
+    public static readonly TimeSpan DefaultLoginCheckInterval = TimeSpan.FromMinutes(5);
+
+    public TimeSpan LoginCheckInterval { get; init; } = DefaultLoginCheckInterval;
+
     public bool HasWebhookUrl => !string.IsNullOrWhiteSpace(WebhookUrl);
 }
