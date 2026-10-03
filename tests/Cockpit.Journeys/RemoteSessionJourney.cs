@@ -26,7 +26,7 @@ public sealed class RemoteSessionJourney
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", key));
         try

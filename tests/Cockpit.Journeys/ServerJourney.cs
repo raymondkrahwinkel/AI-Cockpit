@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Security;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
@@ -14,6 +15,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Workspaces;
@@ -68,9 +70,9 @@ public sealed class ServerJourney
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
         await using var discord = await _FakeDiscordAsync();
-        var (fingerprint, controllerKey) = await _PrepareStateRootAsync(stateRoot, 0, root, discord.Url);
+        var (fingerprint, controllerKey, healthKey) = await _PrepareStateRootAsync(stateRoot, 0, root, discord.Url);
         var keyFile = _Secret(root, "connect-key", key);
-        string[] secrets = [File.ReadAllText(Path.Combine(root, "unlock")), key, controllerKey];
+        string[] secrets = [File.ReadAllText(Path.Combine(root, "unlock")), key, controllerKey, healthKey];
         Process? server = null;
         try
         {
@@ -121,13 +123,41 @@ public sealed class ServerJourney
             Assert.Equal(1, inbox.Count(message => message.Kind == "login-expired" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
             Assert.Equal(1, inbox.Count(message => message.Kind == "login-restored" && message.Body.Contains("'EchoSignIn'", StringComparison.Ordinal)));
 
+            // AC-1471: an operate key sees the scheduled flow, starts it through its health action, and then sees the
+            // completed run through the same real API. The flow has no manual trigger.
+            using var operate = new BackendApiClient(new Uri($"https://127.0.0.1:{_McpPort(run.Output)}/"), healthKey, fingerprint, TimeProvider.System);
+            var beforeRun = _WorkflowRunRow(await operate.GetAsync<JsonObject>("api/v1/health", timeout.Token));
+            Assert.Equal("Journey scheduled · Not run · Never", beforeRun["label"]?.GetValue<string>());
+            var actionId = Assert.IsType<string>(beforeRun["actionId"]?.GetValue<string>());
+            var action = await operate.SendAsync<JsonObject>(
+                HttpMethod.Post,
+                $"api/v1/health/workflows-runs/actions/{actionId}",
+                null,
+                timeout.Token);
+            Assert.True(action["succeeded"]?.GetValue<bool>());
+
+            JsonObject? afterRun = null;
+            while (afterRun is null)
+            {
+                var candidate = _WorkflowRunRow(await operate.GetAsync<JsonObject>("api/v1/health", timeout.Token));
+                if (candidate["label"]?.GetValue<string>().StartsWith("Journey scheduled · Done ·", StringComparison.Ordinal) == true)
+                {
+                    afterRun = candidate;
+                    continue;
+                }
+
+                await Task.Delay(50, timeout.Token);
+            }
+
+            Assert.NotNull(afterRun["at"]);
+
             // AC-1466: Docker's probe needs no key and hears only that the Workflows scheduler holds; the API does not
             // answer without one. Last before the stop, so this refusal counts toward no lockout a step above meets.
             using var anonymous = new HttpClient(new SocketsHttpHandler { SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = (_, _, _, _) => true } });
             var node = $"https://127.0.0.1:{_McpPort(run.Output)}";
             using var health = await anonymous.GetAsync($"{node}/healthz", timeout.Token);
             Assert.Equal(
-                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"workflows-scheduler","healthy":true}]}"""),
+                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"workflows-scheduler","healthy":true},{"name":"workflows-runs","healthy":true}]}"""),
                 (health.StatusCode, await health.Content.ReadAsStringAsync(timeout.Token)));
             using var whoami = await anonymous.GetAsync($"{node}/api/v1/whoami", timeout.Token);
             Assert.Equal(HttpStatusCode.Unauthorized, whoami.StatusCode);
@@ -166,7 +196,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -203,15 +233,61 @@ public sealed class ServerJourney
             }
 
             Assert.Equal(["echo-provider", "workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
+            await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync(
+                "workflows",
+                new Dictionary<string, string> { ["workflows"] = JsonSerializer.Serialize(_ScheduledWorkflowJson()) });
             var issuer = new NodeCaller("journey", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
             var controllerKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("controller", ConnectKeyCapability.Admin, 1, issuer, holdsAssistant: true);
-            return (services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, controllerKey.Secret);
+            var healthKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("health", ConnectKeyCapability.Operate, 1, issuer);
+            return (services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, controllerKey.Secret, healthKey.Secret);
         }
         finally
         {
             SecretKeyHolder.Shared.Lock();
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
         }
+    }
+
+    private static string _ScheduledWorkflowJson() => new JsonArray
+    {
+        new JsonObject
+        {
+            ["Id"] = "journey-scheduled",
+            ["Name"] = "Journey scheduled",
+            ["IsActive"] = true,
+            ["Nodes"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["Id"] = "schedule",
+                    ["TypeId"] = "cockpit.schedule",
+                    ["Name"] = "Schedule",
+                    ["Parameters"] = new JsonObject { ["When"] = "once 2099-01-01 00:00", ["Time zone"] = "UTC" },
+                },
+                new JsonObject
+                {
+                    ["Id"] = "notify",
+                    ["TypeId"] = "cockpit.notify",
+                    ["Name"] = "Notify",
+                    ["Parameters"] = new JsonObject { ["Message"] = "Journey run now" },
+                },
+            },
+            ["Connections"] = new JsonArray
+            {
+                new JsonObject { ["FromNodeId"] = "schedule", ["FromOutput"] = 0, ["ToNodeId"] = "notify" },
+            },
+        },
+    }.ToJsonString();
+
+    private static JsonObject _WorkflowRunRow(JsonObject health)
+    {
+        var sections = Assert.IsType<JsonArray>(health["sections"]);
+        var section = Assert.IsType<JsonObject>(sections.Single(candidate =>
+            candidate?["name"]?.GetValue<string>() == "workflows-runs"));
+        var rows = Assert.IsType<JsonArray>(section["rows"]);
+        return Assert.IsType<JsonObject>(rows.Single(candidate =>
+            candidate?["actionId"] is not null
+            && candidate?["label"]?.GetValue<string>().StartsWith("Journey scheduled ·", StringComparison.Ordinal) == true));
     }
 
     // A controller as NodeSessionsClient opens one: the node's certificate pinned, the key as its bearer.
