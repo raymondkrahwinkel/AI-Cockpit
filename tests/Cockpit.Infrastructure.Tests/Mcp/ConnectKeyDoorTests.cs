@@ -480,7 +480,10 @@ public sealed class ConnectKeyDoorTests
     {
         const string token = "sk-ant-oat01-TheProvidersAccessTokenThatMustStayOnTheNode0123456789";
         await using var door = new _Door();
-        door.LoginFlow.Script(new LoginFlowStep($"Open https://example.test/device and enter QX7K-2M9P (session {token})", new Uri("https://example.test/device"), AwaitsInput: false));
+        door.LoginFlow.Script(
+            new LoginFlowStep($"Open https://example.test/device and enter QX7K-2M9P (session {token})", new Uri("https://example.test/device"), AwaitsInput: false),
+            new LoginFlowStep("Or open this", new Uri($"https://example.test/callback?access_token={token}"), AwaitsInput: false),
+            new LoginFlowStep("Or this", new Uri($"https://{token}@example.test/device"), AwaitsInput: false));
         door.LoginFlow.Finish(new LoginFlowResult(false, $"stderr: refresh failed for {token}"));
         await door.StartAsync(_Environment());
         var route = $"api/v1/profiles/{Uri.EscapeDataString(SessionProfile)}/sign-in";
@@ -492,9 +495,9 @@ public sealed class ConnectKeyDoorTests
         var wire = string.Join("\n", started.Body, outcome, audit, door.LogText());
 
         Assert.Equal(HttpStatusCode.Created, started.Status);
-        Assert.Contains("https://example.test/device", outcome, StringComparison.Ordinal);
-        Assert.Contains("QX7K-2M9P", outcome, StringComparison.Ordinal);
         Assert.False(wire.Contains(token, StringComparison.Ordinal), "The provider's token crossed the line or reached the audit or log.");
+        Assert.Contains("\"url\":\"https://example.test/device\"", outcome, StringComparison.Ordinal);
+        Assert.Contains("QX7K-2M9P", outcome, StringComparison.Ordinal);
     }
 
     private static Dictionary<string, string> _Environment() => new() { [ConnectKeyVerifier.BootstrapVariable] = Bootstrap };
