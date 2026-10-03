@@ -74,6 +74,13 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
+        // AC-1467: "ask" stops the turn on a permission prompt, which nobody answers.
+        if (text == "ask")
+        {
+            _events.Publish(new PluginPermissionRequested { SessionId = SessionId, ToolUseId = "echo-ask", ToolName = "Bash", InputJson = "{}" });
+            return Task.CompletedTask;
+        }
+
         var answer = $"echo: {text} (cli {_child?.Id})";
         _events.Publish(new PluginAssistantTextDelta { SessionId = SessionId, BlockIndex = 0, Text = answer });
         _events.Publish(new PluginTurnCompleted { SessionId = SessionId, Subtype = "success", Result = answer, IsError = false });

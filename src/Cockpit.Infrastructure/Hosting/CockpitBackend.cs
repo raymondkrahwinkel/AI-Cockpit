@@ -116,6 +116,8 @@ public sealed class CockpitBackend
         {
             // AC-1357: nobody sits at a backend without a frontend, so it is away; a host with one keeps its own detector.
             services.AddSingleton<IPresenceDetector, AwayPresenceDetector>();
+            // AC-1467: and nobody sees its sessions, so it says what the desktop's view model would have said.
+            services.AddSingleton<IHostedService, SessionAttentionNotifications>();
         }
 
         frontend?.Invoke(services);
