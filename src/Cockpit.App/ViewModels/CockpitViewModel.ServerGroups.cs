@@ -159,6 +159,14 @@ public partial class CockpitViewModel
             {
                 Follow();
                 group.State = server.State;
+                if (!server.State.IsConnected)
+                {
+                    foreach (var row in group.Sessions)
+                    {
+                        _ = _CloseRemotePaneAsync(row);
+                    }
+                }
+
                 _ReconcileServerGroup(group);
                 OnPropertyChanged(nameof(ServerStatusLabels));
             });
