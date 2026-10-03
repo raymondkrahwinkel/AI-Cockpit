@@ -45,6 +45,9 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         // live off `settings` on every tick, same as the MCP toggle below, so changing it takes effect without a restart.
         _watcher = new FlowWatcher(store, runs, marks, host, () => TimeSpan.FromMinutes(settings.CatchUpGraceMinutes));
 
+        // AC-1466: whether that clock still ticks, for /healthz.
+        host.AddHealthSection(_watcher.Health);
+
         // AC-12: the plugin's own MCP server, so agents can list, read, run and create/edit workflows. Contributed
         // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP. Fire-and-forget,
         // as the host asks. AC-40: gated on the plugin's own setting, read live each time a session's servers are
