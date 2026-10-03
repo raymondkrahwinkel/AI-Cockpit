@@ -41,7 +41,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   longer read the server's state, its secrets or its process, and still get the session's environment. The server
   reads their logins and transcripts. Clones and worktrees live under `/work`: the server sets both roots there
   itself when they are blank (`COCKPIT_CLONE_ROOT`, `COCKPIT_WORKTREE_ROOT`), and a root set in the settings stays.
-  The secret files on the host may now be owner-only. Cockpit 0.66.0.
+  The secret files on the host may now be owner-only. Cockpit 0.67.0.
 - added: the server answers `GET /healthz` on its node port without a key, so Docker can tell whether it is
   healthy: 200 when every check holds, 503 when one does not, with only each check's name and whether it holds. The
   first check is the Workflows scheduler, which reads unhealthy once it misses two ticks. A sign-in that expired does
