@@ -104,6 +104,7 @@ public sealed class SessionsEndpointsTests
 
         Assert.Equal(HttpStatusCode.NotFound, answer.Status);
         Assert.DoesNotContain(door.AgentGateway.Calls, call => call.Contains("pane-out", StringComparison.Ordinal));
+        Assert.Empty(control.ReceivedCalls());
     }
 
     [Fact]
