@@ -4,10 +4,12 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
@@ -87,12 +89,33 @@ public sealed class SessionsEndpointsTests
         var verifier = await door.StartAsync();
         door.ReadGateway.Sessions.Add(_Row("pane-in", Project));
         door.ReadGateway.Sessions.Add(_Row("pane-out", "project-elsewhere"));
+        door.Providers.Register(new SessionProviderRegistration(
+            ClaudePluginProfile.ProviderId,
+            "Claude",
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(false, false, false))
+        {
+            UsageSignals =
+            [
+                new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, 50)
+                {
+                    Description = "Context window",
+                },
+            ],
+        });
         var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
 
         var answer = await door.SendAsync(HttpMethod.Get, "/api/v1/sessions", key.Secret);
-        var panes = (JsonNode.Parse(answer.Body)?["sessions"]?.AsArray() ?? []).Select(session => session?["paneId"]?.GetValue<string>());
+        var sessions = JsonNode.Parse(answer.Body)?["sessions"]?.AsArray() ?? [];
+        var panes = sessions.Select(session => session?["paneId"]?.GetValue<string>());
+        var visible = Assert.Single(sessions);
+        var usage = Assert.Single(visible?["usageSignals"]?.AsArray() ?? []);
 
         Assert.Equal(["pane-in"], panes);
+        Assert.Equal("claude", visible?["providerId"]?.GetValue<string>());
+        Assert.Equal("context", usage?["key"]?.GetValue<string>());
+        Assert.Equal("fill", usage?["kind"]?.GetValue<string>());
+        Assert.Equal("Context window", usage?["description"]?.GetValue<string>());
     }
 
     // Criterion 4: a prompt to the assistant over the API reaches it, is audited and leaves the assistant free; the same

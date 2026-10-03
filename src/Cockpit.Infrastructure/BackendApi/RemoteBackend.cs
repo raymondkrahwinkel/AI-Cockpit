@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -74,6 +75,18 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     }
 
     public WorkspaceSettings Workspaces => NodeDesk;
+
+    public IReadOnlyList<RemoteProviderUsageSignal>? UsageSignalsOf(string providerId)
+    {
+        lock (_gate)
+        {
+            return _sessions
+                .Select(session => session.Facts)
+                .Where(row => string.Equals(row.ProviderId, providerId, StringComparison.Ordinal))
+                .Select(row => row.UsageSignals)
+                .FirstOrDefault(signals => signals is not null);
+        }
+    }
 
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
     public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client)
@@ -320,6 +333,19 @@ internal sealed record RemoteSessionRow(
     string? Status = null,
     bool HasOutstandingWork = false,
     IReadOnlyList<RemotePendingPermission>? PendingPermissions = null,
-    IReadOnlyList<RemoteQueueItem>? Queue = null);
+    IReadOnlyList<RemoteQueueItem>? Queue = null,
+    string? ProviderId = null,
+    IReadOnlyList<RemoteProviderUsageSignal>? UsageSignals = null,
+    SessionStatusFeed? UsageStatus = null,
+    bool CanSignIn = false);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
+
+public sealed record RemoteProviderUsageSignal(
+    string Key,
+    string Label,
+    string Kind,
+    double DefaultThresholdPercent,
+    string? Description,
+    bool SupportsResume,
+    string? DefaultResumePrompt);

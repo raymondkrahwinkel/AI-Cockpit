@@ -4,9 +4,11 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -35,32 +37,46 @@ internal static class SessionsEndpoints
             var seq = log().LastSeq;
             var visible = await policy().VisibleSessionsAsync(_Caller()).ConfigureAwait(false);
             var pending = (await read().ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
+            var profiles = (await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false))
+                .ToDictionary(profile => profile.Label, StringComparer.Ordinal);
+            var providers = services.GetService<IPluginProviderRegistry>();
             return Results.Json(new
             {
                 seq,
                 assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
-                sessions = visible.Select(session => new
+                sessions = visible.Select(session =>
                 {
-                    paneId = session.PaneId,
-                    name = session.Name,
-                    profile = session.Profile,
-                    projectId = session.ProjectId,
-                    statusline = session.Statusline,
-                    status = session.Status,
-                    needsYou = session.NeedsYou,
-                    hasOutstandingWork = session.HasOutstandingWork,
-                    queue = sessions().Find(session.PaneId)?.Control?.Queue.Select(prompt => new
+                    profiles.TryGetValue(session.Profile, out var profile);
+                    var providerId = profile is null ? null : _ProviderId(profile);
+                    var registration = providerId is null ? null : providers?.Resolve(providerId);
+                    var control = sessions().Find(session.PaneId)?.Control;
+                    return new
                     {
-                        prompt.WireId,
-                        prompt.Text,
-                    }) ?? [],
-                    pendingPermissions = pending[session.PaneId].Select(permission => new
-                    {
-                        toolUseId = permission.ToolUseId,
-                        tool = permission.ToolName,
-                        input = permission.InputJson,
-                        sinceUtc = permission.SinceUtc,
-                    }),
+                        paneId = session.PaneId,
+                        name = session.Name,
+                        profile = session.Profile,
+                        providerId,
+                        usageSignals = registration?.UsageSignals.Select(_UsageSignal) ?? [],
+                        usageStatus = profile is null ? null : control?.ReadUsageStatus(profile.ProviderConfig),
+                        canSignIn = registration?.StartLogin is not null,
+                        projectId = session.ProjectId,
+                        statusline = session.Statusline,
+                        status = session.Status,
+                        needsYou = session.NeedsYou,
+                        hasOutstandingWork = session.HasOutstandingWork,
+                        queue = control?.Queue.Select(prompt => new
+                        {
+                            prompt.WireId,
+                            prompt.Text,
+                        }) ?? [],
+                        pendingPermissions = pending[session.PaneId].Select(permission => new
+                        {
+                            toolUseId = permission.ToolUseId,
+                            tool = permission.ToolName,
+                            input = permission.InputJson,
+                            sinceUtc = permission.SinceUtc,
+                        }),
+                    };
                 }),
             });
         }).RequireOperate();
@@ -320,6 +336,22 @@ internal static class SessionsEndpoints
 
     private static int _Count(int? count) =>
         Math.Clamp(count ?? AssistantReadMcpTools.DefaultEntryCount, 1, AssistantReadMcpTools.MaxEntryCount);
+
+    private static string _ProviderId(SessionProfile profile) =>
+        profile.ProviderConfig is PluginProviderConfig plugin
+            ? plugin.ProviderId
+            : profile.Provider == SessionProvider.ClaudeCli
+                ? ClaudePluginProfile.ProviderId
+                : profile.Provider.ToString().ToLowerInvariant();
+
+    private static RemoteProviderUsageSignal _UsageSignal(Cockpit.Plugins.Abstractions.Sessions.PluginUsageSignal signal) => new(
+        signal.Key,
+        signal.Label,
+        signal.Kind.ToString().ToLowerInvariant(),
+        signal.DefaultThresholdPercent,
+        signal.Description,
+        signal.SupportsResume,
+        signal.DefaultResumePrompt);
 
     // Only reached behind the group's door, which has checked the caller is there.
     private static NodeCaller _Caller() =>

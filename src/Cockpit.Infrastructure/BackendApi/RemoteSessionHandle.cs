@@ -267,6 +267,8 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         }
     }
 
+    internal RemoteSessionRow Facts => _Facts;
+
     private string _Path => _isAssistant ? "api/v1/assistant" : $"api/v1/sessions/{Uri.EscapeDataString(PaneId)}";
 
     public Task<SessionLaunched?> StartAsync(SessionStart start) =>
@@ -397,7 +399,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         _Post(() => LiveStateChanged?.Invoke(SessionLiveState.None));
     }
 
-    public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config) => null;
+    public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config) => _Facts.UsageStatus;
 
     public void RecordRow(TranscriptSnapshotEntry row) =>
         throw new NotSupportedException("A remote transcript is recorded by its backend.");
