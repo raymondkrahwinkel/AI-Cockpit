@@ -26,6 +26,10 @@
          can use better than the background can. -->
     <DockPanel Margin="6,6,6,8">
 
+        <!-- AC-1456: a remote pane's blue band, so it never reads as one of this laptop's. -->
+        <Border DockPanel.Dock="Top" Height="3" Margin="0,0,0,4" CornerRadius="2"
+                Background="{DynamicResource CockpitAccentBrush}" IsVisible="{Binding IsRemote}"/>
+
         <!-- Compact one-row session header (AC-37): the shared SessionHeaderBar (identity · activity · cwd · branch
              · token meter · usage pill) flexes, and this view's live controls dock right. The session is started
              from the New-session dialog (#31), so there is no Start button — only Stop plus the live
@@ -42,6 +46,11 @@
                  overflow this redesign fixes. Same bar height as before (hard constraint). -->
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <!-- AC-1456: stopping a session on a server always asks first; the answer is in the card below. -->
+                    <Button Classes="Subtle Compact" Content="Stop" IsVisible="{Binding IsRemote}" VerticalAlignment="Center"
+                            Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
+                            CommandParameter="{Binding}"
+                            ToolTip.Tip="Stop this session on its server"/>
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
                          driver and rendered generically. An SDK session can carry three of them, which crowded the
                          header — so they collapse behind a single sliders icon that opens a flyout to change them.
@@ -116,6 +125,25 @@
                      activity column in SessionHeaderBar itself. -->
                 <controls:SessionHeaderBar VerticalAlignment="Center"/>
             </DockPanel>
+        </Border>
+
+        <!-- AC-1456: the one confirmation a remote stop takes. "Keep running" leaves the session as it was. -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="12,10" IsVisible="{Binding IsConfirmingRemoteStop}"
+                Background="{DynamicResource CockpitPanelBgBrush}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitStatusErrorBrush}"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding CloseConfirmationText}" FontSize="12.5" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <Button Content="Keep running" Classes="Subtle Compact"
+                            Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).CancelCloseSessionCommand}"
+                            CommandParameter="{Binding}"/>
+                    <Button Content="Stop on server" Classes="Compact" Foreground="{DynamicResource CockpitTextOnStatusBrush}"
+                            Background="{DynamicResource CockpitStatusErrorBrush}"
+                            Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
+                            CommandParameter="{Binding}"/>
+                </StackPanel>
+            </StackPanel>
         </Border>
 
         <!-- AC-230/AC-683: the usage warning bar — one line per signal that has passed the point its provider
@@ -527,7 +555,7 @@
                      operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
                      box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->
                 <TextBox x:Name="InputBox" Text="{Binding InputText}" IsEnabled="{Binding IsInputEnabled}"
-                         PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
+                         PlaceholderText="{Binding ComposerPlaceholder}"
                          AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
             </DockPanel>
         </Border>

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Composition;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
@@ -40,6 +40,14 @@ public static class DependencyInjection
             var scope = provider.CreateAsyncScope();
             var pane = ActivatorUtilities.CreateInstance<SessionViewModel>(scope.ServiceProvider, new HandedControl(control));
             pane.OwnLifetimeScope(scope);
+            return pane;
+        });
+
+        // AC-1456: a pane over a session on a connect server. It reads the handle; its control, one per pane, can launch nothing.
+        services.AddTransient<Func<ISessionHandle, string, Task<SessionViewModel>>>(_ => async (handle, server) =>
+        {
+            var pane = new SessionViewModel(SessionControls.DesignTime);
+            await pane.FollowRemoteAsync(handle, server);
             return pane;
         });
 

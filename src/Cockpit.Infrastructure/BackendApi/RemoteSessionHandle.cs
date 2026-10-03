@@ -480,6 +480,15 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public Task<bool> HasOutstandingBackgroundShellsAsync() => Task.FromResult(_Facts.HasOutstandingWork);
 
+    // AC-1456: the rows this handle holds, for a pane drawing from it; a later upsert of the same row replaces it.
+    public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. _rows], _snapshotSeq));
+        }
+    }
+
     public async Task<SessionTranscriptSlice> ReadTranscriptAsync(int count)
     {
         var transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count={count}").ConfigureAwait(false);
@@ -638,7 +647,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     // The rows and the seq they stand at, read together by the route; a row on the stream at or below it is in them.
     // False when the pane closed since the list was read, so the registry leaves it out.
-    internal async Task<bool> LoadSnapshotAsync(bool reload)
+    internal async Task<bool> LoadSnapshotAsync(bool reload, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
@@ -651,7 +660,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         RemoteTranscript transcript;
         try
         {
-            transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1").ConfigureAwait(false);
+            transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1", cancellationToken).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
         {

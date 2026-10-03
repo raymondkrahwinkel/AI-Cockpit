@@ -33,9 +33,13 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     private long _lastSeq;
     private Task _reader = Task.CompletedTask;
 
-    internal RemoteBackend(BackendApiClient client)
+    // AC-1456: told true once the stream's headers came back and false each time it dropped; null when nobody asked.
+    private readonly Action<bool>? _connectionChanged;
+
+    internal RemoteBackend(BackendApiClient client, Action<bool>? connectionChanged = null)
     {
         _client = client;
+        _connectionChanged = connectionChanged;
     }
 
     public event EventHandler? Changed;
@@ -97,10 +101,13 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
     }
 
+    // AC-1456: true once the backend turned the key away; the stream then stays down until someone connects anew.
+    public bool KeyRefused { get; private set; }
+
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
-    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client)
+    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null)
     {
-        var backend = new RemoteBackend(client);
+        var backend = new RemoteBackend(client, connectionChanged);
         var seq = await backend._RefreshAsync(reload: false).ConfigureAwait(false);
         backend._reader = backend._FollowAsync(seq);
         return backend;
@@ -216,11 +223,14 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
                     _refreshed.TrySetException(exception);
                 }
 
+                KeyRefused = true;
+                _connectionChanged?.Invoke(false);
                 return;
             }
             catch (Exception)
             {
-                // Falls through to the reload below, which brings every handle back to what the backend holds.
+                // A failed refresh is a drop the stream did not see; the reload below brings every handle back.
+                _connectionChanged?.Invoke(false);
             }
 
             try
@@ -242,7 +252,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
 
     private async Task _ReadAsync(long afterSeq)
     {
-        await foreach (var evt in _client.StreamEventsAsync(afterSeq, _stop.Token).ConfigureAwait(false))
+        await foreach (var evt in _client.StreamEventsAsync(afterSeq, _stop.Token, _connectionChanged).ConfigureAwait(false))
         {
             lock (_gate)
             {
@@ -269,15 +279,16 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     }
 
     // A handle seen before keeps its rows and its listeners; a new one, or every one after a reset, takes its snapshot first.
+    // AC-1456: on the stop token, so a Disconnect that waits for the reader never waits on a GET that cannot end.
     private async Task<long> _RefreshAsync(bool reload)
     {
-        var list = await _client.GetAsync<RemoteSessionList>("api/v1/sessions").ConfigureAwait(false);
+        var list = await _client.GetAsync<RemoteSessionList>("api/v1/sessions", _stop.Token).ConfigureAwait(false);
         List<RemoteSessionHandle> sessions = [];
         foreach (var row in list.Sessions)
         {
             var handle = _Find(row.PaneId) ?? new RemoteSessionHandle(_client, row.PaneId, isAssistant: false);
             handle.Update(row);
-            if (await handle.LoadSnapshotAsync(reload).ConfigureAwait(false))
+            if (await handle.LoadSnapshotAsync(reload, _stop.Token).ConfigureAwait(false))
             {
                 sessions.Add(handle);
             }
@@ -288,7 +299,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         {
             var candidate = _AssistantAt(assistantRow.PaneId) ?? new RemoteSessionHandle(_client, assistantRow.PaneId, isAssistant: true);
             candidate.Update(new RemoteSessionRow(assistantRow.PaneId, assistantRow.Name));
-            assistant = await candidate.LoadSnapshotAsync(reload).ConfigureAwait(false) ? candidate : null;
+            assistant = await candidate.LoadSnapshotAsync(reload, _stop.Token).ConfigureAwait(false) ? candidate : null;
         }
 
         TaskCompletionSource refreshed;

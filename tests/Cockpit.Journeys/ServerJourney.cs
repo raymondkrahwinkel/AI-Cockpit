@@ -21,6 +21,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
@@ -165,10 +166,13 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    private static async Task<(string Fingerprint, string ControllerKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl)
+    internal static async Task<(string Fingerprint, string ControllerKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+
+        // AC-1456: the key holder is process-wide; one left unlocked by an earlier preparation would encrypt with its key.
+        SecretKeyHolder.Shared.Lock();
         try
         {
             var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
@@ -205,6 +209,7 @@ public sealed class ServerJourney
         }
         finally
         {
+            SecretKeyHolder.Shared.Lock();
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
         }
     }
@@ -247,7 +252,7 @@ public sealed class ServerJourney
         return discord;
     }
 
-    private static ServerRun _RunServer(string serverDirectory, string stateRoot, string unlockFile, string keyFile)
+    internal static ServerRun _RunServer(string serverDirectory, string stateRoot, string unlockFile, string keyFile)
     {
         var start = new ProcessStartInfo(Path.Combine(serverDirectory, OperatingSystem.IsWindows() ? "Cockpit.Server.exe" : "Cockpit.Server"))
         {
@@ -269,14 +274,14 @@ public sealed class ServerJourney
     private static void _AssertCarriesNoSecret(ServerRun run, string[] secrets) =>
         Assert.False(secrets.Any(secret => run.Output.Contains(secret, StringComparison.Ordinal)), "The server's output carries the unlock password or the connect key.");
 
-    private static string _Secret(string root, string name, string value)
+    internal static string _Secret(string root, string name, string value)
     {
         var path = Path.Combine(root, name);
         File.WriteAllText(path, value);
         return path;
     }
 
-    private static int _McpPort(string output)
+    internal static int _McpPort(string output)
     {
         var match = Regex.Match(output, @"Now listening on: https://0\.0\.0\.0:(\d+)");
         return match.Success
@@ -297,7 +302,7 @@ public sealed class ServerJourney
         }
     }
 
-    private static string _Metadata(string key) =>
+    internal static string _Metadata(string key) =>
         typeof(ServerJourney).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(attribute => attribute.Key == key).Value
         ?? throw new InvalidOperationException($"The journeys were built without {key}.");
 
@@ -340,7 +345,7 @@ public sealed class ServerJourney
     }
 
     // The server's console, collected; `Running` completes with the line that says it is up.
-    private sealed class ServerRun
+    internal sealed class ServerRun
     {
         private readonly List<string> _lines = [];
         private readonly TaskCompletionSource<string> _running = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a server you connected with a key now stands in the session list as a group of its own, beside "This laptop":
+  its sessions as far as the key may see them (never a count of the rest), a header line with its connection,
+  latency, version and uptime and a Disconnect, who holds the assistant, and "+ Start on <server>" with the server's
+  own projects and profiles and a first message. A session there opens in the grid with a blue band and the server's
+  name, read-only for now; stopping it asks once and ends it on the server. When the line drops the group says
+  Reconnecting and the panes stay; it comes back by itself and nothing is shown twice. The status bar shows each
+  server's connection, and the server's card in Options › Nodes follows the same connection instead of polling.
 - added: an operate connect key can read the server's health through `GET /api/v1/health`. It shows each profile's
   sign-in (signed in, expired or not checked, and when an expiry was announced), the server's version, image, start
   time, who holds the assistant, and the usable keys by label and capability, never a key prefix. It also shows the

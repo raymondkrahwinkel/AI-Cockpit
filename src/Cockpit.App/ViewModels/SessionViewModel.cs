@@ -485,6 +485,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private bool _isInputEnabled = true;
 
+    // AC-1456: what the composer says while it is empty; a remote pane says why it cannot send yet.
+    [ObservableProperty]
+    private string _composerPlaceholder = "Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)";
+
+    // AC-1456: undoes FollowRemote's subscriptions when the pane goes, since the handle outlives it.
+    private Action? _unfollowRemote;
+
     // Permission modes offered in the running panel: the three live-switchable modes
     // (`SessionOptionCatalog.LivePermissionModes`), or — once a session was launched in bypass — a single locked
     // "Bypass permissions" entry, since the CLI cannot switch a running session into or out of bypass.
@@ -1277,6 +1284,40 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return new SessionRowFeed(
             eventLog, () => PaneId, () => _control.Rows, _DrawHostRow, _Resync, UiPost,
             exception => logger?.LogError(exception, "The pane stopped reading its rows from the event log."));
+    }
+
+    // AC-1456: a session on a connect server, drawn from its handle's rows and live state, the same stream the server
+    // group reads, so the two cannot drift. Sending to it comes with S17b (AC-1465); until then the composer is off.
+    internal async Task FollowRemoteAsync(ISessionHandle handle, string server)
+    {
+        RemoteServer = server;
+        Title = handle.Title;
+        Statusline = handle.Statusline;
+        ActiveProfileLabel = handle.ActiveProfileLabel;
+        SessionStatus = handle.SessionStatus;
+        Status = $"Runs on {server}.";
+        IsInputEnabled = false;
+        ComposerPlaceholder = $"Sending to a session on {server} comes with the next update.";
+
+        Action<TranscriptRowUpsert> row = upsert => UiPost(() => _DrawHostRow(upsert.Row));
+        Action<SessionLiveState> live = state => UiPost(() => _OnLiveStateChanged(state));
+        handle.RowUpserted += row;
+        handle.LiveStateChanged += live;
+        _unfollowRemote = () =>
+        {
+            handle.RowUpserted -= row;
+            handle.LiveStateChanged -= live;
+        };
+
+        if (await handle.ReadRowsAtAsync(() => 0).ConfigureAwait(true) is { Rows.Count: > 0 } snapshot)
+        {
+            _Resync(snapshot.Rows);
+        }
+
+        if (handle.LiveState is { } state && !ReferenceEquals(state, SessionLiveState.None))
+        {
+            _OnLiveStateChanged(state);
+        }
     }
 
     private void _InOrder(Action signal)
@@ -2799,6 +2840,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await _DrainUsageWritesAsync();
 
         _rowFeed?.Dispose();
+        _unfollowRemote?.Invoke();
         await _StopRuntimeAsync();
 
         // AC-713, AC-786: the host's clocks stop here — the sign of life's own !IsBusy guard never fires once the

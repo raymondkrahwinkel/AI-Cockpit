@@ -2215,13 +2215,14 @@
                                                 <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"/>
+                                                <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"
+                                                        IsVisible="{Binding !IsServerGroup}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
 
                                             <views:NodeConnectionStatusView/>
 
-                                            <ItemsControl ItemsSource="{Binding Sessions}">
+                                            <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsServerGroup}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2" VerticalAlignment="Center">
@@ -2237,7 +2238,7 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
-                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="{Binding !IsServerGroup}">
                                                 <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                                                           MinWidth="180" PlaceholderText="Profile">
                                                     <ComboBox.ItemTemplate>
@@ -2256,7 +2257,7 @@
                                                 </ComboBox>
                                                 <TextBox Text="{Binding NewSessionName}" PlaceholderText="Name it" Width="150" FontSize="11.5"/>
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsServerGroup}">
                                                 <TextBox Text="{Binding NewSessionPrompt}" PlaceholderText="What it should do (optional)"
                                                          Width="320" FontSize="11.5"/>
                                                 <Button Content="Start there" Command="{Binding StartCommand}" IsEnabled="{Binding !IsBusy}"/>
