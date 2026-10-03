@@ -290,6 +290,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     // Raised on the stream's thread. A drop shows at once; a return asks /whoami again for the latency and the key.
     private void _OnConnection(bool connected)
     {
+        _logger.LogInformation("Server {Server}: event stream {State}.", Name, connected ? "open" : "lost");
         if (!connected)
         {
             var refused = Sessions is RemoteBackend { KeyRefused: true };

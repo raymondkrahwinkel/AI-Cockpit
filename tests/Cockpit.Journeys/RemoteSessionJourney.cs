@@ -93,7 +93,24 @@ public sealed class RemoteSessionJourney
                     .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains("echo: again", StringComparison.Ordinal), answered.Token);
                 relay.Restore();
                 await Until.Holds(group, () => group.IsConnected);
-                await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: again") > 0);
+                try
+                {
+                    await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: again") > 0);
+                }
+                catch (TimeoutException)
+                {
+                    // What the pane drew and what both ends logged, so a red run names its own cause.
+                    var rows = string.Join(Environment.NewLine, pane.Transcript.Select(entry => $"  {entry.Kind}: {entry.Text}"));
+                    throw new TimeoutException(string.Join(
+                        Environment.NewLine,
+                        $"The pane never drew \"echo: again\" after the reconnect ({group.StatusLabel}).",
+                        "Rows:",
+                        rows,
+                        "Desktop log:",
+                        cockpit.LogText,
+                        "Server:",
+                        run.Output));
+                }
 
                 // Stop asks once; Keep running leaves it running there, Stop on server ends it there.
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
