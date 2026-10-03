@@ -19,8 +19,10 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
+using Cockpit.Plugins.Abstractions.Health;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
@@ -184,7 +186,42 @@ public sealed class BackendApiDoorTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
+    // AC-1466 criterion 2: /healthz needs no key and says only the status and each section's name, 503 once one is
+    // unhealthy; every other path without a key, its neighbours and other spellings included, stays 401.
+    [Fact]
+    public async Task Healthz_AnswersWithoutAKey_WithOnlyStatusAndSectionNames_WhileEveryOtherPathStays401()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+        var section = new _Section();
+        door.Health.Add(section);
+        string[] others = ["/healthz/", "/healthzx", "/healthz/rows", "/HEALTHZ", "/health", "/api/v1/health", "/api/v1/healthz", "/api/v1/whoami", "/mcp"];
+
+        var healthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        section.Healthy = false;
+        var unhealthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var refused = new List<(string Path, HttpStatusCode Status)>();
+        foreach (var path in others)
+        {
+            refused.Add((path, (await door.GetAsync(door.NodeBase, path, bearer: null)).Status));
+        }
+
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"probe","healthy":true}]}"""), healthy);
+        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
+        Assert.Equal(others.Select(path => (path, HttpStatusCode.Unauthorized)), refused);
+    }
+
     internal sealed record _Answer(HttpStatusCode Status, string Body);
+
+    // A section with a row that must never reach /healthz.
+    private sealed class _Section : IPluginHealthSection
+    {
+        public bool Healthy { get; set; } = true;
+
+        public string Name => "probe";
+
+        public PluginHealthReport Read() => new(Healthy, [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
+    }
 
     // One node in a temp directory: cockpit.json, the audit trail and the certificate, and once started the real
     // endpoint host with cockpit-node on loopback and on an HTTPS port of its own.
@@ -223,6 +260,8 @@ public sealed class BackendApiDoorTests
         public SessionMcpKeyring Keyring { get; } = new();
 
         public NodeControllerPresence Presence { get; } = new();
+
+        public PluginHealthSections Health { get; } = new(NullLogger<PluginHealthSections>.Instance);
 
         public NodeSessionMcpToolsTests.RecordingReadGateway ReadGateway { get; } = new();
 
@@ -272,6 +311,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(_audit);
             services.AddSingleton(verifier);
             services.AddSingleton(Presence);
+            services.AddSingleton(Health);
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],
@@ -289,10 +329,14 @@ public sealed class BackendApiDoorTests
             return verifier;
         }
 
-        public async Task<_Answer> GetAsync(string baseUrl, string path, string bearer)
+        public async Task<_Answer> GetAsync(string baseUrl, string path, string? bearer)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (bearer is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
+
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
         }
