@@ -21,6 +21,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
@@ -169,6 +170,9 @@ public sealed class ServerJourney
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+
+        // AC-1456: the key holder is process-wide; one left unlocked by an earlier preparation would encrypt with its key.
+        SecretKeyHolder.Shared.Lock();
         try
         {
             var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
@@ -205,6 +209,7 @@ public sealed class ServerJourney
         }
         finally
         {
+            SecretKeyHolder.Shared.Lock();
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
         }
     }
