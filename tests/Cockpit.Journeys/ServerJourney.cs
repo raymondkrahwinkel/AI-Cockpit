@@ -61,7 +61,7 @@ public sealed class ServerJourney
             server = run.Process;
             Assert.Equal($"{RunningLine}none.", await run.Running.WaitAsync(Until.Ceiling));
 
-            using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{port}/"), key, fingerprint, TimeProvider.System);
+            using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{port + NodeEndpointSettings.McpPortOffset}/"), key, fingerprint, TimeProvider.System);
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
             var paneId = started["paneId"]?.GetValue<string>() ?? "";
@@ -165,7 +165,8 @@ public sealed class ServerJourney
         return path;
     }
 
-    // Two adjacent ports free at once: the node door takes `port`, its MCP door the one after it.
+    // Two adjacent ports free at once: `port` is pairing's, closed on the server, and the node door with the API takes
+    // the one after it.
     private static int _FreePortPair()
     {
         while (true)

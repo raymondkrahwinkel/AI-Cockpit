@@ -35,5 +35,5 @@ tests/Cockpit.App.ViewTests	1471
 tests/Cockpit.Backend.Tests	69
 tests/Cockpit.Core.Tests	994
 tests/Cockpit.Infrastructure.Tests	645
-tests/Cockpit.Journeys	9
+tests/Cockpit.Journeys	10
 tests/Cockpit.PluginEndpointAnnotations.Tests	2
