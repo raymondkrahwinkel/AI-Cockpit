@@ -36,6 +36,27 @@ internal static class Schedule
         return _PreviousDayTime(text, zone, local);
     }
 
+    // The first scheduled instant strictly after `now`, using the trigger's wall clock.
+    public static DateTimeOffset? Next(string when, TimeZoneInfo zone, DateTimeOffset now)
+    {
+        var text = when.Trim();
+        var local = TimeZoneInfo.ConvertTime(now, zone);
+
+        if (text.StartsWith("once", StringComparison.OrdinalIgnoreCase))
+        {
+            return _Once(text[4..].Trim(), zone, DateTimeOffset.MaxValue) is { } instant && instant > now ? instant : null;
+        }
+
+        if (text.StartsWith("every", StringComparison.OrdinalIgnoreCase))
+        {
+            return _Interval(text[5..].Trim()) is { } interval && interval > TimeSpan.Zero
+                ? _NextInterval(interval, zone, local, now)
+                : null;
+        }
+
+        return _NextDayTime(text, zone, local, now);
+    }
+
     // Resolves a "Time zone" trigger parameter to a zone — empty meaning the machine's own, so a flow written
     // before this parameter existed keeps firing exactly as it always did. An id this build cannot place never
     // resolves, and a schedule in a zone the clock cannot place must never fire.
@@ -103,6 +124,71 @@ internal static class Schedule
         return days.Count > 0 ? _PreviousWeekday(days, time, zone, local) : null;
     }
 
+    private static DateTimeOffset? _NextDayTime(string text, TimeZoneInfo zone, DateTimeOffset local, DateTimeOffset now)
+    {
+        var spaceIndex = text.IndexOf(' ');
+        if (spaceIndex < 0)
+        {
+            return TimeOnly.TryParseExact(text, ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var daily)
+                ? _NextDaily(daily, zone, local, now)
+                : null;
+        }
+
+        var dayPart = text[..spaceIndex];
+        var timePart = text[(spaceIndex + 1)..].Trim();
+        if (!TimeOnly.TryParseExact(timePart, ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var time))
+        {
+            return null;
+        }
+
+        var days = new List<DayOfWeek>();
+        foreach (var token in dayPart.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (_ParseDay(token.Trim()) is not { } day)
+            {
+                return null;
+            }
+
+            days.Add(day);
+        }
+
+        return days.Count > 0 ? _NextWeekday(days, time, zone, local, now) : null;
+    }
+
+    private static DateTimeOffset? _NextDaily(TimeOnly time, TimeZoneInfo zone, DateTimeOffset local, DateTimeOffset now)
+    {
+        for (var ahead = 0; ahead <= 2; ahead++)
+        {
+            if (_ToOffset(local.Date.AddDays(ahead) + time.ToTimeSpan(), zone) is { } instant && instant > now)
+            {
+                return instant;
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset? _NextWeekday(
+        IReadOnlyList<DayOfWeek> days,
+        TimeOnly time,
+        TimeZoneInfo zone,
+        DateTimeOffset local,
+        DateTimeOffset now)
+    {
+        for (var ahead = 0; ahead <= 14; ahead++)
+        {
+            var date = local.Date.AddDays(ahead);
+            if (days.Contains(date.DayOfWeek)
+                && _ToOffset(date + time.ToTimeSpan(), zone) is { } instant
+                && instant > now)
+            {
+                return instant;
+            }
+        }
+
+        return null;
+    }
+
     private static DateTimeOffset? _PreviousDaily(TimeOnly time, TimeZoneInfo zone, DateTimeOffset local)
     {
         var candidate = local.Date + time.ToTimeSpan();
@@ -143,6 +229,21 @@ internal static class Schedule
         var slots = Math.Floor(local.TimeOfDay.TotalMinutes / interval.TotalMinutes);
         var candidate = local.Date.AddMinutes(slots * interval.TotalMinutes);
         return _ToOffset(candidate, zone);
+    }
+
+    private static DateTimeOffset? _NextInterval(TimeSpan interval, TimeZoneInfo zone, DateTimeOffset local, DateTimeOffset now)
+    {
+        var slot = Math.Floor(local.TimeOfDay.TotalMinutes / interval.TotalMinutes);
+        var attempts = (int)Math.Ceiling(TimeSpan.FromDays(2).TotalMinutes / interval.TotalMinutes) + 2;
+        for (var ahead = 1; ahead <= attempts; ahead++)
+        {
+            if (_ToOffset(local.Date.AddMinutes((slot + ahead) * interval.TotalMinutes), zone) is { } instant && instant > now)
+            {
+                return instant;
+            }
+        }
+
+        return null;
     }
 
     // A wall-clock moment in `zone`, converted to the instant it actually names. Null for the one moment a zone
