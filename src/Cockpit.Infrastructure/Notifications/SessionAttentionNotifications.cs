@@ -48,7 +48,7 @@ internal sealed class SessionAttentionNotifications(
     {
         lock (_gate)
         {
-            var live = registry.All.ToHashSet(ReferenceEqualityComparer.Instance);
+            var live = registry.All.ToHashSet<ISessionHandle>(ReferenceEqualityComparer.Instance);
             foreach (var gone in _watched.Keys.Where(handle => !live.Contains(handle)).ToList())
             {
                 _watched[gone]();
