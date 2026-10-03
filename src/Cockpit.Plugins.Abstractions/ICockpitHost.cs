@@ -810,4 +810,12 @@ public interface ICockpitHost
     /// </summary>
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
+    /// <summary>
+    /// Registers a health section (AC-1466) the host reads on every health request, so /healthz sees this plugin's state.
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </summary>
+    void AddHealthSection(Health.IPluginHealthSection section)
+    {
+    }
+
 }

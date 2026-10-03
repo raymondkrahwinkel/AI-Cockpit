@@ -494,7 +494,11 @@
          ICockpitSessionObserver; SessionProviderRegistration.CreateConfigView; IEmbeddedSession.View. The package is
          numbered by the rule above (major = contract): 2.x is skipped because the break to contract 2 (AC-1003) left it
          on 1.x. -->
-    <Version>3.0.0</Version>
+    <!-- 3.1.0 (AC-1466): added the health-section contract — IPluginHealthSection, PluginHealthReport, PluginHealthRow
+         and PluginHealthStatus in Cockpit.Plugins.Abstractions.Health — and ICockpitHost.AddHealthSection (default
+         no-op), so a plugin's own state reaches /healthz. A plugin that calls it sets minHostVersion 0.64.0. Additive —
+         a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.1.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the server answers `GET /healthz` on its node port without a key, so Docker can tell whether it is
+  healthy: 200 when every check holds, 503 when one does not, with only each check's name and whether it holds. The
+  first check is the Workflows scheduler, which reads unhealthy once it misses two ticks. A sign-in that expired does
+  not make the server unhealthy. The compose file uses it as the container's health check. Every other path still
+  needs a key.
+- added: plugins can report their own health to the cockpit, with a section of rows that carry only a status and
+  a time.
 - added: an admin connect key can sign a provider profile in on the server without a browser, through
   `POST /api/v1/profiles/{profile}/sign-in`: the server runs the provider's own sign-in and passes on only its link,
   its code and whether it waits for a pasted code (`…/sign-in/{flowId}/input`), and `GET …/sign-in/{flowId}` tells

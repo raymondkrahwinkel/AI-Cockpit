@@ -133,6 +133,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "health.sections",
+            "Reporting its own health",
+            "Reports whether the plugin's own work is running, so the cockpit's health check can say so.",
+            CapabilityRisk.Ambient,
+            "0.64.0",
+            ["ICockpitHost.AddHealthSection"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",
