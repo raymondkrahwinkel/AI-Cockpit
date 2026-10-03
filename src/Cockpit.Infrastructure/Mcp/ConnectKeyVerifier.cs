@@ -242,7 +242,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         }
 
         _logger.LogInformation("Lifted the lockout of {RemoteAddress}.", bucket);
-        await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", outcome, bucket), cancellationToken).ConfigureAwait(false);
+        await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", outcome, bucket), CancellationToken.None).ConfigureAwait(false);
         return true;
     }
 
@@ -557,14 +557,19 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true, Scope: ConnectKeyScope.Everything);
     }
 
-    // An unreadable file starts this run without lockouts rather than shutting the door on everyone.
+    // An unreadable file starts this run without lockouts rather than shutting the door on everyone. JSON fills a
+    // missing bucket with null, so an entry without one is skipped rather than thrown on at every request.
     private async Task<List<_StoredLockout>> _ReadLockoutsAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return File.Exists(_lockoutsPath)
-                ? JsonSerializer.Deserialize<List<_StoredLockout>>(await File.ReadAllTextAsync(_lockoutsPath, cancellationToken).ConfigureAwait(false)) ?? []
-                : [];
+            if (!File.Exists(_lockoutsPath))
+            {
+                return [];
+            }
+
+            var stored = JsonSerializer.Deserialize<List<_StoredLockout>>(await File.ReadAllTextAsync(_lockoutsPath, cancellationToken).ConfigureAwait(false)) ?? [];
+            return [.. stored.Where(lockout => lockout is { Bucket.Length: > 0 })];
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
         {
