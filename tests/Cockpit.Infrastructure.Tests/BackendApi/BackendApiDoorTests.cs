@@ -19,6 +19,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
