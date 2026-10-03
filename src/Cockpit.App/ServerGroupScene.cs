@@ -175,22 +175,23 @@ internal static class ServerGroupScene
 
         public bool HasReadableTranscript => true;
 
-        public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq) => Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(
+        public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
+        {
+            List<TranscriptSnapshotEntry> rows =
             [
-                new TranscriptSnapshotEntry("1", "UserText", "Prepare the morning briefing.", null, null, null, null, false, DateTimeOffset.UtcNow),
-                new TranscriptSnapshotEntry("2", "AssistantText", "Weather, agenda and the ROVA pick-up are in. I want to post the briefing to your Discord DM.", null, null, null, null, false, DateTimeOffset.UtcNow),
-                .. asking
-                    ?
-                    [
-                        new TranscriptSnapshotEntry(
-                            "3", "ToolUse", "Bash: curl -X POST $AIHUB_API_URL/notes", "Bash", "{\"command\":\"curl -X POST $AIHUB_API_URL/notes\"}", "scene-ask", null, false, DateTimeOffset.UtcNow)
-                        {
-                            IsPendingPermission = true,
-                        },
-                    ]
-                    : [],
-            ],
-            0));
+                new("1", "UserText", "Prepare the morning briefing.", null, null, null, null, false, DateTimeOffset.UtcNow),
+                new("2", "AssistantText", "Weather, agenda and the ROVA pick-up are in. I want to post the briefing to your Discord DM.", null, null, null, null, false, DateTimeOffset.UtcNow),
+            ];
+            if (asking)
+            {
+                rows.Add(new("3", "ToolUse", "Bash: curl -X POST $AIHUB_API_URL/notes", "Bash", "{\"command\":\"curl -X POST $AIHUB_API_URL/notes\"}", "scene-ask", null, false, DateTimeOffset.UtcNow)
+                {
+                    IsPendingPermission = true,
+                });
+            }
+
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(rows, 0));
+        }
 
         public Task<bool> HasOutstandingBackgroundShellsAsync() => Task.FromResult(false);
 
