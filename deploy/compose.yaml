@@ -23,6 +23,14 @@ services:
       - cockpit_connect_key
     ports:
       - "${COCKPIT_PORT:-20383}:20383"
+    # AC-1466: /healthz needs no key; node is in the image, curl and wget are not. No certificate check, because this
+    # talks only to the container's own loopback and its self-signed certificate: never copy it for a remote check.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('https').get({host:'127.0.0.1',port:20383,path:'/healthz',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     # Longer than COCKPIT_STOP_BUDGET_SECONDS, so the server's own stop finishes before docker kills it.
     stop_grace_period: 15s
     volumes:
