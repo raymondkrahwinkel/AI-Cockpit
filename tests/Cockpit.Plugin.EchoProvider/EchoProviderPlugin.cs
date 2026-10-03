@@ -55,9 +55,11 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {
-        _child = Process.Start(OperatingSystem.IsWindows()
-            ? new ProcessStartInfo("ping", "-n 600 127.0.0.1") { RedirectStandardOutput = true }
-            : new ProcessStartInfo("sleep", "600"));
+        // Its own pipes, not the cockpit's: a child holding those would keep a reader of the cockpit's output waiting.
+        var start = OperatingSystem.IsWindows() ? new ProcessStartInfo("ping", "-n 600 127.0.0.1") : new ProcessStartInfo("sleep", "600");
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        _child = Process.Start(start);
         return Task.CompletedTask;
     }
 
