@@ -61,8 +61,10 @@ jobs:
       # The image that was smoked, retagged: a second build could differ in what the Dockerfile leaves unpinned.
       - name: Push the smoked image
         if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          for tag in ${{ steps.meta.outputs.tags }}; do
+          for tag in $TAGS; do
             docker tag cockpit-server:smoke "$tag"
             docker push "$tag"
           done
