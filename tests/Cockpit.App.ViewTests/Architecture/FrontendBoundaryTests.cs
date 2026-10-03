@@ -23,10 +23,10 @@ public sealed class FrontendBoundaryTests
             .Select(type => type.Name));
         // AC-1449: a member that shares an event's name (`TranscriptEntryKind.TurnCompleted`) is no dependency on it;
         // a name qualified by its namespace (`Core.Sessions.SessionError`) still is. AC-1441: neither is a declaration
-        // that shares one, an enum member (`Question,`) or a property (`Question { get; }`).
+        // that shares one: an enum member alone on its line (`Question,`) or a property (`Question { get; }`).
         var forbiddenReference = new Regex(
-            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b(?!\s*(?:[,=}}]|\{{\s*get))|\bSessionHost\b",
-            RegexOptions.CultureInvariant);
+            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b(?!(?<=^[ \t]*\w+)[ \t]*(?:[,}}\r\n]|=(?!>)))(?!\s*\{{\s*get)|\bSessionHost\b",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
         var commentLine = new Regex(@"^\s*//.*$", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
         // AC-1441: a fully qualified name reaches into Infrastructure as surely as a using does.

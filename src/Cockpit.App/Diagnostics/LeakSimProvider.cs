@@ -1,8 +1,8 @@
 #if DEBUG
 using System.Threading.Channels;
 using Cockpit.Infrastructure.Sessions;
-using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Diagnostics;
 
@@ -17,7 +17,7 @@ internal static class LeakSimProvider
 
     // Registers the provider into the shared registry; a repeat call is a harmless replace.
     public static void EnsureRegistered() =>
-        Program.Services.GetService<IPluginProviderRegistry>()?.Register(new SessionProviderRegistration(
+        Program.Services.GetRequiredService<IPluginProviderRegistry>().Register(new SessionProviderRegistration(
             ProviderId,
             "Leak Sim",
             _ => new LeakSimDriverFactory(),

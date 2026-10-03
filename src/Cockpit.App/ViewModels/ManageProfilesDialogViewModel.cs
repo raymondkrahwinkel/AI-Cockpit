@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -7,7 +8,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewModels;
 

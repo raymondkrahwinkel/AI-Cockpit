@@ -1,5 +1,5 @@
-using Cockpit.Core.Profiles;
 using Cockpit.App.Services;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 

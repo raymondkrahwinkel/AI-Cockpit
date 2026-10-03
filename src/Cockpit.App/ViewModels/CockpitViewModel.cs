@@ -3546,7 +3546,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ConsentRisk.LowRisk,
                 AllowRemember: true);
 
-        _ = _consentPrompts.RequestAsync(request);
+        _ = _consentPrompts.RequestAsync(request).ContinueWith(
+            failed => _logger?.LogWarning(failed.Exception, "The debug consent prompt failed."),
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private async Task LoadNotificationSettingsAsync()

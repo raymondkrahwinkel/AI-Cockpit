@@ -21,6 +21,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Sessions.Tty;
+using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
@@ -32,7 +33,6 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Infrastructure.Hosting;
 
