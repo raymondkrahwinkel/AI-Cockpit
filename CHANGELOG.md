@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the cockpit without a window (the server) now turns its node endpoint on by itself, since connect keys are its only way in, and exits with the reason when that endpoint does not listen (the port held, say) instead of reporting that it runs.
+- added: a container image of the headless cockpit (Cockpit.Server) with a compose file for any Docker host: Node, the Claude Code and Codex CLIs, git, gh, ssh and ripgrep, no docker CLI and no window libraries, running as a non-root user on one port with its secrets as files. CI builds it, runs it as a container and checks that it answers with the connect key, keeps its certificate over a restart, refuses to start without the unlock secret and holds no secret in a layer or log, and that a held node port stops it instead of leaving a server that says it runs, then publishes it to GitHub Packages as `:sha-<commit>`. It is never deployed from a moving tag.
 - added: an address that is locked out of the node endpoint after repeated failed attempts stays locked out when
   the cockpit restarts, and its next lockout still lasts twice as long. An admin connect key can see which addresses
   are locked out and lift a lockout, through the node tool `lift_connect_lockout` or

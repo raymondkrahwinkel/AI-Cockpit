@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.idea/
+out/
+docs/
+brand/
+spikes/
+packaging/
+deploy/secrets/
+**/*.user
+**/node_modules/

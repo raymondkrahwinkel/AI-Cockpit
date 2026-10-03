@@ -50,9 +50,17 @@ internal static class Program
             return 1;
         }
 
-        // AC-1355: connect keys only, so no LAN discovery and no pairing.
+        // AC-1355: connect keys only, so no LAN discovery and no pairing. AC-1356: the door itself is on.
         backend.Services.GetRequiredService<NodeLanOnboarding>().Enabled = false;
+        await NodeDoor.EnableAsync(backend.Services);
         backend.Start();
+        if (await NodeDoor.ProbeAsync(backend.Services) is { } notListening)
+        {
+            logger.LogError("Not starting: the node door is not listening: {Reason}", notListening);
+            await backend.StopAsync(stopBudget);
+            return 1;
+        }
+
         backend.SeedPluginSettings();
         backend.InitializePlugins();
         backend.StartPlanners();
