@@ -9,7 +9,7 @@ namespace Cockpit.App.Services;
 // registry made behind it. `AssistantSessionHost` calls it on the UI thread, so nothing here marshals but `Rows`.
 internal sealed partial class SessionPanelHandle : IAssistantSession
 {
-    // The cockpit's current voice and read-aloud language, handed down by `CockpitViewModel.CreateAssistantSession` —
+    // The cockpit's current voice and read-aloud language, handed down by `CockpitViewModel.CreateAssistantHandle` —
     // what the operator has selected right now, which is what the assistant's speech has always followed.
     internal Func<(int VoiceSid, string Language)>? AssistantVoice { get; set; }
 

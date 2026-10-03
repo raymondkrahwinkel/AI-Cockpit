@@ -85,6 +85,10 @@ internal sealed class UiThreadAssistantSessionHost(IAssistantSessionHost host) :
 
     public string? UnavailableReason => host.UnavailableReason;
 
+    public string? PreparationStatus => host.PreparationStatus;
+
+    public double? PreparationProgress => host.PreparationProgress;
+
     public string? DefaultWorkingDirectory => host.DefaultWorkingDirectory;
 
     public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
