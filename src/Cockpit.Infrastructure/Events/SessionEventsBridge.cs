@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Hosting;
 
 namespace Cockpit.Infrastructure.Events;
@@ -66,15 +67,56 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 void append(string kind, object data) => log.Append(kind, paneId, data, handle.ActiveProfileLabel, handle.ProjectId);
                 Action<TranscriptRowUpsert> onRow = upsert => append("row", new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
                 // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
-                Action<SessionLiveState> onLiveState = state => append(
-                    "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
+                var control = handle.Control;
+                Action<SessionLiveState> onLiveState = state => _ = appendLiveStateAsync(state);
+                async Task appendLiveStateAsync(SessionLiveState state)
+                {
+                    try
+                    {
+                        var used = await handle.UseControlAsync(current =>
+                        {
+                            append("live-state", new
+                            {
+                                PaneId = paneId,
+                                LiveState = state with { Connection = null, CliSessionId = null },
+                                UsageStatus = RemoteUsageStatus.From(current.ReadUsageStatus(null)),
+                            });
+                            return Task.CompletedTask;
+                        }).ConfigureAwait(false);
+                        if (!used)
+                        {
+                            append("live-state", new
+                            {
+                                PaneId = paneId,
+                                LiveState = state with { Connection = null, CliSessionId = null },
+                                UsageStatus = (RemoteUsageStatus?)null,
+                            });
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // A later live-state or reset brings the remote pane current again.
+                    }
+                }
                 Action<SessionTurnEnd> onTurnEnded = end => append("turn-ended", new { PaneId = paneId, End = end });
                 // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
-                var control = handle.Control;
-                Action? onUsage = control is not null
-                    ? () => append("usage", new { PaneId = paneId, UsageStatus = control.ReadUsageStatus(null) })
-                    : null;
+                Action? onUsage = control is not null ? () => _ = appendUsageAsync() : null;
+                async Task appendUsageAsync()
+                {
+                    try
+                    {
+                        await handle.UseControlAsync(current =>
+                        {
+                            append("usage", new { PaneId = paneId, UsageStatus = RemoteUsageStatus.From(current.ReadUsageStatus(null)) });
+                            return Task.CompletedTask;
+                        }).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // A usage tick is advisory; a later tick or list refresh can replace it.
+                    }
+                }
                 NotifyCollectionChangedEventHandler? onQueue = control is not null
                     ? (_, _) => append("queue", new
                     {

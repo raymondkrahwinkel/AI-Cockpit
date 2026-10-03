@@ -725,6 +725,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // such a session last published.
     public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config)
     {
+        config ??= Runtime?.Profile?.ProviderConfig ?? _loginProfile?.ProviderConfig;
         var status = Runtime?.CurrentStatus;
         if (status is { HasAny: true })
         {

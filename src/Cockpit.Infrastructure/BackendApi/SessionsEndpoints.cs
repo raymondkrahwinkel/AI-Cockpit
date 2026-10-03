@@ -47,13 +47,13 @@ internal static class SessionsEndpoints
                 profiles.TryGetValue(session.Profile, out var profile);
                 var providerId = profile is null ? null : _ProviderId(profile);
                 var registration = providerId is null ? null : providers?.Resolve(providerId);
-                SessionStatusFeed? usageStatus = null;
+                RemoteUsageStatus? usageStatus = null;
                 IReadOnlyList<RemoteQueueItem> queue = [];
                 if (sessions().Find(session.PaneId) is { } handle)
                 {
                     await handle.UseControlAsync(control =>
                     {
-                        usageStatus = profile is null ? null : control.ReadUsageStatus(profile.ProviderConfig);
+                        usageStatus = profile is null ? null : RemoteUsageStatus.From(control.ReadUsageStatus(profile.ProviderConfig));
                         queue = [.. control.Queue.Select(prompt => new RemoteQueueItem(prompt.WireId, prompt.Text))];
                         return Task.CompletedTask;
                     }).ConfigureAwait(false);

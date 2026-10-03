@@ -50,6 +50,8 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public event Action<SessionToolCall>? ToolActivityProduced;
 
+    public event Action? ToolProgressed;
+
     public event NotifyCollectionChangedEventHandler? QueueChanged;
 
     public event Action? BusyChanged;
@@ -71,8 +73,6 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
     event Action<bool>? ISessionControl.LoginChecked { add { } remove { } }
 
     event Action<TranscriptFold>? ISessionControl.Folded { add { } remove { } }
-
-    event Action? ISessionControl.ToolProgressed { add { } remove { } }
 
     event Action<SessionBackgroundTaskNotice>? ISessionControl.BackgroundTaskNotified { add { } remove { } }
 
@@ -630,7 +630,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         lock (_gate)
         {
             _facts = facts;
-            _usageStatus = facts.UsageStatus;
+            _usageStatus = facts.UsageStatus?.ToCore();
             _queue.Clear();
             _queue.AddRange((facts.Queue ?? []).Select(item => new QueuedPrompt(item.Text, [], wireId: item.WireId)));
         }
@@ -702,16 +702,26 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
                     raise = () => RowUpserted?.Invoke(upsert);
                     break;
 
-                case "live-state" when evt.Data.Deserialize<RemoteLiveStateEvent>(Json) is { LiveState: { } liveState }:
+                case "live-state" when evt.Data.Deserialize<RemoteLiveStateEvent>(Json) is { LiveState: { } liveState } live:
                     var busyChanged = _isBusy != (liveState.Status == SessionStatus.Busy);
                     _isBusy = liveState.Status == SessionStatus.Busy;
                     _liveState = liveState;
+                    if (live.UsageStatus is { } liveUsage)
+                    {
+                        _usageStatus = liveUsage.ToCore();
+                    }
+
                     raise = () =>
                     {
                         LiveStateChanged?.Invoke(liveState);
                         if (busyChanged)
                         {
                             BusyChanged?.Invoke();
+                        }
+
+                        if (live.UsageStatus is not null)
+                        {
+                            UsageCatchUpDue?.Invoke();
                         }
                     };
                     break;
@@ -720,13 +730,17 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
                     raise = () => TurnEnded?.Invoke(end);
                     break;
 
-                case "usage" when evt.Data.Deserialize<RemoteUsageEvent>(Json) is { } usage:
-                    _usageStatus = usage.UsageStatus;
+                case "usage" when evt.Data.Deserialize<RemoteUsageEvent>(Json) is { UsageStatus: { } usageStatus }:
+                    _usageStatus = usageStatus.ToCore();
                     raise = () => UsageCatchUpDue?.Invoke();
                     break;
 
                 case "tool" when evt.Data.Deserialize<RemoteToolEvent>(Json) is { Call: { } call }:
-                    raise = () => ToolActivityProduced?.Invoke(call);
+                    raise = () =>
+                    {
+                        ToolProgressed?.Invoke();
+                        ToolActivityProduced?.Invoke(call);
+                    };
                     break;
 
                 case "queue" when evt.Data.Deserialize<RemoteQueueEvent>(Json) is { Queue: { } queue }:
@@ -754,14 +768,41 @@ internal sealed record RemoteTranscriptEntry(string Kind, string Text, string? T
 
 internal sealed record RemoteRowEvent(long Seq, int Version, TranscriptSnapshotEntry? Row);
 
-internal sealed record RemoteLiveStateEvent(SessionLiveState? LiveState);
+internal sealed record RemoteLiveStateEvent(SessionLiveState? LiveState, RemoteUsageStatus? UsageStatus);
 
 internal sealed record RemoteTurnEndedEvent(SessionTurnEnd? End);
 
-internal sealed record RemoteUsageEvent(SessionStatusFeed? UsageStatus);
+internal sealed record RemoteUsageEvent(RemoteUsageStatus? UsageStatus);
 
 internal sealed record RemoteToolEvent(SessionToolCall? Call);
 
 internal sealed record RemoteQueueEvent(IReadOnlyList<RemoteQueueItem>? Queue);
 
 internal sealed record RemoteQueueItem(string WireId, string Text);
+
+internal sealed record RemoteUsageStatus(double? ContextUsedPercent, IReadOnlyList<RemoteRateWindow> RateLimits)
+{
+    public static RemoteUsageStatus? From(SessionStatusFeed? status) => status is null
+        ? null
+        : new RemoteUsageStatus(
+            status.ContextUsedPercent,
+            [.. status.RateLimits.Select(window => new RemoteRateWindow(
+                window.Label,
+                window.UsedPercent,
+                window.ResetsAt,
+                window.ThresholdPercent))]);
+
+    public SessionStatusFeed ToCore() => new(
+        ContextUsedPercent,
+        [.. RateLimits.Select(window => new SessionRateWindow(
+            window.Label,
+            window.UsedPercent,
+            window.ResetsAt,
+            window.ThresholdPercent))]);
+}
+
+internal sealed record RemoteRateWindow(
+    string Label,
+    double UsedPercent,
+    DateTimeOffset? ResetsAt,
+    double? ThresholdPercent);

@@ -178,6 +178,11 @@ public sealed class SessionsEndpointsTests
         var session = Substitute.For<ISessionHandle>();
         session.PaneId.Returns("pane-a");
         var control = Substitute.For<ISessionControl>();
+        session.UseControlAsync(Arg.Any<Func<ISessionControl, Task>>()).Returns(async call =>
+        {
+            await call.Arg<Func<ISessionControl, Task>>()(control);
+            return true;
+        });
         IReadOnlyList<QueuedPrompt> queue = [];
         control.Queue.Returns(_ => queue);
         session.Control.Returns(control);

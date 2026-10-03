@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -34,7 +33,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     private long _lastSeq;
     private Task _reader = Task.CompletedTask;
 
-    private RemoteBackend(BackendApiClient client)
+    internal RemoteBackend(BackendApiClient client)
     {
         _client = client;
     }
@@ -346,7 +345,7 @@ internal sealed record RemoteSessionRow(
     IReadOnlyList<RemoteQueueItem>? Queue = null,
     string? ProviderId = null,
     IReadOnlyList<RemoteProviderUsageSignal>? UsageSignals = null,
-    SessionStatusFeed? UsageStatus = null,
+    RemoteUsageStatus? UsageStatus = null,
     bool CanSignIn = false);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);

@@ -33,6 +33,26 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public ISessionControl Control => _host;
 
+    public async Task<bool> UseControlAsync(Func<ISessionControl, Task> use)
+    {
+        ArgumentNullException.ThrowIfNull(use);
+        Task operation;
+        try
+        {
+            lock (_gate)
+            {
+                operation = use(_host);
+            }
+        }
+        finally
+        {
+            _RaiseHeldSignals();
+        }
+
+        await operation.ConfigureAwait(false);
+        return true;
+    }
+
     public SessionHostHandle(
         string paneId,
         string title,
