@@ -276,6 +276,140 @@ public sealed class CockpitBackend
         }
     }
 
+    // AC-1442: the teardown without App, by `Program.TearDownCockpitAsync`'s rules, under one deadline: the sessions in
+    // parallel get its first half (AC-1124), the listeners in reverse and the container what is left of it. A session
+    // keeps its record and worktree, as a desktop shutdown keeps them for the restore (AC-410).
+    public async Task StopAsync(TimeSpan budget)
+    {
+        using var deadline = new CancellationTokenSource(budget);
+        using var sessionsDeadline = new CancellationTokenSource(budget / 2);
+        var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
+        IDisposable?[] planners =
+        [
+            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
+            Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
+        ];
+        foreach (var planner in planners)
+        {
+            try
+            {
+                planner?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "{Planner} failed to stop.", planner?.GetType().Name);
+            }
+        }
+
+        var registry = Services.GetRequiredService<SessionRegistry>();
+        var hosting = Services.GetRequiredService<ISessionHosting>();
+        var sessions = registry.All.OfType<IHostedSession>().Where(session => !session.IsEmbedded).ToList();
+        if (registry.Assistant is IHostedSession assistant)
+        {
+            sessions.Add(assistant);
+        }
+
+        await Task.WhenAll(sessions.Select(session => _StopSessionAsync(session, registry, hosting, sessionsDeadline.Token, budget / 4, logger))).ConfigureAwait(false);
+
+        foreach (var service in Services.GetServices<IHostedService>().Reverse())
+        {
+            await _WithinAsync(service.StopAsync(deadline.Token), deadline.Token, service.GetType().Name, logger).ConfigureAwait(false);
+        }
+
+        await _WithinAsync(Services.DisposeAsync().AsTask(), deadline.Token, "The service container", logger).ConfigureAwait(false);
+    }
+
+    // A step cut off by the deadline is left to finish on its own, and a fault it ends in later is still logged.
+    private static async Task _WithinAsync(Task step, CancellationToken deadline, string what, ILogger logger)
+    {
+        try
+        {
+            await step.WaitAsync(deadline).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            logger.LogWarning("{What} did not stop within the stop's deadline; stopping without it.", what);
+            _ = step.ContinueWith(
+                late => logger.LogWarning(late.Exception, "{What} failed to stop after the deadline.", what),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "{What} failed to stop.", what);
+        }
+    }
+
+    // The stop the launcher's own teardown starts with. One still going at the deadline has its process tree ended, as
+    // taken before the stop let go of the runtime; the anchors close only at the end of a dispose that is wedged.
+    private static async Task _StopSessionAsync(IHostedSession session, SessionRegistry registry, ISessionHosting hosting, CancellationToken deadline, TimeSpan killGrace, ILogger logger)
+    {
+        using var process = _ProcessOf(session);
+        var stop = Task.CompletedTask;
+        try
+        {
+            if (ReferenceEquals(registry.Assistant, session))
+            {
+                registry.UnregisterAssistant();
+            }
+            else if (registry.Find(session.PaneId) == session)
+            {
+                registry.Unregister(session.PaneId);
+            }
+
+            stop = hosting.StopAsync(session);
+            await stop.WaitAsync(deadline).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            logger.LogWarning("Session {PaneId} did not stop within its share of the deadline; ending its process tree.", session.PaneId);
+            if (process is not null)
+            {
+                CommandRunnerProcess._KillTree(process);
+                await _ConfirmEndedAsync(process, session.PaneId, killGrace, logger).ConfigureAwait(false);
+            }
+
+            _ = stop.ContinueWith(
+                late => logger.LogWarning(late.Exception, "Session {PaneId} failed to stop after the deadline.", session.PaneId),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Session {PaneId} failed to stop.", session.PaneId);
+        }
+    }
+
+    // The tree kill swallows a refusal (access denied), so whether the process is really gone is checked here, within
+    // a grace taken from the same deadline: one still running is named in the log rather than left running unseen.
+    private static async Task _ConfirmEndedAsync(System.Diagnostics.Process process, string paneId, TimeSpan grace, ILogger logger)
+    {
+        using var settle = new CancellationTokenSource(grace);
+        try
+        {
+            await process.WaitForExitAsync(settle.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Session {PaneId}: process {ProcessId} is still running after its tree was ended; it is left behind.", paneId, process.Id);
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(exception, "Session {PaneId}: whether process {ProcessId} ended could not be checked.", paneId, process.Id);
+        }
+    }
+
+    private static System.Diagnostics.Process? _ProcessOf(IHostedSession session)
+    {
+        try
+        {
+            return session is SessionHostHandle { ProcessId: { } processId } ? System.Diagnostics.Process.GetProcessById(processId) : null;
+        }
+        catch (ArgumentException)
+        {
+            // Already gone: nothing of it is left to end.
+            return null;
+        }
+    }
+
     // Read the saved AI-pane roster once so worktree reconciliation and state compaction cannot disagree, and
     // compaction can safely drop state for panes that will not be restored (AC-410).
     private static async Task ReconcileWorktreesAndCompactStateAsync(
