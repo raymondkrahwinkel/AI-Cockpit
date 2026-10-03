@@ -21,6 +21,7 @@ using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -209,6 +210,9 @@ public class PluginBackendHost(
 
     public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
         services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
+
+    public void AddHealthSection(IPluginHealthSection section) =>
+        services.GetRequiredService<PluginHealthSections>().Add(section);
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {

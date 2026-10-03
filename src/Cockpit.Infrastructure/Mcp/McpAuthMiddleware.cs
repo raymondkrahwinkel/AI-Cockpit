@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -26,6 +27,14 @@ internal static class McpAuthMiddleware
 
             if (context.Request.IsHttps)
             {
+                // AC-1466: Docker's health probe carries no key. Exactly this path, compared ordinally, so no prefix,
+                // no trailing slash and no other spelling of it opens anything beside it.
+                if (string.Equals(context.Request.Path.Value, HealthzEndpoint.Path, StringComparison.Ordinal))
+                {
+                    await next(context).ConfigureAwait(false);
+                    return;
+                }
+
                 // IPv4 over a dual-stack socket arrives mapped into IPv6; unmapped, one machine is one lockout bucket.
                 var remoteIp = context.Connection.RemoteIpAddress;
                 var remoteAddress = (remoteIp is { IsIPv4MappedToIPv6: true } ? remoteIp.MapToIPv4() : remoteIp)?.ToString() ?? "unknown";

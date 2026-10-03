@@ -23,6 +23,8 @@ internal static class BackendApiRoutes
 
     public static void Map(WebApplication app, IServiceProvider services)
     {
+        HealthzEndpoint.Map(app, services);
+
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(_DoorAsync);
         EventsEndpoint.Map(api, services);
