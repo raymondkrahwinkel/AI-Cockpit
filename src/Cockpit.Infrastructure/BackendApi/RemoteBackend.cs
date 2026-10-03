@@ -255,16 +255,18 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         {
             var handle = _Find(row.PaneId) ?? new RemoteSessionHandle(_client, row.PaneId, isAssistant: false);
             handle.Update(row);
-            await handle.LoadSnapshotAsync(reload).ConfigureAwait(false);
-            sessions.Add(handle);
+            if (await handle.LoadSnapshotAsync(reload).ConfigureAwait(false))
+            {
+                sessions.Add(handle);
+            }
         }
 
         RemoteSessionHandle? assistant = null;
         if (list.Assistant is { } assistantRow)
         {
-            assistant = _AssistantAt(assistantRow.PaneId) ?? new RemoteSessionHandle(_client, assistantRow.PaneId, isAssistant: true);
-            assistant.Update(new RemoteSessionRow(assistantRow.PaneId, assistantRow.Name));
-            await assistant.LoadSnapshotAsync(reload).ConfigureAwait(false);
+            var candidate = _AssistantAt(assistantRow.PaneId) ?? new RemoteSessionHandle(_client, assistantRow.PaneId, isAssistant: true);
+            candidate.Update(new RemoteSessionRow(assistantRow.PaneId, assistantRow.Name));
+            assistant = await candidate.LoadSnapshotAsync(reload).ConfigureAwait(false) ? candidate : null;
         }
 
         TaskCompletionSource refreshed;

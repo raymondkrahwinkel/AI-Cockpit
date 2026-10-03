@@ -67,7 +67,8 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
                 Action<SessionLiveState> onLiveState = state => append(
                     "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
-                Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call });
+                // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
+                Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
                 handle.RowUpserted += onRow;
                 handle.LiveStateChanged += onLiveState;
                 handle.ToolActivityProduced += onTool;

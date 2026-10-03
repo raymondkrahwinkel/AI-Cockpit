@@ -203,13 +203,14 @@ public sealed class RemoteSessionHandle : ISessionHandle
     }
 
     // The rows and the seq they stand at, read together by the route; a row on the stream at or below it is in them.
-    internal async Task LoadSnapshotAsync(bool reload)
+    // False when the pane closed since the list was read, so the registry leaves it out.
+    internal async Task<bool> LoadSnapshotAsync(bool reload)
     {
         lock (_gate)
         {
             if (_loaded && !reload)
             {
-                return;
+                return true;
             }
         }
 
@@ -220,8 +221,7 @@ public sealed class RemoteSessionHandle : ISessionHandle
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
         {
-            // Closed since the list was read; the next sessions-changed takes it off the registry.
-            return;
+            return false;
         }
 
         IReadOnlyList<TranscriptSnapshotEntry> rows = transcript.Rows ?? [];
@@ -242,6 +242,8 @@ public sealed class RemoteSessionHandle : ISessionHandle
                 RowUpserted?.Invoke(new TranscriptRowUpsert(seq, 0, row));
             }
         }
+
+        return true;
     }
 
     internal void Apply(BackendEvent evt)
