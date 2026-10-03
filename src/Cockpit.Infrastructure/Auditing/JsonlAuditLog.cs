@@ -68,8 +68,19 @@ internal abstract class JsonlAuditLog<T>
         }
     }
 
-    public async Task<IReadOnlyList<T>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<T>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default) =>
+        [.. (await ReadPageAsync(limit, null, cancellationToken).ConfigureAwait(false)).Select(line => line.Entry)];
+
+    // AC-1446: up to `limit` entries from before the line starting at `beforeOffset` (the end when null), newest first,
+    // each with its offset: unique and rising with the write order, where a timestamp is not (writers stamp before the
+    // lock). Stable because no trail is ever rotated or rewritten; only UsageHistoryLog rolls over, in a file of its own.
+    public async Task<IReadOnlyList<(T Entry, long Offset)>> ReadPageAsync(int limit, long? beforeOffset, CancellationToken cancellationToken = default)
     {
+        if (beforeOffset is { } offset && !await _IsLineStartAsync(offset, cancellationToken).ConfigureAwait(false))
+        {
+            throw new ArgumentOutOfRangeException(nameof(beforeOffset), "before is not the id of an audit line.");
+        }
+
         if (limit <= 0 || !File.Exists(_logFilePath))
         {
             return [];
@@ -77,13 +88,38 @@ internal abstract class JsonlAuditLog<T>
 
         try
         {
-            return await _ReadRecentValidAsync(limit, cancellationToken).ConfigureAwait(false);
+            return await _ReadRecentValidAsync(limit, beforeOffset, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not read the {LogName} audit log at {Path}.", LogName, _logFilePath);
             return [];
         }
+    }
+
+    // An offset this trail handed out: inside the file, and the file's start or just after a newline.
+    private async Task<bool> _IsLineStartAsync(long offset, CancellationToken cancellationToken)
+    {
+        if (offset == 0)
+        {
+            return true;
+        }
+
+        if (offset < 0 || !File.Exists(_logFilePath))
+        {
+            return false;
+        }
+
+        await using var stream = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1, useAsync: true);
+        if (offset > stream.Length)
+        {
+            return false;
+        }
+
+        var previous = new byte[1];
+        stream.Position = offset - 1;
+        await stream.ReadExactlyAsync(previous, cancellationToken).ConfigureAwait(false);
+        return previous[0] == (byte)'\n';
     }
 
     // Appends `line`, creating the file owner-only if it is not there yet — a trail holds free text
@@ -110,13 +146,13 @@ internal abstract class JsonlAuditLog<T>
     // Reads up to `limit` parseable entries from the end of the file, newest first, without loading the
     // whole log (C6). Fixed blocks are read backward and split on `'\n'`, a byte that never occurs inside
     // a multi-byte UTF-8 sequence, so a block boundary can never cut a character. A blank or corrupt line is skipped.
-    private async Task<IReadOnlyList<T>> _ReadRecentValidAsync(int limit, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<(T Entry, long Offset)>> _ReadRecentValidAsync(int limit, long? beforeOffset, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(
             _logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, ReadBlockSize, useAsync: true);
 
-        var results = new List<T>(Math.Min(limit, 1024));
-        var position = stream.Length;
+        var results = new List<(T Entry, long Offset)>(Math.Min(limit, 1024));
+        var position = Math.Clamp(beforeOffset ?? stream.Length, 0, stream.Length);
 
         // Bytes of a line whose left boundary (an earlier '\n', or file start) has not been reached yet
         // are carried onto the next, earlier block. Stays a few hundred bytes for a normal trimmed line.
@@ -138,7 +174,7 @@ internal abstract class JsonlAuditLog<T>
             {
                 if (buffer[i] == (byte)'\n')
                 {
-                    _EmitLine(buffer, i + 1, segmentEnd, results, limit);
+                    _EmitLine(buffer, i + 1, segmentEnd, results, limit, position);
                     segmentEnd = i;
                 }
             }
@@ -146,7 +182,7 @@ internal abstract class JsonlAuditLog<T>
             if (position == 0)
             {
                 // buffer[0..segmentEnd) is bounded on the left by the start of the file, so it is a complete line.
-                _EmitLine(buffer, 0, segmentEnd, results, limit);
+                _EmitLine(buffer, 0, segmentEnd, results, limit, position);
             }
             else
             {
@@ -158,7 +194,8 @@ internal abstract class JsonlAuditLog<T>
         return results;
     }
 
-    private void _EmitLine(byte[] buffer, int start, int end, List<T> results, int limit)
+    // `blockStart` is the file offset of buffer[0]: the carry follows the block in the file as in the buffer.
+    private void _EmitLine(byte[] buffer, int start, int end, List<(T Entry, long Offset)> results, int limit, long blockStart)
     {
         if (results.Count >= limit || end <= start)
         {
@@ -180,7 +217,7 @@ internal abstract class JsonlAuditLog<T>
         var line = Encoding.UTF8.GetString(buffer, start, end - start);
         if (_TryParse(line) is { } entry)
         {
-            results.Add(entry);
+            results.Add((entry, blockStart + start));
         }
     }
 

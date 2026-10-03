@@ -131,7 +131,6 @@ public sealed class ConnectKeyDoorTests
     [InlineData("wrong key with a known prefix")]
     [InlineData("expired key")]
     [InlineData("revoked key")]
-    [InlineData("revoked bootstrap key after a restart")]
     [InlineData("key whose revocation could not be saved, after a restart")]
     [InlineData("wrong pairing secret")]
     [InlineData("right pairing secret from a locked-out address")]
@@ -143,7 +142,6 @@ public sealed class ConnectKeyDoorTests
         var expiring = await beforeRestart.IssueAsync("expiring", ConnectKeyCapability.Operate, 1, Operator);
         var revoked = await beforeRestart.IssueAsync("revoked", ConnectKeyCapability.Operate, 30, Operator);
         await beforeRestart.RevokeAsync(revoked.Key.Prefix, Operator);
-        await beforeRestart.RevokeAsync("bootstra", Operator);
         var unsaved = await beforeRestart.IssueAsync("unsaved", ConnectKeyCapability.Operate, 30, Operator);
         var failedRevoke = await door.WithConfigUnwritableAsync(() => beforeRestart.RevokeAsync(unsaved.Key.Prefix, Operator));
         await beforeRestart.IssueAsync("after", ConnectKeyCapability.Operate, 30, Operator);
@@ -156,7 +154,6 @@ public sealed class ConnectKeyDoorTests
             ["wrong key with a known prefix"] = $"ck_{live.Key.Prefix}{new string('x', 35)}",
             ["expired key"] = expiring.Secret,
             ["revoked key"] = revoked.Secret,
-            ["revoked bootstrap key after a restart"] = Bootstrap,
             ["key whose revocation could not be saved, after a restart"] = unsaved.Secret,
             ["wrong pairing secret"] = "not-the-pairing-secret",
             ["right pairing secret from a locked-out address"] = PairingSecret,
@@ -232,18 +229,25 @@ public sealed class ConnectKeyDoorTests
         Assert.Empty(after["projects"]?.AsArray() ?? new JsonArray());
     }
 
-    // AC-1367: the bootstrap key keeps its full scope — it is admin and meant to be revoked right after setup.
-    [Fact]
-    public async Task SetConnectKeyScope_RefusesTheBootstrapKey_AndLeavesItsScope()
+    // AC-1367/AC-1446 (decision a): the bootstrap key is the emergency key — the node tools neither narrow nor revoke it,
+    // so it keeps its full scope and stays live.
+    [Theory]
+    [InlineData("set_connect_key_scope", "bootstrap key keeps its full scope")]
+    [InlineData("revoke_connect_key", "bootstrap key is the emergency key")]
+    public async Task TheNodeTools_RefuseToNarrowOrRevokeTheBootstrapKey(string tool, string refusal)
     {
         await using var door = new _Door();
         await door.StartAsync(_Environment());
         await using var admin = await door.ClientAsync(Bootstrap);
 
-        var refused = await _CallAsync(admin, "set_connect_key_scope", new() { ["prefix"] = "bootstra", ["projects"] = new[] { "one-project" } });
+        Dictionary<string, object?> arguments = tool == "revoke_connect_key"
+            ? new() { ["prefix"] = "bootstra" }
+            : new() { ["prefix"] = "bootstra", ["projects"] = new[] { "one-project" } };
+        var refused = await _CallAsync(admin, tool, arguments);
         var listed = await _CallAsync(admin, "list_connect_keys", new());
 
-        Assert.Contains("bootstrap key keeps its full scope", refused["error"]?.GetValue<string>() ?? "", StringComparison.Ordinal);
+        Assert.Contains(refusal, refused["error"]?.GetValue<string>() ?? "", StringComparison.Ordinal);
+        Assert.Null(Assert.Single(listed["keys"]?.AsArray() ?? new JsonArray())?["revokedAt"]?.GetValue<DateTimeOffset?>());
         Assert.Equal(
             """{"profiles":null,"projects":null,"mayStartBypassProfiles":true,"mayAnswerPermissions":true}""",
             Assert.Single(listed["keys"]?.AsArray() ?? new JsonArray())?["scope"]?.ToJsonString());
@@ -599,6 +603,7 @@ public sealed class ConnectKeyDoorTests
             services.AddSingleton(Audit);
             services.AddSingleton(Presence);
             services.AddSingleton(verifier);
+            services.AddSingleton<IConnectKeyAdministration>(verifier);
             services.AddSingleton(new ProfileSignIns(new _LoginStarter(LoginFlow), _loggerFactory.CreateLogger<ProfileSignIns>()));
 
             _host = new CockpitMcpEndpointHost(

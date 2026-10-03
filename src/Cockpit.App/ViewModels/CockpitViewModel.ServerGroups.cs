@@ -320,6 +320,36 @@ public partial class CockpitViewModel
         }
     }
 
+    // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
+    // key, are what the scope editor offers; without them it still offers "all".
+    [RelayCommand]
+    private async Task OpenServerAdminAsync(ServerGroupViewModel group)
+    {
+        if (_dialogService is null || group.State.Key is not { } key)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> profiles = [];
+        IReadOnlyList<NodeProjectChoice> projects = [];
+        if (_serverChoices is not null)
+        {
+            try
+            {
+                var snapshot = await _serverChoices.ReadAsync(group.Name);
+                profiles = [.. snapshot.Profiles.Select(profile => profile.Label)];
+                projects = [.. snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name))];
+            }
+            catch (Exception exception)
+            {
+                _logger?.LogInformation(exception, "Could not read the profiles and projects of {Server}.", group.Name);
+            }
+        }
+
+        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects);
+        await _dialogService.ShowServerAdminDialogAsync(admin);
+    }
+
     [RelayCommand]
     private async Task OpenServerStartAsync(ServerGroupViewModel group)
     {

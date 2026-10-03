@@ -535,6 +535,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             : null;
     }
 
+    // One per server: a second Admin click on the same server brings its dialog forward.
+    public async Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return;
+        }
+
+        await _ShowSurfaceAsync((typeof(ServerAdminViewModel), viewModel.Server), owner, () => OptionsDialog.ForServer(viewModel));
+    }
+
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })

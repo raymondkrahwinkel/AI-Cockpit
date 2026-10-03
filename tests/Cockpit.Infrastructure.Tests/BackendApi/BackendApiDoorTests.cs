@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,45 +92,92 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(expected, expectedBody), answer);
     }
 
-    // Criterion 3: the key list is admin's; an operate key is refused with the same forbidden.
+    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may
+    // narrow or revoke the bootstrap key; either way nothing changed. F5.6b2–b4 add their routes as rows here.
+    public static TheoryData<string, string, string?, string, HttpStatusCode, string> AdminRoutes => new()
+    {
+        { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key" },
+        { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key" },
+        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request" },
+        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
+        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
+        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
+    };
+
     [Theory]
-    [InlineData("operate key", HttpStatusCode.Forbidden)]
-    [InlineData("admin key", HttpStatusCode.OK)]
-    public async Task Keys_AreForAnAdminKeyOnly(string credential, HttpStatusCode expected)
+    [MemberData(nameof(AdminRoutes))]
+    public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string error)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
-        var tokens = new Dictionary<string, string>
-        {
-            ["operate key"] = operate.Secret,
-            ["admin key"] = Bootstrap,
-        };
+        var bearer = credential == "admin" ? Bootstrap : operate.Secret;
 
-        var answer = await door.GetAsync(door.NodeBase, "/api/v1/keys", tokens[credential]);
+        var answer = await door.SendAsync(new HttpMethod(method), path.Replace("{issued}", operate.Key.Prefix, StringComparison.Ordinal), bearer, body);
+        var keys = await verifier.ListAsync();
 
         Assert.Equal(expected, answer.Status);
+        Assert.Equal(error, JsonNode.Parse(answer.Body)?["error"]?.GetValue<string>());
+        Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
+        Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => !entry.Key.IsBootstrap).Key.EffectiveScope());
     }
 
-    // Scope items 5 and 6: the list carries list_connect_keys' fields and never a key, and reading it is audited.
-    [Fact]
-    public async Task Keys_ListWhatListConnectKeysLists_AndAreAudited()
+    // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
+    // does the audit file, and no field is named for a credential. F5.6b2–b4 add their reads as rows here. The key
+    // list also carries list_connect_keys' fields, and reading it is audited (scope items 5 and 6).
+    [Theory]
+    [InlineData("/api/v1/keys")]
+    [InlineData("/api/v1/audit")]
+    [InlineData("/api/v1/audit, a line per page")]
+    [InlineData("audit file")]
+    public async Task AnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnce(string read)
     {
         await using var door = new _Door();
-        var verifier = await door.StartAsync();
-        var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
+        await door.StartAsync();
 
-        var answer = await door.GetAsync(door.NodeBase, "/api/v1/keys", Bootstrap);
-        var keys = JsonNode.Parse(answer.Body)?["keys"]?.AsArray() ?? [];
-        var issued = keys.Single(key => key?["prefix"]?.GetValue<string>() == operate.Key.Prefix);
-        var audit = await File.ReadAllTextAsync(door.AuditPath);
+        var issue = await door.SendAsync(HttpMethod.Post, "/api/v1/keys", Bootstrap, """{"label":"phone","capability":"operate","holdsAssistant":false}""");
+        var secret = JsonNode.Parse(issue.Body)?["secret"]?.GetValue<string>() ?? "";
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
+        var prefix = JsonNode.Parse(issue.Body)?["key"]?["prefix"]?.GetValue<string>() ?? "";
+        await door.GetAsync(door.NodeBase, "/api/v1/whoami", secret);
+        await door.SendAsync(HttpMethod.Delete, $"/api/v1/keys/{prefix}", Bootstrap);
+        // Two lines with one timestamp: paged a line at a time, a page boundary falls between them.
+        var tie = DateTimeOffset.UtcNow;
+        var trail = new NodeAccessAuditLog(door.AuditPath, NullLogger<NodeAccessAuditLog>.Instance);
+        await trail.RecordAsync(new NodeAccessAuditEntry(tie, "unknown", null, "10.0.0.7", null, "tie-a"));
+        await trail.RecordAsync(new NodeAccessAuditEntry(tie, "unknown", null, "10.0.0.7", null, "tie-b"));
+        var text = read switch
+        {
+            "audit file" => await File.ReadAllTextAsync(door.AuditPath),
+            "/api/v1/audit, a line per page" => await _AuditPagedAsync(door),
+            _ => (await door.GetAsync(door.NodeBase, read, Bootstrap)).Body,
+        };
+        IEnumerable<string> credentialFields = read == "audit file" ? [] : _CredentialNames(JsonNode.Parse(text));
+        var whole = (await door.GetAsync(door.NodeBase, "/api/v1/audit?count=500", Bootstrap)).Body;
 
-        Assert.Equal(
-            new[] { "prefix", "label", "capability", "isBootstrap", "createdAt", "expiresAt", "revokedAt", "lastUsedAt" },
-            issued?.AsObject().Select(property => property.Key) ?? []);
-        Assert.Equal(2, keys.Count);
-        Assert.DoesNotContain(operate.Secret, answer.Body, StringComparison.Ordinal);
-        Assert.Contains("api:list_keys", audit, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Created, issue.Status);
+        Assert.True(secret.StartsWith("ck_", StringComparison.Ordinal) && _Occurrences(issue.Body, secret) == 1, "The issue answer did not carry the new key exactly once.");
+        Assert.False(issue.Body.Contains(hash, StringComparison.OrdinalIgnoreCase), "The issue answer carried the key's hash.");
+        Assert.Contains(prefix, text, StringComparison.Ordinal);
+        Assert.False(text.Contains(secret, StringComparison.Ordinal), $"{read} carried the issued key.");
+        Assert.False(text.Contains(hash, StringComparison.OrdinalIgnoreCase), $"{read} carried the issued key's hash.");
+        Assert.False(text.Contains(Bootstrap, StringComparison.Ordinal), $"{read} carried the bootstrap key.");
+        Assert.Empty(credentialFields);
+        Assert.True(read == "/api/v1/keys" || (_Occurrences(text, "tie-a"), _Occurrences(text, "tie-b")) == (1, 1), $"{read} lost or repeated a line of the same timestamp.");
+        Assert.True(read != "/api/v1/audit, a line per page" || _Ids(text).SequenceEqual(_Ids(whole)), "Paging a line at a time lost or repeated a line.");
+        if (read == "/api/v1/keys")
+        {
+            Assert.Equal(
+                new[] { "prefix", "label", "capability", "isBootstrap", "holdsAssistant", "scope", "createdAt", "expiresAt", "revokedAt", "lastUsedAt", "lastUsedFrom" },
+                (JsonNode.Parse(text)?["keys"]?.AsArray() ?? []).Single(key => key?["prefix"]?.GetValue<string>() == prefix)?.AsObject().Select(property => property.Key) ?? []);
+            Assert.Contains("api:list_keys", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
+        }
     }
 
     // Criterion 4: an API call with a holdsAssistant key leaves the assistant free; the same key on the MCP door
@@ -324,6 +372,36 @@ public sealed class BackendApiDoorTests
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
     // A section with a row that must never reach /healthz.
+    private static int _Occurrences(string text, string value) => text.Split(value).Length - 1;
+
+    private static IEnumerable<long> _Ids(string audit) =>
+        (JsonNode.Parse(audit)?.AsArray() ?? []).Select(entry => entry?["id"]?.GetValue<long>() ?? -1);
+
+    // The whole audit as one array, read a line per page with each page's last id as the next cursor.
+    private static async Task<string> _AuditPagedAsync(_Door door)
+    {
+        var all = new JsonArray();
+        long? before = null;
+        while (JsonNode.Parse((await door.GetAsync(door.NodeBase, $"/api/v1/audit?count=1{(before is { } id ? $"&before={id}" : "")}", Bootstrap)).Body) is JsonArray { Count: 1 } page)
+        {
+            before = page[0]?["id"]?.GetValue<long>();
+            all.Add(page[0]?.DeepClone());
+        }
+
+        return all.ToJsonString();
+    }
+
+    // Every property name in a response that names a credential: an admin answer has no field for one to travel in.
+    private static IEnumerable<string> _CredentialNames(JsonNode? node) => node switch
+    {
+        JsonObject properties => properties.SelectMany(property =>
+            new[] { "token", "password", "secret", "hash", "apikey", "credential" }.Any(word => property.Key.Contains(word, StringComparison.OrdinalIgnoreCase))
+                ? new[] { property.Key }
+                : _CredentialNames(property.Value)),
+        JsonArray items => items.SelectMany(_CredentialNames),
+        _ => [],
+    };
+
     private class _Section(string name, params PluginHealthRow[] rows) : IPluginHealthSection
     {
         public bool Healthy { get; set; } = true;
@@ -453,6 +531,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton<IAssistantMemory>(new NodeSessionMcpToolsTests.StubMemory());
             services.AddSingleton(_audit);
             services.AddSingleton(verifier);
+            services.AddSingleton<IConnectKeyAdministration>(verifier);
             services.AddSingleton(Presence);
             services.AddSingleton(Health);
             services.AddSingleton(LoginHealth);

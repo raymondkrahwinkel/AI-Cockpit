@@ -82,6 +82,11 @@ public interface ISessionDialogService
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
 
     /// <summary>
+    /// Shows the Options dialog opened on a server (AC-1446): only that server's admin pages, acting through <paramref name="viewModel"/>.
+    /// </summary>
+    Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel);
+
+    /// <summary>
     /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickPluginZipAsync();

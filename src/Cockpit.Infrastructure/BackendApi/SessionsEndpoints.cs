@@ -350,7 +350,7 @@ internal static class SessionsEndpoints
             {
                 var outcome = result is IStatusCodeHttpResult { StatusCode: >= 400 } ? "refused" : "called";
                 await audit.RecordAsync(
-                    new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, $"api:{name}", outcome),
+                    NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, $"api:{name}", outcome),
                     context.HttpContext.RequestAborted).ConfigureAwait(false);
             }
 

@@ -32,6 +32,7 @@ internal static class BackendApiRoutes
         SessionsEndpoints.Map(api, services);
         SignInEndpoints.Map(api, services);
         HealthEndpoints.Map(api, services);
+        ConnectKeyEndpoints.Map(api, services);
 
         api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {
@@ -56,50 +57,6 @@ internal static class BackendApiRoutes
                 assistantHeldBy = holder,
             });
         }).RequireOperate();
-
-        // The same fields as the node tool list_connect_keys, from the same list.
-        api.MapGet("/keys", async (CancellationToken cancellationToken) =>
-        {
-            var caller = _Caller();
-            var verifier = services.GetRequiredService<ConnectKeyVerifier>();
-            var keys = await verifier.ListAsync(cancellationToken).ConfigureAwait(false);
-            var lockouts = await verifier.ListLockoutsAsync(cancellationToken).ConfigureAwait(false);
-            if (services.GetService<NodeAccessAuditLog>() is { } audit)
-            {
-                await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, "api:list_keys", "called"), cancellationToken).ConfigureAwait(false);
-            }
-
-            return Results.Json(new
-            {
-                keys = keys.Select(entry => new
-                {
-                    prefix = entry.Key.Prefix,
-                    label = entry.Key.Label,
-                    capability = CapabilityName(entry.Key.Capability),
-                    isBootstrap = entry.Key.IsBootstrap,
-                    createdAt = entry.Key.CreatedAt,
-                    expiresAt = entry.Key.ExpiresAt,
-                    revokedAt = entry.Key.RevokedAt,
-                    lastUsedAt = entry.LastUsedAt,
-                }),
-                lockouts = lockouts.Select(lockout => new { address = lockout.Bucket, lockedUntil = lockout.LockedUntil, refusedWhileLockedOut = lockout.RefusedWhileLockedOut }),
-            });
-        }).RequireAdmin();
-
-        // AC-1459: the node tool lift_connect_lockout over HTTP. An IPv6 bucket's slash arrives escaped.
-        api.MapPost("/lockouts/{bucket}/lift", async (string bucket, CancellationToken cancellationToken) =>
-        {
-            try
-            {
-                return await services.GetRequiredService<ConnectKeyVerifier>().LiftLockoutAsync(Uri.UnescapeDataString(bucket), _Caller(), cancellationToken).ConfigureAwait(false)
-                    ? Results.Json(new { ok = true, address = Uri.UnescapeDataString(bucket), lifted = true })
-                    : Error(StatusCodes.Status404NotFound, "not_locked_out", "That address is not locked out.");
-            }
-            catch (InvalidOperationException exception)
-            {
-                return Error(StatusCodes.Status500InternalServerError, "not_saved", exception.Message);
-            }
-        }).RequireAdmin();
     }
 
     public static RouteHandlerBuilder RequireOperate(this RouteHandlerBuilder route) =>

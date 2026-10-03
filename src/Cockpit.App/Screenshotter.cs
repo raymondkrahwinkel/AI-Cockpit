@@ -226,6 +226,10 @@ internal static class Screenshotter
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-pane-permission"] = ServerGroupScene.Permission,
+        // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
+        // and its Audit log.
+        ["server-admin-keys"] = ServerAdminScene.Keys,
+        ["server-admin-audit"] = ServerAdminScene.Audit,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.

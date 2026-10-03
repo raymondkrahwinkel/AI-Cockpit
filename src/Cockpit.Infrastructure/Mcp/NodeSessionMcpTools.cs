@@ -27,7 +27,8 @@ internal sealed class NodeSessionMcpTools(
     // Raymond's rule that a controller's memory must not be scrambled by the memory of the machine it is working on.
     IAssistantMemory memory,
     // AC-1351: null where nothing verifies connect keys (a test's own host), and then the key tools refuse.
-    ConnectKeyVerifier? connectKeys = null)
+    // AC-1446: the same contract the backend API's admin routes call, so both write one audit.
+    IConnectKeyAdministration? connectKeys = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -510,7 +511,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry and revoke the bootstrap key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry; the bootstrap key stays as the emergency key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
@@ -528,7 +529,7 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            if (connectKeys is null)
             {
                 return _Serialize(new { ok = false, error = NoConnectKeys });
             }
@@ -544,7 +545,7 @@ internal sealed class NodeSessionMcpTools(
             }
 
             var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
-            var (key, secret) = await connectKeys.IssueAsync(label, parsed, expiresInDays, caller, holdsAssistant, scope).ConfigureAwait(false);
+            var (key, secret) = await connectKeys.IssueAsync(new ConnectKeyRequest(label, parsed, expiresInDays, holdsAssistant, scope)).ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
@@ -553,7 +554,7 @@ internal sealed class NodeSessionMcpTools(
                 label = key.Label,
                 capability = key.Capability.ToString().ToLowerInvariant(),
                 expiresAt = key.ExpiresAt,
-                scope = _ScopeJson(key.EffectiveScope()),
+                scope = _ScopeJson(key.Scope),
                 note = "This is the only time the key is shown. Store it now.",
             });
         }
@@ -564,7 +565,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "revoke_connect_key", ReadOnly = false, Destructive = true)]
-    [Description("Revokes a connect key by its prefix, at once: its next call is refused and its open connections are closed. The bootstrap key can be revoked too, and stays revoked when the node restarts with the same secret. Needs a connect key with the admin capability. Revoking the key you are calling with ends this connection.")]
+    [Description("Revokes a connect key by its prefix, at once: its next call is refused and its open connections are closed. The bootstrap key is the emergency key and is refused: rotate it by replacing its secret. Needs a connect key with the admin capability. Revoking the key you are calling with ends this connection.")]
     public async Task<string> RevokeConnectKeyAsync(
         [Description("The key's prefix, exactly as list_connect_keys reports it.")] string prefix)
     {
@@ -575,12 +576,12 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            if (connectKeys is null)
             {
                 return _Serialize(new { ok = false, error = NoConnectKeys });
             }
 
-            var revoked = await connectKeys.RevokeAsync(prefix, caller).ConfigureAwait(false);
+            var revoked = await connectKeys.RevokeAsync(prefix).ConfigureAwait(false);
             return revoked
                 ? _Serialize(new { ok = true, prefix, revoked })
                 : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
@@ -603,12 +604,12 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            if (connectKeys is null)
             {
                 return _Serialize(new { ok = false, error = NoConnectKeys });
             }
 
-            return await connectKeys.LiftLockoutAsync(address, caller).ConfigureAwait(false)
+            return await connectKeys.LiftLockoutAsync(address).ConfigureAwait(false)
                 ? _Serialize(new { ok = true, address, lifted = true })
                 : _Serialize(new { ok = false, error = $"'{address}' is not locked out. Call list_connect_keys for the addresses that are." });
         }
@@ -634,13 +635,13 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            if (connectKeys is null)
             {
                 return _Serialize(new { ok = false, error = NoConnectKeys });
             }
 
             var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
-            return await connectKeys.UpdateScopeAsync(prefix, scope, caller).ConfigureAwait(false)
+            return await connectKeys.SetScopeAsync(prefix, scope).ConfigureAwait(false)
                 ? _Serialize(new { ok = true, prefix, scope = _ScopeJson(scope) })
                 : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
         }
@@ -666,25 +667,24 @@ internal sealed class NodeSessionMcpTools(
                 return _Serialize(new { ok = false, error = NoConnectKeys });
             }
 
-            var keys = await connectKeys.ListAsync().ConfigureAwait(false);
-            var lockouts = await connectKeys.ListLockoutsAsync().ConfigureAwait(false);
+            var overview = await connectKeys.ListAsync().ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
-                keys = keys.Select(entry => new
+                keys = overview.Keys.Select(key => new
                 {
-                    prefix = entry.Key.Prefix,
-                    label = entry.Key.Label,
-                    capability = entry.Key.Capability.ToString().ToLowerInvariant(),
-                    holdsAssistant = entry.Key.HoldsAssistant,
-                    scope = _ScopeJson(entry.Key.EffectiveScope()),
-                    isBootstrap = entry.Key.IsBootstrap,
-                    createdAt = entry.Key.CreatedAt,
-                    expiresAt = entry.Key.ExpiresAt,
-                    revokedAt = entry.Key.RevokedAt,
-                    lastUsedAt = entry.LastUsedAt,
+                    prefix = key.Prefix,
+                    label = key.Label,
+                    capability = key.Capability.ToString().ToLowerInvariant(),
+                    holdsAssistant = key.HoldsAssistant,
+                    scope = _ScopeJson(key.Scope),
+                    isBootstrap = key.IsBootstrap,
+                    createdAt = key.CreatedAt,
+                    expiresAt = key.ExpiresAt,
+                    revokedAt = key.RevokedAt,
+                    lastUsedAt = key.LastUsedAt,
                 }),
-                lockouts = lockouts.Select(lockout => new { address = lockout.Bucket, lockedUntil = lockout.LockedUntil, refusedWhileLockedOut = lockout.RefusedWhileLockedOut }),
+                lockouts = overview.Lockouts.Select(lockout => new { address = lockout.Address, lockedUntil = lockout.LockedUntil, refusedWhileLockedOut = lockout.RefusedWhileLockedOut }),
             });
         }
         catch (Exception exception)

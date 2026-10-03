@@ -195,6 +195,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             row.ApiKey ?? "",
             row.PinnedCertificateFingerprint ?? "",
             TimeProvider.System);
+        Administration = new RemoteConnectKeyAdministration(_client);
     }
 
     public string Name { get; }
@@ -211,6 +212,8 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     }
 
     public ISessionLauncher? Launcher => (ISessionLauncher?)Sessions;
+
+    public IConnectKeyAdministration Administration { get; }
 
     public RemoteServerState State
     {

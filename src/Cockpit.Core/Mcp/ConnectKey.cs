@@ -45,7 +45,7 @@ public sealed record ConnectKeyScope
 
     public static ConnectKeyScope Default { get; } = new();
 
-    // The bootstrap key's: it is admin and revoked right after setup.
+    // The bootstrap key's: it is admin and stays as the emergency key (AC-1446).
     public static ConnectKeyScope Everything { get; } = new() { MayStartBypassProfiles = true };
 
     public bool AllowsProfile(string profileLabel) => AllowAllProfiles || AllowedProfileLabels.Contains(profileLabel, StringComparer.Ordinal);

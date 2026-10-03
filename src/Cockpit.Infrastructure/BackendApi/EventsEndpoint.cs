@@ -37,6 +37,13 @@ internal static class EventsEndpoint
         var sessions = services.GetRequiredService<ISessionRegistry>();
         var pairing = services.GetRequiredService<INodePairingBroker>();
         var time = services.GetService<TimeProvider>() ?? TimeProvider.System;
+
+        // AC-1446: a connected client holds this stream open, so its opening is the audit's "connected".
+        if (services.GetService<NodeAccessAuditLog>() is { } audit)
+        {
+            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
+        }
+
         context.Response.ContentType = "text/event-stream";
         context.Response.Headers.CacheControl = "no-cache";
         await context.Response.StartAsync(context.RequestAborted).ConfigureAwait(false);

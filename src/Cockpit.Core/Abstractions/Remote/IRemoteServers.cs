@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Abstractions.Remote;
@@ -58,6 +59,11 @@ public interface IRemoteServer
     /// Starts and stops sessions on the server; null until it first answered.
     /// </summary>
     ISessionLauncher? Launcher { get; }
+
+    /// <summary>
+    /// The server's connect keys, lockouts and audit, which only an admin key may reach (AC-1446).
+    /// </summary>
+    IConnectKeyAdministration Administration { get; }
 
     /// <summary>
     /// Whether the stream is up, how fast the server answered, and what it says about this key.
