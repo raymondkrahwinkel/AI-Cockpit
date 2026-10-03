@@ -5,7 +5,7 @@ namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1373: the live panes as one thread-safe list, fed by whoever owns them (today `CockpitViewModel`).
 // No dispatcher: a reader on a request thread gets a snapshot rather than a hop onto the UI thread.
-public sealed class SessionRegistry : ISessionRegistry, ISingletonService
+public sealed class SessionRegistry : ISessionRegistration, ISingletonService
 {
     private readonly Lock _gate = new();
     private readonly List<ISessionHandle> _handles = [];

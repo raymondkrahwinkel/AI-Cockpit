@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
@@ -38,11 +37,11 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         IAssistantSettingsStore? settingsStore,
         IAssistantProfileStore? profileStore,
         ISessionDialogService? dialogService,
-        IPluginProviderRegistry? pluginProviderRegistry)
+        IPluginRegistrations? pluginProviderRegistry)
     {
         _dialogService = dialogService;
         AssistantOptions = new AssistantOptionsViewModel(settingsStore, profileStore);
-        OnlyLocalProvidersAvailable = pluginProviderRegistry is null || pluginProviderRegistry.Registrations.Count == 0;
+        OnlyLocalProvidersAvailable = pluginProviderRegistry is null || pluginProviderRegistry.SessionProviders.Count == 0;
 
         _ = AssistantOptions.RefreshAsync();
     }

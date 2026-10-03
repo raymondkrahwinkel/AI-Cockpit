@@ -80,6 +80,21 @@ public interface IDelegationService
     (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0, string? callerPaneId = null);
 
     /// <summary>
+    /// The task's steps so far as text, one line per finished reply, tool call or error, for a view that shows progress.
+    /// </summary>
+    IReadOnlyList<string> GetProgressLines(string taskId) =>
+        [.. GetOutput(taskId).Events
+            .Select(evt => evt switch
+            {
+                AssistantTextCompleted text => text.Text,
+                ToolUseRequested tool => $"· {tool.ToolName}",
+                SessionError error => $"Error: {error.Message}",
+                _ => null,
+            })
+            .OfType<string>()
+            .Where(line => !string.IsNullOrWhiteSpace(line))];
+
+    /// <summary>
     /// Continues a task with another turn on the same session. A task that has answered is Completed but still
     /// alive, so it can take a follow-up; one whose session is gone is refused with a reason rather than silently
     /// accepted — a follow-up that quietly does nothing leaves the caller waiting for a turn that never comes.

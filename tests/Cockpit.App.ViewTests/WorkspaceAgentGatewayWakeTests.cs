@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Agents;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Tests.Shared;
@@ -175,10 +175,10 @@ public class WorkspaceAgentGatewayWakeTests
         // this is a pane that reads as standing still while a human is being asked something. The status gate waves
         // it through; only the consent gate does not.
         var (sessions, sender, target, sent) = _Desk(SessionStatus.Done);
-        var broker = Substitute.For<IConsentBroker>();
+        var broker = Substitute.For<IConsentPrompts>();
         var promptId = Guid.NewGuid();
         var consent = new ConsentPromptViewModel(
-            new ConsentPrompt(
+            new ConsentQuestion(
                 promptId,
                 new ConsentRequest("Delete the branch", "git branch -D main", new ConsentSource(target.PaneId, null, "session"), "git.branch:delete", ConsentRisk.Dangerous),
                 CanRemember: false),

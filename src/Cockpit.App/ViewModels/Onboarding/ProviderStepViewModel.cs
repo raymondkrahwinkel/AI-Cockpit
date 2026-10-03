@@ -5,7 +5,6 @@ using Cockpit.Core;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
@@ -18,7 +17,7 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
     private readonly IPluginProvisioningService? _provisioningService;
-    private readonly PluginBootstrap? _bootstrap;
+    private readonly IPluginAdministration? _plugins;
 
     public ObservableCollection<ProviderPickerRowViewModel> Providers { get; } = [];
 
@@ -72,12 +71,12 @@ public sealed partial class ProviderStepViewModel : ObservableObject
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
         IPluginProvisioningService provisioningService,
-        PluginBootstrap bootstrap)
+        IPluginAdministration plugins)
     {
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
         _provisioningService = provisioningService;
-        _bootstrap = bootstrap;
+        _plugins = plugins;
 
         _WireProvidersToInstallGate();
 
@@ -198,14 +197,14 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     private async Task<Dictionary<string, string>> _LoadInstalledVersionsAsync()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (_bootstrap is null)
+        if (_plugins is null)
         {
             return map;
         }
 
-        foreach (var plugin in await _bootstrap.DiscoverAsync(AbstractionsContract.Version).ConfigureAwait(true))
+        foreach (var plugin in await _plugins.GetInstalledAsync().ConfigureAwait(true))
         {
-            map[plugin.FolderId] = plugin.Manifest.Version;
+            map[plugin.Discovered.FolderId] = plugin.Discovered.Manifest.Version;
         }
 
         return map;

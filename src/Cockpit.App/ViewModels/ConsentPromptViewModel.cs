@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
-using Cockpit.Infrastructure.Consent;
+using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.App.ViewModels;
@@ -11,11 +11,11 @@ namespace Cockpit.App.ViewModels;
 // Approve carries `Remember`, which the broker honours only for a low-risk, rememberable prompt.
 public sealed partial class ConsentPromptViewModel : ViewModelBase
 {
-    private readonly IConsentBroker _broker;
+    private readonly IConsentPrompts _consent;
 
-    public ConsentPromptViewModel(ConsentPrompt prompt, IConsentBroker broker)
+    public ConsentPromptViewModel(ConsentQuestion prompt, IConsentPrompts consent)
     {
-        _broker = broker;
+        _consent = consent;
         Id = prompt.Id;
         Title = prompt.Request.Title;
         Action = prompt.Request.Action;
@@ -51,8 +51,8 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
     private bool _remember;
 
     [RelayCommand]
-    private void Approve() => _broker.Respond(Id, ConsentOutcome.Approved, Remember);
+    private void Approve() => _consent.Respond(Id, ConsentOutcome.Approved, Remember);
 
     [RelayCommand]
-    private void Deny() => _broker.Respond(Id, ConsentOutcome.Denied, remember: false);
+    private void Deny() => _consent.Respond(Id, ConsentOutcome.Denied, remember: false);
 }

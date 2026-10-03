@@ -19,7 +19,7 @@ public class QuickNoteTests
     {
         var writer = new FakeNoteWriter("recent") { Pending = new TaskCompletionSource() };
         var started = new List<Project>();
-        var note = new QuickNoteViewModel([Recent], writer, (project, _) => { started.Add(project); return Task.CompletedTask; }) { Note = "call finance" };
+        var note = new QuickNoteViewModel([Recent], writer.AppendAsync, (project, _) => { started.Add(project); return Task.CompletedTask; }) { Note = "call finance" };
         var saved = 0;
         note.Saved += (_, _) => saved++;
 

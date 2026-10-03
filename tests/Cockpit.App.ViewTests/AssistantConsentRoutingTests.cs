@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
@@ -224,6 +225,6 @@ public class AssistantConsentRoutingTests
             layout,
             voice,
             terminal,
-            consentBroker: broker);
+            consentPrompts: new BrokerConsentPrompts(broker));
     }
 }

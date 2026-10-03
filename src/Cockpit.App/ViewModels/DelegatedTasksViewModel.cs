@@ -132,18 +132,7 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
         }
 
         // Still working: show the steps so far rather than an empty pane, so a long task does not look stuck.
-        var (events, _, _) = _delegation.GetOutput(taskId);
-        var lines = events
-            .Select(evt => evt switch
-            {
-                Core.Sessions.AssistantTextCompleted text => text.Text,
-                Core.Sessions.ToolUseRequested tool => $"· {tool.ToolName}",
-                Core.Sessions.SessionError error => $"Error: {error.Message}",
-                _ => null,
-            })
-            .Where(line => !string.IsNullOrWhiteSpace(line));
-
-        var output = string.Join("\n", lines);
+        var output = string.Join("\n", _delegation.GetProgressLines(taskId));
         return string.IsNullOrWhiteSpace(output) ? "Working…" : output;
     }
 

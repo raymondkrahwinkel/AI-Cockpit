@@ -11,7 +11,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // AC-234: keeps the pending resumes and sends each one when its moment arrives (a prompt a session picks up
 // after an allowance rolls over, or whenever the operator said to). One prompt per schedule, deliberately — no
 // chaining, no conditions, no follow-up steps; that belongs to Autopilot's own approval flow instead.
-public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
+public sealed class ScheduledResumeCoordinator : IScheduledResumes, ISingletonService, IDisposable
 {
     // How far past its moment a resume may still fire. Covers the app being open and merely between ticks; beyond
     // it, the cockpit was closed and firing late would be a surprise rather than a service.

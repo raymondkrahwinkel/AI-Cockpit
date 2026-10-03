@@ -18,7 +18,6 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -224,7 +223,7 @@ internal static class Screenshotter
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
-                new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry(), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
+                new _FakeAssistantSessionHost(), new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry()), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
             Height = 1220,
         },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the
@@ -1259,8 +1258,8 @@ internal static class Screenshotter
         var editable = new ViewModels.EditableProfileViewModel(
             profile,
             isLoggedIn: true,
-            providers: SessionProviderCatalog.AllProviders(new _FakeCodexProviderRegistry()),
-            pluginProviderRegistry: new _FakeCodexProviderRegistry(),
+            providers: SessionProviderCatalog.AllProviders(new Composition.PluginRegistrations(new _FakeCodexProviderRegistry())),
+            pluginProviderRegistry: new Composition.PluginRegistrations(new _FakeCodexProviderRegistry()),
             pluginConfigViews: _ConfigViews(_FakeCodexProviderRegistry.ProviderId, _ => new _CodexPlaceholderConfigView()));
         profiles.Profiles.Clear();
         profiles.Profiles.Add(editable);
@@ -2414,7 +2413,7 @@ internal static class Screenshotter
 
     private static ViewModels.ConsentPromptViewModel _OpenConsent(string ask, string action, bool dangerous) =>
         new(
-            new ConsentPrompt(
+            new ConsentQuestion(
                 Guid.NewGuid(),
                 new ConsentRequest(
                     ask,
@@ -2423,25 +2422,25 @@ internal static class Screenshotter
                     Scope: "cluster",
                     Risk: dangerous ? ConsentRisk.Dangerous : ConsentRisk.LowRisk),
                 CanRemember: false),
-            new _NoConsentBroker());
+            new _NoConsentPrompts());
 
-    // A broker that answers nothing, for the scene above: a render never presses a button, and a real one wants an
+    // Consent prompts that answer nothing, for the scene above: a render never presses a button, and a real one wants an
     // audit log and a host behind it. Its events have no backing field for the same reason — nobody raises them.
-    private sealed class _NoConsentBroker : IConsentBroker
+    private sealed class _NoConsentPrompts : IConsentPrompts
     {
-        public event EventHandler<ConsentPrompt>? PromptOpened
+        public event EventHandler<ConsentQuestion>? Opened
         {
             add { }
             remove { }
         }
 
-        public event EventHandler<Guid>? PromptClosed
+        public event EventHandler<Guid>? Closed
         {
             add { }
             remove { }
         }
 
-        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
+        public Task<ConsentDecision> RequestAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("A scene draws a request that is already open; it never opens one.");
 
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)

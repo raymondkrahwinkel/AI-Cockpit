@@ -15,7 +15,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Sessions.Tty;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
 using Microsoft.Extensions.DependencyInjection;
@@ -113,8 +112,8 @@ public partial class TtyView : UserControl
     private readonly object _ptyWriteLock = new();
 
     // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
-    private readonly IPluginTtyProviderRegistry? _ttyProviders =
-        Program.Services?.GetService<IPluginTtyProviderRegistry>();
+    private readonly IPluginRegistrations? _plugins =
+        Program.Services?.GetService<IPluginRegistrations>();
 
     public TtyView()
     {
@@ -772,7 +771,7 @@ public partial class TtyView : UserControl
             // which file that is, and the provider that wrote it is what knows how to read it (AC-229).
             if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
-                var provider = _ttyProviders?.Resolve(launch.Provider.ProviderId);
+                var provider = _plugins?.TtyProvider(launch.Provider.ProviderId);
                 viewModel.UsageProviderId = launch.Provider.ProviderId;
                 viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }

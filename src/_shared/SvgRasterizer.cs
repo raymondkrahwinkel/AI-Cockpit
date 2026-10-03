@@ -1,12 +1,12 @@
 using SkiaSharp;
 using Svg.Skia;
 
-namespace Cockpit.Infrastructure.Svg;
+namespace Cockpit.Shared;
 
-// Shared Skia-backed SVG handling — ProjectLogoStore (AC-162, a user-picked project logo) and
-// PluginManagerViewModel (AC-553, a provider plugin's vendor CDN logo) both need to turn SVG bytes into a
-// decodable bitmap; one implementation here rather than two copies drifting apart.
-public static class SvgRasterizer
+// SVG bytes to a decodable PNG: a project logo (AC-162), a plugin store logo (AC-553) and the file preview (AC-730).
+// One source file linked into Infrastructure and App, like ChatTurnLoop (AC-1431), so the preview needs no
+// Infrastructure reference (AC-1441) and there is still one implementation.
+internal static class SvgRasterizer
 {
     // Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in `.svg`.
     public static bool LooksLikeSvg(byte[] bytes, string? extension = null)

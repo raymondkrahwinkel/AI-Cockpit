@@ -1,5 +1,5 @@
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Core.Abstractions.Sessions;
 
@@ -35,21 +35,21 @@ public class SessionPanelRailOrderingTests
         var request = new ConsentRequest(
             "Run a command", "ls -la", new ConsentSource("pane-1", null, "Test"), "test.run", ConsentRisk.LowRisk);
 
-        session.PendingConsent = new ConsentPromptViewModel(new ConsentPrompt(Guid.NewGuid(), request, CanRemember: false), new _NoOpBroker());
+        session.PendingConsent = new ConsentPromptViewModel(new ConsentQuestion(Guid.NewGuid(), request, CanRemember: false), new _NoOpConsent());
 
         Assert.True(session.RequestsAttention);
     });
 
     // `ConsentPromptViewModel` only reaches its broker from the Approve/Deny commands, neither of which this
     // test exercises — a no-op stands in rather than the real `ConsentService` and everything it wires up.
-    private sealed class _NoOpBroker : IConsentBroker
+    private sealed class _NoOpConsent : IConsentPrompts
     {
-        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
+        public Task<ConsentDecision> RequestAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(ConsentDecision.Denied);
 
-        public event EventHandler<ConsentPrompt>? PromptOpened { add { } remove { } }
+        public event EventHandler<ConsentQuestion>? Opened { add { } remove { } }
 
-        public event EventHandler<Guid>? PromptClosed { add { } remove { } }
+        public event EventHandler<Guid>? Closed { add { } remove { } }
 
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
         {

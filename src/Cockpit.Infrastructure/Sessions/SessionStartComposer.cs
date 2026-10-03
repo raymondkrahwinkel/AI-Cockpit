@@ -10,7 +10,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;

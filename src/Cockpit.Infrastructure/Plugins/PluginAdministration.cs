@@ -68,7 +68,7 @@ internal sealed class PluginAdministration(
         return new InstalledPlugin(
             plugin,
             registration,
-            failures.LastOrDefault(failure => PluginDiagnostics.ActivationPhases.Contains(failure.Phase))?.Error,
+            failures.LastOrDefault(failure => IPluginDiagnostics.ActivationPhases.Contains(failure.Phase))?.Error,
             failures.LastOrDefault(failure => failure.Phase == "compatibility")?.Error,
             failures.LastOrDefault(failure => failure.Phase == "mcp-server")?.Error);
     }

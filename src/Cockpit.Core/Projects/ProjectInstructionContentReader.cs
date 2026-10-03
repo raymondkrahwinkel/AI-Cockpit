@@ -1,6 +1,5 @@
-using Cockpit.Core.Projects;
 
-namespace Cockpit.Infrastructure.Projects;
+namespace Cockpit.Core.Projects;
 
 // Reads an `ProjectResourceRole.Instructions` row's file content at session start (AC-486), kept out of
 // `Cockpit.Core.Sessions.SessionStartDefaults.Resolve` to keep that method free of I/O. AC-605: resolves

@@ -12,10 +12,9 @@ using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Shared;
 
 namespace Cockpit.App.ViewModels;
 
@@ -887,7 +886,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // Handed in by the cockpit, which owns the one scheduler; null in the graphs that schedule nothing, and the offer
     // then never appears (AC-231, AC-234, AC-368).
-    public ScheduledResumeCoordinator? Resumes
+    public IScheduledResumes? Resumes
     {
         get => _resumes;
         set
@@ -916,7 +915,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
-    private ScheduledResumeCoordinator? _resumes;
+    private IScheduledResumes? _resumes;
 
     // AC-1380: straight through — `ScheduledResumeCoordinator` itself now posts a due tick back to the thread that
     // called `StartAsync` (the UI thread, in this app), so this still always runs where it always did.

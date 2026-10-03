@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // AC-1013: Composes a session-state change into a `SessionStateRecord` and writes it (AC-409); keeps latest-per-pane in memory only to fill in fields an event doesn't carry.
 // AC-513: seeds from the store's last record before any write, and `_writeGate` makes compose+persist atomic so concurrent writes land in call order.
 // A saved conversation id is scoped to profile+place; see `RecordSessionStartedAsync` for why a change clears it.
-public sealed class SessionStateRecorder : ISingletonService
+public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
 {
     private readonly ISessionStateStore _store;
     private readonly ILogger<SessionStateRecorder> _logger;

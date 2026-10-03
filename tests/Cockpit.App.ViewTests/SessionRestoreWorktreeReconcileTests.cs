@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.TestSupport;
 using NSubstitute;

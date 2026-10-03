@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 using NSubstitute;
+using Cockpit.App.Composition;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
@@ -108,7 +109,7 @@ public class AssistantStepViewModelTests
             .Returns(new AssistantProfileSlot(null, "No assistant profile has been set up yet."));
 
         var viewModel = new AssistantStepViewModel(
-            settingsStore: null, profileStore: profileStore, dialogService: null, pluginProviderRegistry: registry);
+            settingsStore: null, profileStore: profileStore, dialogService: null, pluginProviderRegistry: new PluginRegistrations(registry));
 
         Assert.True(viewModel.OnlyLocalProvidersAvailable);
         Assert.Contains("Ollama", viewModel.LocalProvidersText, StringComparison.Ordinal);

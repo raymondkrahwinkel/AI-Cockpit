@@ -147,8 +147,8 @@ public class McpAuthStatusTests
             .Returns(McpAuthState.AuthorizationRequired);
 
         var vm = new NewSessionDialogViewModel(
-            store, loginChecker, mcpServerCatalog, workingPathStore: null, conversationPickers: null,
-            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry: null,
+            store, loginChecker, mcpServerCatalog, workingPathStore: null, plugins: null,
+            ttyProviderResolver: null,
             worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: coordinator);
 
         await vm.LoadAsync();
@@ -180,8 +180,8 @@ public class McpAuthStatusTests
             .Returns(McpAuthState.AuthorizationRequired);
 
         var vm = new NewSessionDialogViewModel(
-            store, loginChecker, mcpServerCatalog, workingPathStore: null, conversationPickers: null,
-            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry: null,
+            store, loginChecker, mcpServerCatalog, workingPathStore: null, plugins: null,
+            ttyProviderResolver: null,
             worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: coordinator);
         await vm.LoadAsync();
 

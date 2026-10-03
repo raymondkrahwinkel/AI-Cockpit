@@ -22,13 +22,15 @@ public sealed class FrontendBoundaryTests
             .Where(type => type.IsSubclassOf(typeof(SessionEvent)))
             .Select(type => type.Name));
         // AC-1449: a member that shares an event's name (`TranscriptEntryKind.TurnCompleted`) is no dependency on it;
-        // a name qualified by its namespace (`Core.Sessions.SessionError`) still is.
+        // a name qualified by its namespace (`Core.Sessions.SessionError`) still is. AC-1441: neither is a declaration
+        // that shares one, an enum member (`Question,`) or a property (`Question { get; }`).
         var forbiddenReference = new Regex(
-            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b|\bSessionHost\b",
+            $@"(?:(?<!\.)|(?<=Sessions\.))\b(?:{string.Join("|", forbiddenNames.Select(Regex.Escape))})\b(?!\s*(?:[,=}}]|\{{\s*get))|\bSessionHost\b",
             RegexOptions.CultureInvariant);
-        var infrastructureUsing = new Regex(
-            @"^\s*using\s+Cockpit\.Infrastructure(?:[.;])",
-            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        var commentLine = new Regex(@"^\s*//.*$", RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+        // AC-1441: a fully qualified name reaches into Infrastructure as surely as a using does.
+        var infrastructureReference = new Regex(@"\bCockpit\.Infrastructure\b", RegexOptions.CultureInvariant);
         var violations = new[] { "ViewModels", "Views" }
             .SelectMany(directory => Directory.EnumerateFiles(
                 Path.Combine(appRoot, directory),
@@ -36,31 +38,16 @@ public sealed class FrontendBoundaryTests
                 SearchOption.AllDirectories))
             .Where(path =>
             {
-                var source = File.ReadAllText(path);
-                return infrastructureUsing.IsMatch(source) || forbiddenReference.IsMatch(source);
+                var code = commentLine.Replace(File.ReadAllText(path), string.Empty);
+                return infrastructureReference.IsMatch(code) || forbiddenReference.IsMatch(code);
             })
             .Select(path => Path.GetRelativePath(appRoot, path).Replace('\\', '/'))
             .Order()
             .ToArray();
-        var allowlistPath = Path.Combine(
-            repositoryRoot,
-            "tests",
-            "Cockpit.App.ViewTests",
-            "Architecture",
-            "frontend-boundary-allowlist.txt");
-        var allowlist = File.ReadLines(allowlistPath)
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Order()
-            .ToArray();
-        var newViolations = violations.Except(allowlist).ToArray();
-        var staleAllowlistEntries = allowlist.Except(violations).ToArray();
 
         Assert.True(
-            newViolations.Length == 0,
-            $"Frontend boundary violation: {string.Join(", ", newViolations)}");
-        Assert.True(
-            staleAllowlistEntries.Length == 0,
-            $"remove {string.Join(", ", staleAllowlistEntries)} from the allowlist");
+            violations.Length == 0,
+            $"Frontend boundary violation: {string.Join(", ", violations)}");
     }
 
     private static string FindRepositoryRoot()

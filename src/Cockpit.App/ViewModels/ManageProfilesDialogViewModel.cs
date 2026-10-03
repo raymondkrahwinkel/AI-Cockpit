@@ -7,7 +7,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewModels;
 
@@ -18,9 +18,9 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
     private readonly IProfileLoginChecker? _loginChecker;
-    private readonly IProfileLoginStarter? _loginStarter;
+    private readonly ISessionLoginFlows? _loginStarter;
     private readonly IModelCatalog? _modelCatalog;
-    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IPluginRegistrations? _pluginProviderRegistry;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
@@ -74,11 +74,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         ISessionProfileStore profileStore,
         IProfileLoginChecker loginChecker,
         IModelCatalog? modelCatalog = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null,
+        IPluginRegistrations? pluginProviderRegistry = null,
         IMcpServerCatalog? mcpServerCatalog = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IProfileLoginStarter? loginStarter = null,
+        ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null)
     {
         _pluginConfigViews = pluginConfigViews;

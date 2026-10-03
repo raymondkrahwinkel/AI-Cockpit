@@ -1,3 +1,5 @@
+using Cockpit.Core.Abstractions;
+
 namespace Cockpit.Infrastructure.Configuration;
 
 // AC-1108: folds every UpdateAsync raised in the scope into one read-modify-write (measured 60+ round-trips per
@@ -186,4 +188,10 @@ public sealed class CockpitConfigWriteBatch : IAsyncDisposable
             writeGate?.Dispose();
         }
     }
+}
+
+// AC-1441: the batch behind the Core contract, so the frontend opens one without naming the config file.
+internal sealed class CockpitConfigWriteBatches : ISettingsWriteBatch, ISingletonService
+{
+    public IAsyncDisposable Begin() => CockpitConfigWriteBatch.Begin();
 }

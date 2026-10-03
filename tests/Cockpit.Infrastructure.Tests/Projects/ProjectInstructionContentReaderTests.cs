@@ -1,5 +1,4 @@
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.Infrastructure.Tests.Projects;
 

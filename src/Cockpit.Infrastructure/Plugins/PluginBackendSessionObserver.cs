@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Shared;
 
 namespace Cockpit.Infrastructure.Plugins;
 

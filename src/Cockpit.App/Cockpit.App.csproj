@@ -55,6 +55,16 @@
     <!-- The host provides the SVG control (AC-809), same host-provided pattern as above: shipped from a
          plugin's own zip it drags along a second SkiaSharp/HarfBuzzSharp copy and fails to render at all. -->
     <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13" />
+    <!-- Rasterises page 1 of a PDF preview to a bitmap (AC-730). PDFium (native, the renderer Chrome ships) +
+         SkiaSharp — the marginal native weight is PDFium alone, since Svg.Skia (through Infrastructure) already pulls in Skia's own
+         natives. MIT-licensed; picked over pure-managed Melville.Pdf.SkiaSharp for the renderer maturity a
+         preview must not fall over on (see AC-730 for the full library comparison).
+         Pinned to 5.2.1, not the newer 5.3.0: that release bumps its SkiaSharp floor to 4.150.1, which forces
+         the whole solution onto a SkiaSharp major every plugin's bundled native asset was built against
+         (they still ship 3.119.x/native ABI 119.0) — every Avalonia.Skia plugin test then fails at startup on
+         a managed/native SkiaSharp version mismatch, not just this project. 5.2.1 only needs SkiaSharp
+         >= 3.119.2, already satisfied by the 3.119.4 pinned elsewhere, so it adds no floor at all. -->
+    <PackageReference Include="PDFtoImage" Version="5.2.1" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
@@ -87,6 +97,12 @@
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj" />
     <!-- Vendored terminal renderer (MIT), patched in-tree — see third_party/Exclr8.Terminal. -->
     <ProjectReference Include="..\..\third_party\Exclr8.Terminal\Exclr8.Terminal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AC-1441: one source file each, shared with Infrastructure: the SVG rasterizer and a turn's image attachment names. -->
+    <Compile Include="..\_shared\SvgRasterizer.cs" Link="Services\SvgRasterizer.cs" />
+    <Compile Include="..\_shared\SessionImageAttachments.cs" Link="Services\SessionImageAttachments.cs" />
   </ItemGroup>
 
   <ItemGroup>
