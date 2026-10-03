@@ -39,7 +39,8 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         string startNodeId,
         RunOrigin origin,
         IReadOnlyList<WorkflowItem>? seed = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<WorkflowRun>? changed = null)
     {
         var run = new WorkflowRun
         {
@@ -47,13 +48,17 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             WorkflowId = workflow.Id,
             WorkflowName = workflow.Name,
             StartedAt = DateTimeOffset.UtcNow,
+            IsManual = origin == RunOrigin.Operator,
         };
+        changed?.Invoke(run);
 
-        if (workflow.Node(startNodeId) is null)
+        if (workflow.Node(startNodeId) is not { } startNode)
         {
             run.Status = RunStatus.Failed;
             run.Error = "That step is not in this flow.";
             run.FinishedAt = DateTimeOffset.UtcNow;
+            run.Phase = WorkflowRunPhase.Completed;
+            changed?.Invoke(run);
             return run;
         }
 
@@ -62,8 +67,10 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         if (!workflow.Connections.Any(connection => connection.FromNodeId == startNodeId))
         {
             run.Status = RunStatus.Failed;
-            run.Error = $"'{workflow.Node(startNodeId)!.Name}' is wired to nothing, so there was nothing to run. Draw a wire from it to the step that should follow.";
+            run.Error = $"'{startNode.Name}' is wired to nothing, so there was nothing to run. Draw a wire from it to the step that should follow.";
             run.FinishedAt = DateTimeOffset.UtcNow;
+            run.Phase = WorkflowRunPhase.Completed;
+            changed?.Invoke(run);
             return run;
         }
 
@@ -104,7 +111,14 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             };
             run.Steps.Add(step);
 
-            var outcome = await _RunStepAsync(new StepContext(node, input, produced), step, origin, workflow.RunUnattended, cancellationToken);
+            var outcome = await _RunStepAsync(
+                new StepContext(node, input, produced),
+                step,
+                run,
+                changed,
+                origin,
+                workflow.RunUnattended,
+                cancellationToken);
             step.FinishedAt = DateTimeOffset.UtcNow;
             produced[node.Name] = outcome.Items;
 
@@ -120,6 +134,11 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             {
                 step.Status = RunStatus.Skipped;
                 step.Note = outcome.Output;
+                if (node.TypeId == "cockpit.approve" && run.Reason == WorkflowRunReason.None)
+                {
+                    run.Reason = WorkflowRunReason.ConsentDenied;
+                }
+
                 continue;
             }
 
@@ -132,10 +151,20 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             run.Status = RunStatus.Succeeded;
         }
 
+        run.Phase = WorkflowRunPhase.Completed;
+        changed?.Invoke(run);
+
         return run;
     }
 
-    private async Task<StepOutcome> _RunStepAsync(StepContext context, StepRun step, RunOrigin origin, bool unattended, CancellationToken cancellationToken)
+    private async Task<StepOutcome> _RunStepAsync(
+        StepContext context,
+        StepRun step,
+        WorkflowRun run,
+        Action<WorkflowRun>? changed,
+        RunOrigin origin,
+        bool unattended,
+        CancellationToken cancellationToken)
     {
         var (node, input, _) = context;
 
@@ -162,6 +191,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         // Failed — a step you refused is not a step that broke.
         if (runner.RequiredConsent is { } risk && _ConsentNeeded(origin, unattended))
         {
+            _Waiting(run, changed);
             var decision = await host.RequestConsentAsync(new ConsentRequest(
                 $"Workflow wants to run: {node.Name}",
                 runner.ConsentAction(context),
@@ -169,19 +199,36 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
                 $"workflow.{node.TypeId}",
                 risk,
                 AllowRemember: risk == ConsentRisk.LowRisk));
+            _Running(run, changed);
 
             if (!decision.IsApproved)
             {
                 // Also the message when nobody was there to ask (a trigger fired it while you were away): the gate
                 // fails closed, so the step is refused rather than run silently. Marking the flow Run unattended is
                 // how you allow that.
+                run.Reason = WorkflowRunReason.ConsentDenied;
                 return StepOutcome.Stop("This step needs your consent to run and it was not given, so the flow stopped here. If this flow should run its consent-gated steps unattended, mark it Run unattended.");
             }
+
         }
 
         try
         {
+            if (node.TypeId == "cockpit.approve")
+            {
+                _Waiting(run, changed);
+            }
+
             var outcome = await runner.RunAsync(context, cancellationToken);
+            if (node.TypeId == "cockpit.approve")
+            {
+                _Running(run, changed);
+                if (!outcome.Stops)
+                {
+                    run.ApprovalOrigin = WorkflowApprovalOrigin.Unknown;
+                }
+            }
+
             step.Status = RunStatus.Succeeded;
             step.Output = outcome.Output;
             step.Items = RunItems.Keep(outcome.Items);
@@ -189,16 +236,30 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         }
         catch (OperationCanceledException)
         {
+            _Running(run, changed);
             step.Status = RunStatus.Skipped;
             step.Note = "The run was stopped.";
             return StepOutcome.Passing(input, string.Empty);
         }
         catch (Exception exception)
         {
+            _Running(run, changed);
             step.Status = RunStatus.Failed;
             step.Note = exception.Message;
             return StepOutcome.Passing([], string.Empty);
         }
+    }
+
+    private static void _Waiting(WorkflowRun run, Action<WorkflowRun>? changed)
+    {
+        run.Phase = WorkflowRunPhase.WaitingForPermission;
+        changed?.Invoke(run);
+    }
+
+    private static void _Running(WorkflowRun run, Action<WorkflowRun>? changed)
+    {
+        run.Phase = WorkflowRunPhase.Running;
+        changed?.Invoke(run);
     }
 
     // The operator running a flow themselves is the consent; a trigger or an agent running it is not. An operator can

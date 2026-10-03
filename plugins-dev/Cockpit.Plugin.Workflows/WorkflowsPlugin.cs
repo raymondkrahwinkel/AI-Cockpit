@@ -47,6 +47,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
 
         // AC-1466: whether that clock still ticks, for /healthz.
         host.AddHealthSection(_watcher.Health);
+        host.AddHealthSection(new WorkflowRunsHealth(store, runs, _watcher, TimeProvider.System));
 
         // AC-12: the plugin's own MCP server, so agents can list, read, run and create/edit workflows. Contributed
         // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP. Fire-and-forget,

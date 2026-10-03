@@ -40,6 +40,7 @@ internal sealed class FlowWatcher : IDisposable
     // thread too. A flow that watches for text and then *sends* text to a session feeds its own trigger, and the
     // cockpit would sit there running it forever — which looks from the outside like the app has simply gone busy.
     private readonly HashSet<string> _running = [];
+    private readonly Dictionary<string, WorkflowRun> _active = [];
     private readonly Lock _runningLock = new();
 
     private bool _disposed;
@@ -68,6 +69,26 @@ internal sealed class FlowWatcher : IDisposable
 
     public SchedulerHealth Health { get; }
 
+    public WorkflowRun? Active(string workflowId)
+    {
+        lock (_runningLock)
+        {
+            return _active.Values.FirstOrDefault(run => run.WorkflowId == workflowId);
+        }
+    }
+
+    public bool TryRunNow(string workflowId)
+    {
+        var workflow = _store.Load().FirstOrDefault(candidate => candidate.Id == workflowId && candidate.IsActive);
+        var trigger = workflow?.Nodes.FirstOrDefault(node => node.TypeId == "cockpit.schedule" && !node.IsDisabled);
+        if (workflow is null || trigger is null)
+        {
+            return false;
+        }
+
+        return _TryStart(workflow, trigger, [], null, RunOrigin.Operator, recordBusy: false);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -87,7 +108,7 @@ internal sealed class FlowWatcher : IDisposable
     {
         foreach (var (workflow, trigger) in _Triggers(fired.TypeId))
         {
-            _ = _FireAsync(workflow, trigger, [WorkflowItem.Of(fired.Data)]);
+            _TryStart(workflow, trigger, [WorkflowItem.Of(fired.Data)]);
         }
     }
 
@@ -102,7 +123,7 @@ internal sealed class FlowWatcher : IDisposable
                 continue;
             }
 
-            _ = _FireAsync(workflow, trigger,
+            _TryStart(workflow, trigger,
             [
                 WorkflowItem.Of(new Dictionary<string, string>
                 {
@@ -165,13 +186,13 @@ internal sealed class FlowWatcher : IDisposable
                     ? $"Late — scheduled for {decision.Slot:yyyy-MM-dd HH:mm} UTC."
                     : null;
 
-                _ = _FireAsync(workflow, trigger,
+                _TryStart(workflow, trigger,
                 [
                     WorkflowItem.Of(new Dictionary<string, string>
                     {
                         ["at"] = decision.Slot.ToString("yyyy-MM-dd HH:mm"),
                     }),
-                ], note);
+                ], note, wasCaughtUp: decision.Outcome == ScheduleCatchUpOutcome.Late);
             }
 
             // A one-shot slot is spent the moment it is handled — fired, late, or missed makes no difference: none
@@ -207,7 +228,14 @@ internal sealed class FlowWatcher : IDisposable
         _store.Save(workflows);
     }
 
-    private async Task _FireAsync(Workflow workflow, WorkflowNode trigger, IReadOnlyList<WorkflowItem> seed, string? note = null)
+    private bool _TryStart(
+        Workflow workflow,
+        WorkflowNode trigger,
+        IReadOnlyList<WorkflowItem> seed,
+        string? note = null,
+        RunOrigin origin = RunOrigin.Trigger,
+        bool recordBusy = true,
+        bool wasCaughtUp = false)
     {
         var key = $"{workflow.Id}:{trigger.Id}";
 
@@ -215,57 +243,115 @@ internal sealed class FlowWatcher : IDisposable
         {
             if (!_running.Add(key))
             {
-                _runs.Add(_SkippedRun(workflow, "Skipped — the previous run of this flow was still going."));
-                return;
+                if (recordBusy)
+                {
+                    _runs.Add(_SkippedRun(workflow));
+                }
+
+                return false;
             }
         }
 
-        _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
+        _ = _FireGuardedAsync(key, workflow, trigger, seed, note, origin, wasCaughtUp);
+        return true;
+    }
 
+    private async Task _FireGuardedAsync(
+        string key,
+        Workflow workflow,
+        WorkflowNode trigger,
+        IReadOnlyList<WorkflowItem> seed,
+        string? note,
+        RunOrigin origin,
+        bool wasCaughtUp)
+    {
         WorkflowRun run;
         try
         {
-            run = await _engine.RunAsync(workflow, trigger.Id, RunOrigin.Trigger, seed);
+            _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
+            run = await _engine.RunAsync(
+                workflow,
+                trigger.Id,
+                origin,
+                seed,
+                changed: changed => _Track(key, changed));
+        }
+        catch (Exception exception)
+        {
+            run = _FailedRun(workflow, exception.Message, origin == RunOrigin.Operator);
         }
         finally
         {
             lock (_runningLock)
             {
                 _running.Remove(key);
+                _active.Remove(key);
             }
         }
 
-        run.Note = note;
-        _runs.Add(run);
+        try
+        {
+            run.Note = note;
+            run.WasCaughtUp = wasCaughtUp;
+            _runs.Add(run);
 
         // A flow that fired and failed while you were looking elsewhere must say so — this is the one thing that
         // separates automation from a machine quietly doing nothing.
-        if (run.Status == RunStatus.Failed)
+            if (run.Status == RunStatus.Failed)
+            {
+                _host.ShowToast($"'{workflow.Name}' failed: {run.Error}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
+            }
+        }
+        catch (Exception)
         {
-            _host.ShowToast($"'{workflow.Name}' failed: {run.Error}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
+            // This observes the terminal storage/notification work so a background run never leaves a faulted task.
         }
     }
 
-    private static WorkflowRun _SkippedRun(Workflow workflow, string note) => new()
+    private void _Track(string key, WorkflowRun run)
+    {
+        lock (_runningLock)
+        {
+            _active[key] = run;
+        }
+    }
+
+    private WorkflowRun _SkippedRun(Workflow workflow) => new()
     {
         Id = Guid.NewGuid().ToString("n"),
         WorkflowId = workflow.Id,
         WorkflowName = workflow.Name,
-        StartedAt = DateTimeOffset.UtcNow,
-        FinishedAt = DateTimeOffset.UtcNow,
+        StartedAt = _time.GetUtcNow(),
+        FinishedAt = _time.GetUtcNow(),
         Status = RunStatus.Skipped,
-        Note = note,
+        Phase = WorkflowRunPhase.Completed,
+        Reason = WorkflowRunReason.AlreadyRunning,
     };
 
-    private static WorkflowRun _MissedRun(Workflow workflow, DateTimeOffset slot, DateTimeOffset now) => new()
+    private WorkflowRun _MissedRun(Workflow workflow, DateTimeOffset slot, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid().ToString("n"),
         WorkflowId = workflow.Id,
         WorkflowName = workflow.Name,
-        StartedAt = DateTimeOffset.UtcNow,
-        FinishedAt = DateTimeOffset.UtcNow,
+        StartedAt = now,
+        FinishedAt = now,
         Status = RunStatus.Skipped,
+        Phase = WorkflowRunPhase.Completed,
+        Reason = WorkflowRunReason.Missed,
         Note = $"Missed — scheduled for {slot:yyyy-MM-dd HH:mm} UTC, this cockpit was not running until {now:yyyy-MM-dd HH:mm} UTC.",
+    };
+
+    private WorkflowRun _FailedRun(Workflow workflow, string error, bool manual) => new()
+    {
+        Id = Guid.NewGuid().ToString("n"),
+        WorkflowId = workflow.Id,
+        WorkflowName = workflow.Name,
+        StartedAt = _time.GetUtcNow(),
+        FinishedAt = _time.GetUtcNow(),
+        Status = RunStatus.Failed,
+        Phase = WorkflowRunPhase.Completed,
+        Error = error,
+        IsManual = manual,
     };
 
     // A pattern is plain text, unless it is written as a regex (/like this/) — the everyday case is "did it say

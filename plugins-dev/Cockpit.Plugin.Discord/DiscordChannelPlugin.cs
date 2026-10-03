@@ -24,6 +24,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             "DMs you.");
 
     private readonly List<IDisposable> _handlers = [];
+    private readonly DiscordHealthState _health = new(TimeProvider.System);
 
     private ICockpitHost? _host;
     private DiscordChannelSettings? _settings;
@@ -38,6 +39,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
     {
         _host = host;
         _settings = new DiscordChannelSettings(host.Storage);
+        host.AddHealthSection(_health);
 
         // AC-1394: the settings view itself, and the AddSettings/OnSettingsSaved registrations that put it in
         // front of the operator, moved to DiscordUi.InitializeUi — this reconnect is what the UI part's own
@@ -62,6 +64,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
     // into the AssistantChannelContribution, so a narrower "just swap the token" path would still need this).
     private void _Reconnect()
     {
+        _health.Disconnected();
         _connection?.Dispose();
         _connection = null;
 
@@ -112,6 +115,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             settings.ChannelId,
             configured.Access,
             () => settings.Access?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly,
+            _health,
             error => host.ShowToast(error, PluginToastSeverity.Error),
             refusal => _logger?.LogInformation("{Refusal}", refusal));
     }

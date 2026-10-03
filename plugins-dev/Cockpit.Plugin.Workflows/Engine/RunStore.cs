@@ -12,6 +12,7 @@ internal sealed class RunStore(IPluginCache storage, Action<WorkflowRun>? record
 {
     private const string Key = "runs";
     private const int Keep = 20;
+    private readonly Lock _gate = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -32,6 +33,14 @@ internal sealed class RunStore(IPluginCache storage, Action<WorkflowRun>? record
 
     public IReadOnlyList<WorkflowRun> Load()
     {
+        lock (_gate)
+        {
+            return _Load();
+        }
+    }
+
+    private IReadOnlyList<WorkflowRun> _Load()
+    {
         try
         {
             return storage.Get<string>(Key) is { Length: > 0 } json
@@ -45,22 +54,27 @@ internal sealed class RunStore(IPluginCache storage, Action<WorkflowRun>? record
         }
     }
 
-    // Adds a run and drops the oldest beyond `Keep`.
+    // Keeps the newest twenty plus the newest run of every other workflow.
     public IReadOnlyList<WorkflowRun> Add(WorkflowRun run)
     {
-        var runs = Load().ToList();
-        runs.Insert(0, run);
-
-        if (runs.Count > Keep)
+        List<WorkflowRun> kept;
+        lock (_gate)
         {
-            runs = runs.Take(Keep).ToList();
-        }
+            var runs = _Load().ToList();
+            runs.Insert(0, run);
 
-        storage.Set(Key, JsonSerializer.Serialize(runs, Options));
+            var latest = runs
+                .GroupBy(candidate => candidate.WorkflowId, StringComparer.Ordinal)
+                .Select(group => group.First().Id)
+                .ToHashSet(StringComparer.Ordinal);
+            kept = runs.Where((candidate, index) => index < Keep || latest.Contains(candidate.Id)).ToList();
+
+            storage.Set(Key, JsonSerializer.Serialize(kept, Options));
+        }
 
         // Whoever ran it: this is how the UI part's run panel follows runs over the channel (AC-1399).
         recorded?.Invoke(run);
-        return runs;
+        return kept;
     }
 
     public IReadOnlyList<WorkflowRun> For(string workflowId) =>

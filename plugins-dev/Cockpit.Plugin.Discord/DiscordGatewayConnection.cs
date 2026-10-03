@@ -12,6 +12,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
     private readonly DiscordSocketClient _client;
     private readonly DiscordChannelBridge _bridge;
     private readonly DiscordFileFetcher _files;
+    private readonly DiscordHealthState _health;
     private readonly ulong _channelId;
     private readonly string? _directMessageUserId;
 
@@ -25,6 +26,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         ulong channelId,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
+        DiscordHealthState health,
         Action<string> reportError,
         Action<string> logRefusal)
     {
@@ -32,6 +34,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         _directMessageUserId = channelId == 0 && access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 }
             ? access.UserIds.First()
             : null;
+        _health = health;
 
         _client = new DiscordSocketClient(new DiscordSocketConfig
         {
@@ -44,6 +47,8 @@ internal sealed class DiscordGatewayConnection : IDisposable
 
         _client.MessageReceived += _OnMessageReceived;
         _client.ButtonExecuted += _OnButtonExecutedAsync;
+        _client.Ready += _OnReady;
+        _client.Disconnected += _OnDisconnected;
 
         _ = _ConnectAsync(botToken, reportError);
     }
@@ -53,15 +58,21 @@ internal sealed class DiscordGatewayConnection : IDisposable
         try
         {
             await _client.LoginAsync(TokenType.Bot, botToken).ConfigureAwait(false);
+            await _client.StartAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            // AC-1024 criterion 5: reported once, and StartAsync below never runs — no reconnect loop to run away.
-            reportError($"Discord: could not connect — {exception.Message}");
-            return;
+            _health.Disconnected();
+            // AC-1024 criterion 5: report once, with no reconnect loop to run away.
+            try
+            {
+                reportError($"Discord: could not connect — {exception.Message}");
+            }
+            catch (Exception)
+            {
+                // The background connector has no caller left to observe a reporting failure.
+            }
         }
-
-        await _client.StartAsync().ConfigureAwait(false);
     }
 
     private async Task<IMessageChannel?> _ResolveChannelAsync()
@@ -96,10 +107,20 @@ internal sealed class DiscordGatewayConnection : IDisposable
     // The workflow step's way out (AC-1360): the parts go in order to the one account's direct messages.
     public async Task SendDirectMessageAsync(string userId, IReadOnlyList<string> parts, CancellationToken cancellationToken)
     {
-        var channel = await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false);
-        foreach (var part in parts)
+        try
         {
-            await channel.SendMessageAsync(part, options: new RequestOptions { CancelToken = cancellationToken }).ConfigureAwait(false);
+            var channel = await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false);
+            foreach (var part in parts)
+            {
+                await channel.SendMessageAsync(part, options: new RequestOptions { CancelToken = cancellationToken }).ConfigureAwait(false);
+            }
+
+            _health.DirectMessageDelivered();
+        }
+        catch (Exception)
+        {
+            _health.DirectMessageFailed();
+            throw;
         }
     }
 
@@ -113,8 +134,20 @@ internal sealed class DiscordGatewayConnection : IDisposable
             return Task.CompletedTask;
         }
 
-        _ = _bridge.HandleInboundMessageAsync(
+        _health.MessageReceived();
+        return _bridge.HandleInboundMessageAsync(
             message.Author.Id.ToString(), message.Content, message.Id, _InboundFiles(message));
+    }
+
+    private Task _OnReady()
+    {
+        _health.Connected(_client.CurrentUser?.Username);
+        return Task.CompletedTask;
+    }
+
+    private Task _OnDisconnected(Exception _)
+    {
+        _health.Disconnected();
         return Task.CompletedTask;
     }
 
@@ -141,9 +174,34 @@ internal sealed class DiscordGatewayConnection : IDisposable
         _disposed = true;
         _client.MessageReceived -= _OnMessageReceived;
         _client.ButtonExecuted -= _OnButtonExecutedAsync;
+        _client.Ready -= _OnReady;
+        _client.Disconnected -= _OnDisconnected;
         _bridge.Dispose();
         _files.Dispose();
-        _ = _client.StopAsync();
-        _client.Dispose();
+        _health.Disconnected();
+        _ = _StopAsync();
+    }
+
+    private async Task _StopAsync()
+    {
+        try
+        {
+            await _client.StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Disposal is best effort, but the background stop is always observed.
+        }
+        finally
+        {
+            try
+            {
+                _client.Dispose();
+            }
+            catch (Exception)
+            {
+                // The background stop has already made the connection unavailable.
+            }
+        }
     }
 }
