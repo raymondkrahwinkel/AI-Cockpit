@@ -286,6 +286,8 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         await runtime.StartAsync(
             start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
             launchOptions, start.ProjectId);
+        _liveState.SetPermissionMode(start.PermissionMode);
+        _RaiseLiveStateIfChanged();
         StartUsageCatchUp();
         return new SessionLaunched(runtime.IsRunning, runtime.ProcessId, runtime.Capabilities, runtime.LiveOptions);
     }
@@ -667,11 +669,21 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         if (Runtime is { } runtime)
         {
             await runtime.SetPermissionModeAsync(mode);
+            _liveState.SetPermissionMode(mode);
+            _RaiseLiveStateIfChanged();
             _ = _stateRecorder?.RecordPermissionModeChangedAsync(_paneId(), mode);
         }
     }
 
-    public Task SetModelAsync(string? model) => Runtime?.SetModelAsync(model) ?? Task.CompletedTask;
+    public async Task SetModelAsync(string? model)
+    {
+        if (Runtime is { } runtime)
+        {
+            await runtime.SetModelAsync(model);
+            _liveState.SetModel(model);
+            _RaiseLiveStateIfChanged();
+        }
+    }
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens) =>
         Runtime?.SetMaxThinkingTokensAsync(maxThinkingTokens) ?? Task.CompletedTask;
@@ -713,6 +725,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // such a session last published.
     public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config)
     {
+        config ??= Runtime?.Profile?.ProviderConfig ?? _loginProfile?.ProviderConfig;
         var status = Runtime?.CurrentStatus;
         if (status is { HasAny: true })
         {

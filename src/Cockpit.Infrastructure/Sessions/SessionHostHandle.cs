@@ -31,6 +31,28 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     // AC-1437: the host's signals, held while the lock is and raised once it is let go, in the order they came.
     private readonly List<Action> _heldRaises = [];
 
+    public ISessionControl Control => _host;
+
+    public async Task<bool> UseControlAsync(Func<ISessionControl, Task> use)
+    {
+        ArgumentNullException.ThrowIfNull(use);
+        Task operation;
+        try
+        {
+            lock (_gate)
+            {
+                operation = use(_host);
+            }
+        }
+        finally
+        {
+            _RaiseHeldSignals();
+        }
+
+        await operation.ConfigureAwait(false);
+        return true;
+    }
+
     public SessionHostHandle(
         string paneId,
         string title,

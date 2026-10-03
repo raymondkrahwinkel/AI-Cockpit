@@ -1,7 +1,9 @@
+using System.Collections.Specialized;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Hosting;
 
 namespace Cockpit.Infrastructure.Events;
@@ -65,18 +67,73 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 void append(string kind, object data) => log.Append(kind, paneId, data, handle.ActiveProfileLabel, handle.ProjectId);
                 Action<TranscriptRowUpsert> onRow = upsert => append("row", new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
                 // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
-                Action<SessionLiveState> onLiveState = state => append(
-                    "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
+                var control = handle.Control;
+                Action<SessionLiveState> onLiveState = state =>
+                {
+                    RemoteUsageStatus? usageStatus;
+                    try
+                    {
+                        usageStatus = RemoteUsageStatus.From(control?.ReadUsageStatus(null));
+                    }
+                    catch (Exception)
+                    {
+                        usageStatus = null;
+                    }
+
+                    append("live-state", new
+                    {
+                        PaneId = paneId,
+                        LiveState = state with { Connection = null, CliSessionId = null },
+                        UsageStatus = usageStatus,
+                    });
+                };
+                Action<SessionTurnEnd> onTurnEnded = end => append("turn-ended", new { PaneId = paneId, End = end });
                 // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
+                Action? onUsage = control is not null ? () => _ = appendUsageAsync() : null;
+                async Task appendUsageAsync()
+                {
+                    try
+                    {
+                        await handle.UseControlAsync(current =>
+                        {
+                            append("usage", new { PaneId = paneId, UsageStatus = RemoteUsageStatus.From(current.ReadUsageStatus(null)) });
+                            return Task.CompletedTask;
+                        }).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // A usage tick is advisory; a later tick or list refresh can replace it.
+                    }
+                }
+                NotifyCollectionChangedEventHandler? onQueue = control is not null
+                    ? (_, _) => append("queue", new
+                    {
+                        PaneId = paneId,
+                        Queue = control.Queue.Select(prompt => new { prompt.WireId, prompt.Text }),
+                    })
+                    : null;
                 handle.RowUpserted += onRow;
                 handle.LiveStateChanged += onLiveState;
+                handle.TurnEnded += onTurnEnded;
                 handle.ToolActivityProduced += onTool;
+                if (control is not null && onQueue is not null && onUsage is not null)
+                {
+                    control.QueueChanged += onQueue;
+                    control.UsageCatchUpDue += onUsage;
+                }
+
                 _watched[handle] = () =>
                 {
                     handle.RowUpserted -= onRow;
                     handle.LiveStateChanged -= onLiveState;
+                    handle.TurnEnded -= onTurnEnded;
                     handle.ToolActivityProduced -= onTool;
+                    if (onQueue is not null && onUsage is not null && control is not null)
+                    {
+                        control.QueueChanged -= onQueue;
+                        control.UsageCatchUpDue -= onUsage;
+                    }
                 };
             }
         }

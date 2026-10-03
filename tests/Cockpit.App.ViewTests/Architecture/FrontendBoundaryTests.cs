@@ -1,6 +1,10 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Cockpit.App.Composition;
+using Cockpit.App.Services;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.BackendApi;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.ViewTests.Architecture;
 
@@ -9,7 +13,7 @@ public sealed class FrontendBoundaryTests
     private static readonly Type[] WiringMarkers = [typeof(Cockpit.Core.Abstractions.ISingletonService), typeof(IDisposable), typeof(IAsyncDisposable)];
 
     [Fact]
-    public void FrontendCode_OnlyUsesFrontendContracts()
+    public async Task FrontendCode_OnlyUsesFrontendContracts()
     {
         var repositoryRoot = FindRepositoryRoot();
         var appRoot = Path.Combine(repositoryRoot, "src", "Cockpit.App");
@@ -73,6 +77,18 @@ public sealed class FrontendBoundaryTests
             violations.Length == 0,
             $"Frontend boundary violation: {string.Join(", ", violations)}");
         Assert.True(thick.Length == 0, $"Composition holds more than wiring: {string.Join(", ", thick)}");
+
+        var client = new BackendApiClient(
+            new Uri("https://127.0.0.1"),
+            Guid.NewGuid().ToString("N"),
+            new string('0', 64),
+            TimeProvider.System);
+        var backend = new RemoteBackend(client);
+        var services = new ServiceCollection().AddRemoteSessionBackend(backend, client);
+        await using var provider = services.BuildServiceProvider();
+
+        Assert.IsType<RemoteProviderUsageSignals>(provider.GetRequiredService<IProviderUsageSignals>());
+        Assert.IsType<RemoteSessionLoginFlows>(provider.GetRequiredService<ISessionLoginFlows>());
     }
 
     // Public, a static class with state, or a class that is unsealed, implements no contract or adds public members.

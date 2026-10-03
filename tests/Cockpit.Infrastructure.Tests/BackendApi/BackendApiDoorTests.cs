@@ -303,6 +303,8 @@ public sealed class BackendApiDoorTests
 
         public SessionRegistry Sessions { get; } = new();
 
+        public IPluginProviderRegistry Providers { get; } = new PluginProviderRegistry();
+
         public string NodeBase { get; private set; } = "";
 
         public string LoopbackBase { get; private set; } = "";
@@ -330,6 +332,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton<IAssistantReadGateway>(ReadGateway);
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);
+            services.AddSingleton(Providers);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = Substitute.For<IProjectEditor>();

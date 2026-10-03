@@ -10,7 +10,9 @@ public sealed record SessionLiveState(
     IReadOnlyList<BackgroundTask> BackgroundTasks,
     SessionUsageTotals Usage,
     SessionConnection? Connection,
-    string? CliSessionId)
+    string? CliSessionId,
+    string? Model = null,
+    string? PermissionMode = null)
 {
     public static SessionLiveState None { get; } = new(SessionStatus.Idle, [], [], SessionUsageTotals.None, Connection: null, CliSessionId: null);
 }

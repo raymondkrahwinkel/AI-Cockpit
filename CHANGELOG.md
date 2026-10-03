@@ -50,6 +50,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   needs a key.
 - added: plugins can report their own health to the cockpit, with a section of rows that carry only a status and
   a time. The Workflows plugin reports whether its scheduler still ticks, and now needs cockpit 0.65.0.
+- added: a remote SDK pane can interrupt a turn, switch model and permission mode, share its queued prompts,
+  render provider usage signals, and complete the server-hosted sign-in conversation without moving credentials.
 - added: an admin connect key can sign a provider profile in on the server without a browser, through
   `POST /api/v1/profiles/{profile}/sign-in`: the server runs the provider's own sign-in and passes on only its link,
   its code and whether it waits for a pasted code (`…/sign-in/{flowId}/input`), and `GET …/sign-in/{flowId}` tells

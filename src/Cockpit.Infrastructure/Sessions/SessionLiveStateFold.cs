@@ -12,6 +12,8 @@ internal sealed class SessionLiveStateFold
     private SessionUsageTotals _usage = SessionUsageTotals.None;
     private SessionConnection? _connection;
     private string? _cliSessionId;
+    private string? _model;
+    private string? _permissionMode;
 
     // A pending permission or a CLI `needs_action`, cleared when the operator sends the next message or answers the
     // last prompt; stickier than the prompt itself, so the sidebar keeps flagging until someone has been back.
@@ -38,6 +40,7 @@ internal sealed class SessionLiveStateFold
         {
             case SessionInitialized init:
                 _connection = new SessionConnection(init.Cwd, init.Tools, init.Model);
+                _model = init.Model;
                 break;
 
             // AC-146: a sub-agent's own tool call nests under its Task row and is not what the turn waits on.
@@ -112,7 +115,13 @@ internal sealed class SessionLiveStateFold
         _backgroundTasks,
         _usage,
         _connection,
-        _cliSessionId);
+        _cliSessionId,
+        _model,
+        _permissionMode);
+
+    public void SetModel(string? model) => _model = model;
+
+    public void SetPermissionMode(string? permissionMode) => _permissionMode = permissionMode;
 
     public void ClearNeedsAttention() => _needsAttention = false;
 

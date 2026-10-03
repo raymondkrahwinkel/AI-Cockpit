@@ -33,7 +33,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     private long _lastSeq;
     private Task _reader = Task.CompletedTask;
 
-    private RemoteBackend(BackendApiClient client)
+    internal RemoteBackend(BackendApiClient client)
     {
         _client = client;
     }
@@ -74,6 +74,28 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     }
 
     public WorkspaceSettings Workspaces => NodeDesk;
+
+    public IReadOnlyList<RemoteProviderUsageSignal>? UsageSignalsOf(string providerId)
+    {
+        lock (_gate)
+        {
+            return _sessions
+                .Select(session => session.Facts)
+                .Where(row => string.Equals(row.ProviderId, providerId, StringComparison.Ordinal))
+                .Select(row => row.UsageSignals)
+                .FirstOrDefault(signals => signals is not null);
+        }
+    }
+
+    public bool CanSignIn(string profileLabel)
+    {
+        lock (_gate)
+        {
+            return _sessions.Any(session =>
+                string.Equals(session.Facts.Profile, profileLabel, StringComparison.Ordinal)
+                && session.Facts.CanSignIn);
+        }
+    }
 
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
     public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client)
@@ -319,6 +341,20 @@ internal sealed record RemoteSessionRow(
     string? Statusline = null,
     string? Status = null,
     bool HasOutstandingWork = false,
-    IReadOnlyList<RemotePendingPermission>? PendingPermissions = null);
+    IReadOnlyList<RemotePendingPermission>? PendingPermissions = null,
+    IReadOnlyList<RemoteQueueItem>? Queue = null,
+    string? ProviderId = null,
+    IReadOnlyList<RemoteProviderUsageSignal>? UsageSignals = null,
+    RemoteUsageStatus? UsageStatus = null,
+    bool CanSignIn = false);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
+
+public sealed record RemoteProviderUsageSignal(
+    string Key,
+    string Label,
+    string Kind,
+    double DefaultThresholdPercent,
+    string? Description,
+    bool SupportsResume,
+    string? DefaultResumePrompt);

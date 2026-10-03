@@ -4,8 +4,11 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -31,23 +34,46 @@ internal static class SessionsEndpoints
         // AC-1388: `seq` is read before the list, so a reader following the stream after it misses no change to it.
         api.MapGet("/sessions", async () =>
         {
+            var caller = _Caller();
             var seq = log().LastSeq;
-            var visible = await policy().VisibleSessionsAsync(_Caller()).ConfigureAwait(false);
+            var visible = await policy().VisibleSessionsAsync(caller).ConfigureAwait(false);
             var pending = (await read().ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
-            return Results.Json(new
+            var profiles = (await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false))
+                .ToDictionary(profile => profile.Label, StringComparer.Ordinal);
+            var providers = services.GetService<IPluginProviderRegistry>();
+            List<object> listed = [];
+            foreach (var session in visible)
             {
-                seq,
-                assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
-                sessions = visible.Select(session => new
+                profiles.TryGetValue(session.Profile, out var profile);
+                var providerId = profile is null ? null : _ProviderId(profile);
+                var registration = providerId is null ? null : providers?.Resolve(providerId);
+                RemoteUsageStatus? usageStatus = null;
+                IReadOnlyList<RemoteQueueItem> queue = [];
+                if (sessions().Find(session.PaneId) is { } handle)
+                {
+                    await handle.UseControlAsync(control =>
+                    {
+                        usageStatus = profile is null ? null : RemoteUsageStatus.From(control.ReadUsageStatus(profile.ProviderConfig));
+                        queue = [.. control.Queue.Select(prompt => new RemoteQueueItem(prompt.WireId, prompt.Text))];
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                }
+
+                listed.Add(new
                 {
                     paneId = session.PaneId,
                     name = session.Name,
                     profile = session.Profile,
+                    providerId,
+                    usageSignals = registration?.UsageSignals.Select(_UsageSignal).ToArray() ?? [],
+                    usageStatus,
+                    canSignIn = caller.Capability == ConnectKeyCapability.Admin && registration?.StartLogin is not null,
                     projectId = session.ProjectId,
                     statusline = session.Statusline,
                     status = session.Status,
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
+                    queue,
                     pendingPermissions = pending[session.PaneId].Select(permission => new
                     {
                         toolUseId = permission.ToolUseId,
@@ -55,7 +81,14 @@ internal static class SessionsEndpoints
                         input = permission.InputJson,
                         sinceUtc = permission.SinceUtc,
                     }),
-                }),
+                });
+            }
+
+            return Results.Json(new
+            {
+                seq,
+                assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
+                sessions = listed,
             });
         }).RequireOperate();
 
@@ -165,6 +198,110 @@ internal static class SessionsEndpoints
             return Results.Json(new { paneId, toolUseId, answered });
         }).RequireOperate().Audited("answer_permission", services);
 
+        api.MapPost("/sessions/{paneId}/interrupt", async (string paneId) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId) is not { } handle
+                || !await handle.UseControlAsync(control => control.InterruptAsync()).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Json(new { paneId });
+        }).RequireOperate().Audited("interrupt_session", services);
+
+        api.MapPost("/sessions/{paneId}/model", async (string paneId, ModelBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId) is not { } handle
+                || !await handle.UseControlAsync(control => control.SetModelAsync(body.Model)).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Json(new { paneId, model = body.Model });
+        }).RequireOperate().Audited("set_session_model", services);
+
+        api.MapPost("/sessions/{paneId}/permission-mode", async (string paneId, PermissionModeBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId) is not { } handle)
+            {
+                return Results.NotFound();
+            }
+
+            if (body.Mode is not ("default" or "acceptEdits" or "plan"))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "mode must be default, acceptEdits, or plan.");
+            }
+
+            if (body.Mode == "acceptEdits" && !_Caller().MayAnswerPermissions)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", NodeSessionMcpTools.PermissionsRefusal);
+            }
+
+            if (!await handle.UseControlAsync(control => control.SetPermissionModeAsync(body.Mode)).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Json(new { paneId, mode = body.Mode });
+        }).RequireOperate().Audited("set_session_permission_mode", services);
+
+        api.MapPost("/sessions/{paneId}/queue", async (string paneId, QueueCommandBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId) is not { } handle)
+            {
+                return Results.NotFound();
+            }
+
+            IResult? answer = null;
+            var used = await handle.UseControlAsync(async control =>
+            {
+                if (string.Equals(body.Command, "clear", StringComparison.Ordinal))
+                {
+                    control.ClearQueue();
+                    answer = Results.Json(new { paneId });
+                    return;
+                }
+
+                if (string.Equals(body.Command, "withdraw", StringComparison.Ordinal))
+                {
+                    var queued = control.Queue.FirstOrDefault(prompt => string.Equals(prompt.WireId, body.WireId, StringComparison.Ordinal));
+                    answer = queued is null || !control.Withdraw(queued)
+                        ? BackendApiRoutes.Error(StatusCodes.Status404NotFound, "queue_item_not_found", "The queue item was not found.")
+                        : Results.Json(new { paneId, wireId = queued.WireId });
+                    return;
+                }
+
+                if ((string.Equals(body.Command, "submit", StringComparison.Ordinal)
+                        || string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                    && !string.IsNullOrWhiteSpace(body.Text))
+                {
+                    var prompt = new QueuedPrompt(body.Text, [], body.ReplyToRowId, body.WireId);
+                    if (string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                    {
+                        control.Enqueue(prompt);
+                    }
+                    else
+                    {
+                        await control.SubmitAsync(prompt, body.TakesMidTurnInput);
+                    }
+
+                    answer = Results.Json(new { paneId, prompt.WireId });
+                    return;
+                }
+
+                answer = BackendApiRoutes.Error(
+                    StatusCodes.Status400BadRequest,
+                    "invalid_request",
+                    "command must be submit, enqueue, withdraw, or clear; submit and enqueue require text.");
+            }).ConfigureAwait(false);
+
+            return used ? answer ?? Results.Empty : Results.NotFound();
+        }).RequireOperate().Audited("change_session_queue", services);
+
         api.MapGet("/assistant/transcript", async (int? count) =>
         {
             if (sessions().Assistant is not { } assistant)
@@ -226,6 +363,22 @@ internal static class SessionsEndpoints
     private static int _Count(int? count) =>
         Math.Clamp(count ?? AssistantReadMcpTools.DefaultEntryCount, 1, AssistantReadMcpTools.MaxEntryCount);
 
+    private static string _ProviderId(SessionProfile profile) =>
+        profile.ProviderConfig is PluginProviderConfig plugin
+            ? plugin.ProviderId
+            : profile.Provider == SessionProvider.ClaudeCli
+                ? ClaudePluginProfile.ProviderId
+                : profile.Provider.ToString().ToLowerInvariant();
+
+    private static RemoteProviderUsageSignal _UsageSignal(Cockpit.Plugins.Abstractions.Sessions.PluginUsageSignal signal) => new(
+        signal.Key,
+        signal.Label,
+        signal.Kind.ToString().ToLowerInvariant(),
+        signal.DefaultThresholdPercent,
+        signal.Description,
+        signal.SupportsResume,
+        signal.DefaultResumePrompt);
+
     // Only reached behind the group's door, which has checked the caller is there.
     private static NodeCaller _Caller() =>
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A session route ran without a connect-key caller.");
@@ -236,3 +389,9 @@ internal sealed record StartSessionBody(string Profile, string? ProjectId, strin
 internal sealed record PromptBody(string Text);
 
 internal sealed record PermissionBody(bool Allow);
+
+internal sealed record ModelBody(string? Model);
+
+internal sealed record PermissionModeBody(string Mode);
+
+internal sealed record QueueCommandBody(string Command, string? WireId, string? Text, string? ReplyToRowId, bool TakesMidTurnInput = false);
