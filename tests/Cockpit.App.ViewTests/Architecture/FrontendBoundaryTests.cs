@@ -6,6 +6,8 @@ namespace Cockpit.App.ViewTests.Architecture;
 
 public sealed class FrontendBoundaryTests
 {
+    private static readonly Type[] WiringMarkers = [typeof(Cockpit.Core.Abstractions.ISingletonService), typeof(IDisposable), typeof(IAsyncDisposable)];
+
     [Fact]
     public void FrontendCode_OnlyUsesFrontendContracts()
     {
@@ -58,36 +60,11 @@ public sealed class FrontendBoundaryTests
 
         // The exemption is no back door: a Composition type is internal; a class is a sealed adapter with no public
         // surface beyond the contracts it implements, a static class keeps no state. Logic belongs elsewhere.
-        var markers = new[] { typeof(Cockpit.Core.Abstractions.ISingletonService), typeof(IDisposable), typeof(IAsyncDisposable) };
         var composition = typeof(Cockpit.App.Composition.DesktopComposition).Assembly.GetTypes()
             .Where(type => type.Namespace?.StartsWith("Cockpit.App.Composition", StringComparison.Ordinal) == true
                 && !type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false));
         var thick = composition
-            .Where(type =>
-            {
-                if (type.IsPublic || type.IsNestedPublic)
-                {
-                    return true;
-                }
-
-                if (type.IsNested)
-                {
-                    return false;
-                }
-
-                if (type is { IsAbstract: true, IsSealed: true })
-                {
-                    return type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-                        .Any(field => !field.IsInitOnly && !field.IsLiteral);
-                }
-
-                var contracts = type.GetInterfaces().Except(markers).ToArray();
-                var contractMembers = contracts.SelectMany(contract => type.GetInterfaceMap(contract).TargetMethods).ToHashSet();
-                return !type.IsSealed
-                    || contracts.Length == 0
-                    || type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-                        .Any(method => !contractMembers.Contains(method));
-            })
+            .Where(_HoldsMoreThanWiring)
             .Select(type => type.Name)
             .Order()
             .ToArray();
@@ -96,6 +73,33 @@ public sealed class FrontendBoundaryTests
             violations.Length == 0,
             $"Frontend boundary violation: {string.Join(", ", violations)}");
         Assert.True(thick.Length == 0, $"Composition holds more than wiring: {string.Join(", ", thick)}");
+    }
+
+    // Public, a static class with state, or a class that is unsealed, implements no contract or adds public members.
+    private static bool _HoldsMoreThanWiring(Type type)
+    {
+        if (type.IsPublic || type.IsNestedPublic)
+        {
+            return true;
+        }
+
+        if (type.IsNested)
+        {
+            return false;
+        }
+
+        if (type is { IsAbstract: true, IsSealed: true })
+        {
+            return type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                .Any(field => !field.IsInitOnly && !field.IsLiteral);
+        }
+
+        var contracts = type.GetInterfaces().Except(WiringMarkers).ToArray();
+        var contractMembers = contracts.SelectMany(contract => type.GetInterfaceMap(contract).TargetMethods).ToHashSet();
+        return !type.IsSealed
+            || contracts.Length == 0
+            || type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                .Any(method => !contractMembers.Contains(method));
     }
 
     private static string FindRepositoryRoot()
