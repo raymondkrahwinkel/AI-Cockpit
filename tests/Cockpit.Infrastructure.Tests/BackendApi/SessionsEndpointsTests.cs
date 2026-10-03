@@ -170,7 +170,7 @@ public sealed class SessionsEndpointsTests
     // racing for its gate do. The event ids still only rise, so a resume after the last one misses nothing, and each
     // row carries its upsert's own seq and its pane in the data. A registry change is announced first.
     [Fact]
-    public async Task TheBridge_GivesRowsRisingIds_AndKeepsTheUpsertsSeqInTheData()
+    public async Task TheBridge_PreservesEmissionOrder_AndKeepsRowUpsertSeqInTheData()
     {
         var registry = new SessionRegistry();
         var log = new BackendEventLog();
@@ -179,8 +179,16 @@ public sealed class SessionsEndpointsTests
         var session = Substitute.For<ISessionHandle>();
         session.PaneId.Returns("pane-a");
         var control = Substitute.For<ISessionControl>();
+        var releaseControlRead = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdNextControlRead = true;
         session.UseControlAsync(Arg.Any<Func<ISessionControl, Task>>()).Returns(async call =>
         {
+            if (holdNextControlRead)
+            {
+                holdNextControlRead = false;
+                await releaseControlRead.Task;
+            }
+
             await call.Arg<Func<ISessionControl, Task>>()(control);
             return true;
         });
@@ -190,13 +198,15 @@ public sealed class SessionsEndpointsTests
         var first = _Upsert(SessionEventSequence.Next(), "row-1");
         var second = _Upsert(SessionEventSequence.Next(), "row-2");
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var read = log.ReadFromAsync(0, stop.Token).Take(7).ToListAsync(stop.Token);
+        var read = log.ReadFromAsync(0, stop.Token).Take(8).ToListAsync(stop.Token);
         // AC-1388: a tool's output past the row's budget does not reach the stream by the tool event either.
         var output = new string('x', 200 * 1024);
 
         registry.Register(session);
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(second);
+        session.LiveStateChanged += Raise.Event<Action<SessionLiveState>>(SessionLiveState.None);
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(first);
+        releaseControlRead.SetResult(true);
         session.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(new SessionToolCall("pane-a", "Bash", "{}", output, false));
         queue = [new QueuedPrompt("later", [], wireId: "queue-1")];
         control.QueueChanged += Raise.Event<System.Collections.Specialized.NotifyCollectionChangedEventHandler>(
@@ -208,15 +218,16 @@ public sealed class SessionsEndpointsTests
         var events = await read;
         await bridge.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["sessions-changed", "row", "row", "tool", "queue", "turn-ended", "usage"], events.Select(evt => evt.Kind));
+        Assert.Equal(["sessions-changed", "row", "live-state", "row", "tool", "queue", "turn-ended", "usage"], events.Select(evt => evt.Kind));
         Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
-        Assert.Equal(7, events.Select(evt => evt.Seq).Distinct().Count());
-        Assert.True(events[3].Data.GetProperty("Call").GetProperty("ResultContent").GetString()?.Length <= ToolOutputBudget.Clamp(output).Length);
-        Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Take(2).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
-        Assert.Equal("queue-1", events[4].Data.GetProperty("Queue")[0].GetProperty("WireId").GetString());
-        Assert.Equal("later", events[4].Data.GetProperty("Queue")[0].GetProperty("Text").GetString());
-        Assert.Equal("success", events[5].Data.GetProperty("End").GetProperty("Subtype").GetString());
-        Assert.Equal(42, events[6].Data.GetProperty("UsageStatus").GetProperty("ContextUsedPercent").GetDouble());
+        Assert.Equal(8, events.Select(evt => evt.Seq).Distinct().Count());
+        Assert.True(events.Single(evt => evt.Kind == "tool").Data.GetProperty("Call").GetProperty("ResultContent").GetString()?.Length <= ToolOutputBudget.Clamp(output).Length);
+        Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Where(evt => evt.Kind == "row").Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
+        var queueEvent = events.Single(evt => evt.Kind == "queue");
+        Assert.Equal("queue-1", queueEvent.Data.GetProperty("Queue")[0].GetProperty("WireId").GetString());
+        Assert.Equal("later", queueEvent.Data.GetProperty("Queue")[0].GetProperty("Text").GetString());
+        Assert.Equal("success", events.Single(evt => evt.Kind == "turn-ended").Data.GetProperty("End").GetProperty("Subtype").GetString());
+        Assert.Equal(42, events.Single(evt => evt.Kind == "usage").Data.GetProperty("UsageStatus").GetProperty("ContextUsedPercent").GetDouble());
     }
 
     private static TranscriptRowUpsert _Upsert(long seq, string id) =>

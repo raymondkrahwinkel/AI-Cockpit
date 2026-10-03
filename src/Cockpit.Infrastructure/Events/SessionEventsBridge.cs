@@ -68,36 +68,25 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 Action<TranscriptRowUpsert> onRow = upsert => append("row", new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
                 // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
                 var control = handle.Control;
-                Action<SessionLiveState> onLiveState = state => _ = appendLiveStateAsync(state);
-                async Task appendLiveStateAsync(SessionLiveState state)
+                Action<SessionLiveState> onLiveState = state =>
                 {
+                    RemoteUsageStatus? usageStatus;
                     try
                     {
-                        var used = await handle.UseControlAsync(current =>
-                        {
-                            append("live-state", new
-                            {
-                                PaneId = paneId,
-                                LiveState = state with { Connection = null, CliSessionId = null },
-                                UsageStatus = RemoteUsageStatus.From(current.ReadUsageStatus(null)),
-                            });
-                            return Task.CompletedTask;
-                        }).ConfigureAwait(false);
-                        if (!used)
-                        {
-                            append("live-state", new
-                            {
-                                PaneId = paneId,
-                                LiveState = state with { Connection = null, CliSessionId = null },
-                                UsageStatus = (RemoteUsageStatus?)null,
-                            });
-                        }
+                        usageStatus = RemoteUsageStatus.From(control?.ReadUsageStatus(null));
                     }
                     catch (Exception)
                     {
-                        // A later live-state or reset brings the remote pane current again.
+                        usageStatus = null;
                     }
-                }
+
+                    append("live-state", new
+                    {
+                        PaneId = paneId,
+                        LiveState = state with { Connection = null, CliSessionId = null },
+                        UsageStatus = usageStatus,
+                    });
+                };
                 Action<SessionTurnEnd> onTurnEnded = end => append("turn-ended", new { PaneId = paneId, End = end });
                 // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
