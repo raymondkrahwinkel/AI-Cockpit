@@ -26,8 +26,10 @@ The package is **private**, so the host logs in once with a token that has `read
 3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit. These are plain
    environment variables, so `docker inspect` shows them; only the two secrets above are files.
 4. `COCKPIT_TAG=sha-<commit> docker compose -f deploy/compose.yaml up -d`
-5. In the app's settings, set the clone root to `/work/clones` and the worktree root to `/work/worktrees`. The defaults
-   lie under `/state`, which an agent session cannot enter (see below).
+
+The clone and worktree roots start out at `/work/clones` and `/work/worktrees` (`COCKPIT_CLONE_ROOT`,
+`COCKPIT_WORKTREE_ROOT`): the defaults lie under `/state`, which an agent session cannot enter. A root set in the app's
+settings stays; point it somewhere under `/work`.
 
 ## What it keeps
 
