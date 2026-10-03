@@ -35,6 +35,7 @@ internal static class ClaudePrivateTempFile
         var directory = Path.Combine(Path.GetTempPath(), directoryName);
         Directory.CreateDirectory(directory);
         _Restrict(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        ClaudeAgentGroup.Share(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
 
         var path = Path.Combine(directory, $"{Guid.NewGuid():N}{extension}");
         var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
@@ -51,6 +52,8 @@ internal static class ClaudePrivateTempFile
         }
 
         _Restrict(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        // AC-1468: a CLI under the agent uid reads these by path; widened only after the chgrp, never at create time.
+        ClaudeAgentGroup.Share(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
         return path;
     }
 

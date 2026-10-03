@@ -125,12 +125,14 @@ internal static class ClaudeStatusLine
                printf '%s' "$input" | {existingStatusLineCommand}
                """;
 
+        // Owner-only snapshots; with an agent group the cockpit reads them through that group.
+        var umask = ClaudeAgentGroup.Gid is null ? "077" : "027";
         var script = $"""
             #!/usr/bin/env bash
             # Written by Wispslate Cockpit (Claude provider plugin). Claude Code pipes its statusline JSON in on stdin; this
             # keeps a copy for the session's header (${StatusFileVariable}) and then runs the operator's own statusline.
             set -o pipefail
-            umask 077
+            umask {umask}
 
             input="$(cat)"
 
@@ -144,7 +146,21 @@ internal static class ClaudeStatusLine
         Directory.CreateDirectory(Root);
         File.WriteAllText(path, script);
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        _ShareWithAgentGroup(path);
         return path;
+    }
+
+    // AC-1468: a CLI under the agent uid runs the relay and writes its snapshot into the statusline directory, which
+    // the cockpit then reads and deletes. The directory is setgid, so a snapshot the agent writes carries the group
+    // the cockpit reads it through. Without COCKPIT_AGENT_GROUP each call is a no-op.
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static void _ShareWithAgentGroup(string scriptPath)
+    {
+        const UnixFileMode ownerAll = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        const UnixFileMode groupReadExecute = UnixFileMode.GroupRead | UnixFileMode.GroupExecute;
+        ClaudeAgentGroup.Share(Root, ownerAll | groupReadExecute);
+        ClaudeAgentGroup.Share(StatusDirectory, ownerAll | groupReadExecute | UnixFileMode.GroupWrite | UnixFileMode.SetGroup);
+        ClaudeAgentGroup.Share(scriptPath, ownerAll | groupReadExecute);
     }
 
     private static string WritePowerShellScript(string? existingStatusLineCommand)

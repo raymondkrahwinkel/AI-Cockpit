@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Claude provider can run its CLI under a separate user that shares a group with the cockpit, the way the
+  server image will: with `COCKPIT_AGENT_GROUP` set to that group's id, the MCP config, the prompt file and the
+  statusline relay it hands the CLI are opened to that group and to no one else. Without it nothing changes. Stopping
+  a session first asks the CLI to quit, so it also ends when it runs as another user, and a kill the system refuses
+  no longer breaks the teardown. Claude provider 0.25.0.
 - added: the server answers `GET /healthz` on its node port without a key, so Docker can tell whether it is
   healthy: 200 when every check holds, 503 when one does not, with only each check's name and whether it holds. The
   first check is the Workflows scheduler, which reads unhealthy once it misses two ticks. A sign-in that expired does

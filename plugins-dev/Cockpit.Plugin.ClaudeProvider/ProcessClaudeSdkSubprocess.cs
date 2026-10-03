@@ -114,7 +114,7 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
                 process.StandardInput.Close();
                 if (!process.WaitForExit(TimeSpan.FromSeconds(3)))
                 {
-                    process.Kill(entireProcessTree: true);
+                    ClaudeProcessStop.Stop(process);
                 }
             }
             catch (InvalidOperationException)

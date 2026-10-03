@@ -208,15 +208,7 @@ internal static class ClaudeLoginStatus
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (Exception)
-            {
-                // Already gone.
-            }
-
+            ClaudeProcessStop.Stop(process);
             return null;
         }
 
