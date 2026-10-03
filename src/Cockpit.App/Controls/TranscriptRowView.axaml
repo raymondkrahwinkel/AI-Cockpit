@@ -609,14 +609,21 @@
                                         <ContentControl Content="{Binding PermissionBranch}">
                                             <ContentControl.DataTemplates>
                                                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
-                                                    <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
-                                                        <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                                                Command="{Binding Session.AllowToolCommand}"
-                                                                CommandParameter="{Binding}"/>
-                                                        <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                                                Command="{Binding Session.DenyToolCommand}"
-                                                                CommandParameter="{Binding}"/>
-                                                    </WrapPanel>
+                                                    <StackPanel>
+                                                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
+                                                                   IsVisible="{Binding Session.MayAnswerPermissions}"
+                                                                   IsEnabled="{Binding Session.IsLinkUp}">
+                                                            <Button Content="{Binding Session.AllowLabel}" Classes="Accent Compact" Margin="0,4,6,0"
+                                                                    Command="{Binding Session.AllowToolCommand}"
+                                                                    CommandParameter="{Binding}"/>
+                                                            <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                                                    Command="{Binding Session.DenyToolCommand}"
+                                                                    CommandParameter="{Binding}"/>
+                                                        </WrapPanel>
+                                                        <TextBlock Text="This key may not answer permission prompts." Margin="0,4,0,0"
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                                   IsVisible="{Binding !Session.MayAnswerPermissions}"/>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </ContentControl.DataTemplates>
                                         </ContentControl>
@@ -683,8 +690,11 @@
                     <DataTemplate DataType="vm:TranscriptEntryViewModel">
                         <!-- paneChromeBlank, not paneChrome: IsVisible would be redundant now the whole panel is
                              handed out only while pending, so it is left off. -->
-                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
-                            <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                        <StackPanel>
+                        <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal"
+                                   IsVisible="{Binding Session.MayAnswerPermissions}"
+                                   IsEnabled="{Binding Session.IsLinkUp}">
+                            <Button Content="{Binding Session.AllowLabel}" Classes="Accent Compact" Margin="0,4,6,0"
                                     Command="{Binding Session.AllowToolCommand}"
                                     CommandParameter="{Binding}"/>
                             <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
@@ -700,6 +710,10 @@
                                     Command="{Binding Session.AllowAlwaysWildcardToolCommand}"
                                     CommandParameter="{Binding}"/>
                         </WrapPanel>
+                        <TextBlock Text="This key may not answer permission prompts." Margin="0,4,0,0"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                   IsVisible="{Binding !Session.MayAnswerPermissions}"/>
+                        </StackPanel>
                     </DataTemplate>
                 </ContentControl.DataTemplates>
             </ContentControl>

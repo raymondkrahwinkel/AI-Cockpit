@@ -612,8 +612,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public NodePermissionOrigin? NodePermission { get; init; }
 
     // AC-1324: an always-rule is written into the session's profile, and a node's profile is its own operator's
-    // to change — so a node row offers Allow and Deny only.
-    public bool CanAllowAlways => NodePermission is null;
+    // to change — so a node row offers Allow and Deny only, and so does a row of a pane on a server (AC-1469).
+    public bool CanAllowAlways => NodePermission is null && Session?.IsRemote != true;
 
     // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule. Clamped on the way
     // in (AC-1088): a `Write` carries the whole file it is about to write, and this row outlives the turn.

@@ -74,11 +74,13 @@ public interface IRemoteServer
 // `KeyRefused` is a server that turned the key away, which no retry will change.
 public sealed record RemoteServerState(bool IsConnected, long? LatencyMs, RemoteServerKey? Key, bool KeyRefused = false);
 
-// AC-1456: what /whoami says about the key this cockpit connects with. `AssistantHeldBy` names the key holding it.
+// AC-1456: what /whoami says about the key this cockpit connects with. `AssistantHeldBy` names the key holding it;
+// `MayAnswerPermissions` (AC-1469) only decides whether the buttons are drawn, the server decides whether an answer counts.
 public sealed record RemoteServerKey(
     string Label,
     string Capability,
     bool HoldsAssistant,
     string? AssistantHeldBy,
     string? Version,
-    DateTimeOffset? StartedAt);
+    DateTimeOffset? StartedAt,
+    bool MayAnswerPermissions = false);
