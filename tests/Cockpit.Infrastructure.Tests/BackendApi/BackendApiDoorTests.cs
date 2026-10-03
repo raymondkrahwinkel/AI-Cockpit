@@ -108,6 +108,7 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
         { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
         { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
+        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key" },
     };
 
     [Theory]
@@ -119,11 +120,13 @@ public sealed class BackendApiDoorTests
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
         var bearer = credential == "admin" ? Bootstrap : operate.Secret;
 
-        var answer = await door.SendAsync(new HttpMethod(method), path.Replace("{issued}", operate.Key.Prefix, StringComparison.Ordinal), bearer, body);
+        var target = path.Replace("{issued}", operate.Key.Prefix, StringComparison.Ordinal).Replace("{secret}", operate.Secret, StringComparison.Ordinal);
+        var answer = await door.SendAsync(new HttpMethod(method), target, bearer, body);
         var keys = await verifier.ListAsync();
 
         Assert.Equal(expected, answer.Status);
         Assert.Equal(error, JsonNode.Parse(answer.Body)?["error"]?.GetValue<string>());
+        Assert.False(answer.Body.Contains(operate.Secret, StringComparison.Ordinal), "The answer repeated a full key it was given.");
         Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => !entry.Key.IsBootstrap).Key.EffectiveScope());
     }

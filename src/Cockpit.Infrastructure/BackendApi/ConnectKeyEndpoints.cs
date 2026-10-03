@@ -63,7 +63,7 @@ internal static class ConnectKeyEndpoints
         api.MapDelete("/keys/{prefix}", (string prefix, CancellationToken cancellationToken) =>
             _AnswerAsync(async () => await keys().RevokeAsync(prefix, cancellationToken).ConfigureAwait(false)
                 ? Results.Json(new { ok = true, prefix, revoked = true })
-                : _NoKey(prefix))).RequireAdmin();
+                : _NoKey())).RequireAdmin();
 
         api.MapPut("/keys/{prefix}/scope", async (string prefix, HttpRequest request, CancellationToken cancellationToken) =>
         {
@@ -84,7 +84,7 @@ internal static class ConnectKeyEndpoints
 
             return await _AnswerAsync(async () => await keys().SetScopeAsync(prefix, scope, cancellationToken).ConfigureAwait(false)
                 ? Results.Json(new { ok = true, prefix })
-                : _NoKey(prefix)).ConfigureAwait(false);
+                : _NoKey()).ConfigureAwait(false);
         }).RequireAdmin();
 
         // AC-1459: the node tool lift_connect_lockout over HTTP. An IPv6 bucket's slash arrives escaped.
@@ -123,6 +123,7 @@ internal static class ConnectKeyEndpoints
         }
     }
 
-    private static IResult _NoKey(string prefix) =>
-        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_key", $"There is no live connect key with prefix '{prefix}'.");
+    // Never the prefix it was given: a full key pasted there by mistake must not come back in an answer or a log.
+    private static IResult _NoKey() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_key", "There is no live connect key with that prefix.");
 }

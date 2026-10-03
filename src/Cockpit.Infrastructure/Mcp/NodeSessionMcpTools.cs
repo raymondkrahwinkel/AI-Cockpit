@@ -43,6 +43,9 @@ internal sealed class NodeSessionMcpTools(
 
     private const string NoConnectKeys = "Connect keys are not available on this node.";
 
+    // AC-1446: never the prefix it was given, so a full key pasted there by mistake stays out of the transcript.
+    private const string NoLiveKey = "There is no live connect key with that prefix. Call list_connect_keys for the ones there are.";
+
     internal const string AdminRefusal = "Managing connect keys needs a connect key with the admin capability.";
 
     internal const string PermissionsRefusal = "This connect key may not answer permission prompts: it does not have the mayAnswerPermissions grant.";
@@ -584,7 +587,7 @@ internal sealed class NodeSessionMcpTools(
             var revoked = await connectKeys.RevokeAsync(prefix).ConfigureAwait(false);
             return revoked
                 ? _Serialize(new { ok = true, prefix, revoked })
-                : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
+                : _Serialize(new { ok = false, error = NoLiveKey });
         }
         catch (Exception exception)
         {
@@ -611,7 +614,7 @@ internal sealed class NodeSessionMcpTools(
 
             return await connectKeys.LiftLockoutAsync(address).ConfigureAwait(false)
                 ? _Serialize(new { ok = true, address, lifted = true })
-                : _Serialize(new { ok = false, error = $"'{address}' is not locked out. Call list_connect_keys for the addresses that are." });
+                : _Serialize(new { ok = false, error = "That address is not locked out. Call list_connect_keys for the addresses that are." });
         }
         catch (Exception exception)
         {
@@ -643,7 +646,7 @@ internal sealed class NodeSessionMcpTools(
             var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
             return await connectKeys.SetScopeAsync(prefix, scope).ConfigureAwait(false)
                 ? _Serialize(new { ok = true, prefix, scope = _ScopeJson(scope) })
-                : _Serialize(new { ok = false, error = $"There is no live connect key with prefix '{prefix}'. Call list_connect_keys for the ones there are." });
+                : _Serialize(new { ok = false, error = NoLiveKey });
         }
         catch (Exception exception)
         {
