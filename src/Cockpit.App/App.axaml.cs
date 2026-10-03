@@ -24,6 +24,8 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Diagnostics;
+using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
@@ -393,7 +395,7 @@ public partial class App : Application
         diagnosticsBackgroundService.Start();
 
         // AC-733: a plain background thread, not UI-bound — started here too, just to sit beside its sibling.
-        Program.Services.GetRequiredService<Services.AdaptiveGcCompactor>().Start();
+        Program.Services.GetRequiredService<AdaptiveGcCompactor>().Start();
 
         // Attach the scheduler outside the view-model constructor so test/design graphs never write to disk
         // (AC-234), and do so before plugins can create sessions that would otherwise miss pending resumes.
@@ -470,7 +472,7 @@ public partial class App : Application
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
         // toasting once when an installed managed CLI (claude/codex) has a newer version available.
-        var managedCliUpdateChecker = Program.Services.GetRequiredService<Services.ManagedCliUpdateChecker>();
+        var managedCliUpdateChecker = Program.Services.GetRequiredService<ManagedCliUpdateChecker>();
         _ = pluginUpdateChecker.CheckNowAsync();
         _ = managedCliUpdateChecker.CheckNowAsync();
         _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };

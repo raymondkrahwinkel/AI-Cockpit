@@ -3,7 +3,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.App.Composition;
 
 // AC-1449: the session control a pane gets outside the container, and the seam that drives one without a runtime.
 internal static class SessionControls

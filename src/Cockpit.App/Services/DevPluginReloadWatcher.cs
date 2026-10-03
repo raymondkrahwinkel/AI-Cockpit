@@ -1,16 +1,14 @@
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 
 // AC-1013: AC-185's dev inner loop — watches `plugins-dev` for a rebuilt first-party plugin and offers a
 // toast to bring it into the running sandbox instead of a manual restart (DEBUG-only). Not a hot-swap: it
 // reruns `DevPluginInstaller.InstallAsync` then restarts via `IAppRestartService`; watch and debounce are injectable.
-public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
+public sealed class DevPluginReloadWatcher : IDisposable
 {
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(750);
 
@@ -24,17 +22,6 @@ public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
     private FileSystemWatcher? _watcher;
     private DispatcherTimer? _debounceTimer;
     private bool _disposed;
-
-    public DevPluginReloadWatcher(IToastService toast, IAppRestartService restartService, ILogger<DevPluginReloadWatcher> logger)
-        : this(
-            DevPluginInstaller.FindPluginsDevRoot,
-            cancellationToken => new DevPluginInstaller(logger).InstallAsync(PluginBootstrap.PluginsRoot, cancellationToken),
-            toast,
-            restartService,
-            logger,
-            debounce: null)
-    {
-    }
 
     internal DevPluginReloadWatcher(
         Func<string?> resolvePluginsDevRoot,

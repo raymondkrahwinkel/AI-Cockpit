@@ -10,7 +10,7 @@ using Cockpit.Core.Sessions;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 
 namespace Cockpit.App.ViewTests;
 

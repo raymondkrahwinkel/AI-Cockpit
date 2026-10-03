@@ -12,6 +12,9 @@ public static class CockpitBuild
     // `GetFolderPath` reads the shell folder from the registry and ignores that variable on Windows.
     public const string StateRootVariable = "COCKPIT_STATE_ROOT";
 
+    // AC-478: starts the cockpit with no plugins loaded; a restart strips it again, so it is always a one-shot recovery.
+    public const string SafeModeArgument = "--safe-mode";
+
     // True for a Debug build — what `dotnet run` produces and what nobody installs. This is the one line
     // here that no test can prove, because a test run only ever compiles one arm of it.
     public static bool IsDevelopment =>

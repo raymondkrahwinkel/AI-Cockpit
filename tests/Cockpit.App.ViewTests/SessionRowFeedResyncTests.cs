@@ -4,7 +4,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Tests.Shared;
 using NSubstitute;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 
 namespace Cockpit.App.ViewTests;
 

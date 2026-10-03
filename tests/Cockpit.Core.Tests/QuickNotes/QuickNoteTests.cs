@@ -1,4 +1,5 @@
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Projects;
@@ -76,7 +77,7 @@ public class QuickNoteTests
             await cockpit.Projects.AddNewProjectAsync(project);
         }
 
-        return new QuickNoteCoordinator(TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()), cockpit, writer);
+        return new QuickNoteCoordinator(TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()), cockpit, new ProjectMemoryNotes(writer));
     }
 
     private sealed class FakeNoteWriter(params string[] writableProjectIds) : IProjectMemoryNoteWriter

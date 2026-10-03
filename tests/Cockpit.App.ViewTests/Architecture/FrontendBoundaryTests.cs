@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Sessions;
 
@@ -6,7 +7,7 @@ namespace Cockpit.App.ViewTests.Architecture;
 public sealed class FrontendBoundaryTests
 {
     [Fact]
-    public void ViewModelsAndViews_OnlyUseFrontendContracts()
+    public void FrontendCode_OnlyUsesFrontendContracts()
     {
         var repositoryRoot = FindRepositoryRoot();
         var appRoot = Path.Combine(repositoryRoot, "src", "Cockpit.App");
@@ -31,7 +32,9 @@ public sealed class FrontendBoundaryTests
 
         // AC-1441: a fully qualified name reaches into Infrastructure as surely as a using does.
         var infrastructureReference = new Regex(@"\bCockpit\.Infrastructure\b", RegexOptions.CultureInvariant);
-        var violations = new[] { "ViewModels", "Views" }
+        // AC-1441: Services too. What may name the backend's implementation is the composition root: Program,
+        // App.axaml.cs, DependencyInjection and the Composition folder, which the second half below keeps thin.
+        var violations = new[] { "ViewModels", "Views", "Services" }
             .SelectMany(directory => Directory.EnumerateFiles(
                 Path.Combine(appRoot, directory),
                 "*.cs",
@@ -45,9 +48,40 @@ public sealed class FrontendBoundaryTests
             .Order()
             .ToArray();
 
+        // The exemption is no back door: a Composition type is internal; a class is a sealed adapter with no public
+        // surface beyond the contracts it implements, a static class keeps no state. Logic belongs elsewhere.
+        var markers = new[] { typeof(Cockpit.Core.Abstractions.ISingletonService), typeof(IDisposable), typeof(IAsyncDisposable) };
+        var composition = typeof(Cockpit.App.Composition.DesktopComposition).Assembly.GetTypes()
+            .Where(type => type.Namespace == "Cockpit.App.Composition" && !type.IsNested
+                && !type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false));
+        var thick = composition
+            .Where(type =>
+            {
+                if (type.IsPublic)
+                {
+                    return true;
+                }
+
+                if (type is { IsAbstract: true, IsSealed: true })
+                {
+                    return type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Any(field => !field.IsInitOnly);
+                }
+
+                var contracts = type.GetInterfaces().Except(markers).ToArray();
+                var contractMembers = contracts.SelectMany(contract => type.GetInterfaceMap(contract).TargetMethods).ToHashSet();
+                return !type.IsSealed
+                    || contracts.Length == 0
+                    || type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                        .Any(method => !contractMembers.Contains(method));
+            })
+            .Select(type => type.Name)
+            .Order()
+            .ToArray();
+
         Assert.True(
             violations.Length == 0,
             $"Frontend boundary violation: {string.Join(", ", violations)}");
+        Assert.True(thick.Length == 0, $"Composition holds more than wiring: {string.Join(", ", thick)}");
     }
 
     private static string FindRepositoryRoot()

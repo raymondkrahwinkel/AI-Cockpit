@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 
 namespace Cockpit.App.ViewTests;
 

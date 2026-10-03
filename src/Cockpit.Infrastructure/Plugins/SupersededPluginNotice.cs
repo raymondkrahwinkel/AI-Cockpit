@@ -3,15 +3,14 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Plugins;
 using Microsoft.Extensions.Logging;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Plugins;
 
 // Tells the operator when a plugin has been replaced by others in this build, and offers to remove it — asked,
 // never done for them, so nothing disappears from their plugins folder behind their back. Needed because successors
 // keep the predecessor's widget type ids, so the registry refuses its claim and it keeps looking installed while doing nothing.
-internal sealed class SupersededPluginNotice(
+public sealed class SupersededPluginNotice(
     PluginManager plugins,
     IPluginRegistrationStore registrations,
     IPluginInstaller installer,

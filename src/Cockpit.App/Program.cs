@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -182,6 +183,7 @@ sealed class Program
         services.AddSingleton<HelpService>();
 
         services.AddSessionPanes();
+        services.AddBackendSeams();
     }
 
     private static IReadOnlyList<Avalonia.Controls.Window> _OpenWindows() =>

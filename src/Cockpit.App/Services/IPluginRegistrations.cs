@@ -1,4 +1,5 @@
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -33,4 +34,29 @@ public interface IPluginRegistrations
     /// The project memory sources plugins registered, as a session start reads them.
     /// </summary>
     IReadOnlyList<ProjectMemorySource> MemorySources { get; }
+
+    /// <summary>
+    /// The project memory sources plugins registered, as the project dialog lists them.
+    /// </summary>
+    IReadOnlyList<ProjectMemorySourceRegistration> MemorySourceRegistrations { get; }
+
+    /// <summary>
+    /// The families the project memory sources are grouped in.
+    /// </summary>
+    IReadOnlyList<ProjectMemorySourceFamily> MemorySourceFamilies { get; }
+
+    /// <summary>
+    /// The extra project fields plugins registered.
+    /// </summary>
+    IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }
+
+    /// <summary>
+    /// Which plugin owns which host field of <paramref name="projectId"/>, or null when none claims it.
+    /// </summary>
+    IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? FieldOwnership(string projectId);
+
+    /// <summary>
+    /// The shared-project sources plugins registered.
+    /// </summary>
+    IReadOnlyList<ISharedProjectSource> SharedProjectSources { get; }
 }

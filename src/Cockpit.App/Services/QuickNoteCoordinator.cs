@@ -6,7 +6,6 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 
@@ -16,7 +15,7 @@ public sealed class QuickNoteCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
     private readonly CockpitViewModel _cockpit;
-    private readonly IProjectMemoryNoteWriter _writer;
+    private readonly IProjectMemoryNotes _writer;
 
     private QuickNoteWindow? _window;
 
@@ -27,7 +26,7 @@ public sealed class QuickNoteCoordinator : ISingletonService
     // that vanishes on it is gone for good. Lives only as long as this process; nothing writes it to disk.
     private string _draft = string.Empty;
 
-    public QuickNoteCoordinator(GlobalHotkeyCoordinator hotkeys, CockpitViewModel cockpit, IProjectMemoryNoteWriter writer)
+    public QuickNoteCoordinator(GlobalHotkeyCoordinator hotkeys, CockpitViewModel cockpit, IProjectMemoryNotes writer)
     {
         _hotkeys = hotkeys;
         _cockpit = cockpit;

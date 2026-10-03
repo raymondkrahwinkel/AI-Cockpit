@@ -8,7 +8,7 @@ using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.Diagnostics;
 
 // AC-733: checks cheaply/often (~0.2us) instead of a slow timer, catching heap growth small (tens of ms) not
 // catastrophic (283 s at ~24M objects). ponytail: growth is mostly Avalonia 12.1.1 retaining detached views live

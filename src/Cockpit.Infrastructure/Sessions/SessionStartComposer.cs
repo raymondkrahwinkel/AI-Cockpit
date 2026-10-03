@@ -14,14 +14,6 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// What a project and a profile decide about a start, reached without the dialog (AC-162/AC-164, AC-1439).
-public sealed record ProjectStart(
-    PaneSessionKind Kind,
-    string? WorkingDirectory,
-    bool IsolateInWorktree,
-    string? SystemPrompt,
-    IReadOnlySet<string> EnabledMcpServerNames);
-
 // AC-1439: the half of a start that decides it, out of the desktop. The quick start and every spawn compose here;
 // the dialog fills the same fields itself and hands them over composed.
 public sealed class SessionStartComposer(
@@ -29,7 +21,7 @@ public sealed class SessionStartComposer(
     IMcpServerCatalog mcpServers,
     ITtySessionProviderResolver? ttyProviders = null,
     IProjectMemorySourceRegistry? memorySources = null,
-    IWorktreeManager? worktrees = null) : ISingletonService
+    IWorktreeManager? worktrees = null) : IProjectStartComposer, ISingletonService
 {
     // What starting on `project` under `profile` opens with: the kind pressing Start would have started (AC-584), the
     // project's folder, isolation and behaviour prompt, and its own ticked servers rather than the profile's.

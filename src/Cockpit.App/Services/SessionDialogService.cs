@@ -19,10 +19,8 @@ using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.App.Services;
 
@@ -48,10 +46,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
     private readonly IProjectStore _projectStore;
-    private readonly IProjectFieldRegistry _projectFields;
-    private readonly IProjectMemorySourceRegistry _memorySources;
-    private readonly IProjectOwnershipRegistry _projectOwnership;
-    private readonly ISharedProjectSourceRegistry _sharedProjectSources;
     private readonly SurfaceWindows _surfaces;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
@@ -73,10 +67,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IRepositoryCloneManager cloneManager,
         IVerifyRunnerRegistry verifyRunnerRegistry,
         IProjectStore projectStore,
-        IProjectFieldRegistry projectFields,
-        IProjectMemorySourceRegistry memorySources,
-        IProjectOwnershipRegistry projectOwnership,
-        ISharedProjectSourceRegistry sharedProjectSources,
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore,
         ISessionLoginFlows loginFlows,
@@ -101,10 +91,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
         _projectStore = projectStore;
-        _projectFields = projectFields;
-        _memorySources = memorySources;
-        _projectOwnership = projectOwnership;
-        _sharedProjectSources = sharedProjectSources;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -305,13 +291,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(
-            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families,
+            project, _profileStore, _mcpServerCatalog, _plugins.ProjectFields, _plugins.MemorySourceRegistrations, _plugins.MemorySourceFamilies,
             // AC-523: the "Servers…" flow re-reads the live registry through this rather than replaying the
             // snapshot above, so a connection added or removed in the settings screen it opens shows up back here.
-            refreshMemorySources: () => (_memorySources.Sources, _memorySources.Families),
+            refreshMemorySources: () => (_plugins.MemorySourceRegistrations, _plugins.MemorySourceFamilies),
             // AC-604: a new project has no id yet, so nothing could have claimed it — only an existing project is
             // resolved against the ownership registry.
-            fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null,
+            fieldOwnership: project is not null ? _plugins.FieldOwnership(project.Id) : null,
             knownCategories: knownCategories,
             sharedWriteBack: sharedWriteBack,
             worktreeManager: _worktreeManager);
@@ -411,7 +397,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     // AC-1435: the view models name a shared-project source by its key; the source itself is a plugin's object.
     private ISharedProjectSource? _FindSharedSource(string? key) =>
-        key is null ? null : _sharedProjectSources.Sources.FirstOrDefault(source => source.Key == key);
+        key is null ? null : _plugins.SharedProjectSources.FirstOrDefault(source => source.Key == key);
 
     // Mirrors _CloneIntoProjectAsync, pre-filled with the shared definition's own GitUrl (AC-246: "Clone…" is an
     // offer built on a URL the operator never has to type in, not a general clone-from-anywhere flow).

@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
@@ -12,7 +11,7 @@ namespace Cockpit.App.Services;
 // Storing what it composes goes through IProjectEditor, and the Projects page follows the catalog.
 internal sealed class ProjectComposer(
     ISessionProfileStore profiles,
-    IMcpServerCatalog? mcpServerCatalog = null) : IProjectComposer, ISingletonService
+    IMcpServerCatalog? mcpServerCatalog = null) : ISingletonService
 {
     // The "Choose…" route, not the "Clone…" one — so, exactly as `ApplyPickedDirectory` does for the operator's own
     // pick, the shared definition's `GitUrl` is dropped: the folder was pointed at rather than cloned from it.

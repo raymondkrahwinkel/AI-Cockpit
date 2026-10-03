@@ -8,7 +8,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Tests.Shared;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 
 namespace Cockpit.Core.Tests.ViewModels;
 

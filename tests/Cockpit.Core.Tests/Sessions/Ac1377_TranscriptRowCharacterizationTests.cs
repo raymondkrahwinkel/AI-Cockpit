@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;

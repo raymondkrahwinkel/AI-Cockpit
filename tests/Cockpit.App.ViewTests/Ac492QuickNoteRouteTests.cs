@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -40,7 +39,7 @@ public sealed class Ac492QuickNoteRouteTests
         var dialogs = Substitute.For<ISessionDialogService>();
         dialogs.ShowCommandPaletteDialogAsync(Arg.Do<IReadOnlyList<PaletteCommand>>(commands => palette = commands)).Returns(Task.CompletedTask);
         var cockpit = _Cockpit(dialogs);
-        var quickNotes = new QuickNoteCoordinator(_Hotkeys(), cockpit, Substitute.For<IProjectMemoryNoteWriter>());
+        var quickNotes = new QuickNoteCoordinator(_Hotkeys(), cockpit, Substitute.For<IProjectMemoryNotes>());
         cockpit.QuickNotes = quickNotes;
 
         var window = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };

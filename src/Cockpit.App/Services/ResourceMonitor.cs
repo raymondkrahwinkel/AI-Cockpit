@@ -1,24 +1,18 @@
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
 // Samples what the cockpit and its sessions are using (#78): one process-table read per tick serves every
 // session, and each session is measured as a *tree* (the `claude` process plus everything it spawned) so the
 // CPU shown is the build the agent just started, not the idle parent.
-public sealed class ResourceMonitor : ISingletonService
+public sealed class ResourceMonitor
 {
     private readonly IProcessTableReader _reader;
     private readonly Func<int, double?> _pressureAvg10;
     private readonly Dictionary<int, ResourceSample> _previous = [];
     private readonly SessionProcessMembership _membership = new();
     private DateTimeOffset _sampledAt = DateTimeOffset.MinValue;
-
-    public ResourceMonitor(IProcessTableReader reader) : this(reader, LinuxSessionCgroup.PressureAvg10)
-    {
-    }
 
     // AC-1233: allocation tests replace Linux procfs pressure reads to measure snapshot indexing deterministically.
     internal ResourceMonitor(IProcessTableReader reader, Func<int, double?> pressureAvg10)

@@ -7,7 +7,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using NSubstitute;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;

@@ -1,3 +1,4 @@
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
@@ -36,7 +37,7 @@ internal static class AssistantAgentGatewayGraph
             sessions,
             DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
             projects ?? TestProjects.Catalog(sharedSources: sharedProjectSources),
-            new ProjectComposer(profiles, mcpServerCatalog),
+            new ProjectComposerAdapter(new ProjectComposer(profiles, mcpServerCatalog)),
             watcher,
             new AssistantConversation(assistantSessionHost),
             new ExternalLinkOpener(),
