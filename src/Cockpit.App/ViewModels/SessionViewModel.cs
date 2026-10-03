@@ -477,7 +477,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True when there is text or an image to act on, so Send is enabled exactly when it will do
     // something. It does not gate on `IsBusy`: while a turn runs, Send queues the message
     // (T8) rather than being disabled, so you can keep typing ahead without losing input.
-    public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0;
+    public bool CanSend => (!string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0) && IsLinkUp;
 
     // It gates only the *view* (the input box is disabled), deliberately not `CanSend`: the host still submits the
     // run's opening brief through the send path programmatically, which must work even while the composer is off
@@ -489,8 +489,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _composerPlaceholder = "Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)";
 
+    // AC-1469: false while the line to this pane's server is down, so Send and the permission buttons are off with it.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    private bool _isLinkUp = true;
+
+    // AC-1469: whether the server's key may answer permission prompts. The server decides again on every answer.
+    [ObservableProperty]
+    private bool _mayAnswerPermissions = true;
+
+    public string AllowLabel => IsRemote ? "Allow once" : "Allow";
+
     // AC-1456: undoes FollowRemote's subscriptions when the pane goes, since the handle outlives it.
     private Action? _unfollowRemote;
+
+    // AC-1469: the remote handle's control; null on a local pane.
+    private ISessionControl? _remoteControl;
+    private ISessionHandle? _remoteHandle;
+    private readonly HashSet<TranscriptEntryViewModel> _answering = [];
 
     // Permission modes offered in the running panel: the three live-switchable modes
     // (`SessionOptionCatalog.LivePermissionModes`), or — once a session was launched in bypass — a single locked
@@ -787,8 +803,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.ApplyResult(result, entry.IsResultError, entry.TruncatedFromChars, entry.BackgroundTaskId);
         }
 
-        row.PermissionDecision = entry.PermissionDecision;
-        row.IsPendingPermission = entry.IsPendingPermission;
+        // A row being answered on the server keeps its own state until the answer returns (AC-1469).
+        if (!_answering.Contains(row))
+        {
+            row.PermissionDecision = entry.PermissionDecision;
+            row.IsPendingPermission = entry.IsPendingPermission;
+        }
+
         row.ErrorKind = entry.ErrorKind ?? SessionErrorKind.Unknown;
         row.RetryAfter = entry.RetryAfter;
         row.IsReplyContinuation = entry.IsReplyContinuation;
@@ -1287,17 +1308,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-1456: a session on a connect server, drawn from its handle's rows and live state, the same stream the server
-    // group reads, so the two cannot drift. Sending to it comes with S17b (AC-1465); until then the composer is off.
+    // group reads, so the two cannot drift. Sending and answering go to the server through the handle's control (AC-1469).
     internal async Task FollowRemoteAsync(ISessionHandle handle, string server)
     {
         RemoteServer = server;
+        _remoteControl = handle.Control;
+        _remoteHandle = handle;
+        OnPropertyChanged(nameof(AllowLabel));
         Title = handle.Title;
         Statusline = handle.Statusline;
         ActiveProfileLabel = handle.ActiveProfileLabel;
         SessionStatus = handle.SessionStatus;
         Status = $"Runs on {server}.";
-        IsInputEnabled = false;
-        ComposerPlaceholder = $"Sending to a session on {server} comes with the next update.";
+        SetRemoteLink(isUp: false, mayAnswerPermissions: false);
 
         Action<TranscriptRowUpsert> row = upsert => UiPost(() => _DrawHostRow(upsert.Row));
         Action<SessionLiveState> live = state => UiPost(() => _OnLiveStateChanged(state));
@@ -1317,6 +1340,90 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         if (handle.LiveState is { } state && !ReferenceEquals(state, SessionLiveState.None))
         {
             _OnLiveStateChanged(state);
+        }
+    }
+
+    // AC-1469: what the server group last said about the line and the key; the pane follows it and keeps no queue of its own.
+    internal void SetRemoteLink(bool isUp, bool mayAnswerPermissions)
+    {
+        IsLinkUp = isUp;
+        MayAnswerPermissions = mayAnswerPermissions;
+        IsInputEnabled = isUp;
+        ComposerPlaceholder = isUp
+            ? $"Send a message to the session on {RemoteServer}…"
+            : $"Reconnecting to {RemoteServer}…";
+    }
+
+    private async Task _SendToServerAsync()
+    {
+        if (_remoteControl is null || !IsLinkUp || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
+        {
+            return;
+        }
+
+        if (PendingAttachments.Count > 0)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error, $"Images cannot be sent to a session on {RemoteServer}. Remove them and send again."));
+            return;
+        }
+
+        var text = InputText;
+        var replyTo = PendingReplyTo;
+        InputText = string.Empty;
+        PendingReplyTo = null;
+        try
+        {
+            await _remoteControl.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            if (string.IsNullOrEmpty(InputText))
+            {
+                InputText = text;
+                PendingReplyTo ??= replyTo;
+            }
+
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error, $"Not sent to {RemoteServer}: {exception.Message}"));
+        }
+    }
+
+    // Closed before the call like the node path; a refusal (the key may not answer, the line is down) reopens the row.
+    private async Task _AnswerOnServerAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson)
+    {
+        if (_remoteControl is null || !entry.IsPendingPermission || entry.ToolUseId is null || !IsLinkUp || !MayAnswerPermissions)
+        {
+            return;
+        }
+
+        _answering.Add(entry);
+        entry.IsPendingPermission = false;
+        entry.PermissionDecision = $"Answering on {RemoteServer}…";
+        try
+        {
+            // The by-id route says whether the server took the answer; a structured answer has no such route.
+            var answered = true;
+            if (answersJson is null && _remoteHandle is { } handle)
+            {
+                answered = await handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow).ConfigureAwait(true);
+            }
+            else
+            {
+                await _remoteControl.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson).ConfigureAwait(true);
+            }
+
+            entry.PermissionDecision = !answered ? $"Already answered on {RemoteServer}"
+                : answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
+        }
+        catch (Exception exception)
+        {
+            entry.PermissionDecision = $"Not answered — {exception.Message}";
+            entry.IsPendingPermission = true;
+        }
+        finally
+        {
+            _answering.Remove(entry);
         }
     }
 
@@ -2024,6 +2131,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        if (RemoteServer is not null)
+        {
+            await _SendToServerAsync();
+            return;
+        }
+
         // Sending before the session has started reaches the CLI process before its I/O is wired and surfaces a raw
         // "Start must be called before I/O" error (#16).
         if (!_control.IsRunning)
@@ -2241,6 +2354,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        if (RemoteServer is not null)
+        {
+            await _AnswerOnServerAsync(entry, allow, answersJson);
+            return;
+        }
+
         if (!_control.IsAttached || entry.ToolUseId is null)
         {
             return;
@@ -2317,7 +2436,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (!_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
+        if (RemoteServer is not null || !_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
         {
             return;
         }

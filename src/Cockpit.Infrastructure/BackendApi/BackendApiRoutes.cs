@@ -50,6 +50,7 @@ internal static class BackendApiRoutes
                 apiVersion = ApiVersion,
                 expiresAt = caller.ExpiresAt,
                 holdsAssistant = caller.HoldsAssistant,
+                mayAnswerPermissions = caller.MayAnswerPermissions,
                 version = HostVersion(),
                 startedAt = StartedAt,
                 assistantHeldBy = holder,

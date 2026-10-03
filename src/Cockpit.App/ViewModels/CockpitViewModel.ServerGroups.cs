@@ -160,6 +160,7 @@ public partial class CockpitViewModel
                 Follow();
                 group.State = server.State;
                 _ReconcileServerGroup(group);
+                _ApplyServerLink(group);
                 OnPropertyChanged(nameof(ServerStatusLabels));
             });
             Follow();
@@ -176,6 +177,22 @@ public partial class CockpitViewModel
             session.ShowsWhereItRuns = HasServerGroups;
         }
     }
+
+    // AC-1469: while the line is down the panes' composers and permission buttons are off; they come back on their own.
+    private static void _ApplyServerLink(ServerGroupViewModel group)
+    {
+        foreach (var row in group.Sessions)
+        {
+            if (row.Pane is SessionViewModel pane)
+            {
+                _ApplyLink(pane, group);
+            }
+        }
+    }
+
+    // Up only once /whoami answered too, so the grant is known before a button is drawn or withheld.
+    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group) =>
+        pane.SetRemoteLink(group.State is { IsConnected: true, Key: not null }, group.State.Key?.MayAnswerPermissions == true);
 
     private void _OnOpenServerGroupsChanged()
     {
@@ -207,6 +224,7 @@ public partial class CockpitViewModel
 
             var pane = await _remotePaneOver(row.Handle, group.Name);
             pane.ShowsWhereItRuns = true;
+            _ApplyLink(pane, group);
             row.Pane = pane;
             _remotePanes.Add(pane);
             GridPanes.Add(pane);

@@ -89,7 +89,14 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    // AC-1469: the answer to "ask" comes back as the turn's end, so a journey sees that the server got it.
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    {
+        var answer = $"echo: {(allow ? "allowed" : "denied")} {toolUseId}";
+        _events.Publish(new PluginAssistantTextDelta { SessionId = SessionId, BlockIndex = 0, Text = answer });
+        _events.Publish(new PluginTurnCompleted { SessionId = SessionId, Subtype = "success", Result = answer, IsError = false });
+        return Task.CompletedTask;
+    }
 
     public ValueTask DisposeAsync()
     {

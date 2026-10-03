@@ -15,22 +15,25 @@ internal static class ServerGroupScene
     // An admin key that holds the assistant: the header line, the assistant line and a remote pane asking to be stopped.
     public static MainWindow Admin(int width, int height) => _Render(width, height, admin: true);
 
+    // AC-1469 (mockup v2 tab 2): the open pane stands on a permission prompt its key may answer.
+    public static MainWindow Permission(int width, int height) => _Render(width, height, admin: true, asking: true);
+
     // An operate key with a scope: "Admin" locked, the assistant held elsewhere, and the start card with one profile.
     public static MainWindow Operate(int width, int height) => _Render(width, height, admin: false);
 
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
-    private static MainWindow _Render(int width, int height, bool admin)
+    private static MainWindow _Render(int width, int height, bool admin, bool asking = false)
     {
         var cockpit = new CockpitViewModel();
         var started = DateTimeOffset.UtcNow.AddDays(-6).AddHours(-4);
         var key = admin
-            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started)
-            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started);
+            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true)
+            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true);
         SceneHandle[] sessions = admin
             ? [
-                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention),
+                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention, asking),
                 new("AC-1421", "server (Claude)", SessionStatus.Busy),
                 new("research-monitor", "server (Claude)", SessionStatus.Done),
             ]
@@ -48,7 +51,7 @@ internal static class ServerGroupScene
 
         var group = cockpit.ServerGroups[0];
         cockpit.OpenServerSessionCommand.Execute(group.Sessions[0]);
-        if (group.Sessions[0].Pane is { } pane && admin)
+        if (group.Sessions[0].Pane is { } pane && admin && !asking)
         {
             pane.IsConfirmingClose = true;
         }
@@ -130,7 +133,7 @@ internal static class ServerGroupScene
     }
 
     // A session on the stand-in server: two rows for its pane, and nothing it can be asked to do.
-    private sealed class SceneHandle(string title, string profile, SessionStatus status) : ISessionHandle
+    private sealed class SceneHandle(string title, string profile, SessionStatus status, bool asking = false) : ISessionHandle
     {
         public string PaneId { get; } = title;
 
@@ -172,12 +175,23 @@ internal static class ServerGroupScene
 
         public bool HasReadableTranscript => true;
 
-        public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq) => Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(
+        public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
+        {
+            List<TranscriptSnapshotEntry> rows =
             [
-                new TranscriptSnapshotEntry("1", "UserText", "Prepare the morning briefing.", null, null, null, null, false, DateTimeOffset.UtcNow),
-                new TranscriptSnapshotEntry("2", "AssistantText", "Weather, agenda and the ROVA pick-up are in. I want to post the briefing to your Discord DM.", null, null, null, null, false, DateTimeOffset.UtcNow),
-            ],
-            0));
+                new("1", "UserText", "Prepare the morning briefing.", null, null, null, null, false, DateTimeOffset.UtcNow),
+                new("2", "AssistantText", "Weather, agenda and the ROVA pick-up are in. I want to post the briefing to your Discord DM.", null, null, null, null, false, DateTimeOffset.UtcNow),
+            ];
+            if (asking)
+            {
+                rows.Add(new("3", "ToolUse", "Bash: curl -X POST $AIHUB_API_URL/notes", "Bash", "{\"command\":\"curl -X POST $AIHUB_API_URL/notes\"}", "scene-ask", null, false, DateTimeOffset.UtcNow)
+                {
+                    IsPendingPermission = true,
+                });
+            }
+
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(rows, 0));
+        }
 
         public Task<bool> HasOutstandingBackgroundShellsAsync() => Task.FromResult(false);
 

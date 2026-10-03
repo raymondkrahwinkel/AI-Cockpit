@@ -45,9 +45,9 @@ public sealed class SessionsEndpointsTests
 
     // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant.
     [Theory]
-    [InlineData(false, HttpStatusCode.Forbidden)]
-    [InlineData(true, HttpStatusCode.OK)]
-    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, HttpStatusCode expected)
+    [InlineData(false, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
+    [InlineData(true, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
+    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, HttpStatusCode expected, string answerPart, string whoamiPart)
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -68,9 +68,15 @@ public sealed class SessionsEndpointsTests
         var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
         var bypass = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"bypassPermissions"}""");
 
+        var whoami = await door.SendAsync(HttpMethod.Get, "/api/v1/whoami", key.Secret, null);
+
         Assert.Equal(expected, answer.Status);
         Assert.Equal(expected, mode.Status);
         Assert.Equal(HttpStatusCode.BadRequest, bypass.Status);
+
+        // AC-1469: /whoami tells the desktop whether to draw the buttons; a direct answer without the grant gets the one refusal.
+        Assert.Contains(whoamiPart, whoami.Body, StringComparison.Ordinal);
+        Assert.Contains(answerPart, answer.Body, StringComparison.Ordinal);
     }
 
     // Seeing is reaching: a pane outside the key's projects is not found on any route, and no gateway call reaches it.
