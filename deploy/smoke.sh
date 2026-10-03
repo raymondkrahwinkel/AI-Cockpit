@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # AC-1356: the container smoke, run by CI before the push. Usage: deploy/smoke.sh <image:tag> (from the repo root).
 # Seeds a state, then proves: a start with both secrets answers on the node door; a restart keeps the fingerprint and a
-# fresh volume does not; no unlock secret means a refusal; the image is non-root with no docker and no Avalonia; no
-# secret is in a layer or a log. Each check that could pass vacuously has a control that must come out red.
+# fresh volume does not; no unlock secret means a refusal; the server runs non-root with no docker and no Avalonia; an
+# agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
+# no secret is in a layer or a log. Each check that could pass vacuously has a control that must come out red.
 set -euo pipefail
 
 image=${1:?usage: deploy/smoke.sh <image:tag>}
@@ -15,21 +16,30 @@ unlock=$(openssl rand -hex 16)
 key="ck_$(openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n')"
 printf '%s' "$unlock" > "$COCKPIT_UNLOCK_PASSWORD_PATH"
 printf '%s' "$key" > "$COCKPIT_CONNECT_KEY_PATH"
-# Docker file secrets keep the host's mode, and the container's user is not the runner's.
-chmod 644 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH"
+# Owner-only on the host: the entrypoint reads them as root and hands the server its own copies (AC-1464).
+chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH"
 : > "$work/logs.txt"
 
 dc() { docker compose -p "$project" -f deploy/compose.yaml "$@"; }
 fail() { echo "::error::smoke: $*"; exit 1; }
 cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
-  docker rm -f "$project-holder" >/dev/null 2>&1 || true
-  docker rmi -f "$project-control-root" "$project-control-leak" >/dev/null 2>&1 || true
+  docker rm -f "$project-holder" "$project-control-root" >/dev/null 2>&1 || true
+  docker rmi -f "$project-control-leak" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
 
-is_non_root() { [ "$(docker run --rm --entrypoint id "$1" -u)" != 0 ]; }
+# The uid a container's server process runs as: the image starts as root and the entrypoint drops (AC-1464).
+server_uid() { docker top "$1" -eo uid,args | awk '$2 == "/app/Cockpit.Server" { print $1 }'; }
+# One field of a probe's JSON line (deploy/smoke-probe.js).
+field() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]]))' "$1" "$2"; }
+# The probe, loaded into the codex launcher of whatever `docker compose exec` starts here, as the server's user.
+# Under the server's umask (007, deploy/entrypoint.sh), which `exec` does not inherit. Usage: probe <cli> [exec options].
+probe() {
+  local cli=$1; shift
+  dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane -e NODE_OPTIONS=--require=/work/smoke-probe.js "$@" cockpit     sh -c "umask 007 && exec $cli --version" | sed -n 's/^PROBE //p'
+}
 # Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
 history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
@@ -60,15 +70,15 @@ served_fingerprint() {
 
 echo "== the image"
 docker image inspect --format 'size: {{.Size}} bytes' "$image"
-is_non_root "$image" || fail "the image runs as uid 0"
 if docker run --rm --entrypoint sh "$image" -c 'command -v docker' >/dev/null; then fail "the image carries a docker binary"; fi
 [ -z "$(docker run --rm --entrypoint find "$image" / -xdev -iname 'Avalonia*.dll')" ] || fail "the image carries an Avalonia assembly"
 compose_config=$(dc config)
 if grep -q 'docker.sock' <<< "$compose_config"; then fail "compose mounts the docker socket"; fi
 
 echo "== controls: the checks above must be able to go red"
-printf 'FROM %s\nUSER root\n' "$image" | docker build -q -t "$project-control-root" - >/dev/null
-if is_non_root "$project-control-root"; then fail "control: the non-root check passed an image with USER root"; fi
+docker run -d --name "$project-control-root" --user 0 --entrypoint bash "$image" -c 'exec -a /app/Cockpit.Server sleep 60' >/dev/null
+[ "$(server_uid "$project-control-root")" = 0 ] || fail "control: the server-uid check did not see a server that runs as root"
+docker rm -f "$project-control-root" >/dev/null
 printf 'FROM %s\nARG S\nENV LEAK=$S\n' "$image" | docker build -q --build-arg S="$unlock" -t "$project-control-leak" - >/dev/null
 history_leaks "$project-control-leak" "$unlock" || fail "control: the history check missed a secret baked into a layer"
 if history_leaks "$image" "$unlock"; then fail "the unlock secret is in an image layer"; fi
@@ -83,7 +93,52 @@ status=$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key"
 [ "$status" = 200 ] || fail "whoami with the connect key answered $status"
 status=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:20383/api/v1/whoami)
 [ "$status" != 200 ] || fail "whoami without a key answered 200"
+container=$(dc ps -q cockpit)
+uid=$(server_uid "$container")
+[ -n "$uid" ] && [ "$uid" != 0 ] || fail "the server runs as uid '${uid:-none}'"
+# The compose health check, run the way Docker runs it: as the container's user, which is now root (AC-1466).
+health=$(docker inspect -f '{{index .Config.Healthcheck.Test 3}}' "$container")
+dc exec -T cockpit node -e "$health" || fail "the compose health check fails"
 collect_logs
+
+echo "== agent sessions run as agent (AC-1464)"
+# codex's npm entry is a node launcher, so the probe runs inside the process the wrapper started. claude is a native
+# binary: it gets a plain start through its wrapper, which is the same file as codex's.
+dc exec -T -u app cockpit sh -c 'cat > /work/smoke-probe.js' < deploy/smoke-probe.js
+agent_uid=$(dc exec -T cockpit id -u agent)
+tree=/work/worktrees/smoke
+git_as() { echo "-c user.name=$1 -c user.email=$1@smoke"; }
+dc exec -T -u app cockpit sh -c "umask 007 && git init -q $tree && git -C $tree $(git_as cockpit) commit -q --allow-empty -m init \
+  && touch $tree/agent.txt && git -C $tree add agent.txt"
+agent=$(probe codex -e SMOKE_WORKTREE=$tree)
+echo "through the wrapper: $agent"
+[ "$(field "$agent" uid)" = "$agent_uid" ] || fail "codex through the wrapper does not run as agent"
+[ "$(field "$agent" pane)" = smoke-pane ] || fail "COCKPIT_PANE_ID did not reach the CLI through the wrapper"
+[ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"
+for what in config certificate secret original environ; do
+  [ "$(field "$agent" $what)" = EACCES ] || fail "an agent session can reach $what ($(field "$agent" $what))"
+done
+[ "$(field "$agent" worktree)" = committed ] || fail "an agent session cannot commit in a worktree under /work ($(field "$agent" worktree))"
+dc exec -T -u app cockpit sh -c "umask 007 && echo cockpit >> $tree/agent.txt && git -C $tree $(git_as cockpit) commit -q -am cockpit && rm -rf $tree" \
+  || fail "the cockpit cannot commit in or remove a worktree the agent wrote in"
+dc exec -T -u app cockpit claude --version || fail "claude does not start through its wrapper"
+# A sign-in writes its file as agent, owner-only; the server's login check only asks whether it exists (AC-1357).
+dc exec -T -u agent cockpit sh -c 'umask 077 && : > /home/agent/.claude/.smoke-login'
+dc exec -T -u app cockpit test -e /home/app/.claude/.smoke-login || fail "the server cannot see a file the agent's CLI wrote"
+dc exec -T -u agent cockpit rm /home/agent/.claude/.smoke-login
+
+echo "== controls: without the wrapper the probe reads it all, and a bare sudo loses the session env"
+direct=$(probe /usr/local/bin/codex)
+echo "without the wrapper: $direct"
+for what in certificate secret environ; do
+  [ "$(field "$direct" $what)" = read ] || fail "control: the server's own user cannot read $what ($(field "$direct" $what)), so the denial proves nothing"
+done
+bare=$(dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane cockpit \
+  sudo -n -u agent NODE_OPTIONS=--require=/work/smoke-probe.js /usr/local/bin/codex --version | sed -n 's/^PROBE //p')
+echo "a bare sudo: $bare"
+[ "$(field "$bare" uid)" = "$agent_uid" ] || fail "control: the bare sudo did not run as agent"
+[ "$(field "$bare" pane)" = null ] || fail "control: a bare sudo kept COCKPIT_PANE_ID, so the env check proves nothing"
+dc exec -T -u app cockpit rm /work/smoke-probe.js
 
 echo "== down and up on the same volume"
 dc down >/dev/null

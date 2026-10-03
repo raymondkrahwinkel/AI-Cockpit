@@ -33,13 +33,23 @@ services:
       retries: 3
     # Longer than COCKPIT_STOP_BUDGET_SECONDS, so the server's own stop finishes before docker kills it.
     stop_grace_period: 15s
+    # AC-1464: the entrypoint copies the secrets here for the server alone, so they never touch the container's layer.
+    tmpfs:
+      - /run/cockpit:mode=0700
     volumes:
       - state:/state
+      # The CLIs run as `agent` and write their logins and transcripts here; the server reads the same volume on
+      # its own home. Two mounts of one volume, so neither user needs a path into the other's home.
+      - claude:/home/agent/.claude
       - claude:/home/app/.claude
+      - codex:/home/agent/.codex
       - codex:/home/app/.codex
+      # The server's SSH keys (clones), and the agent's own (its pushes): ssh refuses a key another user can read.
       - ssh:/home/app/.ssh
-      # Repos and worktrees live under /state by default. To keep them elsewhere, bind a host path here and
-      # point the clone and worktree roots at it in the app's settings.
+      - agent-ssh:/home/agent/.ssh
+      # Clones and worktrees, writable for the server and the agent alike. /state is the server's alone, so point the
+      # clone root at /work/clones and the worktree root at /work/worktrees in the app's settings (README.md).
+      - work:/work
 
 secrets:
   cockpit_unlock_password:
@@ -52,3 +62,5 @@ volumes:
   claude:
   codex:
   ssh:
+  agent-ssh:
+  work:

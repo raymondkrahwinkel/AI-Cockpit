@@ -20,21 +20,25 @@ The package is **private**, so the host logs in once with a token that has `read
 1. Nothing to set up in `/state`: the server turns the node door on itself, and mints its certificate on the first
    start. If the node port is held, or the door does not listen for any other reason, the server logs why and exits 1
    rather than reporting `running`.
-2. Put the two secrets in files, readable by uid 1654 (mode 0644, or `chown 1654`):
+2. Put the two secrets in files, owner-only is fine (the entrypoint reads them as root):
    `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
    `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
 3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit. These are plain
    environment variables, so `docker inspect` shows them; only the two secrets above are files.
 4. `COCKPIT_TAG=sha-<commit> docker compose -f deploy/compose.yaml up -d`
+5. In the app's settings, set the clone root to `/work/clones` and the worktree root to `/work/worktrees`. The defaults
+   lie under `/state`, which an agent session cannot enter (see below).
 
 ## What it keeps
 
 | Volume | Mount | Holds |
 | --- | --- | --- |
-| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, transcripts, clones, worktrees, logs |
-| `claude` | `/home/app/.claude` | the Claude Code login |
-| `codex` | `/home/app/.codex` | the Codex login |
-| `ssh` | `/home/app/.ssh` | SSH keys for git |
+| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs |
+| `work` | `/work` | clones and worktrees, writable for the server and the agent sessions |
+| `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts |
+| `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts |
+| `ssh` | `/home/app/.ssh` | the server's SSH keys (clones) |
+| `agent-ssh` | `/home/agent/.ssh` | the agent sessions' SSH keys (their pushes); ssh refuses a key another user can read |
 
 The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
 
@@ -57,7 +61,14 @@ Credential encryption is off on a fresh state, and then the unlock password is n
 With encryption on, the server starts only with the unlock secret, and exits 1 without it. Turning encryption on for a
 headless first start is not solved here.
 
-## Not here yet
+## Agent sessions run as `agent`
 
-Agent sessions run as the same user as the server and can read the unlock and connect-key files. Do not run bypass-mode
-agents on it before the uid separation lands.
+The server runs as `app`; every `claude` and `codex` it starts (sessions, sign-ins, login checks) runs as `agent`
+(uid 1700) through a wrapper on `PATH` and one sudoers rule that allows exactly those two binaries. An agent session
+cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
+the MCP settings, `GH_TOKEN`) and has its own `HOME`.
+
+- The container starts as root only for its entrypoint, which copies the secrets to a tmpfs only `app` can read, closes
+  `/run/secrets`, and then drops to `app` for good. Do not set `no-new-privileges`: the wrapper needs sudo.
+- A profile with a pinned `ExecutablePath`, or a cockpit-managed CLI install, bypasses the wrapper and runs as `app`.
+  Leave both empty on the server.
