@@ -44,8 +44,9 @@ probe() {
   dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane -e NODE_OPTIONS=--require=/work/smoke-probe.js "$@" cockpit \
     sh -c "umask 007 && exec $command" | sed -n 's/^PROBE //p'
 }
-# Fails when the command, run in the container with the given exec options, succeeds.
-refused() { if dc exec -T "$@" >/dev/null 2>&1; then return 1; fi; }
+# Refused when `<command>`, run as <user> in the container, exits non-zero. The exit code comes from a shell inside the
+# container, not from `docker compose exec`, and what the command said is kept in $refusal. Usage: refused <user> '<command>'.
+refused() { refusal=$(dc exec -T -u "$1" cockpit sh -c "$2 2>&1; echo \"exit=\$?\"" 2>&1); ! grep -qx 'exit=0' <<< "$refusal"; }
 # Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
 history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
@@ -157,15 +158,15 @@ dc exec -T -u agent cockpit rm /home/agent/.claude/.smoke-login
 echo "== the boundaries the wrapper does not draw itself"
 # The real binaries are agent-run's alone, so neither a profile pin nor a direct call from the server skips the wrapper.
 for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/git-core/git; do
-  refused -u app cockpit "$binary" --version || {
-    dc exec -T cockpit sh -c "id app; ls -l $binary; target=\$(readlink -f $binary); ls -l \$target; namei -l \$target"
-    fail "the server's user can run $binary itself"
-  }
-  dc exec -T -u agent cockpit "$binary" --version >/dev/null || fail "control: agent cannot run $binary"
+  refused app "$binary --version" || fail "the server's user can run $binary itself: $refusal"
+  echo "app runs $binary: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
+  ! refused agent "$binary --version" || fail "control: agent cannot run $binary: $refusal"
 done
-refused -u agent cockpit /usr/bin/sudo -n -u app /usr/bin/id || fail "agent can use sudo"
+refused agent '/usr/bin/sudo -n -u app /usr/bin/id' || fail "agent can use sudo: $refusal"
+echo "agent sudo: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
 # A managed CLI would install under /state/cli and run as app: the directory is root's.
-refused -u app cockpit mkdir /state/cli/claude || fail "the server's user can install a managed CLI under /state/cli"
+refused app 'mkdir /state/cli/claude' || fail "the server's user can install a managed CLI under /state/cli"
+echo "app installs under /state/cli: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
 dc exec -T -u app cockpit sh -c 'mkdir /state/smoke-control && rmdir /state/smoke-control' || fail "control: the server's user cannot write /state at all"
 
 echo "== controls: without the wrapper the probe reads it all, and a bare sudo loses the session env"
