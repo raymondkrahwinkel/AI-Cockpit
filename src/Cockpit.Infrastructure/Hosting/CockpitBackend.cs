@@ -21,6 +21,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Sessions.Tty;
+using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
@@ -434,8 +435,9 @@ public sealed class CockpitBackend
     // AC-1403: without a frontend, a backend part that reaches for Avalonia is refused with its reason.
     private static void _LoadPlugins(IServiceCollection services, ILoggerFactory loggerFactory, bool safeMode, bool withoutFrontend)
     {
-        var diagnostics = new PluginDiagnostics();
+        var diagnostics = new PluginDiagnostics(safeMode);
         services.AddSingleton(diagnostics);
+        services.AddSingleton<IPluginDiagnostics>(diagnostics);
         var manager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), diagnostics, safeMode);
         try
         {

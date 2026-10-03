@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Core.Plugins;
 using Cockpit.Core;
 using Cockpit.Infrastructure.Plugins;
 

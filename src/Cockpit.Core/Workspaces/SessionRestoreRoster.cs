@@ -1,8 +1,7 @@
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Workspaces;
 
-namespace Cockpit.Infrastructure.Sessions;
+namespace Cockpit.Core.Workspaces;
 
 // AC-1013/AC-410: AI-session panes to restore on start; the backend bootstrap uses this live set so a
 // not-yet-run worktree isn't misread as orphaned and pruned before it can be reattached.

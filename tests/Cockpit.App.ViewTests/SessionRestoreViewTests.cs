@@ -522,11 +522,12 @@ public class SessionRestoreViewTests
 
         var store = Substitute.For<IScheduledResumeStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
-        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        var resumes = new ScheduledResumeCoordinator(store);
+        vm.ScheduledResumes = resumes;
         await vm.StartScheduledResumesAsync();
 
         await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
-        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+        await resumes.RunDueAsync(DateTimeOffset.Now);
 
         await driver.Received(1).StartAsync(
             WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
@@ -572,11 +573,12 @@ public class SessionRestoreViewTests
 
         var store = Substitute.For<IScheduledResumeStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
-        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        var resumes = new ScheduledResumeCoordinator(store);
+        vm.ScheduledResumes = resumes;
         await vm.StartScheduledResumesAsync();
 
         await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
-        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+        await resumes.RunDueAsync(DateTimeOffset.Now);
 
         await driver.DidNotReceive().StartAsync(
             Arg.Any<SessionProfile>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
@@ -592,11 +594,12 @@ public class SessionRestoreViewTests
 
         var store = Substitute.For<IScheduledResumeStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
-        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        var resumes = new ScheduledResumeCoordinator(store);
+        vm.ScheduledResumes = resumes;
         await vm.StartScheduledResumesAsync();
 
         await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
-        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+        await resumes.RunDueAsync(DateTimeOffset.Now);
 
         Assert.True(restored.HasRestoreOffer, "a TTY reopen is skipped outright, so nothing ever started to clear it");
         Assert.True(restored.CanResumeConversation, "the offer is untouched, not degraded by a failed attempt");

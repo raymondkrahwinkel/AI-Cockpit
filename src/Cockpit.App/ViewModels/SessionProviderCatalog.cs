@@ -1,5 +1,5 @@
+using Cockpit.App.Services;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -12,7 +12,7 @@ public static class SessionProviderCatalog
         // provider plugin now, offered through the plugin-provider arm, not a built-in CLI provider.
         new("Ollama", SessionProvider.Ollama),
         new("LM Studio", SessionProvider.LmStudio),
-        // Generic fallback label for a Plugin-provider profile shown somewhere that has no IPluginProviderRegistry
+        // Generic fallback label for a Plugin-provider profile shown somewhere that has no IPluginRegistrations
         // at hand (and so can't look up the specific plugin's own display name) — never shown in the profile
         // editor's own dropdown, which uses AllProviders below instead.
         new("Plugin", SessionProvider.Plugin),
@@ -25,10 +25,10 @@ public static class SessionProviderCatalog
 
     // The full provider picker for the profile editor (#45): the built-in providers plus one option per provider a
     // Keep each registered plugin provider distinct instead of collapsing them onto the generic placeholder (#45).
-    public static IReadOnlyList<SessionProviderOption> AllProviders(IPluginProviderRegistry pluginProviderRegistry) =>
+    public static IReadOnlyList<SessionProviderOption> AllProviders(IPluginRegistrations pluginProviderRegistry) =>
     [
         .. Providers.Where(option => option.Value != SessionProvider.Plugin),
-        .. pluginProviderRegistry.Registrations.Select(registration =>
+        .. pluginProviderRegistry.SessionProviders.Select(registration =>
             new SessionProviderOption(registration.DisplayName, SessionProvider.Plugin, registration.ProviderId)),
     ];
 

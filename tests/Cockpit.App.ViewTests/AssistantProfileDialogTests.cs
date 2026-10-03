@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
@@ -248,7 +249,7 @@ public class AssistantProfileDialogTests
             slotStore ?? _SlotStore(slot ?? new AssistantProfileSlot(null, "No assistant profile has been set up yet.")),
             sessionProfiles,
             assistant,
-            pluginProviderRegistry: _Registry(),
+            pluginProviderRegistry: new PluginRegistrations(_Registry()),
             pluginConfigViews: _ConfigViews());
     }
 

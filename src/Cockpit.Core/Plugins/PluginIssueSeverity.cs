@@ -1,4 +1,4 @@
-namespace Cockpit.Infrastructure.Plugins;
+namespace Cockpit.Core.Plugins;
 
 // How serious a `PluginFailure` is. An `Error` kept the plugin from loading; a
 // `Warning` loaded it but flags something the operator should know — a plugin built against a

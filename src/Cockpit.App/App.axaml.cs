@@ -453,11 +453,11 @@ public partial class App : Application
             Program.Services.GetRequiredService<ISessionProfileStore>(),
             Program.Services.GetRequiredService<IProfileLoginChecker>(),
             Program.Services.GetService<IModelCatalog>(),
-            Program.Services.GetService<IPluginProviderRegistry>(),
+            Program.Services.GetService<IPluginRegistrations>(),
             Program.Services.GetService<IMcpServerCatalog>(),
             Program.Services.GetService<IMcpToolTokenEstimator>(),
             Program.Services.GetService<ITtySessionProviderResolver>(),
-            Program.Services.GetService<IProfileLoginStarter>(),
+            Program.Services.GetService<ISessionLoginFlows>(),
             Program.Services.GetService<IPluginProviderConfigViews>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it

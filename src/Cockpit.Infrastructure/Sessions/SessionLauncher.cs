@@ -4,7 +4,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Sessions;
 

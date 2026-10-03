@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,7 +7,6 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -151,11 +151,11 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // The plugin-provided "add/edit profile" config panel (#45), built from the registered provider's
     // `CreateConfigView` when `SelectedProvider` is a plugin provider; `null` for a built-in provider, or when no
-    // `IPluginProviderRegistry` was supplied (e.g.
+    // `IPluginRegistrations` was supplied (e.g.
     [ObservableProperty]
     private IPluginProviderConfigView? _pluginConfigView;
 
-    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IPluginRegistrations? _pluginProviderRegistry;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
 
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question
@@ -164,7 +164,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
 
     // AC-713: dispatches `Login` to whichever provider plugin this row's profile names.
-    private readonly IProfileLoginStarter? _loginStarter;
+    private readonly ISessionLoginFlows? _loginStarter;
 
     // Carried through `ToProfile` unchanged so an orphaned profile never loses its `ProviderId`/`ConfigJson` (and
     // therefore any API key inside it) just because nothing could build a `PluginConfigView` for it.
@@ -267,7 +267,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public bool SupportsEnvVars =>
         SelectedProvider.Value == SessionProvider.Plugin
         && SelectedProvider.PluginProviderId is { } providerId
-        && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true;
+        && _pluginProviderRegistry?.SessionProvider(providerId)?.Capabilities.SupportsEnvVars == true;
 
     // AC-1219: auto-approve is a cockpit setting, not a provider option — a session gates tool calls through the
     // per-call prompt whenever its provider brings no permission modes of its own, plugin (OpenRouter, Gemini, Grok)
@@ -277,7 +277,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         IsLocalProvider
         || (SelectedProvider.Value == SessionProvider.Plugin
             && SelectedProvider.PluginProviderId is { } autoApproveProviderId
-            && _pluginProviderRegistry?.Resolve(autoApproveProviderId)?.Capabilities.SupportsPermissions == false);
+            && _pluginProviderRegistry?.SessionProvider(autoApproveProviderId)?.Capabilities.SupportsPermissions == false);
 
     // The alias suggestions for the editable Claude model field (see `SessionOptionCatalog.ClaudeModelSuggestions`).
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
@@ -468,7 +468,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         if (_pluginProviderRegistry is not null
             && SelectedProvider.Value == SessionProvider.Plugin
             && SelectedProvider.PluginProviderId is { } providerId
-            && _pluginProviderRegistry.Resolve(providerId) is { } registration)
+            && _pluginProviderRegistry.SessionProvider(providerId) is { } registration)
         {
             foreach (var option in registration.Options)
             {
@@ -518,11 +518,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         bool isLoggedIn,
         bool canChooseProvider = false,
         IReadOnlyList<SessionProviderOption>? providers = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null,
+        IPluginRegistrations? pluginProviderRegistry = null,
         IReadOnlyList<string>? availableMcpServerNames = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IProfileLoginStarter? loginStarter = null,
+        ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null)
     {
         _pluginConfigViews = pluginConfigViews;

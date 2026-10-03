@@ -2,7 +2,7 @@ using System.Net.Http.Headers;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Svg;
+using Cockpit.Shared;
 
 namespace Cockpit.Infrastructure.Plugins;
 

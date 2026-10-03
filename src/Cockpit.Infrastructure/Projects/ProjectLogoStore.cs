@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.Svg;
+using Cockpit.Shared;
 
 namespace Cockpit.Infrastructure.Projects;
 

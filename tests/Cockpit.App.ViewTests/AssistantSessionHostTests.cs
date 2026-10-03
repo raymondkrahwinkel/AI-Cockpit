@@ -12,7 +12,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -1233,8 +1232,8 @@ public class AssistantSessionHostTests
     [Fact]
     public void Restarting_OverAnUnansweredConsentCard_AnswersIt_RatherThanLeavingItsCallerWaiting()
     {
-        var broker = Substitute.For<IConsentBroker>();
-        var prompt = new ConsentPrompt(
+        var broker = Substitute.For<IConsentPrompts>();
+        var prompt = new ConsentQuestion(
             Guid.NewGuid(),
             new ConsentRequest(
                 "Run a command",

@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -11,7 +10,7 @@ namespace Cockpit.App.ViewModels;
 // fails keeps the note where it is — the operator never loses what they typed.
 public sealed partial class QuickNoteViewModel : ObservableObject
 {
-    private readonly IProjectMemoryNoteWriter? _writer;
+    private readonly Func<Project, string, CancellationToken, Task<ProjectMemoryAppendResult>>? _append;
     private readonly Func<Project, string, Task>? _start;
 
     // Design-time: two sample destinations, the first one picked.
@@ -21,17 +20,17 @@ public sealed partial class QuickNoteViewModel : ObservableObject
                 new Project("p1", "Onboarding") { MemoryRef = "depot:onboarding" },
                 new Project("p2", "Cockpit") { MemoryRef = "depot:cockpit" },
             ],
-            writer: null,
+            append: null,
             start: null)
     {
     }
 
     // `projects` is offered as given: the caller has already filtered to what can be written to and ordered it
     // most-recently-opened first (`ProjectsViewModel.RecentProjects`), so the first one is the default pick.
-    public QuickNoteViewModel(IReadOnlyList<Project> projects, IProjectMemoryNoteWriter? writer, Func<Project, string, Task>? start)
+    public QuickNoteViewModel(IReadOnlyList<Project> projects, Func<Project, string, CancellationToken, Task<ProjectMemoryAppendResult>>? append, Func<Project, string, Task>? start)
     {
         Projects = projects;
-        _writer = writer;
+        _append = append;
         _start = start;
         SelectedProject = projects.FirstOrDefault();
     }
@@ -69,7 +68,7 @@ public sealed partial class QuickNoteViewModel : ObservableObject
 
     private async Task _SaveAsync(bool start)
     {
-        if (_writer is null || SelectedProject is not { } project)
+        if (_append is null || SelectedProject is not { } project)
         {
             Message = "There is no project to save this into.";
             return;
@@ -86,7 +85,7 @@ public sealed partial class QuickNoteViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            var result = await _writer.AppendAsync(project, text, CancellationToken.None);
+            var result = await _append(project, text, CancellationToken.None);
             Message = result.Outcome switch
             {
                 ProjectMemoryAppendOutcome.Success => string.Empty,

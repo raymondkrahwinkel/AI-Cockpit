@@ -65,14 +65,10 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
@@ -108,8 +104,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAgentResourceClaims? _agentClaims;
     private readonly IAgentLineBudget? _agentLineBudget;
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
-    private readonly LiveSessionRegistry? _liveSessions;
-    private readonly SessionRegistry? _sessionRegistry;
+    private readonly ISessionRegistration? _sessionRegistry;
 
     // AC-1450: an SDK session's control, made and registered before its pane, which the registry's Changed then makes.
     // Null in the design-time and unit-test graphs, which keep making the pane first.
@@ -131,7 +126,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // parameterless design-time constructor below), replaceable in tests (see ExternalLinkTests' own remark on
     // why a real URL cannot be exercised there directly).
     private readonly Func<string, bool> _tryOpenExternalLink = ExternalLink.TryOpen;
-    private readonly SessionStateRecorder? _sessionStateRecorder;
+    private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
@@ -173,7 +168,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly DiagnosticsBackgroundService? _diagnosticsBackgroundService;
     private readonly IDelegationMcpToggle? _delegationMcpToggle;
     private readonly ISessionResourceResolver? _sessionResourceResolver;
-    private readonly IConsentBroker? _consentBroker;
+    private readonly IConsentPrompts? _consentPrompts;
     private readonly ResourceMonitor? _resourceMonitor;
     // Stops a slow SampleResourcesAsync read from overlapping the next tick — a second walk of ResourceMonitor's
     // per-process state would corrupt the CPU delta. UI-thread only, so a plain field is enough.
@@ -189,7 +184,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // panel; this holds it because Options has no session to borrow one from.
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
     private CancellationTokenSource? _micTestCancellation;
-    private readonly PluginDiagnostics? _pluginDiagnostics;
+    private readonly IPluginDiagnostics? _pluginDiagnostics;
+    private readonly ISettingsWriteBatch? _settingsWriteBatch;
     private readonly bool _safeMode;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
@@ -209,7 +205,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Handed in by the app at startup rather than taken through the constructor, so the unit-test and design-time
     // graphs — which build this view-model from the container — never construct a scheduler, never touch the config
     // file, and never leave one running behind a test (AC-234).
-    public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
+    public IScheduledResumes? ScheduledResumes { get; set; }
 
     // The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
     // Null in the graphs that never load them, and every signal then warns where its provider said.
@@ -551,7 +547,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public void RefreshPluginFailures()
     {
         var issues = _pluginDiagnostics?.Failures ?? [];
-        var activationIssues = issues.Where(issue => PluginDiagnostics.ActivationPhases.Contains(issue.Phase) || issue.Phase == "compatibility").ToList();
+        var activationIssues = issues.Where(issue => IPluginDiagnostics.ActivationPhases.Contains(issue.Phase) || issue.Phase == "compatibility").ToList();
         var errors = activationIssues.Where(issue => issue.Severity == PluginIssueSeverity.Error).ToList();
         var warnings = activationIssues.Where(issue => issue.Severity == PluginIssueSeverity.Warning).ToList();
 
@@ -559,7 +555,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the plugin is running, one thing it registered is not. Grouped to one (its latest) per folder, since a
         // folder that also has an activation issue would otherwise count twice for the same plugin.
         var contributionFailures = issues
-            .Where(issue => !PluginDiagnostics.ActivationPhases.Contains(issue.Phase) && issue.Phase != "compatibility")
+            .Where(issue => !IPluginDiagnostics.ActivationPhases.Contains(issue.Phase) && issue.Phase != "compatibility")
             .GroupBy(issue => issue.FolderId, StringComparer.Ordinal)
             .Select(group => group.Last())
             .ToList();
@@ -2931,7 +2927,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context — seeds three sample
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
-    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, SessionRegistry? sessionRegistry = null)
+    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null)
     {
         // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
         _sessionRegistry = sessionRegistry;
@@ -3028,7 +3024,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
         IPluginStoreClient? pluginStoreClient = null,
         IPluginDialogHost? pluginDialogHost = null,
-        PluginDiagnostics? pluginDiagnostics = null,
+        IPluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
@@ -3049,7 +3045,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
         IWidgetRegistry? widgetRegistry = null,
         IDockPanelRegistry? dockPanelRegistry = null,
-        IConsentBroker? consentBroker = null,
+        IConsentPrompts? consentPrompts = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptionAdvisor? transcriptionAdvisor = null,
         ITranscriptionCalibrator? transcriptionCalibrator = null,
@@ -3061,7 +3057,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ProjectsViewModel? projects = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         ICloneSettingsStore? cloneSettingsStore = null,
-        LiveSessionRegistry? liveSessions = null,
+        ILiveSessionRegistry? liveSessions = null,
         IUsagePillSettingsStore? usagePillSettingsStore = null,
         IScreenLockSettingsStore? screenLockSettingsStore = null,
         ITerminalAccessSwitch? terminalAccessSwitch = null,
@@ -3089,11 +3085,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAgentLineBudget? agentLineBudget = null,
         IAgentNotifyAuditLog? agentNotifyTrail = null,
         IClaimCollisionMonitor? claimCollisionMonitor = null,
-        SessionStateRecorder? sessionStateRecorder = null,
+        ISessionStateCache? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeReconcileGate? worktreeReconcileGate = null,
-        PluginManager? pluginManager = null,
         ILogger<CockpitViewModel>? logger = null,
         // AC-545: only so a spawn the assistant asked for starts on the route the profile is set to, the way the
         // New-session dialog would have (SessionKindDefaults). Optional like every neighbour here — absent, the
@@ -3142,11 +3137,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
         // design-time/unit-test graph like the relay above.
         IBehaviourMemorySync? behaviourSync = null,
-        SessionRegistry? sessionRegistry = null,
+        ISessionRegistration? sessionRegistry = null,
         ISessionControlFactory? sessionControls = null,
         Func<ISessionControl, SessionViewModel>? sdkPaneOver = null,
-        Func<ISessionLauncher>? sessionLauncher = null)
+        Func<ISessionLauncher>? sessionLauncher = null,
+        ISettingsWriteBatch? settingsWriteBatch = null)
     {
+        _settingsWriteBatch = settingsWriteBatch;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
@@ -3216,10 +3213,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _backupService = backupService;
         _assistantMemory = assistantMemory;
         _appRestart = appRestartService;
-        // AC-478: whether this process was launched with PluginManager.SafeModeArgument, read off the same
-        // singleton Program.cs constructed the switch on — not a second source of truth for a fact that must
-        // agree with what actually happened to plugin loading.
-        _safeMode = pluginManager?.SafeMode ?? false;
+        // AC-478: whether this process was launched in safe mode, read off the diagnostics plugin loading was given the
+        // switch with — not a second source of truth for a fact that must agree with what happened to plugin loading.
+        _safeMode = pluginDiagnostics?.SafeMode ?? false;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
@@ -3241,7 +3237,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _terminals = terminals;
         _diagrams = diagrams;
         _whiteboards = whiteboards;
-        _liveSessions = liveSessions;
         _sessionRegistry = sessionRegistry;
         // AC-1373: the grid feeds the registry from the collection itself, so every way a pane enters or leaves it
         // (AddSession, a restore, CloseSessionAsync, teardown) reaches the registry. Embedded panes are fed in Embed.
@@ -3407,11 +3402,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The consent gate (#AC-47) opens a prompt on the session it belongs to; the cockpit owns the panes, so it
         // routes the prompt to the right one (and a toast when that pane is not the one on screen). Absent in the
         // design-time/unit-test graph — the banner simply never appears there.
-        _consentBroker = consentBroker;
-        if (consentBroker is not null)
+        _consentPrompts = consentPrompts;
+        if (consentPrompts is not null)
         {
-            consentBroker.PromptOpened += _OnConsentPromptOpened;
-            consentBroker.PromptClosed += _OnConsentPromptClosed;
+            consentPrompts.Opened += _OnConsentPromptOpened;
+            consentPrompts.Closed += _OnConsentPromptClosed;
         }
 
         if (sessionMcpMounts is not null)
@@ -3441,7 +3436,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Route a consent prompt to the pane it belongs to. On the UI thread: it sets an observable property and can
     // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
-    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt)
+    private void _OnConsentPromptOpened(object? sender, ConsentQuestion prompt)
     {
         // AC-711: captured now, since the assistant's live instance can be replaced (restart, AC-596 hand-over)
         // before the routing below runs. AssistantIdentity.PaneId is reused across that
@@ -3465,7 +3460,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (pane is null)
             {
-                _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                _consentPrompts?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
                 return;
             }
 
@@ -3474,11 +3469,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // than lose the prompt already on screen.
             if (pane.PendingConsent is not null)
             {
-                _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                _consentPrompts?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
                 return;
             }
 
-            pane.PendingConsent = new ConsentPromptViewModel(prompt, _consentBroker!);
+            if (_consentPrompts is not { } consent)
+            {
+                return;
+            }
+
+            pane.PendingConsent = new ConsentPromptViewModel(prompt, consent);
 
             // AC-1305: this and the close side are the open and shut of every banner there is, so the Simple stand's
             // notification list is recomputed from both. `OnSessionPropertyChanged` is the net under them, for the
@@ -3526,7 +3526,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // consumer (AC-38/AC-34) exists. Reachable only from the debug-gated palette entries (#73).
     private void _TriggerTestConsent(bool dangerous)
     {
-        if (_consentBroker is null || SelectedSession is not { } pane)
+        if (_consentPrompts is null || SelectedSession is not { } pane)
         {
             return;
         }
@@ -3546,7 +3546,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ConsentRisk.LowRisk,
                 AllowRemember: true);
 
-        _ = _consentBroker.RequestConsentAsync(request);
+        _ = _consentPrompts.RequestAsync(request).ContinueWith(
+            failed => _logger?.LogWarning(failed.Exception, "The debug consent prompt failed."),
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -6635,7 +6637,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Debug-only (#73): a way to raise a sample consent prompt on the selected session so the AC-47 banner can
         // be tried before a real consumer wires one up. Hidden unless the debug controls are on.
-        if (ShowDebugControls && _consentBroker is not null)
+        if (ShowDebugControls && _consentPrompts is not null)
         {
             commands.Add(new PaletteCommand("Debug: test consent prompt (dangerous)", string.Empty, () => _TriggerTestConsent(dangerous: true)));
             commands.Add(new PaletteCommand("Debug: test consent prompt (low-risk)", string.Empty, () => _TriggerTestConsent(dangerous: false)));
@@ -6828,7 +6830,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
-        await using (CockpitConfigWriteBatch.Begin())
+        await using (_settingsWriteBatch?.Begin())
         {
             // AC-479: reported after the batch has run rather than before it, so a plugin that throws on its own
             // write lands on the same list as one that refused — the others' writes have happened by then.
@@ -8023,9 +8025,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Register the fake provider and start a REAL session against it, through the same New-session path a real
         // Claude session uses (StartConfiguredAsync) — so this exercises the real runtime, activity ticker and
         // Focus "steps run" folding, not a design-ctor stand-in.
-        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
-            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
-        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered();
 
         var profile = new SessionProfile("Leak Sim", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
         var vm = _sessionFactory();
@@ -8140,9 +8140,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         sessionCount = Math.Clamp(sessionCount, 1, 12);
         seconds = Math.Clamp(seconds, 1, 600);
-        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
-            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
-        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered();
         var drivers = new List<Cockpit.App.Diagnostics.LeakSimDriver>();
         var sessionVms = new List<SessionViewModel>();
         for (var i = 0; i < sessionCount; i++)
@@ -8266,9 +8264,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var before = Cockpit.App.Diagnostics.LeakTracker.ReportAfterGc();
 
-        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
-            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
-        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered();
 
         var profile = new SessionProfile("Chat Leak Sim", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
         var vm = _sessionFactory();

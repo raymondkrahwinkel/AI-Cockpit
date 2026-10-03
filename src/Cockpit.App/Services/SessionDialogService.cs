@@ -20,8 +20,6 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Infrastructure.Projects;
@@ -35,19 +33,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 {
     private readonly ISessionProfileStore _profileStore;
     private readonly IProfileLoginChecker _loginChecker;
-    private readonly IProfileLoginStarter _loginStarter;
+    private readonly ISessionLoginFlows _loginFlows;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IMcpOAuthCoordinator _oauthCoordinator;
-    private readonly IPluginProviderRegistry _pluginProviderRegistry;
+    private readonly IPluginRegistrations _plugins;
     private readonly IPluginProviderConfigViews _pluginConfigViews;
     private readonly IShellAccessSwitch _shellAccessSwitch;
     private readonly IWorkingPathHistoryStore _workingPathStore;
-    private readonly IConversationPickerRegistry _conversationPickers;
     private readonly DelegatedTasksViewModel _delegatedTasks;
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
-    private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
@@ -68,13 +64,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpServerCatalog mcpServerCatalog,
         IMcpToolTokenEstimator tokenEstimator,
         IMcpOAuthCoordinator oauthCoordinator,
-        IPluginProviderRegistry pluginProviderRegistry,
+        IPluginRegistrations plugins,
         IShellAccessSwitch shellAccessSwitch,
         IWorkingPathHistoryStore workingPathStore,
-        IConversationPickerRegistry conversationPickers,
         DelegatedTasksViewModel delegatedTasks,
         ITtySessionProviderResolver ttyProviderResolver,
-        IPluginTtyProviderRegistry ttyProviderRegistry,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
         IVerifyRunnerRegistry verifyRunnerRegistry,
@@ -85,26 +79,24 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ISharedProjectSourceRegistry sharedProjectSources,
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore,
-        IProfileLoginStarter loginStarter,
+        ISessionLoginFlows loginFlows,
         IPluginProviderConfigViews pluginConfigViews)
     {
         _pluginConfigViews = pluginConfigViews;
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
-        _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
-        _loginStarter = loginStarter;
+        _loginFlows = loginFlows;
         _modelCatalog = modelCatalog;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _oauthCoordinator = oauthCoordinator;
-        _pluginProviderRegistry = pluginProviderRegistry;
+        _plugins = plugins;
         _shellAccessSwitch = shellAccessSwitch;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
-        _ttyProviderRegistry = ttyProviderRegistry;
         _worktreeManager = worktreeManager;
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
@@ -135,9 +127,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // The New-session picker reads the catalog (registry + plugin-provided servers, AC-11) so a plugin's
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
-            _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _memorySources, _loginStarter, _shellAccessSwitch);
+            _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _plugins,
+            _ttyProviderResolver, _worktreeManager, _tokenEstimator,
+            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch);
         await viewModel.LoadAsync();
 
         // AC-164: project before prefill, matched by id from the loaded list — selecting it runs the dialog's
@@ -253,7 +245,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             var viewModel = new AssistantProfileDialogViewModel(
                 _assistantProfileStore, _profileStore, assistant, _loginChecker,
-                _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews);
+                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews);
             await viewModel.LoadAsync();
 
             return new AssistantProfileDialog { DataContext = viewModel };
@@ -723,7 +715,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         await _ShowSurfaceAsync(typeof(AboutDialog), owner, () =>
         {
-            var pluginProviders = _pluginProviderRegistry.Registrations.Select(registration => registration.DisplayName);
+            var pluginProviders = _plugins.SessionProviders.Select(registration => registration.DisplayName);
             var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), pluginProviders);
 
             return new AboutDialog { DataContext = info };

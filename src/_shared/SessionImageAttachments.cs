@@ -1,11 +1,11 @@
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions;
 
-namespace Cockpit.Infrastructure.Plugins;
+namespace Cockpit.Shared;
 
 // AC-116: a turn's images as a plugin receives them, named in the order they were pasted. AC-1415: shared by the
 // desktop pane and the backend's observer, so both name them alike.
-public static class SessionImageAttachments
+internal static class SessionImageAttachments
 {
     public static IReadOnlyList<SessionImageAttachment> From(IReadOnlyList<ImageAttachment> images) =>
         [.. images.Select((image, index) => new SessionImageAttachment(

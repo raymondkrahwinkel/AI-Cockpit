@@ -13,8 +13,7 @@ using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.Theming;
-using Cockpit.Infrastructure.Pdf;
-using Cockpit.Infrastructure.Svg;
+using Cockpit.Shared;
 
 namespace Cockpit.App.Views;
 

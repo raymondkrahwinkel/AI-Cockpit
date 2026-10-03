@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,7 +10,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -22,7 +22,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly ISessionProfileStore? _sessionProfileStore;
     private readonly IAssistantSessionHost? _assistant;
     private readonly IProfileLoginChecker? _loginChecker;
-    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IPluginRegistrations? _pluginProviderRegistry;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
@@ -67,7 +67,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // The plugin option rows, MCP rows and variable are staged directly rather than resolved: a headless render has no
     // plugin registry and no MCP catalog, so a scene built from the real path would show the empty half of every block
     // and prove nothing about the parts this dialog exists for.
-    public AssistantProfileDialogViewModel(IAssistantSessionHost? assistant = null, IPluginProviderRegistry? pluginProviderRegistry = null, IPluginProviderConfigViews? pluginConfigViews = null)
+    public AssistantProfileDialogViewModel(IAssistantSessionHost? assistant = null, IPluginRegistrations? pluginProviderRegistry = null, IPluginProviderConfigViews? pluginConfigViews = null)
     {
         _assistant = assistant;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -111,7 +111,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         ISessionProfileStore sessionProfileStore,
         IAssistantSessionHost? assistant = null,
         IProfileLoginChecker? loginChecker = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null,
+        IPluginRegistrations? pluginProviderRegistry = null,
         IMcpServerCatalog? mcpServerCatalog = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,

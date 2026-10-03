@@ -76,7 +76,7 @@ public sealed class QuickNoteCoordinator : ISingletonService
     // Only projects a note can actually land in are offered (criterion 2's counter-proof), in the order the
     // projects list already keeps: most recently opened first. Opens on whatever the last window left unsaved.
     internal QuickNoteViewModel CreateViewModel() =>
-        new(_cockpit.Projects.RecentProjects.Where(_writer.CanAppend).ToList(), _writer, _start) { Note = _draft };
+        new(_cockpit.Projects.RecentProjects.Where(_writer.CanAppend).ToList(), _writer.AppendAsync, _start) { Note = _draft };
 
     internal void UseStart(Func<Project, string, Task> start) => _start = start;
 

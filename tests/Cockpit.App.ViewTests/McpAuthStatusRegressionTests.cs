@@ -311,8 +311,8 @@ public class McpAuthStatusRegressionTests
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
 
         var viewModel = new NewSessionDialogViewModel(
-            store, loginChecker, catalog, workingPathStore: null, conversationPickers: null,
-            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry: null,
+            store, loginChecker, catalog, workingPathStore: null, plugins: null,
+            ttyProviderResolver: null,
             worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: coordinator);
 
         // Pairing the rows to the registry by name threw here, outside any catch, so the dialog did not open at all.
@@ -370,8 +370,8 @@ public class McpAuthStatusRegressionTests
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
 
         var viewModel = new NewSessionDialogViewModel(
-            profileStore, loginChecker, catalog, workingPathStore: null, conversationPickers: null,
-            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry: null,
+            profileStore, loginChecker, catalog, workingPathStore: null, plugins: null,
+            ttyProviderResolver: null,
             worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: null);
         await viewModel.LoadAsync();
 

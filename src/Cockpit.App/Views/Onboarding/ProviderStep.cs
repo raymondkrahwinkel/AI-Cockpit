@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Views.Onboarding;
 
@@ -12,7 +11,7 @@ internal sealed class ProviderStep(
     IPluginStoreConfigStore storeConfigStore,
     IPluginStoreClient storeClient,
     IPluginProvisioningService provisioningService,
-    PluginBootstrap bootstrap) : IFirstRunWizardStep, ISingletonService
+    IPluginAdministration plugins) : IFirstRunWizardStep, ISingletonService
 {
     public int Order => 20;
 
@@ -24,6 +23,6 @@ internal sealed class ProviderStep(
 
     public Control BuildContent() => new ProviderStepView
     {
-        DataContext = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, bootstrap),
+        DataContext = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, plugins),
     };
 }

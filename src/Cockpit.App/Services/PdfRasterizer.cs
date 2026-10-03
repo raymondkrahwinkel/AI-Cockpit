@@ -1,7 +1,7 @@
 using PDFtoImage;
 using SkiaSharp;
 
-namespace Cockpit.Infrastructure.Pdf;
+namespace Cockpit.App.Services;
 
 // Rasterises page 1 of a PDF for FilePreviewWindow's preview (AC-730) — mirrors SvgRasterizer.Rasterize:
 // PDFium + SkiaSharp turn PDF bytes into a decodable PNG. Page 1 only for now; browsing further pages is

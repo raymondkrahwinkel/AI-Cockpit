@@ -1,4 +1,4 @@
-namespace Cockpit.Infrastructure.Plugins;
+namespace Cockpit.Core.Plugins;
 
 // A plugin issue surfaced in the startup banner and the plugin manager (#14). Defaults to
 // `PluginIssueSeverity.Error`, the original "failed to load" meaning, so `Warning` (loaded but

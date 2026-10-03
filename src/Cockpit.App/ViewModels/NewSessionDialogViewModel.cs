@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -17,10 +18,6 @@ using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.Core.Worktrees;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Projects;
-using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -30,7 +27,7 @@ namespace Cockpit.App.ViewModels;
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IProfileLoginChecker? _loginChecker;
-    private readonly IProfileLoginStarter? _loginStarter;
+    private readonly ISessionLoginFlows? _loginFlows;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
@@ -39,8 +36,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
-    private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
-    private readonly IPluginProviderRegistry? _sessionProviderRegistry;
+    private readonly IPluginRegistrations? _plugins;
     private readonly IShellAccessSwitch? _shellAccessSwitch;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly IProjectStore? _projectStore;
@@ -128,7 +124,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // with `SupportsPermissions: false`) runs through the host's own approval gate instead.
     private bool _ProviderDeclaresPermissionModes() =>
         SelectedProfile?.ProviderConfig is PluginProviderConfig plugin
-        && (_sessionProviderRegistry?.Resolve(plugin.ProviderId)?.Capabilities.SupportsPermissions ?? false);
+        && (_plugins?.SessionProvider(plugin.ProviderId)?.Capabilities.SupportsPermissions ?? false);
 
     // Shown only for a profile whose provider declares no permission modes (see above) — a Claude/Codex profile's
     // own picker already says as much, so this would be redundant there.
@@ -487,7 +483,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     // AC-713: whether the *selected* profile's provider declared a login at all, not just "not local" — a
     // gate-less provider (Gemini, Kimi) reads `IsSelectedProfileLoggedIn == true` and must not look logged in.
-    public bool HasLoginConcept => SelectedProfile is { } profile && (_loginStarter?.CanStartLogin(profile) ?? false);
+    public bool HasLoginConcept => SelectedProfile is { } profile && (_loginFlows?.CanStartLogin(profile) ?? false);
 
     // AC-713: an SDK session that is not logged in — a TTY logs in via its own TUI, generalized off `IsClaudeProfile` now that Codex has a gate too.
     public bool ShowLoginHint => IsSdk && !IsLocalProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
@@ -505,7 +501,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanStartLogin))]
     private void Login()
     {
-        if (SelectedProfile is not { } profile || _loginStarter?.StartLogin(profile, CancellationToken.None) is not { } flow)
+        if (SelectedProfile is not { } profile || _loginFlows?.StartLogin(profile, CancellationToken.None) is not { } flow)
         {
             return;
         }
@@ -548,31 +544,27 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IProfileLoginChecker loginChecker,
         IMcpServerCatalog? mcpServerCatalog = null,
         IWorkingPathHistoryStore? workingPathStore = null,
-        IConversationPickerRegistry? conversationPickers = null,
+        IPluginRegistrations? plugins = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IPluginTtyProviderRegistry? ttyProviderRegistry = null,
-        IPluginProviderRegistry? sessionProviderRegistry = null,
         IWorktreeManager? worktreeManager = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         IProjectStore? projectStore = null,
         IMcpOAuthCoordinator? oauthCoordinator = null,
-        IProjectMemorySourceRegistry? memorySourceRegistry = null,
-        IProfileLoginStarter? loginStarter = null,
+        ISessionLoginFlows? loginFlows = null,
         IShellAccessSwitch? shellAccessSwitch = null)
     {
         _shellAccessSwitch = shellAccessSwitch;
         _projectStore = projectStore;
-        _memorySources = memorySourceRegistry?.Sources.ToMemorySources();
-        _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
+        _memorySources = plugins?.MemorySources;
+        _conversationPicker = plugins?.ConversationPickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
-        _loginStarter = loginStarter;
+        _loginFlows = loginFlows;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
-        _ttyProviderRegistry = ttyProviderRegistry;
-        _sessionProviderRegistry = sessionProviderRegistry;
+        _plugins = plugins;
         _worktreeManager = worktreeManager;
         _oauthCoordinator = oauthCoordinator;
 
@@ -1139,9 +1131,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         PluginTtyOptions.Clear();
 
-        if (_ttyProviderRegistry is not null
+        if (_plugins is not null
             && profile?.ProviderConfig is PluginProviderConfig plugin
-            && _ttyProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+            && _plugins.TtyProvider(plugin.ProviderId) is { } registration)
         {
             var storedDefaults = profile.Defaults?.OptionDefaults;
             foreach (var option in registration.Options)
@@ -1162,9 +1154,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         SdkLaunchOptions.Clear();
 
-        if (_sessionProviderRegistry is not null
+        if (_plugins is not null
             && profile?.ProviderConfig is PluginProviderConfig plugin
-            && _sessionProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+            && _plugins.SessionProvider(plugin.ProviderId) is { } registration)
         {
             var storedDefaults = profile.Defaults?.OptionDefaults;
             foreach (var option in registration.Options)
@@ -1192,12 +1184,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        if (IsTty && _ttyProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveTty })
+        if (IsTty && _plugins?.TtyProvider(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveTty })
         {
             _StartLaunchOptionsRefresh(PluginTtyOptions, plugin.ConfigJson,
                 async (json, token) => (await resolveTty(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());
         }
-        else if (IsSdk && _sessionProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveSdk })
+        else if (IsSdk && _plugins?.SessionProvider(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveSdk })
         {
             _StartLaunchOptionsRefresh(SdkLaunchOptions, plugin.ConfigJson,
                 async (json, token) => (await resolveSdk(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());

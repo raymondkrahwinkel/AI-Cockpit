@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Worktrees;
-using Cockpit.Core.Worktrees;
 
-namespace Cockpit.Infrastructure.Worktrees;
+namespace Cockpit.Core.Worktrees;
 
 // Where a starting session may run, and on which branch (AC-85, AC-938). Decision set: nothing was admitted.
 public sealed record AdmittedDirectory(string? WorkingDirectory, string? WorktreeBranch, NeedsWorktreeDecision? Decision = null);

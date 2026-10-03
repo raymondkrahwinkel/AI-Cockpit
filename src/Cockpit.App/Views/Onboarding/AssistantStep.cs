@@ -3,7 +3,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Views.Onboarding;
 
@@ -15,7 +14,7 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
         IAssistantSettingsStore settingsStore,
         IAssistantProfileStore profileStore,
         ISessionDialogService dialogService,
-        IPluginProviderRegistry pluginProviderRegistry)
+        IPluginRegistrations pluginProviderRegistry)
         : this(new AssistantStepViewModel(settingsStore, profileStore, dialogService, pluginProviderRegistry))
     {
     }
