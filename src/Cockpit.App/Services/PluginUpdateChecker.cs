@@ -1,11 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Services;
@@ -13,7 +11,7 @@ namespace Cockpit.App.Services;
 // Real `IPluginUpdateChecker` (#59): compares each plugin's version against its store's `latestVersion`
 // and toasts a summary once, never twice for the same (plugin, version) pair. The installed-plugin lookup
 // is an injectable delegate, not a direct `PluginBootstrap` call, since it's sealed with no interface and tests need a fixed set instead of the real plugins folder.
-public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonService
+public sealed class PluginUpdateChecker : IPluginUpdateChecker
 {
     private readonly Func<CancellationToken, Task<IReadOnlyList<DiscoveredPlugin>>> _getInstalledPluginsAsync;
     // (entry id, latest version) -> whether the operator already staged that update this session (AC-76); an
@@ -29,23 +27,6 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
     // (FolderId, LatestVersion) pairs already toasted this run — a later 15-minute pass only toasts a
     // version bump beyond what is already in here, never the same update twice.
     private readonly HashSet<(string FolderId, string LatestVersion)> _notifiedUpdates = [];
-
-    public PluginUpdateChecker(
-        PluginBootstrap bootstrap,
-        IPluginStoreConfigStore storeConfigStore,
-        IPluginStoreClient storeClient,
-        IToastService toastService,
-        CockpitViewModel cockpit,
-        ILogger<PluginUpdateChecker> logger)
-        : this(
-            cancellationToken => bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken),
-            storeConfigStore,
-            storeClient,
-            toastService,
-            cockpit,
-            logger)
-    {
-    }
 
     internal PluginUpdateChecker(
         Func<CancellationToken, Task<IReadOnlyList<DiscoveredPlugin>>> getInstalledPluginsAsync,

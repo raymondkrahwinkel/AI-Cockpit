@@ -1,17 +1,17 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
 // What a session started straight from a project opens with (AC-162/AC-164) — the New-session dialog's
 // answers, reached without showing it. Both the launcher's Start button and the sidebar's ▶ come through
 // here so they can't drift apart. Composes a `NewSessionResult` only; starting it stays the single launch path.
-public sealed class ProjectQuickStart(ISessionProfileStore profiles, SessionStartComposer composer) : ISingletonService
+public sealed class ProjectQuickStart(ISessionProfileStore profiles, IProjectStartComposer composer) : ISingletonService
 {
     // The session `project` starts, or `null` when it names no profile that still exists. Null is a fall-back
     // signal, not a failure: picking an arbitrary profile would silently start the wrong provider, so the

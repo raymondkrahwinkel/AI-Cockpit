@@ -1,4 +1,4 @@
-using Cockpit.App.Services;
+using Cockpit.Infrastructure.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewTests;

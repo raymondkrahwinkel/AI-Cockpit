@@ -11,7 +11,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Tests.Shared;
 using NSubstitute;
-using Cockpit.App.Services;
+using Cockpit.App.Composition;
 
 namespace Cockpit.App.ViewTests;
 

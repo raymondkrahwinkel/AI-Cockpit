@@ -1,5 +1,3 @@
-using Cockpit.Core.Abstractions;
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -14,9 +12,4 @@ public interface IProviderUsageSignals
     /// The signals the provider registered as <paramref name="providerId"/> declares; null when none is registered.
     /// </summary>
     IReadOnlyList<PluginUsageSignal>? UsageSignalsOf(string providerId);
-}
-
-internal sealed class PluginProviderUsageSignals(IPluginProviderRegistry registry) : IProviderUsageSignals, ISingletonService
-{
-    public IReadOnlyList<PluginUsageSignal>? UsageSignalsOf(string providerId) => registry.Resolve(providerId)?.UsageSignals;
 }

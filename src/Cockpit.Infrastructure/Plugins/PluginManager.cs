@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 
@@ -15,9 +16,8 @@ public sealed class PluginManager(
     Version? hostAbstractionsVersion = null,
     Func<ICockpitPlugin, Version?>? builtAgainstResolver = null) : IDisposable
 {
-    // AC-478: starts the cockpit with no plugins loaded, reachable even when a UI plugin is crashing on
-    // load; a restart strips it again so it is always a one-shot recovery, never left on by hand.
-    public const string SafeModeArgument = "--safe-mode";
+    // AC-478: reachable even when a UI plugin is crashing on load. The value lives in Core, where the frontend reads it.
+    public const string SafeModeArgument = CockpitBuild.SafeModeArgument;
 
     // Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.
     public bool SafeMode { get; } = safeMode;

@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Avalonia;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Updates;
-using Cockpit.Infrastructure.Plugins;
+using Cockpit.Core.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
@@ -102,10 +102,10 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     }
 
     // AC-1013: relaunch arguments are the current ones plus the `RestartArgument` marker, with any existing
-    // marker dropped first (so it can't grow unbounded) and `PluginManager.SafeModeArgument` (AC-478) dropped
+    // marker dropped first (so it can't grow unbounded) and `CockpitBuild.SafeModeArgument` (AC-478) dropped
     // too, since safe mode is a one-shot recovery flag, not something the operator must clear by hand.
     internal static IReadOnlyList<string> BuildLaunchArguments(IReadOnlyList<string> currentArguments) =>
-        [.. currentArguments.Where(argument => argument != RestartArgument && argument != PluginManager.SafeModeArgument), RestartArgument];
+        [.. currentArguments.Where(argument => argument != RestartArgument && argument != CockpitBuild.SafeModeArgument), RestartArgument];
 
     private static void _ShutDownCurrentInstance()
     {

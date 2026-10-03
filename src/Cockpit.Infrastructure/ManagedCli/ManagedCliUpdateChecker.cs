@@ -2,9 +2,8 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.ManagedCli;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Infrastructure.ManagedCli;
 
 // Periodically checks each installed managed CLI (AC-20) against its provider's latest version. Auto-update
 // (AC-767, default on) installs and toasts; off, it toasts once and leaves installing to the config button.

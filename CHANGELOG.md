@@ -618,6 +618,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: every screen of the desktop — the dialogs, the onboarding steps, the consent banner, the quick note and the
   file preview included — now reaches the cockpit's backend only through its published interfaces, the ones a remote
   backend will offer too. Nothing changes in how they look or work.
+- changed: the desktop's background services — the update checks, the resource meter, the quick note and the plugin
+  notices — reach the backend through those interfaces as well. Nothing changes in what they do.
 - changed: the assistant's window now works through the same backend interface as the rest of the cockpit: the
   assistant it talks to is the same session the server side sees, and its conversation is drawn from the same
   event stream as every session pane. Nothing changes in how the window, its indicator or push-to-talk look or work.
