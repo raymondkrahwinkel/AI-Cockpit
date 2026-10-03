@@ -19,6 +19,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
     private readonly SemaphoreSlim _reload = new(1, 1);
     private readonly HashSet<string> _disconnected = new(StringComparer.Ordinal);
     private IReadOnlySet<string> _known = new HashSet<string>(StringComparer.Ordinal);
+    private bool _disposed;
     private IReadOnlyList<RemoteServer> _servers = [];
 
     public IReadOnlyList<IRemoteServer> Servers
@@ -67,10 +68,26 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
                 .Select(entry => new RemoteServer(entry.Name ?? "", entry.Row, logger))
                 .ToList();
 
+            // A reload still out when the cockpit shut down starts nothing, and lets go of what it made.
+            bool disposed;
             lock (_gate)
             {
-                _servers = [.. kept, .. added];
-                _known = rows.Select(entry => entry.Name ?? "").ToHashSet(StringComparer.Ordinal);
+                disposed = _disposed;
+                if (!disposed)
+                {
+                    _servers = [.. kept, .. added];
+                    _known = rows.Select(entry => entry.Name ?? "").ToHashSet(StringComparer.Ordinal);
+                }
+            }
+
+            if (disposed)
+            {
+                foreach (var server in added)
+                {
+                    await server.DisposeAsync().ConfigureAwait(false);
+                }
+
+                return;
             }
 
             foreach (var server in gone)
@@ -119,6 +136,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
         List<RemoteServer> current;
         lock (_gate)
         {
+            _disposed = true;
             current = [.. _servers];
             _servers = [];
         }
@@ -127,7 +145,6 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
         {
             await server.DisposeAsync().ConfigureAwait(false);
         }
-
     }
 
     private bool _IsDisconnected(string name)
@@ -164,6 +181,9 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     private RemoteServerState _state = new(false, null, null);
     private RemoteBackend? _backend;
     private Task _connecting = Task.CompletedTask;
+
+    // Counts the stream's opens and drops; read and written under _gate.
+    private int _generation;
 
     public RemoteServer(string name, McpServerConfig row, ILogger logger)
     {
@@ -291,6 +311,12 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     private void _OnConnection(bool connected)
     {
         _logger.LogInformation("Server {Server}: event stream {State}.", Name, connected ? "open" : "lost");
+        int generation;
+        lock (_gate)
+        {
+            generation = ++_generation;
+        }
+
         if (!connected)
         {
             var refused = Sessions is RemoteBackend { KeyRefused: true };
@@ -298,10 +324,12 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             return;
         }
 
-        _ = _ReturnAsync();
+        _ = _ReturnAsync(generation);
     }
 
-    private async Task _ReturnAsync()
+    // Only the return of the connection still standing may say Connected; a /whoami that comes back after a later
+    // drop belongs to a connection that is gone.
+    private async Task _ReturnAsync(int generation)
     {
         try
         {
@@ -318,7 +346,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
         {
             if (!_stop.IsCancellationRequested)
             {
-                _Set(state => state with { IsConnected = true });
+                _Set(state => generation == _generation ? state with { IsConnected = true } : state);
             }
         }
     }

@@ -279,15 +279,16 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     }
 
     // A handle seen before keeps its rows and its listeners; a new one, or every one after a reset, takes its snapshot first.
+    // AC-1456: on the stop token, so a Disconnect that waits for the reader never waits on a GET that cannot end.
     private async Task<long> _RefreshAsync(bool reload)
     {
-        var list = await _client.GetAsync<RemoteSessionList>("api/v1/sessions").ConfigureAwait(false);
+        var list = await _client.GetAsync<RemoteSessionList>("api/v1/sessions", _stop.Token).ConfigureAwait(false);
         List<RemoteSessionHandle> sessions = [];
         foreach (var row in list.Sessions)
         {
             var handle = _Find(row.PaneId) ?? new RemoteSessionHandle(_client, row.PaneId, isAssistant: false);
             handle.Update(row);
-            if (await handle.LoadSnapshotAsync(reload).ConfigureAwait(false))
+            if (await handle.LoadSnapshotAsync(reload, _stop.Token).ConfigureAwait(false))
             {
                 sessions.Add(handle);
             }
@@ -298,7 +299,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         {
             var candidate = _AssistantAt(assistantRow.PaneId) ?? new RemoteSessionHandle(_client, assistantRow.PaneId, isAssistant: true);
             candidate.Update(new RemoteSessionRow(assistantRow.PaneId, assistantRow.Name));
-            assistant = await candidate.LoadSnapshotAsync(reload).ConfigureAwait(false) ? candidate : null;
+            assistant = await candidate.LoadSnapshotAsync(reload, _stop.Token).ConfigureAwait(false) ? candidate : null;
         }
 
         TaskCompletionSource refreshed;

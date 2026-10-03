@@ -647,7 +647,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     // The rows and the seq they stand at, read together by the route; a row on the stream at or below it is in them.
     // False when the pane closed since the list was read, so the registry leaves it out.
-    internal async Task<bool> LoadSnapshotAsync(bool reload)
+    internal async Task<bool> LoadSnapshotAsync(bool reload, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
@@ -660,7 +660,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         RemoteTranscript transcript;
         try
         {
-            transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1").ConfigureAwait(false);
+            transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1", cancellationToken).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
         {
