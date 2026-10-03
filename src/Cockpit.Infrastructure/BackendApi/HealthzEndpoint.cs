@@ -13,9 +13,9 @@ internal static class HealthzEndpoint
     public const string Path = "/healthz";
 
     public static void Map(WebApplication app, IServiceProvider services) =>
-        app.MapGet(Path, () =>
+        app.MapGet(Path, async () =>
         {
-            var sections = services.GetRequiredService<PluginHealthSections>().Read();
+            var sections = await services.GetRequiredService<PluginHealthSections>().ReadAsync().ConfigureAwait(false);
             var healthy = sections.All(section => section.Report.Healthy);
             return Results.Json(
                 new

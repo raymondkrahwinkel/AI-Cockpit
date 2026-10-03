@@ -5,13 +5,14 @@ namespace Cockpit.Plugins.Abstractions.Health;
 public interface IPluginHealthSection
 {
     /// <summary>
-    /// The section's name as /healthz lists it: a lowercase slug of at most 40 characters, like "workflows-scheduler".
-    /// Any other name, or one already registered, is ignored.
+    /// The section's name as /healthz lists it, read once at registration: a lowercase slug of at most 40 characters.
+    /// Any other name, one already registered, or a section past the host's cap of 16 is ignored.
     /// </summary>
     string Name { get; }
 
     /// <summary>
-    /// The section's state right now. Called on every health request, so it must be cheap and must not block.
+    /// The section's state right now, read on every health request and given about two seconds.
+    /// A read that takes longer or throws counts as unhealthy.
     /// </summary>
     PluginHealthReport Read();
 }

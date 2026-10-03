@@ -27,9 +27,9 @@ internal static class McpAuthMiddleware
 
             if (context.Request.IsHttps)
             {
-                // AC-1466: Docker's health probe carries no key. Exactly this path, compared ordinally, so no prefix,
-                // no trailing slash and no other spelling of it opens anything beside it.
-                if (string.Equals(context.Request.Path.Value, HealthzEndpoint.Path, StringComparison.Ordinal))
+                // AC-1466: Docker's health probe carries no key. Only a GET of exactly this path, compared ordinally, so
+                // no prefix, trailing slash, other spelling or other method opens anything beside it.
+                if (HttpMethods.IsGet(context.Request.Method) && string.Equals(context.Request.Path.Value, HealthzEndpoint.Path, StringComparison.Ordinal))
                 {
                     await next(context).ConfigureAwait(false);
                     return;

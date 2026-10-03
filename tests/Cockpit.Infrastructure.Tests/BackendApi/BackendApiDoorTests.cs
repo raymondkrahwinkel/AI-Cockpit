@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -186,8 +187,8 @@ public sealed class BackendApiDoorTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    // AC-1466 criterion 2: /healthz needs no key, is 200 with no section, says only the status and each slug-named
-    // section's name, and is 503 once one is unhealthy; every other path without a key stays 401.
+    // AC-1466 criterion 2: only a GET of /healthz needs no key. It is 200 with no section, names only slug-named
+    // sections, and is 503 once one is unhealthy or hangs past the budget; anything else without a key stays 401.
     [Fact]
     public async Task Healthz_AnswersWithoutAKey_WithOnlyStatusAndSectionNames_WhileEveryOtherPathStays401()
     {
@@ -195,9 +196,10 @@ public sealed class BackendApiDoorTests
         await door.StartAsync();
         var empty = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
         var section = new _Section("probe");
-        door.Health.Add(section);
-        door.Health.Add(new _Section("/home/operator/.ssh"));
-        door.Health.Add(new _Section("probe"));
+        door.Health.Add("test", section);
+        door.Health.Add("test", new _Section("/home/operator/.ssh"));
+        door.Health.Add("test", new _Section("probe\n"));
+        door.Health.Add("test", new _Section("probe"));
         string[] others = ["/healthz/", "/healthzx", "/healthz/rows", "/HEALTHZ", "/health", "/api/v1/health", "/api/v1/healthz", "/api/v1/whoami", "/mcp"];
 
         var healthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
@@ -209,10 +211,22 @@ public sealed class BackendApiDoorTests
             refused.Add((path, (await door.GetAsync(door.NodeBase, path, bearer: null)).Status));
         }
 
+        var post = await door.SendAsync(HttpMethod.Post, "/healthz", bearer: null);
+        var head = await door.SendAsync(HttpMethod.Head, "/healthz", bearer: null);
+        section.Healthy = true;
+        using var hanging = new _HangingSection();
+        door.Health.Add("test", hanging);
+        var clock = Stopwatch.StartNew();
+        var hung = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        var waited = clock.Elapsed;
+
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[]}"""), empty);
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"probe","healthy":true}]}"""), healthy);
         Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
         Assert.Equal(others.Select(path => (path, HttpStatusCode.Unauthorized)), refused);
+        Assert.Equal((HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized), (post.Status, head.Status));
+        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":true},{"name":"hang","healthy":false}]}"""), hung);
+        Assert.True(waited < PluginHealthSections.ReadBudget + TimeSpan.FromSeconds(2), $"A hanging section held /healthz for {waited}.");
     }
 
     internal sealed record _Answer(HttpStatusCode Status, string Body);
@@ -225,6 +239,22 @@ public sealed class BackendApiDoorTests
         public string Name => name;
 
         public PluginHealthReport Read() => new(Healthy, [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
+    }
+
+    // A section whose read never returns until the test ends.
+    private sealed class _HangingSection : IPluginHealthSection, IDisposable
+    {
+        private readonly ManualResetEventSlim _released = new();
+
+        public string Name => "hang";
+
+        public PluginHealthReport Read()
+        {
+            _released.Wait();
+            return new PluginHealthReport(true, []);
+        }
+
+        public void Dispose() => _released.Set();
     }
 
     // One node in a temp directory: cockpit.json, the audit trail and the certificate, and once started the real
@@ -345,10 +375,14 @@ public sealed class BackendApiDoorTests
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
-        public async Task<_Answer> SendAsync(HttpMethod method, string path, string bearer, string? json = null)
+        public async Task<_Answer> SendAsync(HttpMethod method, string path, string? bearer, string? json = null)
         {
             using var request = new HttpRequestMessage(method, NodeBase + path);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (bearer is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
+
             request.Content = json is null ? null : new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await _http.SendAsync(request);
             return new _Answer(response.StatusCode, await response.Content.ReadAsStringAsync());
