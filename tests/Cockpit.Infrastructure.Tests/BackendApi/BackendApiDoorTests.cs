@@ -280,7 +280,7 @@ public sealed class BackendApiDoorTests
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
         door.LoginHealth.Current.Returns([new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn }]);
-        var label = "a\nb\u0007\u202E" + new string('x', 496);
+        var label = "a\nb\u0007\u202E" + new string('x', 495);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 
@@ -297,7 +297,9 @@ public sealed class BackendApiDoorTests
         {
             Assert.DoesNotContain(key.Secret, body, StringComparison.Ordinal);
             Assert.DoesNotContain(Bootstrap, body, StringComparison.Ordinal);
-            Assert.All(keys, entry => Assert.DoesNotContain(entry.Key.Prefix, body, StringComparison.Ordinal));
+            // The bootstrap prefix is the start of its own label here, so every prefix is checked as a whole value too.
+            Assert.DoesNotContain(key.Key.Prefix, body, StringComparison.Ordinal);
+            Assert.All(keys, entry => Assert.DoesNotContain($"\"{entry.Key.Prefix}\"", body, StringComparison.Ordinal));
             Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("prefix", body, StringComparison.OrdinalIgnoreCase);
         }
