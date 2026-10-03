@@ -81,12 +81,13 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
         }
     }
 
-    // A section that throws reads as unhealthy: a plugin that cannot say how it is doing is not doing well.
+    // A section that throws or reports nothing reads as unhealthy: a plugin that cannot say how it is doing is not
+    // doing well.
     private PluginHealthReport _Read(_Entry entry)
     {
         try
         {
-            return entry.Section.Read();
+            return entry.Section.Read() ?? new PluginHealthReport(false, []);
         }
         catch (Exception exception)
         {
