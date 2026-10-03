@@ -1,0 +1,46 @@
+# AC-1356: the headless Cockpit on a plain Docker host. The image is pinned by COCKPIT_TAG (a `sha-<commit>` tag, with no
+# default and never `latest`): a restart drops live agent sessions, so nothing here pulls on its own.
+# The GHCR package is private: `docker login ghcr.io` on the host first (see README.md).
+name: cockpit
+
+services:
+  cockpit:
+    image: ${COCKPIT_IMAGE:-ghcr.io/raymondkrahwinkel/cockpit-server}:${COCKPIT_TAG:?set COCKPIT_TAG to a sha-<commit> tag}
+    # Reaps the children an agent session leaves behind.
+    init: true
+    restart: unless-stopped
+    environment:
+      COCKPIT_STATE_ROOT: /state
+      COCKPIT_UNLOCK_PASSWORD_FILE: /run/secrets/cockpit_unlock_password
+      COCKPIT_CONNECT_KEY_FILE: /run/secrets/cockpit_connect_key
+      COCKPIT_STOP_BUDGET_SECONDS: ${COCKPIT_STOP_BUDGET_SECONDS:-8}
+    # Sessions inherit this (GH_TOKEN, AIHUB_*, ...). Optional, so a host with nothing to pass needs no file.
+    env_file:
+      - path: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
+        required: false
+    secrets:
+      - cockpit_unlock_password
+      - cockpit_connect_key
+    ports:
+      - "${COCKPIT_PORT:-20383}:20383"
+    # Longer than COCKPIT_STOP_BUDGET_SECONDS, so the server's own stop finishes before docker kills it.
+    stop_grace_period: 15s
+    volumes:
+      - state:/state
+      - claude:/home/app/.claude
+      - codex:/home/app/.codex
+      - ssh:/home/app/.ssh
+      # Repos and worktrees live under /state by default. To keep them elsewhere, bind a host path here and
+      # point the clone and worktree roots at it in the app's settings.
+
+secrets:
+  cockpit_unlock_password:
+    file: ${COCKPIT_UNLOCK_PASSWORD_PATH:-./secrets/unlock-password}
+  cockpit_connect_key:
+    file: ${COCKPIT_CONNECT_KEY_PATH:-./secrets/connect-key}
+
+volumes:
+  state:
+  claude:
+  codex:
+  ssh:
