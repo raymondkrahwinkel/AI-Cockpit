@@ -1340,7 +1340,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         IsLinkUp = isUp;
         MayAnswerPermissions = mayAnswerPermissions;
-        IsInputEnabled = true;
+        IsInputEnabled = isUp;
         ComposerPlaceholder = isUp
             ? $"Send a message to the session on {RemoteServer}…"
             : $"Reconnecting to {RemoteServer}…";
