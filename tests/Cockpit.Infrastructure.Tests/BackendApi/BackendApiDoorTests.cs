@@ -15,6 +15,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
@@ -229,16 +230,105 @@ public sealed class BackendApiDoorTests
         Assert.True(waited < PluginHealthSections.ReadBudget + TimeSpan.FromSeconds(2), $"A hanging section held /healthz for {waited}.");
     }
 
+    // AC-1470 criterion 1: an operate key scoped to project-a and profile "mine" reads only what lies in that scope,
+    // and an action on a row outside it gets the very answer of an action that does not exist.
+    [Fact]
+    public async Task Health_ShowsAnOperateKeyOnlyItsScope_AndAnActionOutsideItIsTheSame404AsOneThatDoesNotExist()
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var scope = new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-a"], AllowAllProfiles = false, AllowedProfileLabels = ["mine"] };
+        var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator, scope: scope);
+        door.LoginHealth.Current.Returns([
+            new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn },
+            new ProfileLoginHealth("theirs", false, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch) { Provider = "codex", SignIn = ProfileSignInKind.Expired },
+        ]);
+        var section = new _ActionSection(
+            new PluginHealthRow("Scheduler", PluginHealthStatus.Ok),
+            new PluginHealthRow("Nightly A", PluginHealthStatus.Ok) { ProjectId = "project-a", ActionId = "run-a" },
+            new PluginHealthRow("Nightly B", PluginHealthStatus.Failed) { ProjectId = "project-b", ActionId = "run-b" });
+        door.Health.Add("test", section);
+
+        var health = JsonNode.Parse((await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret)).Body);
+        var outside = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-b", key.Secret);
+        var missing = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-z", key.Secret);
+        var noSection = await door.SendAsync(HttpMethod.Post, "/api/v1/health/nothing/actions/run-a", key.Secret);
+        var inside = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run-a", key.Secret);
+        var audit = await File.ReadAllTextAsync(door.AuditPath);
+
+        Assert.Equal(["mine"], health?["profiles"]?.AsArray().Select(profile => profile?["label"]?.GetValue<string>()) ?? []);
+        Assert.Equal(["Scheduler", "Nightly A"], health?["sections"]?[0]?["rows"]?.AsArray().Select(row => row?["label"]?.GetValue<string>()) ?? []);
+        Assert.Equal(new _Answer(HttpStatusCode.NotFound, ""), outside);
+        Assert.Equal(outside, missing);
+        Assert.Equal(outside, noSection);
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"section":"workflows","actionId":"run-a","succeeded":true}"""), inside);
+        Assert.Equal(["run-a"], section.Runs);
+        Assert.Contains("\"api:health_action\"", audit, StringComparison.Ordinal);
+        Assert.Contains("workflows/run-a", audit, StringComparison.Ordinal);
+    }
+
+    // AC-1470 criterion 2, with criterion 3 as the rows: nothing in /health or an action's answer is a token, a
+    // credential or a key prefix; a 500-character label with control characters arrives cut and clean, and a section
+    // without IPluginHealthActions offers no action.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Health_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndClean(bool sectionHasActions)
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
+        door.LoginHealth.Current.Returns([new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn }]);
+        var label = "a\nb\u0007\u202E" + new string('x', 496);
+        var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
+        door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
+
+        var answer = await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret);
+        var action = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run", key.Secret);
+        var health = JsonNode.Parse(answer.Body);
+        var keys = await verifier.ListAsync();
+        var shown = health?["sections"]?[0]?["rows"]?[0];
+
+        Assert.Equal(500, label.Length);
+        Assert.Equal(HttpStatusCode.OK, answer.Status);
+        Assert.Equal(sectionHasActions ? HttpStatusCode.OK : HttpStatusCode.NotFound, action.Status);
+        foreach (var body in new[] { answer.Body, action.Body })
+        {
+            Assert.DoesNotContain(key.Secret, body, StringComparison.Ordinal);
+            Assert.DoesNotContain(Bootstrap, body, StringComparison.Ordinal);
+            Assert.All(keys, entry => Assert.DoesNotContain(entry.Key.Prefix, body, StringComparison.Ordinal));
+            Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("prefix", body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert.All(health?["server"]?["keys"]?.AsArray() ?? [], shownKey => Assert.Equal(["label", "capability", "lastUsedAt"], shownKey?.AsObject().Select(property => property.Key) ?? []));
+        Assert.Equal(["label", "provider", "signIn", "lastCheck", "expiredSince", "announcedAt"], health?["profiles"]?[0]?.AsObject().Select(property => property.Key) ?? []);
+        Assert.Equal("ab" + new string('x', HealthEndpoints.MaxLabelLength - 2), shown?["label"]?.GetValue<string>());
+        Assert.Equal(sectionHasActions ? "run" : null, shown?["actionId"]?.GetValue<string>());
+    }
+
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
     // A section with a row that must never reach /healthz.
-    private sealed class _Section(string name) : IPluginHealthSection
+    private class _Section(string name, params PluginHealthRow[] rows) : IPluginHealthSection
     {
         public bool Healthy { get; set; } = true;
 
         public string Name => name;
 
-        public PluginHealthReport Read() => new(Healthy, [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
+        public PluginHealthReport Read() => new(Healthy, rows.Length > 0 ? rows : [new PluginHealthRow("row-label", PluginHealthStatus.Ok, DateTimeOffset.UnixEpoch)]);
+    }
+
+    // AC-1470: a section that offers actions and records each one it was asked to run.
+    private sealed class _ActionSection(params PluginHealthRow[] rows) : _Section("workflows", rows), IPluginHealthActions
+    {
+        public List<string> Runs { get; } = [];
+
+        public Task<PluginHealthActionResult> RunAsync(string actionId, CancellationToken cancellationToken)
+        {
+            Runs.Add(actionId);
+            return Task.FromResult(new PluginHealthActionResult(true));
+        }
     }
 
     // A section whose read never returns until the test ends.
@@ -297,6 +387,8 @@ public sealed class BackendApiDoorTests
 
         public PluginHealthSections Health { get; } = new(NullLogger<PluginHealthSections>.Instance);
 
+        public IProfileLoginHealth LoginHealth { get; } = Substitute.For<IProfileLoginHealth>();
+
         public NodeSessionMcpToolsTests.RecordingReadGateway ReadGateway { get; } = new();
 
         public NodeSessionMcpToolsTests.RecordingAgentGateway AgentGateway { get; } = new();
@@ -349,6 +441,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(verifier);
             services.AddSingleton(Presence);
             services.AddSingleton(Health);
+            services.AddSingleton(LoginHealth);
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],

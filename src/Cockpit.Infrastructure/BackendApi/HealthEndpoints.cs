@@ -30,7 +30,7 @@ internal static partial class HealthEndpoints
             var pairing = services.GetRequiredService<INodePairingBroker>();
             var sections = await services.GetRequiredService<PluginHealthSections>().ReadAsync().ConfigureAwait(false);
             var keys = await services.GetRequiredService<ConnectKeyVerifier>().ListAsync(cancellationToken).ConfigureAwait(false);
-            var assistant = services.GetService<INodeControllerPresence>()?.Current;
+            var assistant = services.GetService<NodeControllerPresence>()?.Current;
             var now = DateTimeOffset.UtcNow;
             await _AuditAsync(services, caller, "api:health", "called", null, cancellationToken).ConfigureAwait(false);
 
