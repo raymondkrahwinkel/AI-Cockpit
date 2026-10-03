@@ -218,7 +218,7 @@ public class SecurityOptionsViewModelTests
             var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeSessions: new FakeNodeProbe(), mcpServers: servers)
             {
                 ConnectNodeName = "laptop",
-                ConnectAddress = "192.168.1.20:7331",
+                ConnectHost = "192.168.1.20:7331",
                 ConnectKey = "ck_test-key",
                 ConnectFingerprint = "AABBCCDD",
             };
@@ -301,7 +301,7 @@ public class SecurityOptionsViewModelTests
         var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairing: pairing, nodeSessions: probe, mcpServers: servers)
         {
             ConnectNodeName = nodeName,
-            ConnectAddress = "192.168.1.30:20383",
+            ConnectHost = "192.168.1.30:20383",
             ConnectKey = "ck_test-key",
             ConnectFingerprint = "AABBCCDD",
         };
@@ -313,13 +313,14 @@ public class SecurityOptionsViewModelTests
 
         if (scenario == "pin-mismatch")
         {
-            Assert.Contains("AABBCCDD", vm.ConnectStatus, StringComparison.Ordinal);
-            Assert.Contains("11223344", vm.ConnectStatus, StringComparison.Ordinal);
+            Assert.Equal("This is not the server you meant. Its certificate does not match the fingerprint you entered. Not connected, and your key was not sent.", vm.ConnectStatus);
+            Assert.Equal("AA:BB:CC:DD", vm.ConnectEnteredFingerprint);
+            Assert.Equal("11:22:33:44", vm.ConnectPresentedFingerprint);
         }
 
         if (scenario == "key-rejected")
         {
-            Assert.Equal("The server refused this key.", vm.ConnectStatus);
+            Assert.Equal("The server refused this key. Check that you copied the whole key. If it was revoked or has expired, ask for a new one.", vm.ConnectStatus);
         }
     }
 
@@ -636,7 +637,9 @@ public class SecurityOptionsViewModelTests
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
 
-        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default) => Task.FromResult<NodeWhoAmI?>(null);
     }
 
     private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient
@@ -670,10 +673,16 @@ public class SecurityOptionsViewModelTests
     {
         public Exception? ThrowOnProbe { get; set; }
 
-        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) =>
-            ThrowOnProbe is { } exception ? Task.FromException<NodeSessionsSnapshot>(exception) : Task.FromResult(new NodeSessionsSnapshot(row.Name, [], [], []));
+        public Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) =>
+            ThrowOnProbe is { } exception
+                ? Task.FromException<NodeConnectProbe>(exception)
+                : Task.FromResult(new NodeConnectProbe(row.PinnedCertificateFingerprint ?? "", null));
 
-        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default) => Task.FromResult<NodeWhoAmI?>(null);
+
+        // A connect that went through reloads the node cards; none are drawn here.
+        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
 
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

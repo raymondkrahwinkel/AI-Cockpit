@@ -118,9 +118,9 @@ public sealed class ConnectKeyDoorTests
         Assert.DoesNotContain(ConnectKeyVerifier.BootstrapVariable, environment.Keys);
     }
 
-    // Criterion 2: every way a credential can fail answers byte for byte like a key nobody ever issued. The revoked
-    // bootstrap row runs after a restart with the same secret, so it only passes if the revocation was persisted. The
-    // unsaved-revocation row is a key whose revoke failed to save: loud then, and still revoked after a restart.
+    // Criterion 2: every failed credential answers byte for byte like an unknown key. Revoked rows run after a restart,
+    // so they pass only if the revocation was persisted (or, unsaved, stayed loud and revoked). AC-1458 (DEP-208): so
+    // does the right pairing secret from a locked-out address.
     [Theory]
     [InlineData("unknown key")]
     [InlineData("wrong key with a known prefix")]
@@ -129,6 +129,7 @@ public sealed class ConnectKeyDoorTests
     [InlineData("revoked bootstrap key after a restart")]
     [InlineData("key whose revocation could not be saved, after a restart")]
     [InlineData("wrong pairing secret")]
+    [InlineData("right pairing secret from a locked-out address")]
     public async Task EveryFailedCredential_GetsTheSameAnswerAsAnUnknownKey(string credential)
     {
         await using var door = new _Door();
@@ -142,7 +143,8 @@ public sealed class ConnectKeyDoorTests
         var failedRevoke = await door.WithConfigUnwritableAsync(() => beforeRestart.RevokeAsync(unsaved.Key.Prefix, Operator));
         await beforeRestart.IssueAsync("after", ConnectKeyCapability.Operate, 30, Operator);
         door.Clock.Advance(TimeSpan.FromDays(2));
-        await door.StartAsync(_Environment());
+        var lockedOut = credential == "right pairing secret from a locked-out address";
+        await door.StartAsync(_Environment(), lockedOut ? new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch } : null);
         var tokens = new Dictionary<string, string>
         {
             ["unknown key"] = UnknownKey,
@@ -152,9 +154,15 @@ public sealed class ConnectKeyDoorTests
             ["revoked bootstrap key after a restart"] = Bootstrap,
             ["key whose revocation could not be saved, after a restart"] = unsaved.Secret,
             ["wrong pairing secret"] = "not-the-pairing-secret",
+            ["right pairing secret from a locked-out address"] = PairingSecret,
         };
 
         var baseline = await door.AnswerAsync(UnknownKey);
+        if (lockedOut)
+        {
+            await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout).Select(_ => door.AnswerAsync(null)));
+        }
+
         var answer = await door.AnswerAsync(tokens[credential]);
 
         Assert.IsType<InvalidOperationException>(failedRevoke);

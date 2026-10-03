@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
@@ -88,6 +90,55 @@ public sealed class NodeSessionsClientRealNetworkTests
         }
     }
 
+    /// <summary>
+    /// AC-1458 criterion 1: a fingerprint that does not match stops a connect before the key leaves this machine.
+    /// The server sees no request with an Authorization header; the matching probe after it proves the recorder sees one.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_AFingerprintThatDoesNotMatch_FailsBeforeAnyRequestCarriesTheKey()
+    {
+        var certificatePath = _TempCertificatePath();
+        try
+        {
+            using var certificate = new NodeSelfSignedCertificate(certificatePath);
+            var sharedSecret = new NodeSharedSecret();
+            sharedSecret.Set("the-shared-secret");
+            var withKey = new ConcurrentQueue<string>();
+
+            await using var host = await _StartNodeHostAsync(
+                certificate,
+                sharedSecret,
+                new NodeSessionMcpToolsTests.RecordingReadGateway(),
+                new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true },
+                request =>
+                {
+                    if (request.Headers.Authorization.Count > 0)
+                    {
+                        withKey.Enqueue(request.Path);
+                    }
+                });
+
+            var wrong = _RowFor(host.Url, new string('A', 64), "the-shared-secret");
+            var client = new NodeSessionsClient(new _SingleServerStore(wrong), new _NoNodesFound(), NullLogger<NodeSessionsClient>.Instance);
+
+            var refused = await Assert.ThrowsAnyAsync<Exception>(() => client.ProbeAsync(wrong));
+            var mismatch = NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(refused);
+            var keysBeforeTheMatch = withKey.Count;
+            var matched = await client.ProbeAsync(_RowFor(host.Url, certificate.Fingerprint, "the-shared-secret"));
+
+            Assert.NotNull(mismatch);
+            Assert.Equal(0, keysBeforeTheMatch);
+            Assert.Equal(new string('A', 64), mismatch.ExpectedFingerprint);
+            Assert.Equal(NodePairingCode.Normalize(certificate.Fingerprint), mismatch.PresentedFingerprint);
+            Assert.NotEmpty(withKey);
+            Assert.Equal(NodePairingCode.Normalize(certificate.Fingerprint), matched.PresentedFingerprint);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
     private static McpServerConfig _RowFor(string url, string pinnedFingerprint, string sharedSecret) => new()
     {
         Name = NodeServerName.For(NodeName, NodeServerName.SessionsServerName),
@@ -151,7 +202,8 @@ public sealed class NodeSessionsClientRealNetworkTests
         NodeSelfSignedCertificate certificate,
         NodeSharedSecret sharedSecret,
         NodeSessionMcpToolsTests.RecordingReadGateway read,
-        NodeSessionMcpToolsTests.StubPairing pairing)
+        NodeSessionMcpToolsTests.StubPairing pairing,
+        Action<HttpRequest>? seen = null)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton<IAssistantReadGateway>(read);
@@ -166,6 +218,17 @@ public sealed class NodeSessionsClientRealNetworkTests
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value)));
 
         var app = builder.Build();
+
+        // Ahead of the auth middleware, so a request it refuses is seen as well (AC-1458).
+        if (seen is not null)
+        {
+            app.Use((context, next) =>
+            {
+                seen(context.Request);
+                return next(context);
+            });
+        }
+
         // AC-1148: this stands in for the endpoint host's own policy — what is under test here is the client over a
         // real socket, and the policy itself is covered where it lives (McpAuthMiddlewareTests).
         McpAuthMiddleware.Require(app, new McpAuthKey(), new SessionMcpKeyring(), static _ => new ValueTask<bool>(true), sharedSecret);
