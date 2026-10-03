@@ -68,7 +68,8 @@ headless first start is not solved here.
 The server runs as `app`; every `claude`, `codex` and `git` it starts (sessions, sign-ins, login checks, its own
 clones, worktrees and commits) runs as `agent` (uid 1700) through a wrapper on `PATH` and one sudoers rule that allows
 exactly those three binaries. Git is among them because an agent can plant hooks and config in a shared repository,
-which would otherwise run as the server. An agent session
+which would otherwise run as the server. The SSH keys and git credentials for clones therefore belong to `agent`
+(`agent-ssh`, or `GH_TOKEN` in `session.env`). An agent session
 cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
 the MCP settings, `GH_TOKEN`) and has its own `HOME`.
 
