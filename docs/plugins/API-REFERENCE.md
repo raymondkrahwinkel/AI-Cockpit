@@ -118,6 +118,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWorkspaceType`, `ICockpitUiHost.OpenWorkspaceAsync`, `ICockpitHost.EmbedSession`, `ICockpitUiHost.CreateEmbeddedSessionView` |
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
+| `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -328,6 +329,14 @@ public interface ICockpitHost
 `IPluginHealthSection` names itself and answers `Read()` with a `PluginHealthReport` — `Healthy` plus rows of a
 label, a `PluginHealthStatus` and an optional time. A server's anonymous `GET /healthz` answers 503 as soon as one
 section reads unhealthy, and shows only each section's name and `healthy`, never its rows.
+
+The rows reach a remote client only through `GET /api/v1/health`, behind an operate key (AC-1470, host 0.69.0, SDK
+3.2.0). A label is a fixed English label naming the thing; never a path, host, user or secret. The host strips control
+characters and cuts it to 120 characters. A row may set `ProjectId`, so that only a key whose scope holds that project
+sees it, and `ActionId` (a slug-like id of at most 64 characters). It offers that action when its section also
+implements `IPluginHealthActions`: `POST /api/v1/health/{section}/actions/{actionId}` runs `RunAsync` and answers
+`PluginHealthActionResult(Succeeded)`. A plugin that sets either property or implements the interface sets
+`minHostVersion` 0.69.0.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:
