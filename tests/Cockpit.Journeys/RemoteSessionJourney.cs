@@ -95,7 +95,7 @@ public sealed class RemoteSessionJourney
                 await Until.Holds(group, () => group.IsConnected);
                 try
                 {
-                    await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: again") > 0);
+                    await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: again") > 0);
                 }
                 catch (TimeoutException)
                 {
