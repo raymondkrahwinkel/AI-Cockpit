@@ -27,6 +27,7 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -983,7 +984,7 @@ public class AssistantAgentGatewayTests
         {
             var realSession = new SessionViewModel();
             var host = Substitute.For<IAssistantSessionHost>();
-            host.Session.Returns(realSession);
+            host.Session.Returns(TestSessions.Assistant(realSession));
 
             var profiles = Substitute.For<ISessionProfileStore>();
             profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));

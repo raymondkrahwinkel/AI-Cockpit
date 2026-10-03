@@ -8275,7 +8275,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Not added to Sessions on purpose: the grid must not render this session too, or its (now bounded) rows
         // would be counted alongside the chat window's and blur what this sim measures. AC-1438: registered as an
         // embedded pane instead, which no grid lists, so its rows reach the event log the pane draws them from.
-        _sessionRegistry?.Register(new SessionPanelHandle(vm, isEmbedded: true, _FirstSessionsWorkspaceId));
+        var handle = new SessionPanelHandle(vm, isEmbedded: true, _FirstSessionsWorkspaceId);
+        _sessionRegistry?.Register(handle);
         await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, tempDir, null, null, ReadingLevel.Focus);
 
         var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
@@ -8286,7 +8287,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var host = new _ChatLeakSimHost { Session = vm };
+        var host = new _ChatLeakSimHost { Session = handle };
         var chatVm = new AssistantChatViewModel(host, new _ChatLeakSimSettingsStore(), new _ChatLeakSimVoiceQueue());
         var win = new Cockpit.App.Views.AssistantChatWindow
         {
@@ -8603,9 +8604,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
             _SeedSessionPreferences(session);
 
-            // AC-1379: the host outside the app seeds the assistant's speech through this rather than reading it off here.
-            session.AssistantVoice = () => (SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
-
             // The screenshot button in the chat window, with the region picker and its marking tools behind it
             // (AC-630). Missing here is why the assistant was the one session that could not be shown anything.
             _WireScreenshots(session);
@@ -8623,6 +8621,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return _MakeSdkPane(
             new DesktopSessionLaunch(paneId, Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName, WorkspaceId: null, IsEmbedded: false, StartedByTheAssistant: false),
             Attach, isAssistant: true);
+    }
+
+    // AC-1440: the assistant's host is handed the registry's handle, not the pane; a graph without a registry gets one
+    // of its own over the same pane.
+    internal SessionPanelHandle? CreateAssistantHandle(string paneId)
+    {
+        if (CreateAssistantSession(paneId) is not { } pane)
+        {
+            return null;
+        }
+
+        var handle = _sessionRegistry?.Assistant as SessionPanelHandle
+            ?? new SessionPanelHandle(pane, isEmbedded: false, _FirstSessionsWorkspaceId);
+
+        // AC-1379: the host outside the app seeds the assistant's speech through this rather than reading it off here.
+        handle.AssistantVoice = () => (SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
+        return handle;
     }
 
     // Without this the dead `SessionViewModel` stayed subscribed to `OnSessionPropertyChanged` and sat in `_lastStatus`

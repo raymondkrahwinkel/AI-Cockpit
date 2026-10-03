@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
@@ -44,4 +46,9 @@ internal static class TestSessions
             voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, usageHistory, turnInboxDelivery,
             providerNames, usageSignals, voiceOverlay, loginChecker, loginFlows, mentionFileSource, transcriptReader, logger,
             eventLog);
+
+    // AC-1440: a pane as the assistant's host is handed it on the desktop, through its handle.
+    [return: NotNullIfNotNull(nameof(pane))]
+    public static IAssistantSession? Assistant(SessionViewModel? pane) =>
+        pane is null ? null : new SessionPanelHandle(pane, isEmbedded: false, () => null);
 }

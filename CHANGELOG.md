@@ -602,6 +602,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the assistant's window now works through the same backend interface as the rest of the cockpit: the
+  assistant it talks to is the same session the server side sees, and its conversation is drawn from the same
+  event stream as every session pane. Nothing changes in how the window, its indicator or push-to-talk look or work.
+
 - changed: every session the desktop starts — from the New-session dialog, a project's Start, Duplicate, a plugin,
   the assistant putting one on a desk, or Resume on a session brought back after a restart — now starts through the cockpit's one start path, the same one a cockpit
   without a window uses. Which project a session belongs to, its worktree, the record that brings it back after a

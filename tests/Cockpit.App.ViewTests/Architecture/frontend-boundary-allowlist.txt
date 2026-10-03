@@ -1,5 +1,4 @@
 ViewModels/AskUserQuestionViewModel.cs
-ViewModels/AssistantChatViewModel.cs
 ViewModels/AssistantProfileDialogViewModel.cs
 ViewModels/CockpitViewModel.cs
 ViewModels/ConsentPromptViewModel.cs

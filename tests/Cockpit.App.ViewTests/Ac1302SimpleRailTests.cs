@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -16,7 +17,7 @@ public sealed class Ac1302SimpleRailTests
     private static IAssistantSessionHost _Host(SessionViewModel? session)
     {
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
         return host;
     }
 

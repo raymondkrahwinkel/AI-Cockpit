@@ -8,7 +8,6 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
-using Cockpit.Infrastructure.Assistant;
 
 namespace Cockpit.App.ViewModels;
 
@@ -177,7 +176,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     public bool IsUnavailable => _host.Activity == AssistantActivity.Unavailable || _cockpit?.ActiveController is not null;
 
     public string? UnavailableReason => _cockpit?.ActiveController is { } controller
-        ? AssistantSessionHost.TakeoverReason(controller)
+        ? controller.TakeoverReason()
         : _host.UnavailableReason;
 
     // AC-1321: stood down for a controller. The one unavailable reason Options cannot fix, so the notice offers no
@@ -197,7 +196,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // there is nothing to watch.
     public bool HasSpawnLogEntries => SpawnLogEntries.Count > 0;
 
-    // AC-776: every live agent session, filtered like AssistantReadGateway._ListSessions and rebuilt on
+    // AC-776: every live agent session, filtered like the assistant's list_sessions and rebuilt on
     // start/stop — real SessionPanelViewModel instances, not a DTO, so the header binds to them directly.
     public ObservableCollection<SessionPanelViewModel> LiveSessions { get; } = new();
 
@@ -211,7 +210,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // not reported usage yet.
     public bool HasLiveSessions => LiveSessions.Count > 0;
 
-    // AC-776: resolved once per rebuild via AssistantReadGateway._ListSessions's own workspace-lookup — see
+    // AC-776: resolved once per rebuild with the same workspace lookup list_sessions uses — see
     // the ticket for why this isn't a property on SessionPanelViewModel itself.
     public IReadOnlyDictionary<string, string> DeskNameByPaneId
     {

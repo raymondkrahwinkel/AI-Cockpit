@@ -9,6 +9,7 @@ using Cockpit.Core.Assistant;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -92,7 +93,7 @@ public sealed class AssistantChatWindowReplyButtonTests
     private static AssistantChatWindow _Window(SessionViewModel session)
     {
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
 
         return new AssistantChatWindow
         {

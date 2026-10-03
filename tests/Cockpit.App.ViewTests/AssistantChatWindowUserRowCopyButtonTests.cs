@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using NSubstitute;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -28,7 +29,7 @@ public sealed class AssistantChatWindowUserRowCopyButtonTests
         session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text));
 
         var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(session);
+        host.Session.Returns(TestSessions.Assistant(session));
 
         var window = new AssistantChatWindow
         {

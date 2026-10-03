@@ -270,7 +270,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             // running conversation is allowed to finish its turn but not to take another.
             if (_presence.Current is { } controller)
             {
-                _SetUnavailable(TakeoverReason(controller));
+                _SetUnavailable(controller.TakeoverReason());
                 return null;
             }
 
@@ -371,7 +371,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             if (_presence.Current is { } controller)
             {
                 Activity = AssistantActivity.Unavailable;
-                UnavailableReason = TakeoverReason(controller);
+                UnavailableReason = controller.TakeoverReason();
                 return false;
             }
 
@@ -912,12 +912,6 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         return !string.Equals(mode, SessionPermissionModes.Bypass, StringComparison.Ordinal);
     }
 
-    // AC-1321: what the screen says while a controller holds the line. Local clock, short — it is read by someone
-    // sitting at this machine. Shared with the chat view model so a scene without this host says the same thing.
-    public static string TakeoverReason(ActiveController controller) =>
-        $"Controlled by {controller.Name} since {controller.SinceUtc.ToLocalTime():HH:mm}. "
-        + "Your assistant here comes back by itself when that connection drops.";
-
     // AC-1321: the takeover reaches the live session as a hold on its turn funnel, not only as the chip's state —
     // `_StartOrReplaceAsync` guards a start, but an inbox wake or the send-queue starts a turn on a session that is
     // already running, and those go through the session, not through this host. Synchronous on purpose.
@@ -925,7 +919,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     {
         if (Session is { } live)
         {
-            live.TurnsHeldBecause = _presence.Current is { } controller ? TakeoverReason(controller) : null;
+            live.TurnsHeldBecause = _presence.Current is { } controller ? controller.TakeoverReason() : null;
         }
     }
 

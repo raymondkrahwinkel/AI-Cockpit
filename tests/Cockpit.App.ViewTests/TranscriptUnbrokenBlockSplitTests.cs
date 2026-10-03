@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using NSubstitute;
 using Cockpit.App.Services;
+using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -318,7 +319,7 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         else
         {
             var host = Substitute.For<IAssistantSessionHost>();
-            host.Session.Returns(vm);
+            host.Session.Returns(TestSessions.Assistant(vm));
             var chat = new AssistantChatWindow
             {
                 Width = width,
