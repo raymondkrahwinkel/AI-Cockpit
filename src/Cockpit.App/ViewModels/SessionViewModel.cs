@@ -1366,7 +1366,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         PendingReplyTo = null;
         try
         {
-            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)); await Task.CompletedTask;
+            await _remoteControl.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
