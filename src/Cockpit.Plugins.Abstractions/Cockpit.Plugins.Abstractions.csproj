@@ -498,7 +498,11 @@
          and PluginHealthStatus in Cockpit.Plugins.Abstractions.Health — and ICockpitHost.AddHealthSection (default
          no-op), so a plugin's own state reaches /healthz. A plugin that calls it sets minHostVersion 0.65.0. Additive —
          a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.1.0</Version>
+    <!-- 3.2.0 (AC-1470): PluginHealthRow gains ProjectId and ActionId as init properties (its constructor is unchanged),
+         and IPluginHealthActions with PluginHealthActionResult lets a section offer actions an operate key runs over
+         GET/POST /api/v1/health. A plugin that sets either property or implements the interface sets minHostVersion
+         0.69.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.2.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

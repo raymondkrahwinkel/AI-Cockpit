@@ -142,6 +142,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "health.actions",
+            "Actions a remote key can run",
+            "Offers actions on its health rows, such as running a workflow now, which an operate key may run from another machine.",
+            CapabilityRisk.Sensitive,
+            "0.69.0",
+            ["IPluginHealthActions.RunAsync"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",

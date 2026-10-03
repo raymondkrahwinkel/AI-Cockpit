@@ -112,9 +112,11 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         {
             previous.TryGetValue(profile.Label, out var before);
             bool signedIn;
+            bool hasCheck;
             try
             {
                 signedIn = _checker.IsLoggedIn(profile);
+                hasCheck = _checker.HasLoginCheck(profile);
             }
             catch (Exception exception)
             {
@@ -128,15 +130,20 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             }
 
             var now = DateTimeOffset.UtcNow;
-            var row = new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now);
-            next.Add(row);
+            var expires = _alarms && before is { SignedIn: true } && !signedIn;
+            next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now)
+            {
+                Provider = ((PluginProviderConfig)profile.ProviderConfig).ProviderId,
+                SignIn = !hasCheck ? ProfileSignInKind.Unchecked : signedIn ? ProfileSignInKind.SignedIn : ProfileSignInKind.Expired,
+                AnnouncedAt = signedIn ? null : expires ? now : before?.AnnouncedAt,
+            });
 
             if (!_alarms)
             {
                 continue;
             }
 
-            if (before is { SignedIn: true } && !signedIn)
+            if (expires)
             {
                 _alarmed.Add(profile.Label);
                 await _AlarmAsync(

@@ -17,7 +17,7 @@ internal static class BackendApiRoutes
     public const int ApiVersion = 1;
 
     // AC-1458: when this process started, for the connecting side's uptime.
-    private static readonly DateTimeOffset StartedAt = _ProcessStart();
+    internal static readonly DateTimeOffset StartedAt = _ProcessStart();
 
     private const string ForbiddenDescription = "This cockpit endpoint is not available to this caller.";
 
@@ -31,6 +31,7 @@ internal static class BackendApiRoutes
         FilesEndpoint.Map(api, services);
         SessionsEndpoints.Map(api, services);
         SignInEndpoints.Map(api, services);
+        HealthEndpoints.Map(api, services);
 
         api.MapGet("/whoami", () =>
         {
@@ -39,12 +40,12 @@ internal static class BackendApiRoutes
             {
                 keyPrefix = caller.KeyPrefix,
                 label = caller.Label,
-                capability = _Name(caller.Capability),
+                capability = CapabilityName(caller.Capability),
                 node = Environment.MachineName,
                 apiVersion = ApiVersion,
                 expiresAt = caller.ExpiresAt,
                 holdsAssistant = caller.HoldsAssistant,
-                version = _HostVersion(),
+                version = HostVersion(),
                 startedAt = StartedAt,
             });
         }).RequireOperate();
@@ -67,7 +68,7 @@ internal static class BackendApiRoutes
                 {
                     prefix = entry.Key.Prefix,
                     label = entry.Key.Label,
-                    capability = _Name(entry.Key.Capability),
+                    capability = CapabilityName(entry.Key.Capability),
                     isBootstrap = entry.Key.IsBootstrap,
                     createdAt = entry.Key.CreatedAt,
                     expiresAt = entry.Key.ExpiresAt,
@@ -129,10 +130,10 @@ internal static class BackendApiRoutes
         return process.StartTime.ToUniversalTime();
     }
 
-    private static string _HostVersion() =>
+    internal static string HostVersion() =>
         HostVersionInfo.Current.ToString(HostVersionInfo.Current.Build < 0 ? 2 : 3);
 
-    private static string _Name(ConnectKeyCapability capability) => capability.ToString().ToLowerInvariant();
+    internal static string CapabilityName(ConnectKeyCapability capability) => capability.ToString().ToLowerInvariant();
 }
 
 // AC-1383: what a backend API route asks of the connect key calling it, read by the group's door.

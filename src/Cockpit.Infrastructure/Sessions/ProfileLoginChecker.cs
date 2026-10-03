@@ -21,10 +21,15 @@ internal sealed class ProfileLoginChecker(
             return true;
         }
 
-        var isLoggedIn = ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn
-            ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.IsLoggedIn;
+        var isLoggedIn = _Gate(plugin);
 
         // No gate declared → nothing to be logged out of; the provider manages its own auth.
         return isLoggedIn is null || isLoggedIn(plugin.ConfigJson);
     }
+
+    public bool HasLoginCheck(SessionProfile profile) => profile.ProviderConfig is PluginProviderConfig plugin && _Gate(plugin) is not null;
+
+    private Func<string, bool>? _Gate(PluginProviderConfig plugin) =>
+        ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn
+        ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.IsLoggedIn;
 }

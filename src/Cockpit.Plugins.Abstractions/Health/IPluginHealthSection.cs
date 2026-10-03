@@ -1,7 +1,8 @@
 namespace Cockpit.Plugins.Abstractions.Health;
 
 // AC-1466: a plugin's own health, registered through ICockpitHost.AddHealthSection. /healthz reads only the name and
-// Healthy; the rows are the details behind it. No free text: the labels are the plugin's, the values status and time.
+// Healthy; the rows are the details behind it, read only by an operate key (AC-1470). Each label is a fixed English
+// label naming the thing; never a path, host, user or secret. The values are status and time.
 public interface IPluginHealthSection
 {
     /// <summary>

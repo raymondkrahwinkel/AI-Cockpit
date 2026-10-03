@@ -48,7 +48,8 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
         }
     }
 
-    public async Task<IReadOnlyList<(string Name, PluginHealthReport Report)>> ReadAsync()
+    // AC-1470: `Actions` is the section itself when it offers any; /healthz never looks at it.
+    public async Task<IReadOnlyList<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions)>> ReadAsync()
     {
         _Entry[] entries;
         lock (_entries)
@@ -61,7 +62,7 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
 
     // A read still running from an earlier request is waited on again rather than started anew, so a section that
     // hangs holds one thread however many probes arrive. Late reads as unhealthy, like a throw.
-    private async Task<(string Name, PluginHealthReport Report)> _ReadAsync(_Entry entry)
+    private async Task<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions)> _ReadAsync(_Entry entry)
     {
         Task<PluginHealthReport> read;
         lock (entry)
@@ -71,21 +72,22 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
 
         try
         {
-            return (entry.Name, await read.WaitAsync(ReadBudget).ConfigureAwait(false));
+            return (entry.Name, await read.WaitAsync(ReadBudget).ConfigureAwait(false), entry.Section as IPluginHealthActions);
         }
         catch (TimeoutException)
         {
             logger.LogWarning("Health section '{HealthSection}' did not report within {ReadBudget}; it reads as unhealthy", entry.Name, ReadBudget);
-            return (entry.Name, new PluginHealthReport(false, []));
+            return (entry.Name, new PluginHealthReport(false, []), entry.Section as IPluginHealthActions);
         }
     }
 
-    // A section that throws reads as unhealthy: a plugin that cannot say how it is doing is not doing well.
+    // A section that throws or reports nothing reads as unhealthy: a plugin that cannot say how it is doing is not
+    // doing well.
     private PluginHealthReport _Read(_Entry entry)
     {
         try
         {
-            return entry.Section.Read();
+            return entry.Section.Read() ?? new PluginHealthReport(false, []);
         }
         catch (Exception exception)
         {
