@@ -394,6 +394,36 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-1458: the nodes the operator disconnected this run, so rebuilding the cards does not reconnect them.
     private readonly Dictionary<string, DateTimeOffset> _disconnectedNodes = new(StringComparer.Ordinal);
 
+    // AC-1458: a key the server renewed or replaced, written through the same row path a connect uses.
+    private async Task _StoreKeyExpiryAsync(string node, DateTimeOffset? expiresAt)
+    {
+        if (mcpServers is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
+            var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
+            var prefix = NodeServerName.PrefixFor(node);
+            if (!existing.Any(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) && server.KeyExpiresAt != expiresAt))
+            {
+                return;
+            }
+
+            var rows = existing
+                .Where(server => server.Name.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) ? server with { KeyExpiresAt = expiresAt } : server)
+                .ToList();
+            await _StoreNodeRowsAsync(node, rows, existing).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Left as it was: the next poll reads the same expiry and writes it then.
+        }
+    }
+
     private void _NoteDisconnected(string node, DateTimeOffset? at)
     {
         if (at is { } since)
@@ -434,6 +464,7 @@ public sealed partial class SecurityOptionsViewModel(
                     KeyExpiresAt = row?.KeyExpiresAt,
                     EnterNewKey = row is null ? null : () => _PrefillConnect(node, row),
                     DisconnectedChanged = at => _NoteDisconnected(node, at),
+                    KeyExpiryChanged = expiresAt => _StoreKeyExpiryAsync(node, expiresAt),
                 };
                 if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
                 {

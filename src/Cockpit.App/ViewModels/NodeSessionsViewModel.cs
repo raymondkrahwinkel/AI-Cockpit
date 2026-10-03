@@ -38,12 +38,19 @@ public sealed partial class NodeSessionsViewModel(
     private long _latencyMs;
     private string? _version;
 
+    // AC-1458: the running refresh's token; Disconnect cancels it, so nothing more leaves for this node.
+    private CancellationTokenSource? _tickCancel;
+
     public string NodeName { get; } = nodeName;
 
-    // AC-1458: the row's address, for "Tailscale" or "network", and its key's expiry as stored at connect time.
+    // AC-1458: the row's address, for "Tailscale" or "network", and its key's expiry: stored at connect time and
+    // brought up to date by every poll's /whoami, so a key renewed or replaced on the server is followed.
     public string? Url { get; init; }
 
-    public DateTimeOffset? KeyExpiresAt { get; init; }
+    public DateTimeOffset? KeyExpiresAt { get; set; }
+
+    // Stores a changed expiry on the row, through the page's own write path.
+    public Func<DateTimeOffset?, Task>? KeyExpiryChanged { get; init; }
 
     // "Enter a new key": hands the connect form this row, with only the key left to type.
     public Action? EnterNewKey { get; init; }
@@ -133,16 +140,20 @@ public sealed partial class NodeSessionsViewModel(
             return;
         }
 
+        _tickCancel?.Dispose();
+        _tickCancel = new CancellationTokenSource();
+        var stop = _tickCancel.Token;
+
         IsBusy = true;
         try
         {
             var attemptAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
-            var snapshot = await client.ReadAsync(NodeName).ConfigureAwait(true);
+            var snapshot = await client.ReadAsync(NodeName, stop).ConfigureAwait(true);
             var latency = Stopwatch.GetElapsedTime(started);
 
-            // A read already out when the operator disconnected must neither flip the line back nor feed the relays.
-            if (ConnectionState == NodeConnectionState.Disconnected)
+            // Checked after every await: a disconnect mid-refresh must neither flip the line back nor send anything more.
+            if (stop.IsCancellationRequested)
             {
                 return;
             }
@@ -201,17 +212,44 @@ public sealed partial class NodeSessionsViewModel(
             // After the lists, and only once the node answered them: a node that is off costs one timeout, not two.
             if (inboxRelay is not null)
             {
-                await inboxRelay.PollAsync(NodeName).ConfigureAwait(true);
+                await inboxRelay.PollAsync(NodeName, stop).ConfigureAwait(true);
+                if (stop.IsCancellationRequested)
+                {
+                    return;
+                }
             }
 
             if (_NoteReachability(reachable: true, sessionCount: Sessions.Count) && behaviourSync is not null)
             {
-                await behaviourSync.RunAsync(NodeName).ConfigureAwait(true);
+                await behaviourSync.RunAsync(NodeName, stop).ConfigureAwait(true);
+                if (stop.IsCancellationRequested)
+                {
+                    return;
+                }
             }
 
-            // Null from a pairing or an older node: the line then simply carries no version.
-            _version = (await client.ReadWhoAmIAsync(NodeName).ConfigureAwait(true))?.Version;
+            // Null from a pairing or an older node: the line then carries no version, and the stored expiry stands.
+            var who = await client.ReadWhoAmIAsync(NodeName, stop).ConfigureAwait(true);
+            if (stop.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _version = who?.Version;
+            if (who is not null && who.ExpiresAt != KeyExpiresAt)
+            {
+                KeyExpiresAt = who.ExpiresAt;
+                if (KeyExpiryChanged is { } store)
+                {
+                    await store(who.ExpiresAt).ConfigureAwait(true);
+                }
+            }
+
             _DescribeConnection();
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            // Disconnected while a call was out: what it would have said no longer matters.
         }
         finally
         {
@@ -267,6 +305,7 @@ public sealed partial class NodeSessionsViewModel(
 
     public void Dispose()
     {
+        _tickCancel?.Cancel();
         if (_countdownTimer is not null)
         {
             _countdownTimer.Stop();
