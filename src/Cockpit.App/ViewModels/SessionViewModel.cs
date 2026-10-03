@@ -505,6 +505,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1469: the remote handle's control; null on a local pane.
     private ISessionControl? _remoteControl;
+    private ISessionHandle? _remoteHandle;
+    private readonly HashSet<TranscriptEntryViewModel> _answering = [];
 
     // Permission modes offered in the running panel: the three live-switchable modes
     // (`SessionOptionCatalog.LivePermissionModes`), or — once a session was launched in bypass — a single locked
@@ -801,8 +803,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.ApplyResult(result, entry.IsResultError, entry.TruncatedFromChars, entry.BackgroundTaskId);
         }
 
-        row.PermissionDecision = entry.PermissionDecision;
-        row.IsPendingPermission = entry.IsPendingPermission;
+        // A row being answered on the server keeps its own state until the answer returns (AC-1469).
+        if (!_answering.Contains(row))
+        {
+            row.PermissionDecision = entry.PermissionDecision;
+            row.IsPendingPermission = entry.IsPendingPermission;
+        }
+
         row.ErrorKind = entry.ErrorKind ?? SessionErrorKind.Unknown;
         row.RetryAfter = entry.RetryAfter;
         row.IsReplyContinuation = entry.IsReplyContinuation;
@@ -1306,6 +1313,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         RemoteServer = server;
         _remoteControl = handle.Control;
+        _remoteHandle = handle;
         OnPropertyChanged(nameof(AllowLabel));
         Title = handle.Title;
         Statusline = handle.Statusline;
@@ -1370,7 +1378,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
         catch (Exception exception)
         {
-            InputText = text;
+            if (string.IsNullOrEmpty(InputText))
+            {
+                InputText = text;
+                PendingReplyTo ??= replyTo;
+            }
+
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, $"Not sent to {RemoteServer}: {exception.Message}"));
         }
@@ -1384,17 +1397,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        _answering.Add(entry);
         entry.IsPendingPermission = false;
         entry.PermissionDecision = $"Answering on {RemoteServer}…";
         try
         {
-            await _remoteControl.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson).ConfigureAwait(true);
-            entry.PermissionDecision = answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
+            // The by-id route says whether the server took the answer; a structured answer has no such route.
+            var answered = true;
+            if (answersJson is null && _remoteHandle is { } handle)
+            {
+                answered = await handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow).ConfigureAwait(true);
+            }
+            else
+            {
+                await _remoteControl.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson).ConfigureAwait(true);
+            }
+
+            entry.PermissionDecision = !answered ? $"Already answered on {RemoteServer}"
+                : answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
         }
         catch (Exception exception)
         {
             entry.PermissionDecision = $"Not answered — {exception.Message}";
             entry.IsPendingPermission = true;
+        }
+        finally
+        {
+            _answering.Remove(entry);
         }
     }
 

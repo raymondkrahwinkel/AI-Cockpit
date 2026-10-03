@@ -183,9 +183,16 @@ public partial class CockpitViewModel
     {
         foreach (var row in group.Sessions)
         {
-            (row.Pane as SessionViewModel)?.SetRemoteLink(group.State.IsConnected, group.State.Key?.MayAnswerPermissions == true);
+            if (row.Pane is SessionViewModel pane)
+            {
+                _ApplyLink(pane, group);
+            }
         }
     }
+
+    // Up only once /whoami answered too, so the grant is known before a button is drawn or withheld.
+    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group) =>
+        pane.SetRemoteLink(group.State is { IsConnected: true, Key: not null }, group.State.Key?.MayAnswerPermissions == true);
 
     private void _OnOpenServerGroupsChanged()
     {
@@ -217,7 +224,7 @@ public partial class CockpitViewModel
 
             var pane = await _remotePaneOver(row.Handle, group.Name);
             pane.ShowsWhereItRuns = true;
-            pane.SetRemoteLink(group.State.IsConnected, group.State.Key?.MayAnswerPermissions == true);
+            _ApplyLink(pane, group);
             row.Pane = pane;
             _remotePanes.Add(pane);
             GridPanes.Add(pane);
