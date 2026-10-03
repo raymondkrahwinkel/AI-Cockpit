@@ -7,11 +7,12 @@ using Microsoft.Extensions.Hosting;
 namespace Cockpit.Infrastructure.Events;
 
 // AC-1386: the session registry and every live pane's transcript rows, the assistant's included, onto the backend
-// event log. The log holds every pane's events; `EventsEndpoint` keeps a reader to the panes its key may see.
+// event log. AC-1388: its live state and tool calls too, so a remote handle follows one ordered stream. The log holds
+// every pane's events; `EventsEndpoint` keeps a reader to the panes its key may see.
 internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEventLog log) : IHostedService, ISingletonService
 {
     private readonly Lock _gate = new();
-    private readonly Dictionary<ISessionHandle, Action<TranscriptRowUpsert>> _watched = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<ISessionHandle, Action> _watched = new(ReferenceEqualityComparer.Instance);
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -25,9 +26,9 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
         registry.Changed -= _OnRegistryChanged;
         lock (_gate)
         {
-            foreach (var (handle, onRow) in _watched)
+            foreach (var unsubscribe in _watched.Values)
             {
-                handle.RowUpserted -= onRow;
+                unsubscribe();
             }
 
             _watched.Clear();
@@ -51,7 +52,7 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
             var live = registry.All.Append(registry.Assistant).OfType<ISessionHandle>().ToHashSet<ISessionHandle>(ReferenceEqualityComparer.Instance);
             foreach (var gone in _watched.Keys.Where(handle => !live.Contains(handle)).ToList())
             {
-                gone.RowUpserted -= _watched[gone];
+                _watched[gone]();
                 _watched.Remove(gone);
             }
 
@@ -60,11 +61,20 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 var paneId = handle.PaneId;
                 // The event id is the log's own, drawn inside its gate so it only ever rises; the upsert's seq rides in the data.
                 // So does the pane: an SSE frame carries no pane id, and a reader must know whose row it is.
-                // Its scope is the pane's at this row, so the row stays readable to the same keys after the pane closes.
-                Action<TranscriptRowUpsert> onRow = upsert => log.Append(
-                    "row", paneId, new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row }, handle.ActiveProfileLabel, handle.ProjectId);
+                // Its scope is the pane's at this event, so the event stays readable to the same keys after the pane closes.
+                void append(string kind, object data) => log.Append(kind, paneId, data, handle.ActiveProfileLabel, handle.ProjectId);
+                Action<TranscriptRowUpsert> onRow = upsert => append("row", new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
+                Action<SessionLiveState> onLiveState = state => append("live-state", new { PaneId = paneId, LiveState = state });
+                Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call });
                 handle.RowUpserted += onRow;
-                _watched[handle] = onRow;
+                handle.LiveStateChanged += onLiveState;
+                handle.ToolActivityProduced += onTool;
+                _watched[handle] = () =>
+                {
+                    handle.RowUpserted -= onRow;
+                    handle.LiveStateChanged -= onLiveState;
+                    handle.ToolActivityProduced -= onTool;
+                };
             }
         }
     }

@@ -204,6 +204,12 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         }
     }
 
+    // AC-1388: on the UI thread the desktop's host folds on, so no upsert lands between the rows and the seq.
+    public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq) =>
+        UiThreadCall.RunAsync(() => (Control ?? (_pane as SessionViewModel)?.Control) is { } control
+            ? new SessionRowSnapshot(control.Rows, lastSeq())
+            : (SessionRowSnapshot?)null);
+
     // AC-1438: the host's fold as the pane last drew it, with its signals raised on the UI thread once drawn; a TTY
     // pane and a plain terminal keep none, as the contract's defaults say.
     public SessionLiveState LiveState => _pane is SessionViewModel sdk ? sdk.LiveState : SessionLiveState.None;
