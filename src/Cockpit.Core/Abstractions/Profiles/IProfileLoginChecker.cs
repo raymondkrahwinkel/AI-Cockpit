@@ -13,4 +13,9 @@ public interface IProfileLoginChecker
     /// True when the profile's provider reports it logged in; true for a provider that has no login gate, false when its gate reports logged out.
     /// </summary>
     bool IsLoggedIn(SessionProfile profile);
+
+    /// <summary>
+    /// True when the profile's provider declares a sign-in check, so <see cref="IsLoggedIn"/> asked something.
+    /// </summary>
+    bool HasLoginCheck(SessionProfile profile) => true;
 }
