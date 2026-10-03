@@ -48,7 +48,7 @@ internal sealed class WorkflowRunsHealth(
             var latest = watcher.Active(entry.Workflow.Id) ?? runs.For(entry.Workflow.Id).FirstOrDefault();
             rows.Add(new PluginHealthRow(
                 $"{entry.Workflow.Name} · {_Outcome(latest)}",
-                latest?.Status == RunStatus.Failed ? PluginHealthStatus.Failed : PluginHealthStatus.Ok,
+                _Status(latest),
                 latest?.FinishedAt ?? latest?.StartedAt)
             {
                 ActionId = _ActionId(entry.Workflow.Id),
@@ -131,6 +131,11 @@ internal sealed class WorkflowRunsHealth(
             _ => "Not run",
         };
     }
+
+    private static PluginHealthStatus _Status(WorkflowRun? run) =>
+        run is { Status: RunStatus.Failed } || run is { Reason: not WorkflowRunReason.None }
+            ? PluginHealthStatus.Failed
+            : PluginHealthStatus.Ok;
 
     private static string _Duration(TimeSpan duration)
     {

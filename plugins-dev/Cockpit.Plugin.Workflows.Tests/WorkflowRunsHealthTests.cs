@@ -148,13 +148,16 @@ public class WorkflowRunsHealthTests
         runs.Add(failedRun);
 
         using var watcher = new FlowWatcher(store, runs, new ScheduleMarks(storage), Substitute.For<ICockpitHost>(), () => TimeSpan.Zero, clock);
-        var labels = new WorkflowRunsHealth(store, runs, watcher, clock).Read().Rows.Select(row => row.Label).ToList();
+        var rows = new WorkflowRunsHealth(store, runs, watcher, clock).Read().Rows;
+        var labels = rows.Select(row => row.Label).ToList();
 
         Assert.Contains("Missed flow · Not run · Missed", labels);
         Assert.Contains("Caught-up flow · Missed, caught up", labels);
         Assert.Contains("Discord flow · Sent to Discord", labels);
         Assert.Contains("Approved flow · Approved in Discord", labels);
         Assert.Contains("Failed flow · Failed", labels);
+        Assert.Equal(PluginHealthStatus.Failed, rows.Single(row => row.Label == "Missed flow · Not run · Missed").Status);
+        Assert.Equal(PluginHealthStatus.Ok, rows.Single(row => row.Label == "Caught-up flow · Missed, caught up").Status);
         Assert.DoesNotContain(labels, label => label.Contains("private", StringComparison.OrdinalIgnoreCase)
             || label.Contains("secret.example", StringComparison.OrdinalIgnoreCase)
             || label.Contains("do-not-leak", StringComparison.OrdinalIgnoreCase));
