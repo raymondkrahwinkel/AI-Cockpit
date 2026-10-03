@@ -112,7 +112,8 @@ health_uid=$(dc exec -T cockpit "${health[@]:0:${#health[@]}-3}" /usr/bin/id -u)
 [ "$health_uid" = "$(dc exec -T cockpit id -u app)" ] || fail "the health check runs as uid $health_uid"
 # The session env reaches the server, and not the container's environment the health check and `docker exec` get.
 if docker inspect -f '{{json .Config.Env}}' "$container" | grep -qF SMOKE_SESSION_VAR; then fail "session.env is in the container's environment"; fi
-server_env=$(dc exec -T cockpit sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < $p/cmdline 2>/dev/null)" in "/app/Cockpit.Server"*) tr "\0" "\n" < $p/environ ;; esac; done')
+# Read as app: root in the container has no CAP_SYS_PTRACE, so it cannot read another uid's environ.
+server_env=$(dc exec -T -u app cockpit sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < $p/cmdline 2>/dev/null)" in "/app/Cockpit.Server"*) tr "\0" "\n" < $p/environ ;; esac; done 2>/dev/null; true')
 grep -qx 'SMOKE_SESSION_VAR=reached' <<< "$server_env" || fail "session.env did not reach the server"
 collect_logs
 
