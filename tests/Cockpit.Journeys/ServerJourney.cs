@@ -46,6 +46,11 @@ public sealed class ServerJourney
 
     private const string Restored = "Profile 'EchoSignIn' on";
 
+    // The session lines, as the desktop words them.
+    private const string NeedsAttention = "** — Needs attention";
+
+    private const string Done = "** — Done";
+
     // What a `docker stop` waits before it kills.
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
 
@@ -93,6 +98,12 @@ public sealed class ServerJourney
             var refusedTty = await Assert.ThrowsAsync<BackendApiException>(() => admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Terminal" }));
             Assert.Equal(HttpStatusCode.Conflict, refusedTty.Status);
             Assert.Contains("TTY session", refusedTty.Description, StringComparison.Ordinal);
+
+            // AC-1467: the finished hello session is said once, and a session stopped on a permission once too.
+            await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "ask" });
+            await discord.WaitForAsync(NeedsAttention, 1, timeout.Token);
+            await discord.WaitForAsync(Done, 1, timeout.Token);
+            Assert.Equal((1, 1), (discord.Count(NeedsAttention), discord.Count(Done)));
 
             // AC-1357: a sign-in that expires is said once, to Discord and to the controller; three more polls stay
             // quiet, and its return is said once too. A controller key's first call makes it the controller.

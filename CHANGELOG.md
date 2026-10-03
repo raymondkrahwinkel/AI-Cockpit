@@ -46,6 +46,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   error text is never passed on. An operate key is refused, and the access audit records who signed which profile in.
 - added: the cockpit checks every five minutes whether each provider profile is still signed in, and says so once
   when a sign-in expires and once when it is back: as a notification and in the inbox of the controlling cockpit.
+- added: the cockpit without a window (the server) now sends a session waiting on a permission prompt and a session
+  that is done to Discord, once each and in the same words as the desktop. The desktop's own notifications are unchanged.
 - added: a cockpit can drive the sessions of another cockpit over its backend API: list, start and stop them,
   prompt them, answer their permission prompts and read their transcripts. One event stream carries each session's
   status, usage and tool calls along with its transcript rows, and a client that connects to a session that has
