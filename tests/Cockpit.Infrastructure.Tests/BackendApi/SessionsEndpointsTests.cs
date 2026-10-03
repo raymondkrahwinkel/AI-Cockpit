@@ -74,6 +74,10 @@ public sealed class SessionsEndpointsTests
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
         door.ReadGateway.Sessions.Add(_Row("pane-out", "project-elsewhere"));
+        var handle = Substitute.For<ISessionHandle>();
+        handle.PaneId.Returns("pane-out");
+        handle.Control.Returns(Substitute.For<ISessionControl>());
+        door.Sessions.Register(handle);
         var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
 
         var answer = await door.SendAsync(new HttpMethod(method), path, key.Secret, body);
