@@ -410,7 +410,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // True when closing would interrupt work in flight, so the close asks first — a running turn or a session
     // whose background sub-agents are still going. Idle/waiting/done sessions close on a single click.
     // AC-1456: a session on a connect server always asks, since stopping it ends it there for good.
-    public bool RequiresCloseConfirmation => true;
+    public bool RequiresCloseConfirmation => IsRemote || SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground;
 
     // AC-1456: the connect server this session runs on; null for one on this laptop.
     [ObservableProperty]
