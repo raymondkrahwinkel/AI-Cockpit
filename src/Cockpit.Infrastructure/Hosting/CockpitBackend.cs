@@ -112,6 +112,12 @@ public sealed class CockpitBackend
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly);
         services.AddSingleton<IPluginAdministration, PluginAdministration>();
+        if (frontend is null)
+        {
+            // AC-1357: nobody sits at a backend without a frontend, so it is away; a host with one keeps its own detector.
+            services.AddSingleton<IPresenceDetector, AwayPresenceDetector>();
+        }
+
         frontend?.Invoke(services);
         if (plugins != PluginStartup.None)
         {

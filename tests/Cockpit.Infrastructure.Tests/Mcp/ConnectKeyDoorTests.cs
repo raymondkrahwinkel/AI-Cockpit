@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Security;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -17,6 +19,8 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
@@ -437,6 +441,65 @@ public sealed class ConnectKeyDoorTests
         Assert.Contains("lockout lifted by bootstra", audit, StringComparison.Ordinal);
     }
 
+    // AC-1357 criterion 2: signing a profile in is admin's. An operate key gets the API's one forbidden on start,
+    // input and status; the admin key starts, answers the prompt and reads the outcome, and the audit names who.
+    [Fact]
+    public async Task SigningAProfileIn_IsForAnAdminKeyOnly_AndIsAudited()
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync(_Environment());
+        var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
+        var route = $"api/v1/profiles/{Uri.EscapeDataString(SessionProfile)}/sign-in";
+
+        var operateStart = await door.ApiAsync(HttpMethod.Post, route, operate.Secret);
+        var started = await door.ApiAsync(HttpMethod.Post, route, Bootstrap);
+        var flowId = JsonNode.Parse(started.Body)?["flowId"]?.GetValue<string>() ?? "";
+        var operateInput = await door.ApiAsync(HttpMethod.Post, $"{route}/{flowId}/input", operate.Secret, new { text = "the-pasted-code" });
+        var operateRead = await door.ApiAsync(HttpMethod.Get, $"{route}/{flowId}", operate.Secret);
+        var input = await door.ApiAsync(HttpMethod.Post, $"{route}/{flowId}/input", Bootstrap, new { text = "the-pasted-code" });
+        var outcome = await door.SignInOutcomeAsync(route, flowId, "succeeded");
+        var audit = await door.AuditOnceItSaysAsync("sign-in succeeded");
+
+        Assert.Equal(HttpStatusCode.Forbidden, operateStart.Status);
+        Assert.Equal(HttpStatusCode.Created, started.Status);
+        Assert.Equal(HttpStatusCode.Forbidden, operateInput.Status);
+        Assert.Equal(HttpStatusCode.Forbidden, operateRead.Status);
+        Assert.Equal(HttpStatusCode.OK, input.Status);
+        Assert.Contains("\"succeeded\"", outcome, StringComparison.Ordinal);
+        Assert.Equal(["the-pasted-code"], door.LoginFlow.Submitted);
+        Assert.Contains("sign-in started", audit, StringComparison.Ordinal);
+        Assert.Contains("sign-in input sent", audit, StringComparison.Ordinal);
+        Assert.Contains("bootstra", audit, StringComparison.Ordinal);
+        Assert.DoesNotContain("the-pasted-code", audit, StringComparison.Ordinal);
+    }
+
+    // AC-1357 criterion 3: the token stays on the node. A flow whose CLI prints a token next to its code and fails
+    // with one in its error text lets neither reach a response, the audit or the log; only the link and the device code cross.
+    [Fact]
+    public async Task ASignIn_NeverCarriesTheProvidersTokenOverTheLine()
+    {
+        const string token = "sk-ant-oat01-TheProvidersAccessTokenThatMustStayOnTheNode0123456789";
+        await using var door = new _Door();
+        door.LoginFlow.Script(
+            new LoginFlowStep($"Open https://example.test/device and enter QX7K-2M9P (session {token})", new Uri("https://example.test/device"), AwaitsInput: false),
+            new LoginFlowStep("Or open this", new Uri($"https://example.test/callback?access_token={token}"), AwaitsInput: false),
+            new LoginFlowStep("Or this", new Uri($"https://{token}@example.test/device"), AwaitsInput: false));
+        door.LoginFlow.Finish(new LoginFlowResult(false, $"stderr: refresh failed for {token}"));
+        await door.StartAsync(_Environment());
+        var route = $"api/v1/profiles/{Uri.EscapeDataString(SessionProfile)}/sign-in";
+
+        var started = await door.ApiAsync(HttpMethod.Post, route, Bootstrap);
+        var flowId = JsonNode.Parse(started.Body)?["flowId"]?.GetValue<string>() ?? "";
+        var outcome = await door.SignInOutcomeAsync(route, flowId, "failed");
+        var audit = await door.AuditOnceItSaysAsync("sign-in failed");
+        var wire = string.Join("\n", started.Body, outcome, audit, door.LogText());
+
+        Assert.Equal(HttpStatusCode.Created, started.Status);
+        Assert.False(wire.Contains(token, StringComparison.Ordinal), "The provider's token crossed the line or reached the audit or log.");
+        Assert.Contains("\"url\":\"https://example.test/device\"", outcome, StringComparison.Ordinal);
+        Assert.Contains("QX7K-2M9P", outcome, StringComparison.Ordinal);
+    }
+
     private static Dictionary<string, string> _Environment() => new() { [ConnectKeyVerifier.BootstrapVariable] = Bootstrap };
 
     private static async Task<JsonNode> _CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
@@ -490,6 +553,8 @@ public sealed class ConnectKeyDoorTests
 
         public NodeControllerPresence Presence { get; } = new();
 
+        public _LoginFlow LoginFlow { get; } = new();
+
         public string NodeUrl { get; private set; } = "";
 
         // The environment as the node sees it at startup; what the verifier lets go of disappears from it.
@@ -531,6 +596,7 @@ public sealed class ConnectKeyDoorTests
             services.AddSingleton(Audit);
             services.AddSingleton(Presence);
             services.AddSingleton(verifier);
+            services.AddSingleton(new ProfileSignIns(new _LoginStarter(LoginFlow), _loggerFactory.CreateLogger<ProfileSignIns>()));
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],
@@ -576,6 +642,52 @@ public sealed class ConnectKeyDoorTests
             return response.StatusCode;
         }
 
+        // Any backend API route on the same listener, its body as JSON when there is one.
+        public async Task<(HttpStatusCode Status, string Body)> ApiAsync(HttpMethod method, string path, string bearer, object? body = null)
+        {
+            using var request = new HttpRequestMessage(method, $"{NodeUrl[..^"mcp".Length]}{path}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            if (body is not null)
+            {
+                request.Content = JsonContent.Create(body);
+            }
+
+            using var response = await _http.SendAsync(request);
+            return (response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        // The status route's answer once the flow has ended the way `status` says; the run ends after the request.
+        public async Task<string> SignInOutcomeAsync(string route, string flowId, string status)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (true)
+            {
+                var answer = await ApiAsync(HttpMethod.Get, $"{route}/{flowId}", Bootstrap);
+                if (answer.Body.Contains($"\"status\":\"{status}\"", StringComparison.Ordinal) || DateTime.UtcNow > deadline)
+                {
+                    return answer.Body;
+                }
+
+                await Task.Delay(50);
+            }
+        }
+
+        // The audit trail once its last line has been written, which follows the flow's end by a moment.
+        public async Task<string> AuditOnceItSaysAsync(string outcome)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (true)
+            {
+                var audit = File.Exists(AuditPath) ? await File.ReadAllTextAsync(AuditPath) : "";
+                if (audit.Contains(outcome, StringComparison.Ordinal) || DateTime.UtcNow > deadline)
+                {
+                    return audit;
+                }
+
+                await Task.Delay(50);
+            }
+        }
+
         public Task<HttpResponseMessage> InitializeAsync(string? bearer) =>
             _PostAsync(bearer, """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"door-test","version":"1"}}}""");
 
@@ -615,6 +727,64 @@ public sealed class ConnectKeyDoorTests
             request.Headers.Accept.ParseAdd("text/event-stream");
             return _http.SendAsync(request);
         }
+    }
+
+    // Whatever profile is asked for, the one scripted flow.
+    private sealed class _LoginStarter(_LoginFlow flow) : IProfileLoginStarter
+    {
+        public bool CanStartLogin(SessionProfile profile) => true;
+
+        public ILoginFlow? StartLogin(SessionProfile profile, CancellationToken cancellationToken) => flow;
+    }
+
+    // A CLI's login as the host sees it: scripted steps, a paste prompt unless a test scripts others, and an exit
+    // once input arrives or a test finishes it.
+    internal sealed class _LoginFlow : ILoginFlow
+    {
+        private readonly Channel<LoginFlowStep> _steps = Channel.CreateUnbounded<LoginFlowStep>();
+        private readonly TaskCompletionSource<LoginFlowResult> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool _scripted;
+
+        public List<string> Submitted { get; } = [];
+
+        public IAsyncEnumerable<LoginFlowStep> Steps
+        {
+            get
+            {
+                if (!_scripted)
+                {
+                    Script(new LoginFlowStep("Paste code here if prompted >", new Uri("https://claude.example/oauth/authorize"), AwaitsInput: true));
+                }
+
+                return _steps.Reader.ReadAllAsync();
+            }
+        }
+
+        public Task<LoginFlowResult> Completion => _completion.Task;
+
+        public void Script(params LoginFlowStep[] steps)
+        {
+            _scripted = true;
+            foreach (var step in steps)
+            {
+                _steps.Writer.TryWrite(step);
+            }
+        }
+
+        public void Finish(LoginFlowResult result)
+        {
+            _steps.Writer.TryComplete();
+            _completion.TrySetResult(result);
+        }
+
+        public Task SubmitAsync(string value, CancellationToken cancellationToken)
+        {
+            Submitted.Add(value);
+            Finish(new LoginFlowResult(true, null));
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     internal sealed class _Clock(DateTimeOffset now) : TimeProvider

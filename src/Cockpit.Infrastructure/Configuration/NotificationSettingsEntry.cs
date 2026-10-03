@@ -25,6 +25,9 @@ internal sealed class NotificationSettingsEntry
     // Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.
     public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
+    // Seconds rather than minutes, unlike the thresholds above: a test sets it to one. 0 or less falls back to the default.
+    public int LoginCheckIntervalSeconds { get; set; } = (int)NotificationSettings.DefaultLoginCheckInterval.TotalSeconds;
+
     public static NotificationSettingsEntry FromDomain(NotificationSettings settings) => new()
     {
         LocalEnabled = settings.LocalEnabled,
@@ -36,6 +39,7 @@ internal sealed class NotificationSettingsEntry
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
+        LoginCheckIntervalSeconds = (int)settings.LoginCheckInterval.TotalSeconds,
     };
 
     public NotificationSettings ToDomain() => new()
@@ -53,5 +57,8 @@ internal sealed class NotificationSettingsEntry
         SessionIdleThreshold = SessionIdleMinutes > 0
             ? TimeSpan.FromMinutes(SessionIdleMinutes)
             : TimeSpan.Zero,
+        LoginCheckInterval = LoginCheckIntervalSeconds > 0
+            ? TimeSpan.FromSeconds(LoginCheckIntervalSeconds)
+            : NotificationSettings.DefaultLoginCheckInterval,
     };
 }

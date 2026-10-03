@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -27,8 +28,16 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             ProviderId,
             "Echo",
             _ => new EchoDriverFactory(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)));
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false))
+        {
+            IsLoggedIn = _IsSignedIn,
+        });
     }
+
+    // AC-1357: a sign-in a journey can take away and give back — signed in while the file the config names exists.
+    // A config without `signedInFile` is always signed in.
+    private static bool _IsSignedIn(string configJson) =>
+        JsonNode.Parse(configJson)?["signedInFile"]?.GetValue<string>() is not { } file || File.Exists(file);
 
     public void Dispose()
     {

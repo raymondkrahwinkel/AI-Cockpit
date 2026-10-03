@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an admin connect key can sign a provider profile in on the server without a browser, through
+  `POST /api/v1/profiles/{profile}/sign-in`: the server runs the provider's own sign-in and passes on only its link,
+  its code and whether it waits for a pasted code (`…/sign-in/{flowId}/input`), and `GET …/sign-in/{flowId}` tells
+  how it ended. The credential stays on the server; anything token-like in the provider's output is hidden, and its
+  error text is never passed on. An operate key is refused, and the access audit records who signed which profile in.
+- added: the cockpit checks every five minutes whether each provider profile is still signed in, and says so once
+  when a sign-in expires and once when it is back: as a notification and in the inbox of the controlling cockpit.
 - added: the cockpit without a window (the server) now turns its node endpoint on by itself, since connect keys are its only way in, and exits with the reason when that endpoint does not listen (the port held, say) instead of reporting that it runs.
 - added: a container image of the headless cockpit (Cockpit.Server) with a compose file for any Docker host: Node, the Claude Code and Codex CLIs, git, gh, ssh and ripgrep, no docker CLI and no window libraries, running as a non-root user on one port with its secrets as files. CI builds it, runs it as a container and checks that it answers with the connect key, keeps its certificate over a restart, refuses to start without the unlock secret and holds no secret in a layer or log, and that a held node port stops it instead of leaving a server that says it runs, then publishes it to GitHub Packages as `:sha-<commit>`. It is never deployed from a moving tag.
 - added: an address that is locked out of the node endpoint after repeated failed attempts stays locked out when
@@ -628,6 +635,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the cockpit without a window (the server) now counts as "away", so the notifications it raises itself —
+  a failing CI check or a pull request ready to merge on a session's branch, and an expired or restored sign-in —
+  go to Discord when Discord notifications are on. They used to go nowhere but its log.
 - changed: connecting to a server takes the host and the port in two fields, the port filled in. After the
   certificate check the fingerprint you entered is shown beside the server's, and the key is sent only once they
   match. Each outcome has its own message, and a wrong key and a locked-out address still get one and the same

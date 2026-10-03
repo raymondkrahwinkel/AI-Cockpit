@@ -28,6 +28,7 @@ internal static class BackendApiRoutes
         EventsEndpoint.Map(api, services);
         FilesEndpoint.Map(api, services);
         SessionsEndpoints.Map(api, services);
+        SignInEndpoints.Map(api, services);
 
         api.MapGet("/whoami", () =>
         {
