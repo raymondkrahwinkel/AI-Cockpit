@@ -59,7 +59,7 @@ public class ClaudeMcpConfigTests
             // AC-1468: without COCKPIT_AGENT_GROUP (no test sets it) the directory stays owner-only as well.
             Assert.Null(ClaudeAgentGroup.Gid);
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path!));
-            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(Path.GetDirectoryName(path)!));
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(Path.GetDirectoryName(path) ?? throw new InvalidOperationException("The mcp-config has no directory.")));
         }
         finally
         {

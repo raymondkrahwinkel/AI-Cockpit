@@ -72,16 +72,15 @@ internal sealed class ClaudeLoginFlow : ILoginFlow
 
         try
         {
-            if (!_process.HasExited)
-            {
-                _process.Kill(entireProcessTree: true);
-            }
+            _process.StandardInput.Close();
         }
         catch (Exception)
         {
-            // Already gone.
+            // Already gone, or its stdin already broken: the stop below still applies.
         }
 
+        // AC-1468: SIGTERM before the kill, so a cancelled sign-in under the agent uid is not left behind.
+        ClaudeProcessStop.Stop(_process);
         _process.Dispose();
         _cts.Dispose();
     }

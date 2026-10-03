@@ -1,7 +1,5 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -114,40 +112,20 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
             try
             {
                 process.StandardInput.Close();
-                if (!process.WaitForExit(TimeSpan.FromSeconds(3)) && !_Terminate(process))
+                if (!process.WaitForExit(TimeSpan.FromSeconds(3)))
                 {
-                    process.Kill(entireProcessTree: true);
+                    ClaudeProcessStop.Stop(process);
                 }
             }
             catch (InvalidOperationException)
             {
                 // Process already exited between the HasExited check and Close/Kill — not an error.
             }
-            catch (Exception exception) when (exception is Win32Exception or AggregateException)
-            {
-                // AC-1468: under the server image's agent uid the tree below sudo is not ours to signal (EPERM). The
-                // SIGTERM above is what reaches it; this only keeps a refused kill from throwing out of the teardown.
-                Console.Error.WriteLine($"claude-provider: the claude process tree of pid {process.Id} could not be killed: {exception.Message}");
-            }
         }
 
         _process?.Dispose();
         await Task.CompletedTask;
     }
-
-    // SIGTERM to the direct child, true when it then ends. Under the server image that child is `sudo -u agent`, which
-    // keeps the cockpit's real uid and relays a SIGTERM to claude; a SIGKILL (all Process.Kill sends) would orphan it.
-    // Measured 03-10 on aspnet:10.0, sudo 1.9.15p5 (AC-1468). On the desktop the child is claude itself.
-    private static bool _Terminate(Process process)
-    {
-        const int sigterm = 15;
-        return !OperatingSystem.IsWindows()
-            && kill(process.Id, sigterm) == 0
-            && process.WaitForExit(TimeSpan.FromSeconds(2));
-    }
-
-    [DllImport("libc", SetLastError = true)]
-    private static extern int kill(int pid, int signal);
 
     private Process _RequireStartedProcess() =>
         _process ?? throw new InvalidOperationException($"{nameof(ProcessClaudeSdkSubprocess)}.{nameof(Start)} must be called before I/O.");
