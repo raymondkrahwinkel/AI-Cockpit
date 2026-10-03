@@ -137,7 +137,7 @@ public static class CapabilityCatalog
             "Reporting its own health",
             "Reports whether the plugin's own work is running, so the cockpit's health check can say so.",
             CapabilityRisk.Ambient,
-            "0.64.0",
+            "0.65.0",
             ["ICockpitHost.AddHealthSection"],
             []),
 

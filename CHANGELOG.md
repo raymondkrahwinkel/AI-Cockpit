@@ -38,7 +38,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   not make the server unhealthy. The compose file uses it as the container's health check. Every other path still
   needs a key.
 - added: plugins can report their own health to the cockpit, with a section of rows that carry only a status and
-  a time. The Workflows plugin reports whether its scheduler still ticks, and now needs cockpit 0.64.0.
+  a time. The Workflows plugin reports whether its scheduler still ticks, and now needs cockpit 0.65.0.
 - added: an admin connect key can sign a provider profile in on the server without a browser, through
   `POST /api/v1/profiles/{profile}/sign-in`: the server runs the provider's own sign-in and passes on only its link,
   its code and whether it waits for a pasted code (`…/sign-in/{flowId}/input`), and `GET …/sign-in/{flowId}` tells

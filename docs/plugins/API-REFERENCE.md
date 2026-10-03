@@ -117,7 +117,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
 | `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWorkspaceType`, `ICockpitUiHost.OpenWorkspaceAsync`, `ICockpitHost.EmbedSession`, `ICockpitUiHost.CreateEmbeddedSessionView` |
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
-| `health.sections` | Reporting its own health | Ambient | 0.64.0 | — | `ICockpitHost.AddHealthSection` |
+| `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -324,7 +324,7 @@ public interface ICockpitHost
 }
 ```
 
-`AddHealthSection` (AC-1466, host 0.64.0) registers a section the host reads on every health request: an
+`AddHealthSection` (AC-1466, host 0.65.0) registers a section the host reads on every health request: an
 `IPluginHealthSection` names itself and answers `Read()` with a `PluginHealthReport` — `Healthy` plus rows of a
 label, a `PluginHealthStatus` and an optional time. A server's anonymous `GET /healthz` answers 503 as soon as one
 section reads unhealthy, and shows only each section's name and `healthy`, never its rows.
