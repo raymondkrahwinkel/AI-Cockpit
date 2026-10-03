@@ -1198,8 +1198,8 @@ public sealed partial class SecurityOptionsViewModel(
             var probe = await nodeSessions.ProbeAsync(row).ConfigureAwait(true);
             await _StoreNodeRowsAsync(nodeName, [row with { KeyExpiresAt = probe.WhoAmI?.ExpiresAt }], existing).ConfigureAwait(true);
             ConnectKey = "";
-            _ShowFingerprints(fingerprint, probe.PresentedFingerprint);
             _ShowConnectOutcome(ConnectOutcome.Connected, $"Connected to \"{nodeName}\".", _DescribeKey(probe.WhoAmI));
+            _ShowFingerprints(fingerprint, probe.PresentedFingerprint);
             await _LoadPairedNodesAsync().ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is HttpRequestException or SocketException or NotSupportedException

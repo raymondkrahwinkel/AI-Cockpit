@@ -218,6 +218,10 @@ internal static class Screenshotter
         // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
+        // AC-1458: the connect form after a connect that went through — they match, and Connected; and the four
+        // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
+        ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
+        ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.
@@ -734,6 +738,7 @@ internal static class Screenshotter
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
         // on Height alone to make it fit.
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
     };
 
     // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.
@@ -1318,6 +1323,124 @@ internal static class Screenshotter
         var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
         dialog.SelectCategory("nodes");
         return dialog;
+    }
+
+    // A made-up fingerprint with the mockup's first and last four bytes; nothing here is a real certificate.
+    private const string SceneFingerprint = "4F9A21C7000000000000000000000000000000000000000000000000E03B58D2";
+
+    private static OptionsDialog _OptionsNodesConnect()
+    {
+        var security = _ConnectedSecurity();
+        var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel { Security = security }, Height = 1500 };
+        dialog.SelectCategory("nodes");
+        return dialog;
+    }
+
+    private static SecurityOptionsViewModel _ConnectedSecurity() => _ConnectAttempt(null);
+
+    // One connect against a scene client, run to its outcome: `failure` null connects, anything else is thrown
+    // by the probe exactly as the real client would.
+    private static SecurityOptionsViewModel _ConnectAttempt(Exception? failure)
+    {
+        var security = new SecurityOptionsViewModel(new UnprotectedSecrets(), nodeSessions: new _SceneNodeSessions { ProbeFailure = failure })
+        {
+            ConnectNodeName = "huis-cockpit",
+            ConnectHost = "huis-cockpit.tailnet.ts.net",
+            ConnectKey = "ck_scene",
+            ConnectFingerprint = "SHA256:" + SceneFingerprint,
+        };
+        security.ConnectToServerCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        return security;
+    }
+
+    private static Window _NodesConnectionStatus(int width, int height)
+    {
+        const string url = "https://huis-cockpit.tailnet.ts.net:20383/mcp";
+        var connected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        connected.RefreshAsync().GetAwaiter().GetResult();
+
+        var reconnecting = new NodeSessionsViewModel(new _SceneNodeSessions { ReadError = "No answer." }, "huis-cockpit") { Url = url };
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            reconnecting.RefreshAsync().GetAwaiter().GetResult();
+        }
+
+        var expired = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url, KeyExpiresAt = DateTimeOffset.Now.AddDays(-4) };
+        expired.RefreshAsync().GetAwaiter().GetResult();
+
+        var disconnected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        disconnected.RefreshAsync().GetAwaiter().GetResult();
+        disconnected.DisconnectCommand.Execute(null);
+
+        var mismatch = new NodeCertificatePinMismatchException(SceneFingerprint, "B1076E3D000000000000000000000000000000000000000000000000" + "9C11A40F");
+        var outcomes = new[]
+        {
+            _ConnectedSecurity(),
+            _ConnectAttempt(new HttpRequestException("unauthorized", null, System.Net.HttpStatusCode.Unauthorized)),
+            _ConnectAttempt(new HttpRequestException("tls", mismatch)),
+            _ConnectAttempt(new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.TimedOut)),
+        };
+
+        var panel = new StackPanel { Spacing = 8, Margin = new Thickness(20) };
+        panel.Children.Add(new TextBlock { Text = "Connection status", FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        foreach (var card in new[] { connected, reconnecting, expired, disconnected })
+        {
+            panel.Children.Add(new NodeConnectionStatusView { DataContext = card });
+        }
+
+        foreach (var outcome in outcomes)
+        {
+            panel.Children.Add(new NodeConnectOutcomeView { DataContext = outcome, MaxWidth = 560, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left });
+        }
+
+        return new Window { Width = width, Height = height, Content = new ScrollViewer { Content = panel } };
+    }
+
+    // The node a scene connects to: answers a probe and a read as told, and whoami with the mockup's key.
+    private sealed class _SceneNodeSessions : INodeSessionsClient
+    {
+        public Exception? ProbeFailure { get; init; }
+
+        public string? ReadError { get; init; }
+
+        private static NodeWhoAmI WhoAmI => new("laptop-raymond", "admin", true, DateTimeOffset.Now.AddDays(26), "0.61.0");
+
+        public Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) =>
+            ProbeFailure is { } failure
+                ? Task.FromException<NodeConnectProbe>(failure)
+                : Task.FromResult(new NodeConnectProbe(row.PinnedCertificateFingerprint ?? "", WhoAmI));
+
+        public Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<NodeWhoAmI?>(WhoAmI);
+
+        public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
+
+        public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
+
+        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendPromptAsync(string nodeName, string paneId, string prompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> SendMessageAsync(string nodeName, string paneId, string kind, string body, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class _FakeProjectStore : Cockpit.Core.Abstractions.Projects.IProjectStore
