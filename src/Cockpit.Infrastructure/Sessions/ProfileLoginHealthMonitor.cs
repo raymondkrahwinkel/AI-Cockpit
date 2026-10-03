@@ -5,15 +5,16 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Notifications;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1357: asks every provider profile whether it is still signed in, on the server as much as on a desktop, and says
-// so once when a sign-in runs out and once when it is back — through the attention channel and the controller's
-// inbox, as CiWatcher does. A profile already signed out at the first poll is shown, not alarmed: nothing changed.
+// AC-1357: asks every provider profile whether it is still signed in. Without a frontend it says so once when a sign-in
+// runs out and once when it is back, to the attention channel and the controller's inbox as CiWatcher does; a desktop
+// gets only the data, as its auth-expiry bar says it already. A first poll that reads expired is shown, not alarmed.
 internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLoginHealth, ISingletonService
 {
     // Who the message is from. Not a pane: the cockpit itself noticed this.
@@ -25,6 +26,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     private readonly IAgentMessageInbox _inbox;
     private readonly INotificationSettingsStore _settingsStore;
     private readonly ILogger<ProfileLoginHealthMonitor> _logger;
+    private readonly bool _alarms;
 
     // The expiries already announced, so a recovery is only announced after one.
     private readonly HashSet<string> _alarmed = new(StringComparer.Ordinal);
@@ -37,6 +39,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         IAttentionNotifier notifier,
         IAgentMessageInbox inbox,
         INotificationSettingsStore settingsStore,
+        IPresenceDetector presence,
         ILogger<ProfileLoginHealthMonitor>? logger = null)
     {
         _profiles = profiles;
@@ -45,6 +48,10 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         _inbox = inbox;
         _settingsStore = settingsStore;
         _logger = logger ?? NullLogger<ProfileLoginHealthMonitor>.Instance;
+
+        // ponytail: "no frontend" read from the detector only a frontend-less backend registers. Ceiling: a desktop
+        // that also wants the alarm when its operator is away; then route by presence per alarm instead.
+        _alarms = presence is AwayPresenceDetector;
     }
 
     public IReadOnlyList<ProfileLoginHealth> Current => Volatile.Read(ref _current);
@@ -111,6 +118,11 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             var now = DateTimeOffset.UtcNow;
             var row = new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now);
             next.Add(row);
+
+            if (!_alarms)
+            {
+                continue;
+            }
 
             if (before is { SignedIn: true } && !signedIn)
             {

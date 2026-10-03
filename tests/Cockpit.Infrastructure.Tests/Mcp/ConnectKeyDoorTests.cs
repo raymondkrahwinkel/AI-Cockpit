@@ -474,7 +474,7 @@ public sealed class ConnectKeyDoorTests
     }
 
     // AC-1357 criterion 3: the token stays on the node. A flow whose CLI prints a token next to its code and fails
-    // with one in its error text lets neither reach a response, the audit or the log; the link and the instruction do cross.
+    // with one in its error text lets neither reach a response, the audit or the log; only the link and the device code cross.
     [Fact]
     public async Task ASignIn_NeverCarriesTheProvidersTokenOverTheLine()
     {

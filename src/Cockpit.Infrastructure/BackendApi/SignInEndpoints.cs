@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1357: signing a provider profile in on this machine, for an admin key elsewhere. The token stays here: a
-// response carries the redacted step and a status, and the audit names who, which profile and what happened.
+// response carries the link, a device code, host text and a status; the audit names who, which profile and what.
 internal static class SignInEndpoints
 {
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
@@ -76,9 +76,10 @@ internal static class SignInEndpoints
         flowId = signIn.FlowId,
         profile = signIn.Profile,
         status = signIn.Status,
-        message = signIn.Latest?.Message,
-        url = signIn.Latest?.Url,
-        awaitsInput = signIn.Status == "running" && signIn.Latest is { AwaitsInput: true },
+        message = signIn.Message,
+        url = signIn.Url,
+        code = signIn.Code,
+        awaitsInput = signIn.AwaitsInput,
         expiresAt = signIn.ExpiresAt,
         error = signIn.Error,
     };

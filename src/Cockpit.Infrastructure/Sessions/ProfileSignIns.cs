@@ -7,9 +7,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1357: a provider sign-in started on this machine for a caller elsewhere, one per profile. Only what the operator
-// needs crosses: a step's text with anything token-like hidden, its link, and whether it waits for input. The CLI's
-// own error text never does — it is raw stderr and may carry a credential — and neither is it logged.
+// AC-1357: a provider sign-in started on this machine for a caller elsewhere, one per profile. An allowlist crosses:
+// the link, a device code of the narrow XXXX-XXXX shape, whether input is awaited, and host text. The CLI's own
+// output never does, not even masked — stdout and stderr may carry a credential — and neither is it logged.
 internal sealed class ProfileSignIns(IProfileLoginStarter starter, ILogger<ProfileSignIns>? logger = null) : ISingletonService
 {
     // ILoginFlow does not say how long its code lives. Codex's device code lasts fifteen minutes; a Claude code pasted
@@ -61,15 +61,16 @@ internal sealed class ProfileSignIn
 {
     private static readonly Regex UrlPattern = new(@"https?://\S+", RegexOptions.Compiled);
 
-    // Thirty-two or more characters without a break is what an access or refresh token looks like; a device code
-    // (XXXX-XXXX) and ordinary prose never are.
-    private static readonly Regex TokenLike = new(@"[A-Za-z0-9_\-.~+/=]{32,}", RegexOptions.Compiled);
+    // A device code as Codex and OpenAI print one (QX7K-2M9P): two short upper-case groups. Nothing longer passes.
+    private static readonly Regex DeviceCode = new(@"\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b", RegexOptions.Compiled);
 
     private readonly ILoginFlow _flow;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cancel = new();
     private readonly TaskCompletionSource _firstStep = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private volatile SignInStep? _latest;
+    private volatile Uri? _url;
+    private volatile string? _code;
+    private volatile bool _awaitsInput;
     private volatile string _status = "running";
 
     public ProfileSignIn(string profile, ILoginFlow flow, DateTimeOffset expiresAt, ILogger logger)
@@ -86,7 +87,22 @@ internal sealed class ProfileSignIn
 
     public DateTimeOffset ExpiresAt { get; }
 
-    public SignInStep? Latest => _latest;
+    public Uri? Url => _url;
+
+    public string? Code => _code;
+
+    public bool AwaitsInput => _status == "running" && _awaitsInput;
+
+    // The host's own words for where the flow stands; the CLI's are never passed on.
+    public string Message => _status switch
+    {
+        "succeeded" => "Signed in. The credential stays on this machine.",
+        "running" when AwaitsInput => "Open the link, sign in, and paste the code the page shows you.",
+        "running" when _code is not null => "Open the link and enter the code there.",
+        "running" when _url is not null => "Open the link to sign in.",
+        "running" => "Waiting for the provider's sign-in to start.",
+        _ => "The sign-in has ended.",
+    };
 
     // running, succeeded, failed or expired.
     public string Status => _status;
@@ -100,7 +116,8 @@ internal sealed class ProfileSignIn
 
     public Task SubmitAsync(string value, CancellationToken cancellationToken) => _flow.SubmitAsync(value, cancellationToken);
 
-    internal static string Redact(string message) => TokenLike.Replace(UrlPattern.Replace(message, "[link]"), "[hidden]");
+    internal static string? DeviceCodeIn(string message) =>
+        DeviceCode.Match(UrlPattern.Replace(message, " ")) is { Success: true } match ? match.Value : null;
 
     // Not awaited: the flow outlives the request that started it. _RunAsync catches everything it can meet.
     internal void Run(Func<ProfileSignIn, Task> ended) => _ = _RunAsync(ended);
@@ -118,7 +135,9 @@ internal sealed class ProfileSignIn
         {
             await foreach (var step in _flow.Steps.WithCancellation(expiry.Token).ConfigureAwait(false))
             {
-                _latest = new SignInStep(Redact(step.Message), step.LinkToOpen, step.AwaitsInput);
+                _url = step.LinkToOpen ?? _url;
+                _code = DeviceCodeIn(step.Message) ?? _code;
+                _awaitsInput = step.AwaitsInput;
                 _firstStep.TrySetResult();
             }
 
@@ -154,6 +173,3 @@ internal sealed class ProfileSignIn
         }
     }
 }
-
-// One instruction as it may cross the connection: the redacted text, the link to open, and whether input is awaited.
-internal sealed record SignInStep(string Message, Uri? Url, bool AwaitsInput);
