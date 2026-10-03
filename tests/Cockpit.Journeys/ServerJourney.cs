@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
@@ -42,8 +41,7 @@ public sealed class ServerJourney
         var root = Directory.CreateTempSubdirectory("journey-server-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var port = _FreePortPair();
-        var fingerprint = await _PrepareStateRootAsync(stateRoot, port, root);
+        var fingerprint = await _PrepareStateRootAsync(stateRoot, 0, root);
         var keyFile = _Secret(root, "connect-key", key);
         string[] secrets = [File.ReadAllText(Path.Combine(root, "unlock")), key];
         Process? server = null;
@@ -63,7 +61,7 @@ public sealed class ServerJourney
             server = run.Process;
             Assert.Equal($"{RunningLine}none.", await run.Running.WaitAsync(Until.Ceiling));
 
-            using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{port + NodeEndpointSettings.McpPortOffset}/"), key, fingerprint, TimeProvider.System);
+            using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{_McpPort(run.Output)}/"), key, fingerprint, TimeProvider.System);
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
             var paneId = started["paneId"]?.GetValue<string>() ?? "";
@@ -173,31 +171,12 @@ public sealed class ServerJourney
         return path;
     }
 
-    // Two adjacent ports free at once: `port` is pairing's, closed on the server, and the node door with the API takes
-    // the one after it.
-    private static int _FreePortPair()
+    private static int _McpPort(string output)
     {
-        while (true)
-        {
-            var first = new TcpListener(IPAddress.Any, 0);
-            first.Start();
-            var port = ((IPEndPoint)first.LocalEndpoint).Port;
-            try
-            {
-                var second = new TcpListener(IPAddress.Any, port + NodeEndpointSettings.McpPortOffset);
-                second.Start();
-                second.Stop();
-                return port;
-            }
-            catch (SocketException)
-            {
-                // Taken; another pair.
-            }
-            finally
-            {
-                first.Stop();
-            }
-        }
+        var match = Regex.Match(output, @"Now listening on: https://0\.0\.0\.0:(\d+)");
+        return match.Success
+            ? int.Parse(match.Groups[1].Value)
+            : throw new InvalidOperationException($"Cockpit.Server did not report its node listener:\n{output}");
     }
 
     private static bool _IsRunning(int processId)
