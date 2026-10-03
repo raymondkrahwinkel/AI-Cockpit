@@ -61,7 +61,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
     };
 
     // The sidebar row is narrower: the latency alone while connected, the state's word otherwise.
-    public string SidebarStatus => (State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel) + " · +1 hidden";
+    public string SidebarStatus => State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel;
 
     public string StatusBarLabel => $"{Name}: {StatusLabel.ToLowerInvariant()}";
 
