@@ -11,6 +11,7 @@ public sealed class RemoteLoginFlow : ILoginFlow
     private readonly BackendApiClient _client;
     private readonly string _profile;
     private readonly CancellationTokenSource _stop;
+    private readonly CancellationToken _stopToken;
     private readonly Channel<LoginFlowStep> _steps = Channel.CreateUnbounded<LoginFlowStep>();
     private readonly TaskCompletionSource<string> _flowId = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<LoginFlowResult> _run;
@@ -20,17 +21,18 @@ public sealed class RemoteLoginFlow : ILoginFlow
         _client = client;
         _profile = profile;
         _stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _run = _RunAsync(_stop.Token);
+        _stopToken = _stop.Token;
+        _run = _RunAsync(_stopToken);
     }
 
-    public IAsyncEnumerable<LoginFlowStep> Steps => _ReadStepsAsync(_stop.Token);
+    public IAsyncEnumerable<LoginFlowStep> Steps => _ReadStepsAsync(_stopToken);
 
     public Task<LoginFlowResult> Completion => _run;
 
     public async Task SubmitAsync(string value, CancellationToken cancellationToken)
     {
         var flowId = await _flowId.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-        using var request = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token, cancellationToken);
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(_stopToken, cancellationToken);
         await _client.SendAsync<RemoteSignInState>(
             HttpMethod.Post,
             $"{_Path}/{Uri.EscapeDataString(flowId)}/input",
@@ -47,6 +49,10 @@ public sealed class RemoteLoginFlow : ILoginFlow
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception)
+        {
+            // Completion carries the flow failure; closing its view must remain safe.
         }
         finally
         {

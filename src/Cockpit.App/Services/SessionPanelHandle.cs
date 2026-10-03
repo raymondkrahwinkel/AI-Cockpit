@@ -19,6 +19,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     private readonly DesktopSessionLaunch _launch;
     private readonly Func<string?> _firstSessionsWorkspaceId;
     private readonly Func<SessionPanelViewModel, bool>? _isLive;
+    private readonly ISessionControl? _control;
     private SessionPanelViewModel? _pane;
 
     public SessionPanelHandle(
@@ -35,14 +36,29 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         Func<SessionPanelViewModel, bool>? isLive = null)
     {
         _launch = launch;
-        Control = control;
+        _control = control;
         _firstSessionsWorkspaceId = firstSessionsWorkspaceId;
         _isLive = isLive;
     }
 
     // AC-1450: the session the desktop made and registered before its pane; until `Attach` the handle answers from its
     // launch facts. Null for a handle registered over a pane that already existed.
-    public ISessionControl? Control { get; }
+    public ISessionControl? Control => _control ?? (_pane as SessionViewModel)?.Control;
+
+    public Task<bool> UseControlAsync(Func<ISessionControl, Task> use)
+    {
+        ArgumentNullException.ThrowIfNull(use);
+        return UiThreadCall.RunAsync(async () =>
+        {
+            if (Control is not { } control)
+            {
+                return false;
+            }
+
+            await use(control);
+            return true;
+        });
+    }
 
     public SessionPanelViewModel? Pane => _pane;
 
@@ -189,7 +205,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     {
         add
         {
-            if ((Control ?? (_pane as SessionViewModel)?.Control) is { } control)
+            if (Control is { } control)
             {
                 control.RowUpserted += value;
             }
@@ -197,7 +213,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
         remove
         {
-            if ((Control ?? (_pane as SessionViewModel)?.Control) is { } control)
+            if (Control is { } control)
             {
                 control.RowUpserted -= value;
             }
@@ -206,7 +222,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     // AC-1388: on the UI thread the desktop's host folds on, so no upsert lands between the rows and the seq.
     public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq) =>
-        UiThreadCall.RunAsync(() => (Control ?? (_pane as SessionViewModel)?.Control) is { } control
+        UiThreadCall.RunAsync(() => Control is { } control
             ? new SessionRowSnapshot(control.Rows, lastSeq())
             : (SessionRowSnapshot?)null);
 

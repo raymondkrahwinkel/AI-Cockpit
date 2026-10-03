@@ -35,6 +35,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
     private bool _isListening = true;
     private bool _isPolling = true;
     private SessionCapabilities? _capabilities;
+    private SessionStatusFeed? _usageStatus;
 
     internal RemoteSessionHandle(BackendApiClient client, string paneId, bool isAssistant)
     {
@@ -53,6 +54,10 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public event Action? BusyChanged;
 
+    public event Action? UsageCatchUpDue;
+
+    public event Action<SessionTurnEnd>? TurnEnded;
+
     public event Action<QueuedPrompt>? TurnStarting;
 
     public event Action<QueuedPrompt, Exception>? TurnFailedToStart;
@@ -65,11 +70,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     event Action<bool>? ISessionControl.LoginChecked { add { } remove { } }
 
-    event Action? ISessionControl.UsageCatchUpDue { add { } remove { } }
-
     event Action<TranscriptFold>? ISessionControl.Folded { add { } remove { } }
-
-    event Action<SessionTurnEnd>? ISessionControl.TurnEnded { add { } remove { } }
 
     event Action? ISessionControl.ToolProgressed { add { } remove { } }
 
@@ -399,7 +400,13 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         _Post(() => LiveStateChanged?.Invoke(SessionLiveState.None));
     }
 
-    public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config) => _Facts.UsageStatus;
+    public SessionStatusFeed? ReadUsageStatus(ProviderConfig? config)
+    {
+        lock (_gate)
+        {
+            return _usageStatus;
+        }
+    }
 
     public void RecordRow(TranscriptSnapshotEntry row) =>
         throw new NotSupportedException("A remote transcript is recorded by its backend.");
@@ -623,6 +630,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         lock (_gate)
         {
             _facts = facts;
+            _usageStatus = facts.UsageStatus;
             _queue.Clear();
             _queue.AddRange((facts.Queue ?? []).Select(item => new QueuedPrompt(item.Text, [], wireId: item.WireId)));
         }
@@ -695,8 +703,26 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
                     break;
 
                 case "live-state" when evt.Data.Deserialize<RemoteLiveStateEvent>(Json) is { LiveState: { } liveState }:
+                    var busyChanged = _isBusy != (liveState.Status == SessionStatus.Busy);
+                    _isBusy = liveState.Status == SessionStatus.Busy;
                     _liveState = liveState;
-                    raise = () => LiveStateChanged?.Invoke(liveState);
+                    raise = () =>
+                    {
+                        LiveStateChanged?.Invoke(liveState);
+                        if (busyChanged)
+                        {
+                            BusyChanged?.Invoke();
+                        }
+                    };
+                    break;
+
+                case "turn-ended" when evt.Data.Deserialize<RemoteTurnEndedEvent>(Json) is { End: { } end }:
+                    raise = () => TurnEnded?.Invoke(end);
+                    break;
+
+                case "usage" when evt.Data.Deserialize<RemoteUsageEvent>(Json) is { } usage:
+                    _usageStatus = usage.UsageStatus;
+                    raise = () => UsageCatchUpDue?.Invoke();
                     break;
 
                 case "tool" when evt.Data.Deserialize<RemoteToolEvent>(Json) is { Call: { } call }:
@@ -729,6 +755,10 @@ internal sealed record RemoteTranscriptEntry(string Kind, string Text, string? T
 internal sealed record RemoteRowEvent(long Seq, int Version, TranscriptSnapshotEntry? Row);
 
 internal sealed record RemoteLiveStateEvent(SessionLiveState? LiveState);
+
+internal sealed record RemoteTurnEndedEvent(SessionTurnEnd? End);
+
+internal sealed record RemoteUsageEvent(SessionStatusFeed? UsageStatus);
 
 internal sealed record RemoteToolEvent(SessionToolCall? Call);
 

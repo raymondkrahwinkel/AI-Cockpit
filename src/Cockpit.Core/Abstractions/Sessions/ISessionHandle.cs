@@ -15,6 +15,21 @@ public interface ISessionHandle
     ISessionControl? Control => null;
 
     /// <summary>
+    /// Runs an operation against the session control on the thread its owner requires; false when no control exists.
+    /// </summary>
+    async Task<bool> UseControlAsync(Func<ISessionControl, Task> use)
+    {
+        ArgumentNullException.ThrowIfNull(use);
+        if (Control is not { } control)
+        {
+            return false;
+        }
+
+        await use(control).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
     /// The pane id, the key everything else about a session is filed under.
     /// </summary>
     string PaneId { get; }

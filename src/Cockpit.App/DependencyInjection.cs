@@ -1,13 +1,31 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Composition;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App;
 
 public static class DependencyInjection
 {
+    public static IServiceCollection AddRemoteSessionBackend(
+        this IServiceCollection services,
+        RemoteBackend backend,
+        BackendApiClient client)
+    {
+        services.AddSingleton(client);
+        services.AddSingleton(backend);
+        services.AddSingleton<ISessionLauncher>(backend);
+        services.AddSingleton<ISessionRegistry>(backend);
+        services.AddSingleton<IBackendEventLog>(backend);
+        services.AddSingleton<IProviderUsageSignals>(new RemoteProviderUsageSignals(backend));
+        services.AddSingleton<ISessionLoginFlows>(new RemoteSessionLoginFlows(backend, client));
+        return services;
+    }
+
     // The factory delegates CockpitViewModel mints panes with, so it can open a session (and, transitively, its own
     // ISessionDriver/CLI process) per "New session" click without holding an injected IServiceProvider itself
     // (service-locator anti-pattern — Code.md §2).

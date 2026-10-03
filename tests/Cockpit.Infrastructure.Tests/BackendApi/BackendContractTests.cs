@@ -27,15 +27,22 @@ public abstract class BackendContractTests
         var paneId = await _StartAsync(backend);
         var handle = _HandleOf(backend, paneId);
         var control = handle.Control ?? throw new InvalidOperationException($"Pane '{paneId}' has no control.");
+        var turnEnded = new TaskCompletionSource<SessionTurnEnd>(TaskCreationOptions.RunContinuationsAsynchronously);
+        control.TurnEnded += end =>
+        {
+            turnEnded.TrySetResult(end);
+        };
         await control.SetModelAsync("contract-model");
         var model = await _RowAsync(backend, mark, paneId, row => _Text(row) == "echo: model contract-model");
         await control.SetPermissionModeAsync("acceptEdits");
         var permissionMode = await _RowAsync(backend, model.Seq, paneId, row => _Text(row) == "echo: permission-mode acceptEdits");
         var sent = await handle.SendPromptAsync("hello");
         var row = await _RowAsync(backend, permissionMode.Seq, paneId, row => _Text(row) == "echo: hello");
+        var ended = await turnEnded.Task.WaitAsync(Patience);
 
         Assert.True(sent);
         Assert.Equal(paneId, row.PaneId);
+        Assert.Equal("success", ended.Subtype);
     }
 
     [Fact]

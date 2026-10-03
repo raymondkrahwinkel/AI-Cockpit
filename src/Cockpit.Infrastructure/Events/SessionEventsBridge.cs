@@ -68,9 +68,13 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
                 Action<SessionLiveState> onLiveState = state => append(
                     "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
+                Action<SessionTurnEnd> onTurnEnded = end => append("turn-ended", new { PaneId = paneId, End = end });
                 // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
                 var control = handle.Control;
+                Action? onUsage = control is not null
+                    ? () => append("usage", new { PaneId = paneId, UsageStatus = control.ReadUsageStatus(null) })
+                    : null;
                 NotifyCollectionChangedEventHandler? onQueue = control is not null
                     ? (_, _) => append("queue", new
                     {
@@ -80,20 +84,24 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                     : null;
                 handle.RowUpserted += onRow;
                 handle.LiveStateChanged += onLiveState;
+                handle.TurnEnded += onTurnEnded;
                 handle.ToolActivityProduced += onTool;
-                if (control is not null && onQueue is not null)
+                if (control is not null && onQueue is not null && onUsage is not null)
                 {
                     control.QueueChanged += onQueue;
+                    control.UsageCatchUpDue += onUsage;
                 }
 
                 _watched[handle] = () =>
                 {
                     handle.RowUpserted -= onRow;
                     handle.LiveStateChanged -= onLiveState;
+                    handle.TurnEnded -= onTurnEnded;
                     handle.ToolActivityProduced -= onTool;
-                    if (onQueue is not null && control is not null)
+                    if (onQueue is not null && onUsage is not null && control is not null)
                     {
                         control.QueueChanged -= onQueue;
+                        control.UsageCatchUpDue -= onUsage;
                     }
                 };
             }

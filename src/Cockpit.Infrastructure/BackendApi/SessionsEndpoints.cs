@@ -34,50 +34,61 @@ internal static class SessionsEndpoints
         // AC-1388: `seq` is read before the list, so a reader following the stream after it misses no change to it.
         api.MapGet("/sessions", async () =>
         {
+            var caller = _Caller();
             var seq = log().LastSeq;
-            var visible = await policy().VisibleSessionsAsync(_Caller()).ConfigureAwait(false);
+            var visible = await policy().VisibleSessionsAsync(caller).ConfigureAwait(false);
             var pending = (await read().ListPendingPermissionsAsync().ConfigureAwait(false)).ToLookup(permission => permission.PaneId, StringComparer.Ordinal);
             var profiles = (await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false))
                 .ToDictionary(profile => profile.Label, StringComparer.Ordinal);
             var providers = services.GetService<IPluginProviderRegistry>();
+            List<object> listed = [];
+            foreach (var session in visible)
+            {
+                profiles.TryGetValue(session.Profile, out var profile);
+                var providerId = profile is null ? null : _ProviderId(profile);
+                var registration = providerId is null ? null : providers?.Resolve(providerId);
+                SessionStatusFeed? usageStatus = null;
+                IReadOnlyList<RemoteQueueItem> queue = [];
+                if (sessions().Find(session.PaneId) is { } handle)
+                {
+                    await handle.UseControlAsync(control =>
+                    {
+                        usageStatus = profile is null ? null : control.ReadUsageStatus(profile.ProviderConfig);
+                        queue = [.. control.Queue.Select(prompt => new RemoteQueueItem(prompt.WireId, prompt.Text))];
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                }
+
+                listed.Add(new
+                {
+                    paneId = session.PaneId,
+                    name = session.Name,
+                    profile = session.Profile,
+                    providerId,
+                    usageSignals = registration?.UsageSignals.Select(_UsageSignal).ToArray() ?? [],
+                    usageStatus,
+                    canSignIn = caller.Capability == ConnectKeyCapability.Admin && registration?.StartLogin is not null,
+                    projectId = session.ProjectId,
+                    statusline = session.Statusline,
+                    status = session.Status,
+                    needsYou = session.NeedsYou,
+                    hasOutstandingWork = session.HasOutstandingWork,
+                    queue,
+                    pendingPermissions = pending[session.PaneId].Select(permission => new
+                    {
+                        toolUseId = permission.ToolUseId,
+                        tool = permission.ToolName,
+                        input = permission.InputJson,
+                        sinceUtc = permission.SinceUtc,
+                    }),
+                });
+            }
+
             return Results.Json(new
             {
                 seq,
                 assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
-                sessions = visible.Select(session =>
-                {
-                    profiles.TryGetValue(session.Profile, out var profile);
-                    var providerId = profile is null ? null : _ProviderId(profile);
-                    var registration = providerId is null ? null : providers?.Resolve(providerId);
-                    var control = sessions().Find(session.PaneId)?.Control;
-                    return new
-                    {
-                        paneId = session.PaneId,
-                        name = session.Name,
-                        profile = session.Profile,
-                        providerId,
-                        usageSignals = registration?.UsageSignals.Select(_UsageSignal) ?? [],
-                        usageStatus = profile is null ? null : control?.ReadUsageStatus(profile.ProviderConfig),
-                        canSignIn = registration?.StartLogin is not null,
-                        projectId = session.ProjectId,
-                        statusline = session.Statusline,
-                        status = session.Status,
-                        needsYou = session.NeedsYou,
-                        hasOutstandingWork = session.HasOutstandingWork,
-                        queue = control?.Queue.Select(prompt => new
-                        {
-                            prompt.WireId,
-                            prompt.Text,
-                        }) ?? [],
-                        pendingPermissions = pending[session.PaneId].Select(permission => new
-                        {
-                            toolUseId = permission.ToolUseId,
-                            tool = permission.ToolName,
-                            input = permission.InputJson,
-                            sinceUtc = permission.SinceUtc,
-                        }),
-                    };
-                }),
+                sessions = listed,
             });
         }).RequireOperate();
 
@@ -190,90 +201,105 @@ internal static class SessionsEndpoints
         api.MapPost("/sessions/{paneId}/interrupt", async (string paneId) =>
         {
             if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || sessions().Find(paneId)?.Control is not { } control)
+                || sessions().Find(paneId) is not { } handle
+                || !await handle.UseControlAsync(control => control.InterruptAsync()).ConfigureAwait(false))
             {
                 return Results.NotFound();
             }
 
-            await control.InterruptAsync().ConfigureAwait(false);
             return Results.Json(new { paneId });
         }).RequireOperate().Audited("interrupt_session", services);
 
         api.MapPost("/sessions/{paneId}/model", async (string paneId, ModelBody body) =>
         {
             if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || sessions().Find(paneId)?.Control is not { } control)
+                || sessions().Find(paneId) is not { } handle
+                || !await handle.UseControlAsync(control => control.SetModelAsync(body.Model)).ConfigureAwait(false))
             {
                 return Results.NotFound();
             }
 
-            await control.SetModelAsync(body.Model).ConfigureAwait(false);
             return Results.Json(new { paneId, model = body.Model });
         }).RequireOperate().Audited("set_session_model", services);
 
         api.MapPost("/sessions/{paneId}/permission-mode", async (string paneId, PermissionModeBody body) =>
         {
             if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || sessions().Find(paneId)?.Control is not { } control)
+                || sessions().Find(paneId) is not { } handle)
             {
                 return Results.NotFound();
             }
 
-            if (string.IsNullOrWhiteSpace(body.Mode))
+            if (body.Mode is not ("default" or "acceptEdits" or "plan"))
             {
-                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "mode is required.");
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "mode must be default, acceptEdits, or plan.");
             }
 
-            await control.SetPermissionModeAsync(body.Mode).ConfigureAwait(false);
+            if (body.Mode == "acceptEdits" && !_Caller().MayAnswerPermissions)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", NodeSessionMcpTools.PermissionsRefusal);
+            }
+
+            if (!await handle.UseControlAsync(control => control.SetPermissionModeAsync(body.Mode)).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
             return Results.Json(new { paneId, mode = body.Mode });
         }).RequireOperate().Audited("set_session_permission_mode", services);
 
         api.MapPost("/sessions/{paneId}/queue", async (string paneId, QueueCommandBody body) =>
         {
             if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || sessions().Find(paneId)?.Control is not { } control)
+                || sessions().Find(paneId) is not { } handle)
             {
                 return Results.NotFound();
             }
 
-            if (string.Equals(body.Command, "clear", StringComparison.Ordinal))
+            IResult? answer = null;
+            var used = await handle.UseControlAsync(async control =>
             {
-                control.ClearQueue();
-                return Results.Json(new { paneId });
-            }
-
-            if (string.Equals(body.Command, "withdraw", StringComparison.Ordinal))
-            {
-                var queued = control.Queue.FirstOrDefault(prompt => string.Equals(prompt.WireId, body.WireId, StringComparison.Ordinal));
-                if (queued is null || !control.Withdraw(queued))
+                if (string.Equals(body.Command, "clear", StringComparison.Ordinal))
                 {
-                    return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "queue_item_not_found", "The queue item was not found.");
+                    control.ClearQueue();
+                    answer = Results.Json(new { paneId });
+                    return;
                 }
 
-                return Results.Json(new { paneId, wireId = queued.WireId });
-            }
-
-            if ((string.Equals(body.Command, "submit", StringComparison.Ordinal)
-                    || string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
-                && !string.IsNullOrWhiteSpace(body.Text))
-            {
-                var prompt = new QueuedPrompt(body.Text, [], body.ReplyToRowId, body.WireId);
-                if (string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                if (string.Equals(body.Command, "withdraw", StringComparison.Ordinal))
                 {
-                    control.Enqueue(prompt);
-                }
-                else
-                {
-                    await control.SubmitAsync(prompt, body.TakesMidTurnInput).ConfigureAwait(false);
+                    var queued = control.Queue.FirstOrDefault(prompt => string.Equals(prompt.WireId, body.WireId, StringComparison.Ordinal));
+                    answer = queued is null || !control.Withdraw(queued)
+                        ? BackendApiRoutes.Error(StatusCodes.Status404NotFound, "queue_item_not_found", "The queue item was not found.")
+                        : Results.Json(new { paneId, wireId = queued.WireId });
+                    return;
                 }
 
-                return Results.Json(new { paneId, prompt.WireId });
-            }
+                if ((string.Equals(body.Command, "submit", StringComparison.Ordinal)
+                        || string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                    && !string.IsNullOrWhiteSpace(body.Text))
+                {
+                    var prompt = new QueuedPrompt(body.Text, [], body.ReplyToRowId, body.WireId);
+                    if (string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                    {
+                        control.Enqueue(prompt);
+                    }
+                    else
+                    {
+                        await control.SubmitAsync(prompt, body.TakesMidTurnInput);
+                    }
 
-            return BackendApiRoutes.Error(
-                StatusCodes.Status400BadRequest,
-                "invalid_request",
-                "command must be submit, enqueue, withdraw, or clear; submit and enqueue require text.");
+                    answer = Results.Json(new { paneId, prompt.WireId });
+                    return;
+                }
+
+                answer = BackendApiRoutes.Error(
+                    StatusCodes.Status400BadRequest,
+                    "invalid_request",
+                    "command must be submit, enqueue, withdraw, or clear; submit and enqueue require text.");
+            }).ConfigureAwait(false);
+
+            return used ? answer ?? Results.Empty : Results.NotFound();
         }).RequireOperate().Audited("change_session_queue", services);
 
         api.MapGet("/assistant/transcript", async (int? count) =>

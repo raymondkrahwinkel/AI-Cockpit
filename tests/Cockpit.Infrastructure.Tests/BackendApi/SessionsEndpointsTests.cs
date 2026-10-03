@@ -43,7 +43,7 @@ public sealed class SessionsEndpointsTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    // Criterion 3: answering a permission prompt takes the mayAnswerPermissions grant.
+    // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant.
     [Theory]
     [InlineData(false, HttpStatusCode.Forbidden)]
     [InlineData(true, HttpStatusCode.OK)]
@@ -52,11 +52,25 @@ public sealed class SessionsEndpointsTests
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
         door.ReadGateway.Sessions.Add(_Row("pane-in", Project));
+        var handle = Substitute.For<ISessionHandle>();
+        var control = Substitute.For<ISessionControl>();
+        handle.PaneId.Returns("pane-in");
+        handle.Control.Returns(control);
+        handle.UseControlAsync(Arg.Any<Func<ISessionControl, Task>>()).Returns(async call =>
+        {
+            await call.Arg<Func<ISessionControl, Task>>()(control);
+            return true;
+        });
+        door.Sessions.Register(handle);
         var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions });
 
         var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, """{"allow":true}""");
+        var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
+        var bypass = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"bypassPermissions"}""");
 
         Assert.Equal(expected, answer.Status);
+        Assert.Equal(expected, mode.Status);
+        Assert.Equal(HttpStatusCode.BadRequest, bypass.Status);
     }
 
     // Seeing is reaching: a pane outside the key's projects is not found on any route, and no gateway call reaches it.
@@ -75,8 +89,14 @@ public sealed class SessionsEndpointsTests
         var verifier = await door.StartAsync();
         door.ReadGateway.Sessions.Add(_Row("pane-out", "project-elsewhere"));
         var handle = Substitute.For<ISessionHandle>();
+        var control = Substitute.For<ISessionControl>();
         handle.PaneId.Returns("pane-out");
-        handle.Control.Returns(Substitute.For<ISessionControl>());
+        handle.Control.Returns(control);
+        handle.UseControlAsync(Arg.Any<Func<ISessionControl, Task>>()).Returns(async call =>
+        {
+            await call.Arg<Func<ISessionControl, Task>>()(control);
+            return true;
+        });
         door.Sessions.Register(handle);
         var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
 
@@ -164,7 +184,7 @@ public sealed class SessionsEndpointsTests
         var first = _Upsert(SessionEventSequence.Next(), "row-1");
         var second = _Upsert(SessionEventSequence.Next(), "row-2");
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var read = log.ReadFromAsync(0, stop.Token).Take(5).ToListAsync(stop.Token);
+        var read = log.ReadFromAsync(0, stop.Token).Take(7).ToListAsync(stop.Token);
         // AC-1388: a tool's output past the row's budget does not reach the stream by the tool event either.
         var output = new string('x', 200 * 1024);
 
@@ -176,16 +196,21 @@ public sealed class SessionsEndpointsTests
         control.QueueChanged += Raise.Event<System.Collections.Specialized.NotifyCollectionChangedEventHandler>(
             control,
             new System.Collections.Specialized.NotifyCollectionChangedEventArgs(System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
+        session.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, "success", null));
+        control.ReadUsageStatus(null).Returns(new SessionStatusFeed(42, []));
+        control.UsageCatchUpDue += Raise.Event<Action>();
         var events = await read;
         await bridge.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["sessions-changed", "row", "row", "tool", "queue"], events.Select(evt => evt.Kind));
+        Assert.Equal(["sessions-changed", "row", "row", "tool", "queue", "turn-ended", "usage"], events.Select(evt => evt.Kind));
         Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
-        Assert.Equal(5, events.Select(evt => evt.Seq).Distinct().Count());
+        Assert.Equal(7, events.Select(evt => evt.Seq).Distinct().Count());
         Assert.True(events[3].Data.GetProperty("Call").GetProperty("ResultContent").GetString()?.Length <= ToolOutputBudget.Clamp(output).Length);
         Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Take(2).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
         Assert.Equal("queue-1", events[4].Data.GetProperty("Queue")[0].GetProperty("WireId").GetString());
         Assert.Equal("later", events[4].Data.GetProperty("Queue")[0].GetProperty("Text").GetString());
+        Assert.Equal("success", events[5].Data.GetProperty("End").GetProperty("Subtype").GetString());
+        Assert.Equal(42, events[6].Data.GetProperty("UsageStatus").GetProperty("ContextUsedPercent").GetDouble());
     }
 
     private static TranscriptRowUpsert _Upsert(long seq, string id) =>
