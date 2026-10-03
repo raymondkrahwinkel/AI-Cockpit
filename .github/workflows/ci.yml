@@ -140,6 +140,15 @@ jobs:
       - name: Build
         run: dotnet build tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-restore -warnaserror
 
+      # AC-1444: the server as a container gets it, a linux-x64 publish, carries no UI stack and no test fixture.
+      - name: Server publish carries no Avalonia
+        run: |
+          dotnet publish src/Cockpit.Server/Cockpit.Server.csproj --configuration Release --runtime linux-x64 --self-contained false --output out/server
+          if find out/server -iname 'Avalonia*.dll' -o -iname '*EchoProvider*' | grep .; then
+            echo "::error::The Cockpit.Server publish carries a UI assembly or a test fixture."
+            exit 1
+          fi
+
       - name: Journeys
         run: dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
 

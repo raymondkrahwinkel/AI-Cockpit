@@ -1,0 +1,11 @@
+{
+  "id": "echo-provider",
+  "name": "Echo provider",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.EchoProvider.dll",
+  "entryType": "Cockpit.Plugin.EchoProvider.EchoProviderPlugin",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
+  "description": "Test fixture: an SDK session provider that answers with an echo.",
+  "author": "Cockpit"
+}
