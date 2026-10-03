@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
 
@@ -21,7 +22,7 @@ internal static class NodeDoor
             return;
         }
 
-        settings = settings with { Enabled = true, SharedSecret = string.IsNullOrEmpty(settings.SharedSecret) ? Guid.NewGuid().ToString("N") : settings.SharedSecret };
+        settings = settings with { Enabled = true, SharedSecret = string.IsNullOrEmpty(settings.SharedSecret) ? Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) : settings.SharedSecret };
         await store.SaveAsync(settings);
     }
 
