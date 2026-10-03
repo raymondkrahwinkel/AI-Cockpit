@@ -14,41 +14,58 @@ services:
       COCKPIT_UNLOCK_PASSWORD_FILE: /run/secrets/cockpit_unlock_password
       COCKPIT_CONNECT_KEY_FILE: /run/secrets/cockpit_connect_key
       COCKPIT_STOP_BUDGET_SECONDS: ${COCKPIT_STOP_BUDGET_SECONDS:-8}
-    # Sessions inherit this (GH_TOKEN, AIHUB_*, ...). Optional, so a host with nothing to pass needs no file.
-    env_file:
-      - path: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
-        required: false
+      # AC-1464: a blank clone or worktree root takes these, since agent sessions cannot enter /state.
+      COCKPIT_CLONE_ROOT: /work/clones
+      COCKPIT_WORKTREE_ROOT: /work/worktrees
     secrets:
       - cockpit_unlock_password
       - cockpit_connect_key
+      # AC-1464: what the sessions inherit (GH_TOKEN, AIHUB_*, ...), KEY=VALUE per line; may be empty. A file rather than
+      # an env_file, so it reaches only the server and its sessions, not the container's environment that `docker exec`
+      # and the health check run with.
+      - cockpit_session_env
     ports:
       - "${COCKPIT_PORT:-20383}:20383"
     # AC-1466: /healthz needs no key; node is in the image, curl and wget are not. No certificate check, because this
     # talks only to the container's own loopback and its self-signed certificate: never copy it for a remote check.
+    # AC-1464: Docker runs it as the container's user, root, so it drops to app with an empty environment first.
     healthcheck:
-      test: ["CMD", "node", "-e", "require('https').get({host:'127.0.0.1',port:20383,path:'/healthz',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "/usr/bin/setpriv", "--reuid=app", "--regid=app", "--init-groups", "--", "/usr/bin/env", "-i", "/usr/local/bin/node", "-e", "require('https').get({host:'127.0.0.1',port:20383,path:'/healthz',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 60s
       retries: 3
     # Longer than COCKPIT_STOP_BUDGET_SECONDS, so the server's own stop finishes before docker kills it.
     stop_grace_period: 15s
+    # AC-1464: the entrypoint copies the secrets here for the server alone, so they never touch the container's layer.
+    tmpfs:
+      - /run/cockpit:mode=0700
     volumes:
       - state:/state
+      # The CLIs run as `agent` and write their logins and transcripts here; the server reads the same volume on
+      # its own home. Two mounts of one volume, so neither user needs a path into the other's home.
+      - claude:/home/agent/.claude
       - claude:/home/app/.claude
+      - codex:/home/agent/.codex
       - codex:/home/app/.codex
+      # The server's SSH keys (clones), and the agent's own (its pushes): ssh refuses a key another user can read.
       - ssh:/home/app/.ssh
-      # Repos and worktrees live under /state by default. To keep them elsewhere, bind a host path here and
-      # point the clone and worktree roots at it in the app's settings.
+      - agent-ssh:/home/agent/.ssh
+      # Clones and worktrees, writable for the server and the agent alike; /state is the server's alone.
+      - work:/work
 
 secrets:
   cockpit_unlock_password:
     file: ${COCKPIT_UNLOCK_PASSWORD_PATH:-./secrets/unlock-password}
   cockpit_connect_key:
     file: ${COCKPIT_CONNECT_KEY_PATH:-./secrets/connect-key}
+  cockpit_session_env:
+    file: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
 
 volumes:
   state:
   claude:
   codex:
   ssh:
+  agent-ssh:
+  work:

@@ -20,21 +20,28 @@ The package is **private**, so the host logs in once with a token that has `read
 1. Nothing to set up in `/state`: the server turns the node door on itself, and mints its certificate on the first
    start. If the node port is held, or the door does not listen for any other reason, the server logs why and exits 1
    rather than reporting `running`.
-2. Put the two secrets in files, readable by uid 1654 (mode 0644, or `chown 1654`):
+2. Put the two secrets in files, owner-only is fine (the entrypoint reads them as root):
    `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
    `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
-3. Optional `session.env` (or `COCKPIT_SESSION_ENV_FILE`): `GH_TOKEN` and anything else the agent sessions should inherit. These are plain
-   environment variables, so `docker inspect` shows them; only the two secrets above are files.
+3. `session.env` (or `COCKPIT_SESSION_ENV_FILE`), required but may be empty: `GH_TOKEN` and anything else the agent
+   sessions should inherit, `KEY=VALUE` per line. It is a file like the secrets: it reaches the server and its sessions
+   only, never the container's environment, so `docker inspect`, `docker exec` and the health check do not see it.
 4. `COCKPIT_TAG=sha-<commit> docker compose -f deploy/compose.yaml up -d`
+
+The clone and worktree roots start out at `/work/clones` and `/work/worktrees` (`COCKPIT_CLONE_ROOT`,
+`COCKPIT_WORKTREE_ROOT`): the defaults lie under `/state`, which an agent session cannot enter. A root set in the app's
+settings stays; point it somewhere under `/work`.
 
 ## What it keeps
 
 | Volume | Mount | Holds |
 | --- | --- | --- |
-| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, transcripts, clones, worktrees, logs |
-| `claude` | `/home/app/.claude` | the Claude Code login |
-| `codex` | `/home/app/.codex` | the Codex login |
-| `ssh` | `/home/app/.ssh` | SSH keys for git |
+| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs |
+| `work` | `/work` | clones and worktrees, writable for the server and the agent sessions |
+| `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts |
+| `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts |
+| `ssh` | `/home/app/.ssh` | the server's own SSH keys |
+| `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) |
 
 The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
 
@@ -57,7 +64,22 @@ Credential encryption is off on a fresh state, and then the unlock password is n
 With encryption on, the server starts only with the unlock secret, and exits 1 without it. Turning encryption on for a
 headless first start is not solved here.
 
-## Not here yet
+## Agent sessions run as `agent`
 
-Agent sessions run as the same user as the server and can read the unlock and connect-key files. Do not run bypass-mode
-agents on it before the uid separation lands.
+The server runs as `app`; every `claude`, `codex` and `git` it starts (sessions, sign-ins, login checks, its own
+clones, worktrees and commits) runs as `agent` (uid 1700) through a wrapper on `PATH` and one sudoers rule that allows
+exactly those three binaries. Git is among them because an agent can plant hooks and config in a shared repository,
+which would otherwise run as the server. The SSH keys and git credentials for clones therefore belong to `agent`
+(`agent-ssh`, or `GH_TOKEN` in `session.env`). An agent session
+cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
+the MCP settings, `GH_TOKEN`) and has its own `HOME`.
+
+- The container starts as root only for its entrypoint, which copies the secrets to a tmpfs only `app` can read, closes
+  `/run/secrets`, and then drops to `app` for good. Do not set `no-new-privileges`: the wrapper needs sudo.
+- All sessions share the one `agent` uid, so a session can read another session's environment, MCP config and
+  transcripts. The line drawn here is between the sessions and the server, not between sessions.
+- The health check drops to `app` with an empty environment before it runs node, since Docker runs it as root.
+- Only `agent` may run the real `claude`, `codex` and `git` (group `agent-run`), so a profile that pins one of them
+  fails instead of running it as `app`. `/state/cli` belongs to root, so the server can neither install a managed CLI
+  nor find one; an older install there is moved aside on start. A pin to any other program still runs as `app`: leave
+  `ExecutablePath` empty on the server.

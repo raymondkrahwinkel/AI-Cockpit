@@ -1,0 +1,5 @@
+# AC-1464: the server (app) may start exactly the two provider CLIs and git, as agent, and nothing else as anyone.
+# SETENV lets the wrapper keep the session's whole environment with -E; !secure_path keeps the session's PATH; the
+# umask is unioned with the server's 007, so what an agent writes under /work stays group-writable for the server.
+Defaults:app !secure_path, umask=0007
+app ALL=(agent) NOPASSWD:SETENV: /usr/local/bin/claude, /usr/local/bin/codex, /usr/bin/git

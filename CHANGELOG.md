@@ -37,6 +37,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   statusline relay it hands the CLI are opened to that group and to no one else. Without it nothing changes. Stopping
   a session first asks the CLI to quit, so it also ends when it runs as another user, and a kill the system refuses
   no longer breaks the teardown. Claude provider 0.25.0.
+- added: in the server image, agent sessions run as their own user. Claude and Codex, including their sign-ins, can no
+  longer read the server's state, its secrets or its process, and still get the session's environment. The server
+  reads their logins and transcripts. Clones and worktrees live under `/work`: the server sets both roots there
+  itself when they are blank (`COCKPIT_CLONE_ROOT`, `COCKPIT_WORKTREE_ROOT`), and a root set in the settings stays.
+  The secret files on the host may now be owner-only. `session.env` is now a required file (it may be empty) that
+  reaches only the server and its sessions, no longer the container's environment. Cockpit 0.67.0.
 - added: the server answers `GET /healthz` on its node port without a key, so Docker can tell whether it is
   healthy: 200 when every check holds, 503 when one does not, with only each check's name and whether it holds. The
   first check is the Workflows scheduler, which reads unhealthy once it misses two ticks. A sign-in that expired does
