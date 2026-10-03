@@ -480,6 +480,15 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public Task<bool> HasOutstandingBackgroundShellsAsync() => Task.FromResult(_Facts.HasOutstandingWork);
 
+    // AC-1456: the rows this handle holds, for a pane drawing from it; a later upsert of the same row replaces it.
+    public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. _rows], _snapshotSeq));
+        }
+    }
+
     public async Task<SessionTranscriptSlice> ReadTranscriptAsync(int count)
     {
         var transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count={count}").ConfigureAwait(false);

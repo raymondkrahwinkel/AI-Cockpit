@@ -1511,7 +1511,7 @@
                      dragged pane will drop into (#54 follow-up). Both share the same Grid cell so the
                      code-behind can place the outline in the grid's coordinate space. -->
                 <Grid>
-                <ItemsControl x:Name="SessionGrid" ItemsSource="{Binding Sessions}">
+                <ItemsControl x:Name="SessionGrid" ItemsSource="{Binding GridPanes}">
                     <!-- The panel measures its direct children (the generated item containers), so pane
                          visibility must gate the CONTAINER, not a Border inside the template — otherwise a
                          collapsed panel still claims a tile. -->

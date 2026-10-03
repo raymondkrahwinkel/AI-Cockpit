@@ -46,6 +46,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Sessions;
@@ -2707,6 +2708,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ? ReferenceEquals(session, SimpleSelectedSession)
                 : !single || session.IsSelected);
         }
+
+        // AC-1456: the Simple stand has no server groups to open one from, so a remote pane shows in the panels stand only.
+        var sessionsDesk = Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions;
+        foreach (var pane in _remotePanes)
+        {
+            pane.IsOnActiveDesk = sessionsDesk;
+            pane.IsPaneVisible = sessionsDesk && !simple && (!single || pane.IsSelected);
+        }
     }
 
     // Two Sessions workspaces are separate desks, so each shows only its own — but the sessions of the others keep
@@ -2816,6 +2825,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _ReconcileSidebarOrder();
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
+
+        // AC-1456: an opened remote pane stands on whichever Sessions desk is showing, after this laptop's own.
+        if (Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions)
+        {
+            target.AddRange(_remotePanes);
+        }
 
         _ReconcileInto(_visibleSessions, target);
         _SyncSessionWorkspaceGroups();
@@ -2942,6 +2957,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         Workspaces = new WorkspacesViewModel();
         _WireWorkspaceVisibility();
+        _MirrorSessionsIntoGrid();
 
         var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
         var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
@@ -3141,13 +3157,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionControlFactory? sessionControls = null,
         Func<ISessionControl, SessionViewModel>? sdkPaneOver = null,
         Func<ISessionLauncher>? sessionLauncher = null,
-        ISettingsWriteBatch? settingsWriteBatch = null)
+        ISettingsWriteBatch? settingsWriteBatch = null,
+        // AC-1456: the connect servers as session-list groups, and the pane that reads one of their sessions.
+        IRemoteServers? remoteServers = null,
+        Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null)
     {
         _settingsWriteBatch = settingsWriteBatch;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
+        _MirrorSessionsIntoGrid();
 
         // AC-951: the dock rail's tab strip reads `DockPanels` off the registry directly; the panel registered here is
         // host-internal, so — unlike the widget/workspace-type registries above — there is no late-arriving plugin to
@@ -3244,6 +3264,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionControls = sessionControls;
         _sdkPaneOver = sdkPaneOver;
         _sessionLauncher = sessionLauncher;
+        _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient);
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -9213,6 +9234,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task RequestCloseSessionAsync(SessionPanelViewModel session)
     {
+        // AC-1456: remote always asks (`RequiresCloseConfirmation`), and the answer stops it on its server.
         if (session.RequiresCloseConfirmation)
         {
             session.IsConfirmingClose = true;
@@ -9227,6 +9249,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task ConfirmCloseSessionAsync(SessionPanelViewModel session)
     {
         session.IsConfirmingClose = false;
+        if (session.IsRemote)
+        {
+            await _StopRemoteSessionAsync(session);
+            return;
+        }
+
         await CloseSessionAsync(session);
     }
 
