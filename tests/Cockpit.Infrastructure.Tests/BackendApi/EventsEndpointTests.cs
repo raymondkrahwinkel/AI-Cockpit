@@ -83,6 +83,8 @@ public sealed class EventsEndpointTests
     {
         var log = new BackendEventLog();
         var first = log.Append("row", "pane-b", new { value = "outside" }, otherProfile, otherProject);
+        // AC-1388: a pane's live state is held to the same scope as its rows.
+        log.Append("live-state", "pane-b", new { value = "outside" }, otherProfile, otherProject);
         var second = log.Append("row", "pane-a", new { value = "inside" }, "profile-a", "project-a");
         var sessions = new SessionRegistry();
         sessions.Register(_Session("pane-b", otherProfile, otherProject));

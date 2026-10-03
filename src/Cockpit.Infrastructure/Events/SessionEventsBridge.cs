@@ -64,7 +64,9 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                 // Its scope is the pane's at this event, so the event stays readable to the same keys after the pane closes.
                 void append(string kind, object data) => log.Append(kind, paneId, data, handle.ActiveProfileLabel, handle.ProjectId);
                 Action<TranscriptRowUpsert> onRow = upsert => append("row", new { PaneId = paneId, upsert.Seq, upsert.Version, upsert.Row });
-                Action<SessionLiveState> onLiveState = state => append("live-state", new { PaneId = paneId, LiveState = state });
+                // No more than the rows already carry: the session's folder and its CLI conversation id stay here.
+                Action<SessionLiveState> onLiveState = state => append(
+                    "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call });
                 handle.RowUpserted += onRow;
                 handle.LiveStateChanged += onLiveState;
