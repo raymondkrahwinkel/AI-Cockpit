@@ -93,6 +93,8 @@ status=$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key"
 [ "$status" = 200 ] || fail "whoami with the connect key answered $status"
 status=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:20383/api/v1/whoami)
 [ "$status" != 200 ] || fail "whoami without a key answered 200"
+log_has 'Worktree root set to /work/worktrees from COCKPIT_WORKTREE_ROOT.' || fail "the server did not take the worktree root from compose"
+log_has 'Clone root set to /work/clones from COCKPIT_CLONE_ROOT.' || fail "the server did not take the clone root from compose"
 container=$(dc ps -q cockpit)
 uid=$(server_uid "$container")
 [ -n "$uid" ] && [ "$uid" != 0 ] || fail "the server runs as uid '${uid:-none}'"

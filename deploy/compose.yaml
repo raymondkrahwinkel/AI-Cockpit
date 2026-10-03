@@ -14,6 +14,9 @@ services:
       COCKPIT_UNLOCK_PASSWORD_FILE: /run/secrets/cockpit_unlock_password
       COCKPIT_CONNECT_KEY_FILE: /run/secrets/cockpit_connect_key
       COCKPIT_STOP_BUDGET_SECONDS: ${COCKPIT_STOP_BUDGET_SECONDS:-8}
+      # AC-1464: a blank clone or worktree root takes these, since agent sessions cannot enter /state.
+      COCKPIT_CLONE_ROOT: /work/clones
+      COCKPIT_WORKTREE_ROOT: /work/worktrees
     # Sessions inherit this (GH_TOKEN, AIHUB_*, ...). Optional, so a host with nothing to pass needs no file.
     env_file:
       - path: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
@@ -47,8 +50,7 @@ services:
       # The server's SSH keys (clones), and the agent's own (its pushes): ssh refuses a key another user can read.
       - ssh:/home/app/.ssh
       - agent-ssh:/home/agent/.ssh
-      # Clones and worktrees, writable for the server and the agent alike. /state is the server's alone, so point the
-      # clone root at /work/clones and the worktree root at /work/worktrees in the app's settings (README.md).
+      # Clones and worktrees, writable for the server and the agent alike; /state is the server's alone.
       - work:/work
 
 secrets:
