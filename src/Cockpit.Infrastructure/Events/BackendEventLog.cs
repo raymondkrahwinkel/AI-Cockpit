@@ -19,13 +19,13 @@ public sealed class BackendEventLog : IBackendEventLog, ISingletonService
     private long _evictedThrough;
     private long _lastSeq;
 
-    public long Append(string kind, string? paneId, object data)
+    public long Append(string kind, string? paneId, object data, string? profileLabel = null, string? projectId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         var json = JsonSerializer.SerializeToElement(data);
         lock (_gate)
         {
-            var evt = new BackendEvent(SessionEventSequence.Next(), kind, paneId, json);
+            var evt = new BackendEvent(SessionEventSequence.Next(), kind, paneId, json, profileLabel, projectId);
             _lastSeq = evt.Seq;
             _buffer.Enqueue(evt);
             if (_buffer.Count > Capacity)

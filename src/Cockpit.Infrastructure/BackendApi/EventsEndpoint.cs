@@ -62,15 +62,14 @@ internal static class EventsEndpoint
                     }
 
                     var evt = events.Current;
-                    // The assistant is every operate key's, as its routes are; any other pane only within the key's scope.
-                    if (evt.PaneId is { } paneId && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal))
+                    // The assistant is every operate key's, as its routes are; any other pane only within the key's scope,
+                    // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
+                    if (evt.PaneId is { } paneId
+                        && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
+                        && !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing))
                     {
-                        var session = sessions.Find(paneId);
-                        if (session is null || !caller.AllowsSession(session.ActiveProfileLabel ?? string.Empty, session.ProjectId, pairing))
-                        {
-                            next = events.MoveNextAsync().AsTask();
-                            continue;
-                        }
+                        next = events.MoveNextAsync().AsTask();
+                        continue;
                     }
 
                     var frame = $"id: {evt.Seq}\nevent: {evt.Kind}\ndata: {evt.Data.GetRawText()}\n\n";

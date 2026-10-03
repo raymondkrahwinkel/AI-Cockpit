@@ -823,6 +823,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a reader of the backend event stream that resumes after a session has closed now still gets that
+  session's last rows, if its connect key could see the session; a key that could not see it still gets none.
 - fixed: OpenAI-compatible sessions (Gemini/OpenAI gateways such as Hetzner Inference, Grok, OpenRouter, GitHub
   Models, Ollama, LM Studio) no longer end their turn after a step or two and forget what they did: the next turn
   now sees the previous turn's tool calls and results, a turn that stops on an announced step is nudged on at most

@@ -175,7 +175,7 @@ public sealed class BackendApiClientRealNetworkTests
 
         public ConcurrentQueue<long> Cursors { get; } = new();
 
-        public long Append(string kind, string? paneId, object data) => throw new NotSupportedException();
+        public long Append(string kind, string? paneId, object data, string? profileLabel = null, string? projectId = null) => throw new NotSupportedException();
 
         public IAsyncEnumerable<BackendEvent> ReadFromAsync(long afterSeq, CancellationToken cancellationToken)
         {
