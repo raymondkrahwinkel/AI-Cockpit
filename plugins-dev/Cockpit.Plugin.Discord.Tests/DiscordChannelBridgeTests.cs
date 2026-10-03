@@ -56,6 +56,7 @@ public class DiscordChannelBridgeTests
 
         Assert.Contains((_AllowedUserId, "hi there"), gateway.SentMessages);
         Assert.Empty(sink.Reactions);
+        DiscordHealthStateTests.Verify();
     }
 
     [Fact]

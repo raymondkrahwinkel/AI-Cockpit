@@ -7,10 +7,18 @@ using Cockpit.Plugins.Abstractions.Health;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
-public class WorkflowRunsHealthTests
+internal sealed class WorkflowRunsHealthTests
 {
-    [Fact]
-    public void Initialize_RegistersTheRunsSectionAlongsideTheSchedulerHeartbeat()
+    internal static async Task VerifyAsync()
+    {
+        var tests = new WorkflowRunsHealthTests();
+        tests.Initialize_RegistersTheRunsSectionAlongsideTheSchedulerHeartbeat();
+        tests.Read_ReportsTheLatestOutcomeAndNextRunForEveryActiveScheduledFlow();
+        await tests.RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState();
+        tests.Read_UsesOnlyStructuredOutcomesAndNeverLeaksRunText();
+    }
+
+    private void Initialize_RegistersTheRunsSectionAlongsideTheSchedulerHeartbeat()
     {
         var storage = new InMemoryPluginStorage();
         var host = Substitute.For<ICockpitHost>();
@@ -25,8 +33,7 @@ public class WorkflowRunsHealthTests
         host.Received().AddHealthSection(Arg.Is<IPluginHealthSection>(section => section.Name == "workflows-scheduler"));
     }
 
-    [Fact]
-    public void Read_ReportsTheLatestOutcomeAndNextRunForEveryActiveScheduledFlow()
+    private void Read_ReportsTheLatestOutcomeAndNextRunForEveryActiveScheduledFlow()
     {
         var storage = new InMemoryPluginStorage();
         var store = new WorkflowStore(storage);
@@ -70,8 +77,7 @@ public class WorkflowRunsHealthTests
             });
     }
 
-    [Fact]
-    public async Task RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState()
+    private async Task RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState()
     {
         var storage = new InMemoryPluginStorage();
         var store = new WorkflowStore(storage);
@@ -112,8 +118,7 @@ public class WorkflowRunsHealthTests
         Assert.Contains(health.Read().Rows, row => row.Label == "Approval · Not run · Consent denied");
     }
 
-    [Fact]
-    public void Read_UsesOnlyStructuredOutcomesAndNeverLeaksRunText()
+    private void Read_UsesOnlyStructuredOutcomesAndNeverLeaksRunText()
     {
         var storage = new InMemoryPluginStorage();
         var store = new WorkflowStore(storage);

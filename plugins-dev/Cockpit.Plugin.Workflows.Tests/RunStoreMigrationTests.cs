@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Workflows.Tests;
 public sealed class RunStoreMigrationTests
 {
     [Fact]
-    public void Add_KeepsTheLatestRunPerWorkflowBeyondTheGlobalTwenty()
+    public async Task Add_KeepsTheLatestRunPerWorkflowBeyondTheGlobalTwenty()
     {
         var store = new RunStore(new InMemoryPluginStorage());
         store.Add(_Run("flow-a", 0));
@@ -18,10 +18,13 @@ public sealed class RunStoreMigrationTests
 
         Assert.Equal("run-0", Assert.Single(store.For("flow-a")).Id);
         Assert.Equal(20, store.For("flow-b").Count);
+
+        Migrate_CopiesLegacyRunsBeforeRemovingThem_AndKeepsAnExistingCache();
+        ScheduleTests.Verify();
+        await WorkflowRunsHealthTests.VerifyAsync();
     }
 
-    [Fact]
-    public void Migrate_CopiesLegacyRunsBeforeRemovingThem_AndKeepsAnExistingCache()
+    private static void Migrate_CopiesLegacyRunsBeforeRemovingThem_AndKeepsAnExistingCache()
     {
         var legacy = new InMemoryPluginStorage();
         var cache = new InMemoryPluginStorage();

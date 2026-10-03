@@ -2,10 +2,16 @@ using Cockpit.Plugins.Abstractions.Health;
 
 namespace Cockpit.Plugin.Discord.Tests;
 
-public class DiscordHealthStateTests
+internal sealed class DiscordHealthStateTests
 {
-    [Fact]
-    public void Read_ReportsConnectionBotDeliveryAndLastMessage()
+    internal static void Verify()
+    {
+        var tests = new DiscordHealthStateTests();
+        tests.Read_ReportsConnectionBotDeliveryAndLastMessage();
+        tests.Read_UsesAFixedFailureLabelWithoutAnErrorMessage();
+    }
+
+    private void Read_ReportsConnectionBotDeliveryAndLastMessage()
     {
         var at = new DateTimeOffset(2026, 10, 3, 21, 14, 0, TimeSpan.Zero);
         var health = new DiscordHealthState(new FixedClock(at));
@@ -26,8 +32,7 @@ public class DiscordHealthStateTests
         Assert.Equal(at, offline.At);
     }
 
-    [Fact]
-    public void Read_UsesAFixedFailureLabelWithoutAnErrorMessage()
+    private void Read_UsesAFixedFailureLabelWithoutAnErrorMessage()
     {
         var health = new DiscordHealthState(new FixedClock(DateTimeOffset.UnixEpoch));
 
