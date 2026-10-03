@@ -68,9 +68,19 @@ public sealed class SessionsEndpointsTests
         var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
         var bypass = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"bypassPermissions"}""");
 
+        var whoami = await door.SendAsync(HttpMethod.Get, "/api/v1/whoami", key.Secret, null);
+
         Assert.Equal(expected, answer.Status);
         Assert.Equal(expected, mode.Status);
         Assert.Equal(HttpStatusCode.BadRequest, bypass.Status);
+
+        // AC-1469: /whoami tells the desktop whether to draw the buttons; a direct answer without the grant is refused by the server.
+        Assert.Contains($"\"mayAnswerPermissions\":{(mayAnswerPermissions ? "true" : "false")}", whoami.Body, StringComparison.Ordinal);
+        if (!mayAnswerPermissions)
+        {
+            Assert.Contains(NodeSessionMcpTools.PermissionsRefusal, answer.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain(door.AgentGateway.Calls, call => call.Contains("tool-1", StringComparison.Ordinal));
+        }
     }
 
     // Seeing is reaching: a pane outside the key's projects is not found on any route, and no gateway call reaches it.

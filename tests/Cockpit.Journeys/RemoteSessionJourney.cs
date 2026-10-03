@@ -12,14 +12,15 @@ using Cockpit.Infrastructure.BackendApi;
 namespace Cockpit.Journeys;
 
 // J9 (AC-1456), a server in the session list: the desktop connects to Cockpit.Server with a key, as the connect form leaves
-// it, through a relay that can drop the line. S17b and S18 add their steps here.
+// it, through a relay that can drop the line. S17b (AC-1469) works in the pane; S18 adds its steps here.
 [Collection(JourneyCollection.Alone)]
 public sealed class RemoteSessionJourney
 {
     private const string Server = "journey-server";
 
     // The group shows the server's sessions; a start with a first message answers in its pane; a lost line shows
-    // Reconnecting and keeps the pane, which after the return holds every row once; stop asks once, and only remote.
+    // Reconnecting and keeps the pane, which after the return holds every row once; a second message and a permission
+    // answered there reach the server; stop asks once, and only remote.
     [Fact]
     public async Task AServerGroup_StartsASessionThere_KeepsItsPaneThroughAReconnect_AndStopsItAfterOneConfirmation()
     {
@@ -62,6 +63,10 @@ public sealed class RemoteSessionJourney
             var paneStayed = false;
             var askedOnce = false;
             var keptRunning = false;
+            var composerOffWhileDown = false;
+            var unsentKept = false;
+            var mayAnswer = false;
+            var answerRows = 0;
             var view = cockpit.Cockpit;
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -86,6 +91,13 @@ public sealed class RemoteSessionJourney
                 relay.Cut();
                 await Until.Holds(group, () => !group.IsConnected);
                 reconnecting = group.StatusLabel;
+
+                // The composer and the buttons are off while the line is down, and what was typed stays unsent.
+                pane.InputText = "lost";
+                await pane.SendCommand.ExecuteAsync(null);
+                composerOffWhileDown = !pane.IsInputEnabled && !pane.CanSend && !pane.IsLinkUp;
+                unsentKept = pane.InputText == "lost";
+                pane.InputText = "";
                 paneStayed = ReferenceEquals(group.Sessions.Single().Pane, pane) && view.GridPanes.Contains(pane);
                 using var answered = new CancellationTokenSource(Until.Ceiling);
                 await admin.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/sessions/{paneId}/prompt", new { text = "again" });
@@ -112,6 +124,19 @@ public sealed class RemoteSessionJourney
                         run.Output));
                 }
 
+                // The composer comes back by itself; its message goes to the server, and so does the answer to a permission.
+                await Until.Holds(pane, () => pane.IsInputEnabled && pane.IsLinkUp);
+                mayAnswer = pane.MayAnswerPermissions;
+                pane.InputText = "second";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: second") == 1);
+                pane.InputText = "ask";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => pane.Transcript.Any(row => row.IsPendingPermission));
+                await pane.AllowToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask") == 1);
+                answerRows = _Count(pane, "echo: allowed echo-ask");
+
                 // Stop asks once; Keep running leaves it running there, Stop on server ends it there.
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
                 askedOnce = pane.IsConfirmingClose && group.Sessions.Count == 1;
@@ -127,6 +152,11 @@ public sealed class RemoteSessionJourney
             Assert.True(paneStayed, "The remote pane went away while the line was down.");
             Assert.NotNull(pane);
             Assert.Equal((1, 1), (_Count(pane, "echo: hello"), _Count(pane, "echo: again")));
+            Assert.True(composerOffWhileDown, "The composer stayed on while the line was down.");
+            Assert.True(unsentKept, "A message typed while the line was down was sent or lost.");
+            Assert.Equal(0, _Count(pane, "echo: lost"));
+            Assert.True(mayAnswer, "The key's grant to answer permissions did not reach the pane.");
+            Assert.Equal((1, 1), (_Count(pane, "echo: second"), answerRows));
             Assert.True(askedOnce, "Stop on a remote pane did not ask first.");
             Assert.True(keptRunning, "Keep running did not leave the session running on the server.");
             Assert.False(await _ListsAsync(admin, paneId), "Stop on server left the session running there.");

@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: you can work in a session pane on a connect server. The composer sends to the session there, and a permission
+  prompt gets Allow once and Deny when the key may answer permissions; a key that may not sees the prompt with "This
+  key may not answer permission prompts." and no buttons. While the group says Reconnecting the composer and the
+  buttons are off and come back by themselves; nothing is queued on this laptop. `/api/v1/whoami` now also says
+  `mayAnswerPermissions`.
 - added: a server you connected with a key now stands in the session list as a group of its own, beside "This laptop":
   its sessions as far as the key may see them (never a count of the rest), a header line with its connection,
   latency, version and uptime and a Disconnect, who holds the assistant, and "+ Start on <server>" with the server's
