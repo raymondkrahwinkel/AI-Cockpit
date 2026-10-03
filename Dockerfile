@@ -24,8 +24,8 @@ RUN apt-get update \
     && npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" \
     && npm cache clean --force
 COPY --from=build /out /app
-# `app` is the base image's non-root user and runs the server. AC-1464: the CLIs run as `agent`, whose group `app` is
-# in. /state stays app's alone (the server makes it 0700); /work holds the clones and worktrees both users write.
+# `app` is the base image's non-root user and runs the server. AC-1464: the CLIs and git run as `agent`, whose group
+# `app` is in. /state stays app's alone (the server makes it 0700); /work holds the clones and worktrees both users write.
 # The claude and codex volumes mount at both homes, so the server reads what the agent's CLI writes. Git trusts every
 # repository: the two users share them by design, and this git (2.43) has no `/work/*` form.
 RUN groupadd --gid 1700 agent \
@@ -37,12 +37,13 @@ RUN groupadd --gid 1700 agent \
     && chown -R agent:agent /home/agent /home/app/.claude /home/app/.codex \
     && chmod 2770 /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex \
     && chmod 700 /home/app/.ssh /home/agent/.ssh \
-    && chmod 750 /home/agent \
+    && chmod 750 /home/app /home/agent \
     && chown -R app:agent /work \
     && chmod 2770 /work /work/clones /work/worktrees \
     && git config --system --add safe.directory '*'
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/claude
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/codex
+COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/git
 COPY --chmod=0440 deploy/sudoers-agent /etc/sudoers.d/cockpit-agent
 COPY --chmod=0755 deploy/entrypoint.sh /opt/cockpit/entrypoint.sh
 RUN visudo --check --file=/etc/sudoers.d/cockpit-agent

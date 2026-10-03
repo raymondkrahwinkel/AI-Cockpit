@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 
 # The uid a container's server process runs as: the image starts as root and the entrypoint drops (AC-1464).
-server_uid() { docker top "$1" -eo uid,args | awk '$2 == "/app/Cockpit.Server" { print $1 }'; }
+server_uid() { docker top "$1" -eo pid,uid,args | awk '$3 == "/app/Cockpit.Server" { print $2 }'; }
 # One field of a probe's JSON line (deploy/smoke-probe.js).
 field() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]]))' "$1" "$2"; }
 # The probe, loaded into the codex launcher of whatever `docker compose exec` starts here, as the server's user.
@@ -121,8 +121,18 @@ for what in config certificate secret original environ; do
   [ "$(field "$agent" $what)" = EACCES ] || fail "an agent session can reach $what ($(field "$agent" $what))"
 done
 [ "$(field "$agent" worktree)" = committed ] || fail "an agent session cannot commit in a worktree under /work ($(field "$agent" worktree))"
-dc exec -T -u app cockpit sh -c "umask 007 && echo cockpit >> $tree/agent.txt && git -C $tree $(git_as cockpit) commit -q -am cockpit && rm -rf $tree" \
-  || fail "the cockpit cannot commit in or remove a worktree the agent wrote in"
+# A hook an agent plants in a shared repository runs as agent, because the server's git goes through the wrapper too.
+dc exec -T -u agent cockpit sh -c "printf '#!/bin/sh\nid -u > /work/hook-uid\n' > $tree/.git/hooks/pre-commit && chmod 0770 $tree/.git/hooks/pre-commit"
+dc exec -T -u app cockpit sh -c "umask 007 && echo cockpit >> $tree/agent.txt && git -C $tree $(git_as cockpit) commit -q -am cockpit" \
+  || fail "the cockpit cannot commit in a worktree the agent wrote in"
+hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
+[ "$hook_uid" = "$agent_uid" ] || fail "a hook the agent planted ran as uid $hook_uid on the cockpit's git"
+# Control: the same commit with the real git, as the server's user, runs the agent's hook as that user.
+dc exec -T -u app cockpit sh -c "umask 007 && /usr/bin/git -C $tree $(git_as cockpit) commit -q --allow-empty -m control"
+hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
+[ "$hook_uid" = "$(dc exec -T cockpit id -u app)" ] || fail "control: the planted hook did not run on a git without the wrapper (uid $hook_uid)"
+echo "a planted hook ran as uid $agent_uid through the wrapper and as uid $hook_uid without it"
+dc exec -T -u app cockpit sh -c "rm -rf $tree /work/hook-uid" || fail "the cockpit cannot remove a worktree the agent wrote in"
 dc exec -T -u app cockpit claude --version || fail "claude does not start through its wrapper"
 # A sign-in writes its file as agent, owner-only; the server's login check only asks whether it exists (AC-1357).
 dc exec -T -u agent cockpit sh -c 'umask 077 && : > /home/agent/.claude/.smoke-login'

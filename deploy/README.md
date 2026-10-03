@@ -39,8 +39,8 @@ settings stays; point it somewhere under `/work`.
 | `work` | `/work` | clones and worktrees, writable for the server and the agent sessions |
 | `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts |
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts |
-| `ssh` | `/home/app/.ssh` | the server's SSH keys (clones) |
-| `agent-ssh` | `/home/agent/.ssh` | the agent sessions' SSH keys (their pushes); ssh refuses a key another user can read |
+| `ssh` | `/home/app/.ssh` | the server's own SSH keys |
+| `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) |
 
 The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
 
@@ -65,12 +65,16 @@ headless first start is not solved here.
 
 ## Agent sessions run as `agent`
 
-The server runs as `app`; every `claude` and `codex` it starts (sessions, sign-ins, login checks) runs as `agent`
-(uid 1700) through a wrapper on `PATH` and one sudoers rule that allows exactly those two binaries. An agent session
+The server runs as `app`; every `claude`, `codex` and `git` it starts (sessions, sign-ins, login checks, its own
+clones, worktrees and commits) runs as `agent` (uid 1700) through a wrapper on `PATH` and one sudoers rule that allows
+exactly those three binaries. Git is among them because an agent can plant hooks and config in a shared repository,
+which would otherwise run as the server. An agent session
 cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
 the MCP settings, `GH_TOKEN`) and has its own `HOME`.
 
 - The container starts as root only for its entrypoint, which copies the secrets to a tmpfs only `app` can read, closes
   `/run/secrets`, and then drops to `app` for good. Do not set `no-new-privileges`: the wrapper needs sudo.
+- All sessions share the one `agent` uid, so a session can read another session's environment, MCP config and
+  transcripts. The line drawn here is between the sessions and the server, not between sessions.
 - A profile with a pinned `ExecutablePath`, or a cockpit-managed CLI install, bypasses the wrapper and runs as `app`.
   Leave both empty on the server.
