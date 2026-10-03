@@ -142,7 +142,8 @@ dc exec -T -u app cockpit sh -c "umask 007 && echo cockpit >> $tree/agent.txt &&
 hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
 [ "$hook_uid" = "$agent_uid" ] || fail "a hook the agent planted ran as uid $hook_uid on the cockpit's git"
 # Control: the real git, run by whoever may still run it (root, since app no longer can), runs the hook as that user.
-dc exec -T cockpit sh -c "/usr/bin/git -C $tree $(git_as cockpit) commit -q --allow-empty -m control"
+# Under the server's umask, so what root writes in .git stays group-writable and the removal below still measures app.
+dc exec -T cockpit sh -c "umask 007 && /usr/bin/git -C $tree $(git_as cockpit) commit -q --allow-empty -m control"
 hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
 [ "$hook_uid" = 0 ] || fail "control: the planted hook did not run on a git without the wrapper (uid $hook_uid)"
 echo "a planted hook ran as uid $agent_uid through the wrapper and as uid $hook_uid on the real git"
