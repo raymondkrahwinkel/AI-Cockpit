@@ -51,7 +51,7 @@ internal static class ServerGroupScene
 
         var group = cockpit.ServerGroups[0];
         cockpit.OpenServerSessionCommand.Execute(group.Sessions[0]);
-        if (group.Sessions[0].Pane is { } pane && admin)
+        if (group.Sessions[0].Pane is { } pane && admin && !asking)
         {
             pane.IsConfirmingClose = true;
         }
