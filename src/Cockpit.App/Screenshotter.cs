@@ -222,6 +222,9 @@ internal static class Screenshotter
         // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
         ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
+        // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
+        ["server-group"] = ServerGroupScene.Admin,
+        ["server-group-operate"] = ServerGroupScene.Operate,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.

@@ -691,6 +691,13 @@
                              the other way round instead: picking one walks to its tab first (see SelectSession).
                              Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
                              one node and never carries a session across to another tab. -->
+                        <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
+                        <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
+                            <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </Grid>
                         <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:SessionWorkspaceGroupViewModel">
@@ -750,6 +757,67 @@
                                    IsVisible="{Binding HasOmittedEmptyWorkspaces}"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    Text="{Binding OmittedEmptyWorkspacesLabel}"/>
+
+                        <!-- AC-1456 (variant A): each connect server as a group beside this laptop. Only what the
+                             key may see is listed, and nothing counts what it may not. -->
+                        <ItemsControl ItemsSource="{Binding ServerGroups}" Margin="0,8,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ServerGroupViewModel">
+                                    <StackPanel Spacing="2" Margin="0,0,0,6">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4" Margin="2,3">
+                                            <ToggleButton Grid.Column="0" Classes="Subtle" Padding="2,0"
+                                                          IsChecked="{Binding IsExpanded}"
+                                                          Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                          ToolTip.Tip="Fold this server away, or open it with its header above the sessions">
+                                                <Panel>
+                                                    <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12"
+                                                                                IsVisible="{Binding !IsExpanded}"/>
+                                                    <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                                                IsVisible="{Binding IsExpanded}"/>
+                                                </Panel>
+                                            </ToggleButton>
+                                            <materialIcons:MaterialIcon Grid.Column="1" Kind="Server" Width="13" Height="13"
+                                                                        VerticalAlignment="Center"
+                                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding SidebarStatus}" FontSize="11"
+                                                       VerticalAlignment="Center" Margin="0,0,4,0"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0" IsVisible="{Binding IsExpanded}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ServerSessionRowViewModel">
+                                                    <Button Classes="Subtle" Margin="0,0,0,4" Padding="8,6"
+                                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerSessionCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="Open this session; it runs on the server">
+                                                        <StackPanel Spacing="2">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                                         Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button Classes="Subtle" Padding="8,2" FontSize="11" Margin="13,0,0,0"
+                                                HorizontalAlignment="Left" IsVisible="{Binding IsExpanded}"
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                Content="{Binding Start.SidebarLabel}"
+                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerStartCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
@@ -1458,6 +1526,122 @@
                         CommandParameter="{Binding AssistantRootSession}"
                         ToolTip.Tip="Put the assistant back in this column"/>
 
+                <!-- AC-1456: an open server group's header line, the assistant line and, when asked for, the start
+                     card. Health, "scheduled · Discord" (S18, AC-1457) and Admin (F5.6b, AC-1446) stay out until they
+                     are filled; an operate key sees Admin locked, so it knows the page exists. -->
+                <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding OpenServerGroups}" IsVisible="{Binding !SimpleView}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ServerGroupViewModel">
+                            <StackPanel Spacing="8" Margin="0,0,0,8">
+                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource CockpitControlRadius}">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Classes="tag" IsVisible="{Binding IsOperateKey}" VerticalAlignment="Center"
+                                                    ToolTip.Tip="Admin needs an admin key; this key may operate only">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <TextBlock Text="Admin" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    <materialIcons:MaterialIcon Kind="Lock" Width="11" Height="11"
+                                                                                Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <Button Classes="Subtle Compact" Content="Disconnect"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).DisconnectServerCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Close the connection for this run; what runs on the server keeps running"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                                            <Border CornerRadius="9" Padding="8,2" VerticalAlignment="Center"
+                                                    Background="{DynamicResource CockpitStatusDoneChipTintBrush}" IsVisible="{Binding IsConnected}">
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                            </Border>
+                                            <Border CornerRadius="9" Padding="8,2" VerticalAlignment="Center"
+                                                    Background="{DynamicResource CockpitStatusWaitingChipTintBrush}" IsVisible="{Binding !IsConnected}">
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding HeaderDetail}" FontSize="12" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding HasAssistantLine}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource CockpitControlRadius}">
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Right" Classes="tag" VerticalAlignment="Center" IsVisible="{Binding HoldsAssistant}"
+                                                Background="{DynamicResource CockpitCategoryTintBlueBrush}">
+                                            <TextBlock Text="holds the assistant" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                        </Border>
+                                        <Ellipse DockPanel.Dock="Left" Width="28" Height="28" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                 Fill="{DynamicResource CockpitAccentBrush}" Opacity="0.85"/>
+                                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding AssistantTitle}" FontSize="12.5"/>
+                                            <TextBlock Text="{Binding AssistantDetail}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <Border Padding="16,14" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding Start.IsOpen}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" MaxWidth="560"
+                                        HorizontalAlignment="Left" CornerRadius="{StaticResource CockpitControlRadius}">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="{Binding Start.Heading}" FontSize="14" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Runs on the server. Only SDK sessions; profiles and projects are the server's own."
+                                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="Project" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                <ComboBox ItemsSource="{Binding Start.Projects}" SelectedItem="{Binding Start.SelectedProject}"
+                                                          HorizontalAlignment="Stretch">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:NodeProjectChoice">
+                                                            <TextBlock Text="{Binding Name}"/>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <TextBlock Text="{Binding Start.ProjectHint}" FontSize="11"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="Profile" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                <ComboBox ItemsSource="{Binding Start.Profiles}" SelectedItem="{Binding Start.SelectedProfile}"
+                                                          HorizontalAlignment="Stretch">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:NodeProfileChoice">
+                                                            <TextBlock Text="{Binding Label}"/>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <TextBlock Text="{Binding Start.ProfileHint}" FontSize="11"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="Prompt" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                            <TextBox Text="{Binding Start.Prompt}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Start.Error}" FontSize="11.5" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource CockpitStatusErrorBrush}"
+                                                   IsVisible="{Binding Start.Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                            <Button Classes="Subtle" Content="Cancel"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).CancelServerStartCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Classes="Accent" Content="{Binding Start.StartLabel}" IsEnabled="{Binding !Start.IsBusy}"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartOnServerCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" IsVisible="{Binding !SimpleView}">
                     <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
                          where it would be a no-op (the single pane is always shown) — no dead control. -->
@@ -2042,6 +2226,21 @@
                                Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                VerticalAlignment="Center"/>
                 </Button>
+
+                <!-- AC-1456: each connect server's connection, as its group's header says it. -->
+                <ItemsControl DockPanel.Dock="Right" Margin="0,0,8,0" VerticalAlignment="Center"
+                              ItemsSource="{Binding ServerStatusLabels}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="12"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
                 <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
                      while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->

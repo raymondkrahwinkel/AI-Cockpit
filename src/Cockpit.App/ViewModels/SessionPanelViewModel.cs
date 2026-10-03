@@ -404,6 +404,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // "Close? / Keep" prompt rather than dropping a busy session on a single click (mirrors the
     // Manage-profiles remove confirm, L11).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConfirmingRemoteStop))]
     private bool _isConfirmingClose;
 
     // True when closing would interrupt work in flight, so the close asks first — a running turn or a session
@@ -413,19 +414,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // AC-1456: the connect server this session runs on; null for one on this laptop.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRemote), nameof(ServerChipLabel), nameof(ShowServerChip), nameof(RequiresCloseConfirmation), nameof(CloseConfirmationText))]
+    [NotifyPropertyChangedFor(nameof(IsRemote), nameof(ServerChipLabel), nameof(ShowsLocalChip), nameof(RequiresCloseConfirmation), nameof(CloseConfirmationText), nameof(IsConfirmingRemoteStop))]
     private string? _remoteServer;
 
     public bool IsRemote => RemoteServer is not null;
 
     // AC-1456: set by the cockpit while a server group stands beside this laptop's sessions, so a local pane says so too.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowServerChip))]
+    [NotifyPropertyChangedFor(nameof(ShowsLocalChip))]
     private bool _showsWhereItRuns;
 
-    public bool ShowServerChip => IsRemote || ShowsWhereItRuns;
+    public bool ShowsLocalChip => ShowsWhereItRuns && !IsRemote;
 
     public string ServerChipLabel => RemoteServer ?? "this laptop";
+
+    // The remote stop asks in the pane itself; a local close keeps its inline prompt in the sidebar row.
+    public bool IsConfirmingRemoteStop => IsRemote && IsConfirmingClose;
 
     public string CloseConfirmationText => RemoteServer is { } server
         ? $"Stop \"{Title}\" on {server}? The session ends on the server. Its transcript stays readable; the conversation cannot be continued."

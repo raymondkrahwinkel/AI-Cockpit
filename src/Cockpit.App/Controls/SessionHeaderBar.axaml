@@ -166,11 +166,28 @@
                  repo today ("Gemini (OpenAI-compatible)", 26 characters) while still bounding an unbounded plugin
                  string, so a plugin author's long name cannot widen the header (AC-537 AC6, pinned by
                  SessionHeaderKindChipWidthTests). -->
-            <Border x:Name="KindChip" Grid.Column="2" Classes="tag" Margin="7,0,0,0"
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Border x:Name="KindChip" Classes="tag" Margin="7,0,0,0"
                     IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
                 <TextBlock Text="{Binding KindLabel}" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
             </Border>
+            <!-- AC-1456: where the session runs, once a server group stands beside this laptop: the server in blue,
+                 "this laptop" neutral. -->
+            <Border Classes="tag" Margin="5,0,0,0" IsVisible="{Binding IsRemote}"
+                    Background="{DynamicResource CockpitCategoryTintBlueBrush}"
+                    ToolTip.Tip="This session runs on the server, not on this laptop">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <materialIcons:MaterialIcon Kind="Server" Width="11" Height="11" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
+                    <TextBlock Text="{Binding ServerChipLabel}" Foreground="{DynamicResource CockpitAccentBrush}"
+                               FontSize="10" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                </StackPanel>
+            </Border>
+            <Border Classes="tag" Margin="5,0,0,0" IsVisible="{Binding ShowsLocalChip}">
+                <TextBlock Text="{Binding ServerChipLabel}"/>
+            </Border>
+            </StackPanel>
 
             <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status.
                  AC-563: the session's MCP servers hover here, by name — the number in the text below is the count

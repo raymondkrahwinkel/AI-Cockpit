@@ -205,6 +205,8 @@ public sealed partial class ServerStartViewModel(string server) : ObservableObje
 
     public string StartLabel => $"Start on {Server}";
 
+    public string SidebarLabel => $"+ Start on {Server}";
+
     [ObservableProperty]
     private bool _isOpen;
 

@@ -57,6 +57,10 @@ public partial class CockpitViewModel
         _ = _ReloadServersAsync();
     }
 
+    // The headless scenes' way in: the same wiring over a stand-in server, without the node tools behind the start card.
+    internal void ShowServers(IRemoteServers servers, Func<ISessionHandle, string, Task<SessionViewModel>> paneOver) =>
+        _WireServerGroups(servers, paneOver, serverChoices: null);
+
     private void _MirrorSessionsIntoGrid()
     {
         foreach (var session in Sessions)
@@ -136,7 +140,7 @@ public partial class CockpitViewModel
             {
                 if (args.PropertyName == nameof(ServerGroupViewModel.IsExpanded))
                 {
-                    OnPropertyChanged(nameof(OpenServerGroups));
+                    _OnOpenServerGroupsChanged();
                 }
             };
             ISessionRegistry? followed = null;
@@ -162,12 +166,19 @@ public partial class CockpitViewModel
         }
 
         OnPropertyChanged(nameof(HasServerGroups));
-        OnPropertyChanged(nameof(OpenServerGroups));
         OnPropertyChanged(nameof(ServerStatusLabels));
+        _OnOpenServerGroupsChanged();
         foreach (var session in Sessions)
         {
             session.ShowsWhereItRuns = HasServerGroups;
         }
+    }
+
+    private void _OnOpenServerGroupsChanged()
+    {
+        OnPropertyChanged(nameof(OpenServerGroups));
+        OnPropertyChanged(nameof(ShowSessionGrid));
+        OnPropertyChanged(nameof(ShowSessionEmptyState));
     }
 
     private void _ReconcileServerGroup(ServerGroupViewModel group)

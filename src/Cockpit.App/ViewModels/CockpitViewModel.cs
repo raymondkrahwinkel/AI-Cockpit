@@ -489,12 +489,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Whether the session grid applies: sessions exist AND a Sessions workspace is active. A dashboard owns
     // the content area while it is selected, so the grid must stand down even though the sessions themselves
     // keep running — they are hidden, not closed.
-    public bool ShowSessionGrid => HasSessionsHere && Workspaces.IsSessionsActive;
+    public bool ShowSessionGrid => (HasSessionsHere || OpenServerGroups.Any()) && Workspaces.IsSessionsActive;
 
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
     // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
     // or by the start screen — and whose "+ New session" opens the dialog this one offers.
-    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive && !SimpleView;
+    public bool ShowSessionEmptyState => !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
