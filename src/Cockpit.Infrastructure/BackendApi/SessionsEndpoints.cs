@@ -184,7 +184,7 @@ internal static class SessionsEndpoints
 
         api.MapPost("/sessions/{paneId}/permissions/{toolUseId}", async (string paneId, string toolUseId, PermissionBody body) =>
         {
-            if (false)
+            if (!_Caller().MayAnswerPermissions)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", NodeSessionMcpTools.PermissionsRefusal);
             }
