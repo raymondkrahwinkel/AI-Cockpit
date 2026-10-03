@@ -591,6 +591,33 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
+    [McpServerTool(Name = "lift_connect_lockout", ReadOnly = false, Destructive = false)]
+    [Description("Lifts the lockout of an address, as list_connect_keys reports it under lockouts, so it can try again at once. The failures that led to it are cleared, but the next lockout of that address still lasts twice as long as the last. Needs a connect key with the admin capability.")]
+    public async Task<string> LiftConnectLockoutAsync(
+        [Description("The locked-out address exactly as list_connect_keys reports it, or any address in an IPv6 /64 it reports.")] string address)
+    {
+        try
+        {
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotAdmin()) is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (connectKeys is null || McpRequestContext.CurrentNodeCaller is not { } caller)
+            {
+                return _Serialize(new { ok = false, error = NoConnectKeys });
+            }
+
+            return await connectKeys.LiftLockoutAsync(address, caller).ConfigureAwait(false)
+                ? _Serialize(new { ok = true, address, lifted = true })
+                : _Serialize(new { ok = false, error = $"'{address}' is not locked out. Call list_connect_keys for the addresses that are." });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "set_connect_key_scope", ReadOnly = false, Destructive = true)]
     [Description("Replaces the scope of a connect key by its prefix, from its next call on — a controller already connected with it is held to the new scope without reconnecting. The whole scope is replaced: what you leave out takes the default issue_connect_key gives it. The bootstrap key keeps its full scope and is refused. Needs a connect key with the admin capability.")]
     public async Task<string> SetConnectKeyScopeAsync(
@@ -624,7 +651,7 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "list_connect_keys", ReadOnly = true)]
-    [Description("Lists this node's connect keys — prefix, label, capability, holdsAssistant, scope (null profiles or projects means all of them), when each was created, expires, was revoked and was last used — never the keys themselves. holdsAssistant turns off this node's assistant while you call. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
+    [Description("Lists this node's connect keys — prefix, label, capability, holdsAssistant, scope (null profiles or projects means all of them), when each was created, expires, was revoked and was last used — never the keys themselves. holdsAssistant turns off this node's assistant while you call. Also lists the addresses locked out right now after repeated failed attempts, with until when and how many attempts were refused during it; lift_connect_lockout lifts one. Needs a connect key with the admin capability. lastUsedAt covers this run of the node only.")]
     public async Task<string> ListConnectKeysAsync()
     {
         try
@@ -640,6 +667,7 @@ internal sealed class NodeSessionMcpTools(
             }
 
             var keys = await connectKeys.ListAsync().ConfigureAwait(false);
+            var lockouts = await connectKeys.ListLockoutsAsync().ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
@@ -656,6 +684,7 @@ internal sealed class NodeSessionMcpTools(
                     revokedAt = entry.Key.RevokedAt,
                     lastUsedAt = entry.LastUsedAt,
                 }),
+                lockouts = lockouts.Select(lockout => new { address = lockout.Bucket, lockedUntil = lockout.LockedUntil, refusedWhileLockedOut = lockout.RefusedWhileLockedOut }),
             });
         }
         catch (Exception exception)

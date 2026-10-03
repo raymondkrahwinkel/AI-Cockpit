@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an address that is locked out of the node endpoint after repeated failed attempts stays locked out when
+  the cockpit restarts, and its next lockout still lasts twice as long. An admin connect key can see which addresses
+  are locked out and lift a lockout, through the node tool `lift_connect_lockout` or
+  `POST /api/v1/lockouts/{address}/lift`; the access audit records who lifted it. Lifting does not reset how long the
+  next lockout of that address lasts.
 - added: Cockpit.Server, the cockpit as a program without a window, for running in a container. It unlocks the
   stored credentials from a password file, takes connect keys only (no LAN discovery and no pairing), loads the
   plugins without their UI parts, runs SDK sessions (a TTY profile is refused with the reason), and stops cleanly
