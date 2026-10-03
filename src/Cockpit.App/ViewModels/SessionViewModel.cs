@@ -1299,11 +1299,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IsInputEnabled = false;
         ComposerPlaceholder = $"Sending to a session on {server} comes with the next update.";
 
-        Action<TranscriptRowUpsert> row = upsert =>
-        {
-            UiPost(() => _DrawHostRow(upsert.Row with { Text = "" }));
-            UiPost(() => _DrawHostRow(upsert.Row));
-        };
+        Action<TranscriptRowUpsert> row = upsert => UiPost(() => _DrawHostRow(upsert.Row));
         Action<SessionLiveState> live = state => UiPost(() => _OnLiveStateChanged(state));
         handle.RowUpserted += row;
         handle.LiveStateChanged += live;
