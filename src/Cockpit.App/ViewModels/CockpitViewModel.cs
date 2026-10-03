@@ -8275,7 +8275,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Not added to Sessions on purpose: the grid must not render this session too, or its (now bounded) rows
         // would be counted alongside the chat window's and blur what this sim measures. AC-1438: registered as an
         // embedded pane instead, which no grid lists, so its rows reach the event log the pane draws them from.
-        _sessionRegistry?.Register(new SessionPanelHandle(vm, isEmbedded: true, _FirstSessionsWorkspaceId));
+        var handle = new SessionPanelHandle(vm, isEmbedded: true, _FirstSessionsWorkspaceId);
+        _sessionRegistry?.Register(handle);
         await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, tempDir, null, null, ReadingLevel.Focus);
 
         var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
@@ -8286,7 +8287,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var host = new _ChatLeakSimHost { Session = vm };
+        var host = new _ChatLeakSimHost { Session = handle };
         var chatVm = new AssistantChatViewModel(host, new _ChatLeakSimSettingsStore(), new _ChatLeakSimVoiceQueue());
         var win = new Cockpit.App.Views.AssistantChatWindow
         {
