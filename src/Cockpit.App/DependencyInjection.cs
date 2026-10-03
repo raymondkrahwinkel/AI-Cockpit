@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Composition;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
