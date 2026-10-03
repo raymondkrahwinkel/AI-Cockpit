@@ -140,7 +140,17 @@ internal sealed class NodeSessionsClient(
     public async Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default)
     {
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
-        var known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<McpServerConfig> known;
+        try
+        {
+            known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogInformation(exception, "Could not read the registry row for node {Node}.", nodeName);
+            return null;
+        }
+
         return known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal)) is { } row
             ? await _WhoAmIAsync(row, cancellationToken).ConfigureAwait(false)
             : null;

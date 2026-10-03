@@ -48,6 +48,9 @@ public sealed partial class NodeSessionsViewModel(
     // "Enter a new key": hands the connect form this row, with only the key left to type.
     public Action? EnterNewKey { get; init; }
 
+    // Told when the operator disconnects (the time) or connects again (null), so it outlives a rebuilt card.
+    public Action<DateTimeOffset?>? DisconnectedChanged { get; init; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel), nameof(IsConnected), nameof(IsReconnecting), nameof(IsKeyExpired), nameof(IsDisconnected), nameof(CanDisconnect))]
     private NodeConnectionState _connectionState;
@@ -133,10 +136,18 @@ public sealed partial class NodeSessionsViewModel(
         IsBusy = true;
         try
         {
+            var attemptAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
             var snapshot = await client.ReadAsync(NodeName).ConfigureAwait(true);
             var latency = Stopwatch.GetElapsedTime(started);
-            _NoteAttempt(snapshot.Error is not { Length: > 0 }, latency);
+
+            // A read already out when the operator disconnected must neither flip the line back nor feed the relays.
+            if (ConnectionState == NodeConnectionState.Disconnected)
+            {
+                return;
+            }
+
+            _NoteAttempt(snapshot.Error is not { Length: > 0 }, attemptAt, latency);
 
             // What the operator had picked, so rebuilding the dropdowns does not quietly change what the next
             // Start will run. Both Start and Stop refresh when they are done, so without this a second start goes
@@ -286,8 +297,15 @@ public sealed partial class NodeSessionsViewModel(
     [RelayCommand]
     private void Disconnect()
     {
+        ShowDisconnected(DateTimeOffset.Now);
+        DisconnectedChanged?.Invoke(_disconnectedAt);
+    }
+
+    // Also how a rebuilt card picks up a disconnect from before: no poll, and the time it happened.
+    public void ShowDisconnected(DateTimeOffset at)
+    {
         Dispose();
-        _disconnectedAt = DateTimeOffset.Now;
+        _disconnectedAt = at;
         ConnectionState = NodeConnectionState.Disconnected;
         _DescribeConnection();
     }
@@ -295,6 +313,7 @@ public sealed partial class NodeSessionsViewModel(
     [RelayCommand]
     private async Task ReconnectAsync()
     {
+        DisconnectedChanged?.Invoke(null);
         ConnectionState = NodeConnectionState.Unknown;
         ConnectionDetail = "";
         StartPolling();
@@ -305,16 +324,10 @@ public sealed partial class NodeSessionsViewModel(
     private void EnterKey() => EnterNewKey?.Invoke();
 
     // One poll's outcome. A miss starts or extends a Reconnecting streak; an answer ends it.
-    private void _NoteAttempt(bool answered, TimeSpan latency)
+    private void _NoteAttempt(bool answered, DateTimeOffset attemptAt, TimeSpan latency)
     {
-        // A poll already out when the operator disconnected must not flip the line back.
-        if (ConnectionState == NodeConnectionState.Disconnected)
-        {
-            return;
-        }
-
         var now = DateTimeOffset.Now;
-        _nextAttemptAt = now + PollInterval;
+        _nextAttemptAt = attemptAt + PollInterval;
         if (answered)
         {
             if (ConnectionState != NodeConnectionState.Connected)

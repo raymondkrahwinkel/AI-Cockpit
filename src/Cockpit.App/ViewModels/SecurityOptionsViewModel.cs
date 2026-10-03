@@ -391,6 +391,21 @@ public sealed partial class SecurityOptionsViewModel(
     // top of the first's rather than replacing them, leaving the first call's cards (AC-796).
     private readonly SemaphoreSlim _pairedNodesGate = new(1, 1);
 
+    // AC-1458: the nodes the operator disconnected this run, so rebuilding the cards does not reconnect them.
+    private readonly Dictionary<string, DateTimeOffset> _disconnectedNodes = new(StringComparer.Ordinal);
+
+    private void _NoteDisconnected(string node, DateTimeOffset? at)
+    {
+        if (at is { } since)
+        {
+            _disconnectedNodes[node] = since;
+        }
+        else
+        {
+            _disconnectedNodes.Remove(node);
+        }
+    }
+
     // Each card reads its own node when it is built, so a node that is off costs this tab a timeout and not the other
     // nodes' contents — and the cards appear at once rather than after the slowest one (AC-795, AC-796).
     private async Task _LoadPairedNodesAsync()
@@ -418,7 +433,15 @@ public sealed partial class SecurityOptionsViewModel(
                     Url = row?.Url,
                     KeyExpiresAt = row?.KeyExpiresAt,
                     EnterNewKey = row is null ? null : () => _PrefillConnect(node, row),
+                    DisconnectedChanged = at => _NoteDisconnected(node, at),
                 };
+                if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
+                {
+                    card.ShowDisconnected(disconnectedAt);
+                    PairedNodes.Add(card);
+                    continue;
+                }
+
                 PairedNodes.Add(card);
                 card.StartPolling();
 

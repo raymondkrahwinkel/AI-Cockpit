@@ -90,10 +90,8 @@ public sealed class NodeSessionsClientRealNetworkTests
         }
     }
 
-    /// <summary>
-    /// AC-1458 criterion 1: a fingerprint that does not match stops a connect before the key leaves this machine.
-    /// The server sees no request with an Authorization header; the matching probe after it proves the recorder sees one.
-    /// </summary>
+    // AC-1458 criterion 1: a fingerprint that does not match stops a connect before the key leaves this machine. The
+    // server sees no request with an Authorization header; the matching probe after it proves the recorder sees one.
     [Fact]
     public async Task ProbeAsync_AFingerprintThatDoesNotMatch_FailsBeforeAnyRequestCarriesTheKey()
     {
