@@ -80,7 +80,7 @@ public sealed class RemoteSessionJourney
                 var row = group.Sessions.Single();
                 paneId = row.Handle.PaneId;
                 pane = row.Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
-                await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: hello") == 1);
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: hello") == 1);
 
                 // The line drops: Reconnecting, the pane stays, and the server answers on without anyone watching.
                 relay.Cut();
@@ -95,7 +95,7 @@ public sealed class RemoteSessionJourney
                 await Until.Holds(group, () => group.IsConnected);
                 try
                 {
-                    await Until.CollectionHolds(pane.Transcript, () => _Count(pane, "echo: again") > 0);
+                    await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: again") > 0);
                 }
                 catch (TimeoutException)
                 {
@@ -172,9 +172,9 @@ public sealed class RemoteSessionJourney
 
         public void Cut()
         {
-            _cut = true;
             lock (_open)
             {
+                _cut = true;
                 foreach (var connection in _open)
                 {
                     connection.Dispose();
@@ -222,9 +222,17 @@ public sealed class RemoteSessionJourney
         // Every failure here is the cut or the end of a connection, which is all a relay has to say about it.
         private async Task _PipeAsync(TcpClient client)
         {
+            // Checked again under the lock Cut holds: a connection accepted just before a cut must not outlive it.
             var server = new TcpClient();
             lock (_open)
             {
+                if (_cut)
+                {
+                    client.Dispose();
+                    server.Dispose();
+                    return;
+                }
+
                 _open.Add(client);
                 _open.Add(server);
             }
