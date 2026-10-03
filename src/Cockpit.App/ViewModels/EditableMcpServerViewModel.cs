@@ -78,6 +78,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     // across a save here, so that editing an unrelated server does not unpin a paired node.
     private readonly string? _pinnedCertificateFingerprint;
 
+    // AC-1458: carried across a save the same way, but only with the key it belongs to: a new key typed here
+    // has an expiry nobody has told this row yet.
+    private readonly DateTimeOffset? _keyExpiresAt;
+    private readonly string? _keyExpiresAtFor;
+
     // Custom headers sent to an HTTP server alongside whatever `Auth` arranges (AC-354) — for a server that expects
     // `X-Api-Key` or another scheme `McpServerAuth.ApiKey` cannot express.
     public ObservableCollection<McpHeaderRowViewModel> Headers { get; } = [];
@@ -233,6 +238,8 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _enabled = server.Enabled;
         _selectedScope = McpServerScopeOption.For(server.Scope);
         _pinnedCertificateFingerprint = server.PinnedCertificateFingerprint;
+        _keyExpiresAt = server.KeyExpiresAt;
+        _keyExpiresAtFor = server.ApiKey;
 
         foreach (var header in server.Headers)
         {
@@ -263,6 +270,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
             : [],
         // Carried through untouched (AC-792).
         PinnedCertificateFingerprint = IsHttp ? _pinnedCertificateFingerprint : null,
+        KeyExpiresAt = IsHttp && string.Equals(ApiKey.Trim(), _keyExpiresAtFor, StringComparison.Ordinal) ? _keyExpiresAt : null,
         Enabled = Enabled,
     };
 

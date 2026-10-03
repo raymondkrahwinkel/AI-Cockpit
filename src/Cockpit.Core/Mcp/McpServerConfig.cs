@@ -55,6 +55,10 @@ public sealed record McpServerConfig
     // shared secret could leak to a man-in-the-middle. Not a credential, so it stays in clear text in cockpit.json.
     public string? PinnedCertificateFingerprint { get; init; }
 
+    // AC-1458: when the connect key behind this row expires, as the server said at connect time. Not a secret;
+    // null for a pairing and for a key that does not expire. A row past it is not polled again.
+    public DateTimeOffset? KeyExpiresAt { get; init; }
+
     // Whether this server is active — a disabled server is kept in the registry but not connected.
     public bool Enabled { get; init; } = true;
 
@@ -87,7 +91,7 @@ public sealed record McpServerConfig
         + $"{nameof(OAuthAuthority)} = {OAuthAuthority}, {nameof(OAuthClientId)} = {OAuthClientId}, "
         + $"{nameof(OAuthScopes)} = {OAuthScopes}, "
         + $"{nameof(Headers)} = [{string.Join(", ", Headers)}], "
-        + $"{nameof(PinnedCertificateFingerprint)} = {PinnedCertificateFingerprint}, "
+        + $"{nameof(PinnedCertificateFingerprint)} = {PinnedCertificateFingerprint}, {nameof(KeyExpiresAt)} = {KeyExpiresAt}, "
         + $"{nameof(Enabled)} = {Enabled}, {nameof(CockpitHosted)} = {CockpitHosted}, "
         + $"{nameof(Internal)} = {Internal}, {nameof(AlwaysMounted)} = {AlwaysMounted} }}";
 }

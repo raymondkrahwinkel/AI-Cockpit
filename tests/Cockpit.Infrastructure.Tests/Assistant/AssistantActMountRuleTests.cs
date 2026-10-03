@@ -568,7 +568,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default) => Task.FromResult<NodeWhoAmI?>(null);
     }
 
     /// <summary>Clears the ambient pane so one test's caller is never another's.</summary>

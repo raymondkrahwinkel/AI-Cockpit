@@ -29,7 +29,8 @@ public sealed class BackendApiClient : IDisposable
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
     }
 
-    public Task<BackendWhoAmI> WhoAmIAsync() => GetAsync<BackendWhoAmI>("api/v1/whoami");
+    public Task<BackendWhoAmI> WhoAmIAsync(CancellationToken cancellationToken = default) =>
+        _SendAsync<BackendWhoAmI>(HttpMethod.Get, "api/v1/whoami", null, cancellationToken);
 
     public Task<T> GetAsync<T>(string path) => _SendAsync<T>(HttpMethod.Get, path, null, CancellationToken.None);
 
@@ -221,4 +222,14 @@ public sealed class BackendApiClient : IDisposable
     }
 }
 
-public sealed record BackendWhoAmI(string KeyPrefix, string Label, string Capability, string Node, int ApiVersion);
+// AC-1458: the last four are additive; a server that predates them leaves them at their defaults.
+public sealed record BackendWhoAmI(
+    string KeyPrefix,
+    string Label,
+    string Capability,
+    string Node,
+    int ApiVersion,
+    DateTimeOffset? ExpiresAt = null,
+    bool HoldsAssistant = false,
+    string? Version = null,
+    DateTimeOffset? StartedAt = null);

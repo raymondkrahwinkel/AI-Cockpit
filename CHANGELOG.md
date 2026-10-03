@@ -39,6 +39,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   are locked out and lift a lockout, through the node tool `lift_connect_lockout` or
   `POST /api/v1/lockouts/{address}/lift`; the access audit records who lifted it. Lifting does not reset how long the
   next lockout of that address lasts.
+- added: Options › Nodes shows each server's connection under its name: connected since when, how long a round
+  trip took, whether it goes over Tailscale or your own network and which version the server runs; reconnecting,
+  with the attempt and the seconds to the next one, while sessions on the server keep running; a key that has
+  expired, with no further attempts and a way to enter a new one; or disconnected by you, with a way to connect
+  again. A server's /whoami now also reports when the key expires, whether it holds the assistant, the server's
+  version and when it started.
 - added: Cockpit.Server, the cockpit as a program without a window, for running in a container. It unlocks the
   stored credentials from a password file, takes connect keys only (no LAN discovery and no pairing), loads the
   plugins without their UI parts, runs SDK sessions (a TTY profile is refused with the reason), and stops cleanly
@@ -622,6 +628,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: connecting to a server takes the host and the port in two fields, the port filled in. After the
+  certificate check the fingerprint you entered is shown beside the server's, and the key is sent only once they
+  match. Each outcome has its own message, and a wrong key and a locked-out address still get one and the same
+  answer.
 - changed: every screen of the desktop — the dialogs, the onboarding steps, the consent banner, the quick note and the
   file preview included — now reaches the cockpit's backend only through its published interfaces, the ones a remote
   backend will offer too. Nothing changes in how they look or work.

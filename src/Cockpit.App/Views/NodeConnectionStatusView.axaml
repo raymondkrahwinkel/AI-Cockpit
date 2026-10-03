@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.NodeConnectionStatusView"
+             x:DataType="vm:NodeSessionsViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.connectionPill">
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.connected">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusDoneChipTintBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.connected Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.connected TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.reconnecting">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingChipTintBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.reconnecting Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource CockpitStatusWaitingBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.reconnecting TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusWaitingBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.expired">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusErrorChipTintBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.expired Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Border.connectionPill.expired TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Button.connectionLink">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+        <Style Selector="Button.connectionLink TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitAccentBrush}"/>
+        </Style>
+    </UserControl.Styles>
+    <!-- AC-1458: a node card's connection status, in Options › Nodes and its scene. -->
+    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                IsVisible="{Binding ConnectionLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <Border Classes="connectionPill" VerticalAlignment="Center"
+                Classes.connected="{Binding IsConnected}"
+                Classes.reconnecting="{Binding IsReconnecting}"
+                Classes.expired="{Binding IsKeyExpired}">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+                <Ellipse Width="6" Height="6" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding ConnectionLabel}" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+        <TextBlock Text="{Binding ConnectionDetail}" FontSize="11.5" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        <TextBlock Text="·" FontSize="11.5" VerticalAlignment="Center" IsVisible="{Binding IsKeyExpired}"/>
+        <Button Classes="Ghost connectionLink" Command="{Binding EnterKeyCommand}" IsVisible="{Binding IsKeyExpired}"
+                VerticalAlignment="Center">
+            <TextBlock Text="Enter a new key" FontSize="11.5"/>
+        </Button>
+        <TextBlock Text="·" FontSize="11.5" VerticalAlignment="Center" IsVisible="{Binding IsDisconnected}"/>
+        <Button Classes="Ghost connectionLink" Command="{Binding ReconnectCommand}" IsVisible="{Binding IsDisconnected}"
+                VerticalAlignment="Center">
+            <TextBlock Text="Connect" FontSize="11.5"/>
+        </Button>
+    </StackPanel>
+</UserControl>

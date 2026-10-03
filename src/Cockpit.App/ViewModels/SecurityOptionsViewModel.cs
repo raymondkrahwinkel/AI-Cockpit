@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -390,6 +391,51 @@ public sealed partial class SecurityOptionsViewModel(
     // top of the first's rather than replacing them, leaving the first call's cards (AC-796).
     private readonly SemaphoreSlim _pairedNodesGate = new(1, 1);
 
+    // AC-1458: the nodes the operator disconnected this run, so rebuilding the cards does not reconnect them.
+    private readonly Dictionary<string, DateTimeOffset> _disconnectedNodes = new(StringComparer.Ordinal);
+
+    // AC-1458: a key the server renewed or replaced, written through the same row path a connect uses.
+    private async Task _StoreKeyExpiryAsync(string node, DateTimeOffset? expiresAt)
+    {
+        if (mcpServers is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
+            var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
+            var prefix = NodeServerName.PrefixFor(node);
+            if (!existing.Any(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) && server.KeyExpiresAt != expiresAt))
+            {
+                return;
+            }
+
+            var rows = existing
+                .Where(server => server.Name.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) ? server with { KeyExpiresAt = expiresAt } : server)
+                .ToList();
+            await _StoreNodeRowsAsync(node, rows, existing).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Left as it was: the next poll reads the same expiry and writes it then.
+        }
+    }
+
+    private void _NoteDisconnected(string node, DateTimeOffset? at)
+    {
+        if (at is { } since)
+        {
+            _disconnectedNodes[node] = since;
+        }
+        else
+        {
+            _disconnectedNodes.Remove(node);
+        }
+    }
+
     // Each card reads its own node when it is built, so a node that is off costs this tab a timeout and not the other
     // nodes' contents — and the cards appear at once rather than after the slowest one (AC-795, AC-796).
     private async Task _LoadPairedNodesAsync()
@@ -406,9 +452,27 @@ public sealed partial class SecurityOptionsViewModel(
                 return;
             }
 
+            // AC-1458: the row behind each card, for its address and its key's expiry.
+            IReadOnlyList<McpServerConfig> rows = mcpServers is null ? [] : await mcpServers.LoadAsync().ConfigureAwait(true);
             foreach (var node in await nodeSessions.ListNodesAsync().ConfigureAwait(true))
             {
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync);
+                var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
+                var row = rows.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal));
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync)
+                {
+                    Url = row?.Url,
+                    KeyExpiresAt = row?.KeyExpiresAt,
+                    EnterNewKey = row is null ? null : () => _PrefillConnect(node, row),
+                    DisconnectedChanged = at => _NoteDisconnected(node, at),
+                    KeyExpiryChanged = expiresAt => _StoreKeyExpiryAsync(node, expiresAt),
+                };
+                if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
+                {
+                    card.ShowDisconnected(disconnectedAt);
+                    PairedNodes.Add(card);
+                    continue;
+                }
+
                 PairedNodes.Add(card);
                 card.StartPolling();
 
@@ -1052,13 +1116,20 @@ public sealed partial class SecurityOptionsViewModel(
     // ── AC-1352, connect to a headless server with a connect key ──────────────────────────────────────────────
 
     // What the operator types on the counterpart of the pairing block above: no handshake, because there is
-    // nobody at the other end to confirm one.
+    // nobody at the other end to confirm one. AC-1458: host and port apart, the port prefilled.
+
+    private static readonly string DefaultConnectPort =
+        (NodeEndpointSettings.DefaultPort + NodeEndpointSettings.McpPortOffset).ToString(CultureInfo.InvariantCulture);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectFingerprintHint))]
     private string _connectNodeName = "";
 
     [ObservableProperty]
-    private string _connectAddress = "";
+    private string _connectHost = "";
+
+    [ObservableProperty]
+    private string _connectPort = DefaultConnectPort;
 
     // Never left standing once a connect succeeds — see ConnectToServerAsync.
     [ObservableProperty]
@@ -1068,10 +1139,57 @@ public sealed partial class SecurityOptionsViewModel(
     private string _connectFingerprint = "";
 
     [ObservableProperty]
-    private string _connectStatus = "";
+    [NotifyPropertyChangedFor(nameof(ConnectStatus), nameof(HasConnectOutcome))]
+    private string _connectStatusTitle = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectStatus), nameof(HasConnectStatusDetail))]
+    private string _connectStatusDetail = "";
+
+    // Drives the outcome's look: the glyph and the tone of the box the view draws around it.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectGlyph), nameof(IsConnectSuccess), nameof(IsConnectRefusal), nameof(IsConnectUnanswered))]
+    private ConnectOutcome _connectOutcome;
+
+    // AC-1458: the entered fingerprint beside the server's, shown once the TLS handshake has been reached.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowConnectFingerprints))]
+    private string _connectEnteredFingerprint = "";
+
+    [ObservableProperty]
+    private string _connectPresentedFingerprint = "";
+
+    [ObservableProperty]
+    private bool _connectFingerprintsMatch;
 
     [ObservableProperty]
     private bool _isConnectBusy;
+
+    // The whole outcome as one sentence, what the tests read; the view draws the title and the detail apart.
+    public string ConnectStatus => ConnectStatusDetail.Length == 0 ? ConnectStatusTitle : $"{ConnectStatusTitle} {ConnectStatusDetail}";
+
+    public bool HasConnectOutcome => ConnectStatusTitle.Length > 0;
+
+    public bool HasConnectStatusDetail => ConnectStatusDetail.Length > 0;
+
+    public string ConnectGlyph => ConnectOutcome switch
+    {
+        ConnectOutcome.Connected => "✓",
+        ConnectOutcome.Refused => "✕",
+        ConnectOutcome.Unanswered => "○",
+        _ => "",
+    };
+
+    public bool IsConnectSuccess => ConnectOutcome == ConnectOutcome.Connected;
+
+    public bool IsConnectRefusal => ConnectOutcome == ConnectOutcome.Refused;
+
+    public bool IsConnectUnanswered => ConnectOutcome == ConnectOutcome.Unanswered;
+
+    public bool ShowConnectFingerprints => ConnectEnteredFingerprint.Length > 0;
+
+    public string ConnectFingerprintHint =>
+        $"From the server's startup log or docker logs {(string.IsNullOrWhiteSpace(ConnectNodeName) ? "<name>" : ConnectNodeName.Trim())}.";
 
     // Writes the same row a pairing would, only after ProbeAsync proves the address, key and pin actually work
     // together — a typo here must never leave a dead row for NodeSessionsClient to poll forever.
@@ -1079,31 +1197,40 @@ public sealed partial class SecurityOptionsViewModel(
     private async Task ConnectToServerAsync()
     {
         if (nodeSessions is null
-            || string.IsNullOrWhiteSpace(ConnectAddress)
+            || string.IsNullOrWhiteSpace(ConnectHost)
             || string.IsNullOrWhiteSpace(ConnectKey)
             || string.IsNullOrWhiteSpace(ConnectFingerprint))
         {
             return;
         }
 
+        _ShowConnectOutcome(ConnectOutcome.None, "", "");
+
         // AC-1325: no chains — the same refusal StartPairingAsync gives, before any network call.
         if (_AlreadyControlledRefusal() is { } refusal)
         {
-            ConnectStatus = refusal;
+            _ShowConnectOutcome(ConnectOutcome.Other, refusal, "");
+            return;
+        }
+
+        if (!int.TryParse(ConnectPort.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var typedPort) || typedPort is < 1 or > 65535)
+        {
+            _ShowConnectOutcome(ConnectOutcome.Other, "The port must be a number from 1 to 65535.", "");
             return;
         }
 
         // Named here, ahead of the try, so a parse failure below can still report against something readable.
-        var nodeName = string.IsNullOrWhiteSpace(ConnectNodeName) ? ConnectAddress.Trim() : ConnectNodeName.Trim();
+        var nodeName = string.IsNullOrWhiteSpace(ConnectNodeName) ? ConnectHost.Trim() : ConnectNodeName.Trim();
+        var where = $"{ConnectHost.Trim()}:{typedPort}";
+        var fingerprint = NodePairingCode.Normalize(_WithoutAlgorithm(ConnectFingerprint.Trim()));
 
         IsConnectBusy = true;
-        ConnectStatus = "";
         try
         {
-            var (host, mcpUrl) = _ParseConnectAddress(ConnectAddress);
+            var (host, mcpUrl) = _ParseConnectAddress(ConnectHost, typedPort);
             nodeName = string.IsNullOrWhiteSpace(ConnectNodeName) ? host : ConnectNodeName.Trim();
+            where = $"{host}:{mcpUrl.Port}";
             var url = mcpUrl.ToString();
-            var fingerprint = ConnectFingerprint.Trim();
 
             IReadOnlyList<McpServerConfig>? existing = null;
             if (mcpServers is not null)
@@ -1116,21 +1243,23 @@ public sealed partial class SecurityOptionsViewModel(
                 if (existing.FirstOrDefault(server => server.Name.StartsWith(prefix, StringComparison.Ordinal)
                         && !string.Equals(server.Url, url, StringComparison.Ordinal)) is { } clash)
                 {
-                    ConnectStatus = $"\"{nodeName}\" is already connected at {clash.Url}. Use a different name, or fix the address to reconnect to that one.";
+                    _ShowConnectOutcome(ConnectOutcome.Other, $"\"{nodeName}\" is already connected at {clash.Url}. Use a different name, or fix the address to reconnect to that one.", "");
                     return;
                 }
             }
 
             var row = _BuildNodeRow(nodeName, NodeServerName.SessionsServerName, url, ConnectKey, fingerprint);
-            await nodeSessions.ProbeAsync(row).ConfigureAwait(true);
-            await _StoreNodeRowsAsync(nodeName, [row], existing).ConfigureAwait(true);
+            var probe = await nodeSessions.ProbeAsync(row).ConfigureAwait(true);
+            await _StoreNodeRowsAsync(nodeName, [row with { KeyExpiresAt = probe.WhoAmI?.ExpiresAt }], existing).ConfigureAwait(true);
             ConnectKey = "";
-            ConnectStatus = $"Connected to \"{nodeName}\".";
+            _ShowConnectOutcome(ConnectOutcome.Connected, $"Connected to \"{nodeName}\".", _DescribeKey(probe.WhoAmI));
+            _ShowFingerprints(fingerprint, probe.PresentedFingerprint);
+            await _LoadPairedNodesAsync().ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is HttpRequestException or SocketException or NotSupportedException
             or System.Text.Json.JsonException or OperationCanceledException or InvalidOperationException or UriFormatException)
         {
-            ConnectStatus = _ClassifyConnectFailure(nodeName, ex);
+            _ShowConnectFailure(nodeName, where, ex);
         }
         finally
         {
@@ -1138,41 +1267,138 @@ public sealed partial class SecurityOptionsViewModel(
         }
     }
 
-    private static string _ClassifyConnectFailure(string nodeName, Exception exception)
+    // Empties the form back to how it opened, port and all.
+    [RelayCommand]
+    private void CancelConnect()
     {
-        // Same full-chain unwrap ConfirmPairingCodeAsync uses — a certificate callback's throw arrives wrapped
-        // more than one level deep, and the exception's own Message already names both fingerprints.
+        ConnectNodeName = "";
+        ConnectHost = "";
+        ConnectPort = DefaultConnectPort;
+        ConnectKey = "";
+        ConnectFingerprint = "";
+        _ShowConnectOutcome(ConnectOutcome.None, "", "");
+    }
+
+    // AC-1458: "Enter a new key" on a card whose key ran out — the same server, only the key left to type.
+    private void _PrefillConnect(string nodeName, McpServerConfig row)
+    {
+        ConnectNodeName = nodeName;
+        if (Uri.TryCreate(row.Url, UriKind.Absolute, out var url))
+        {
+            ConnectHost = url.Host;
+            ConnectPort = url.Port.ToString(CultureInfo.InvariantCulture);
+        }
+
+        ConnectKey = "";
+        ConnectFingerprint = row.PinnedCertificateFingerprint ?? "";
+        _ShowConnectOutcome(ConnectOutcome.None, "", "");
+    }
+
+    // DEP-208: a wrong key, a revoked or expired one and a locked-out address are one answer from the server, and
+    // so one sentence here — never refined into which of them it was.
+    private void _ShowConnectFailure(string nodeName, string where, Exception exception)
+    {
         if (NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(exception) is { } mismatch)
         {
-            return mismatch.Message;
+            _ShowConnectOutcome(
+                ConnectOutcome.Refused,
+                "This is not the server you meant.",
+                "Its certificate does not match the fingerprint you entered. Not connected, and your key was not sent.");
+            _ShowFingerprints(mismatch.ExpectedFingerprint, mismatch.PresentedFingerprint ?? "");
+            return;
         }
 
         if (exception is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
         {
-            return "The server refused this key.";
+            _ShowConnectOutcome(
+                ConnectOutcome.Refused,
+                "The server refused this key.",
+                "Check that you copied the whole key. If it was revoked or has expired, ask for a new one.");
+            return;
         }
 
         if (exception is InvalidOperationException { InnerException: null })
         {
             // The node answered and refused in its own words (ProbeAsync's list_node_sessions error) — shown
             // verbatim, the same posture NodeSessionsClient takes for a node's own refusal elsewhere.
-            return exception.Message;
+            _ShowConnectOutcome(ConnectOutcome.Other, exception.Message, "");
+            return;
         }
 
-        return NodeConnectionFailure.Describe(nodeName, exception, NodeConnectionFailure.DefaultBudget);
+        if (NodeConnectionFailure.Find<SocketException>(exception) is not null
+            || NodeConnectionFailure.Find<OperationCanceledException>(exception) is not null)
+        {
+            _ShowConnectOutcome(ConnectOutcome.Unanswered, $"No answer from {where}.", "Is Tailscale on, and is the container running?");
+            return;
+        }
+
+        _ShowConnectOutcome(ConnectOutcome.Other, NodeConnectionFailure.Describe(nodeName, exception, NodeConnectionFailure.DefaultBudget), "");
     }
 
-    // A bare host defaults to the node listener's own port — there is no pairing port to fall back through here,
-    // unlike NodePairingClient.NormalizeAddress. Via Uri/UriBuilder rather than a hand split on ':', so an IPv6
-    // address (its own colons) parses as one host instead of being chopped at the wrong one (AC-1352).
-    private static (string Host, Uri McpUrl) _ParseConnectAddress(string address)
+    // Clears the fingerprint comparison too; a mismatch puts its own back right after.
+    private void _ShowConnectOutcome(ConnectOutcome outcome, string title, string detail)
+    {
+        _ShowFingerprints("", "");
+        ConnectOutcome = outcome;
+        ConnectStatusTitle = title;
+        ConnectStatusDetail = detail;
+    }
+
+    private void _ShowFingerprints(string entered, string presented)
+    {
+        ConnectFingerprintsMatch = entered.Length > 0 && string.Equals(entered, presented, StringComparison.Ordinal);
+        ConnectPresentedFingerprint = presented.Length == 0 ? "" : _Abbreviate(presented);
+        ConnectEnteredFingerprint = entered.Length == 0 ? "" : _Abbreviate(entered);
+    }
+
+    // `4F:9A:21:C7 … E0:3B:58:D2`: the first and last four bytes, as the mockup and a startup log line are compared.
+    private static string _Abbreviate(string fingerprint)
+    {
+        var pairs = fingerprint.Chunk(2).Select(pair => new string(pair)).ToArray();
+        return pairs.Length <= 8
+            ? string.Join(':', pairs)
+            : $"{string.Join(':', pairs[..4])} … {string.Join(':', pairs[^4..])}";
+    }
+
+    // `Key "<label>" · <capability> · holds the assistant · expires <date>.` — each part only when the server said it.
+    private static string _DescribeKey(NodeWhoAmI? who)
+    {
+        if (who is null)
+        {
+            return "";
+        }
+
+        List<string> parts = [$"Key \"{who.Label}\"", who.Capability];
+        if (who.HoldsAssistant)
+        {
+            parts.Add("holds the assistant");
+        }
+
+        if (who.ExpiresAt is { } expiresAt)
+        {
+            parts.Add($"expires {expiresAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)}");
+        }
+
+        return string.Join(" · ", parts) + ".";
+    }
+
+    // The spelling "SHA256:4F:9A:…" pasted whole: the algorithm's name is not part of the fingerprint.
+    private static string _WithoutAlgorithm(string fingerprint) =>
+        fingerprint.StartsWith("SHA256:", StringComparison.OrdinalIgnoreCase) ? fingerprint["SHA256:".Length..] : fingerprint;
+
+    // A bare host takes the port field; a pasted host:port or URL keeps its own port. A bare IPv6 address goes
+    // through UriBuilder, which brackets it, so its colons are never read as a port (AC-1352).
+    private static (string Host, Uri McpUrl) _ParseConnectAddress(string address, int port)
     {
         var trimmed = address.Trim();
+        if (IPAddress.TryParse(trimmed, out var ip) && ip.AddressFamily == AddressFamily.InterNetworkV6 && !trimmed.StartsWith('['))
+        {
+            return (trimmed, new UriBuilder("https", trimmed, port, "mcp").Uri);
+        }
+
         var withScheme = trimmed.Contains("://", StringComparison.Ordinal) ? trimmed : $"https://{trimmed}";
         var uri = new Uri(withScheme, UriKind.Absolute);
-        var port = uri.IsDefaultPort ? NodeEndpointSettings.DefaultPort + NodeEndpointSettings.McpPortOffset : uri.Port;
-
-        return (uri.Host, new UriBuilder("https", uri.Host, port, "mcp").Uri);
+        return (uri.Host, new UriBuilder("https", uri.Host, uri.IsDefaultPort ? port : uri.Port, "mcp").Uri);
     }
 
     // Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists
@@ -1242,4 +1468,14 @@ public sealed partial class SecurityOptionsViewModel(
             IsMigrating = false;
         }
     }
+}
+
+// AC-1458: which of the connect dialog's outcomes is on screen; `Other` is a plain sentence without a box tone.
+public enum ConnectOutcome
+{
+    None,
+    Connected,
+    Refused,
+    Unanswered,
+    Other,
 }

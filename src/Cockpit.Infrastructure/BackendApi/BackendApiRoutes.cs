@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -13,6 +15,9 @@ namespace Cockpit.Infrastructure.BackendApi;
 internal static class BackendApiRoutes
 {
     public const int ApiVersion = 1;
+
+    // AC-1458: when this process started, for the connecting side's uptime.
+    private static readonly DateTimeOffset StartedAt = _ProcessStart();
 
     private const string ForbiddenDescription = "This cockpit endpoint is not available to this caller.";
 
@@ -34,6 +39,10 @@ internal static class BackendApiRoutes
                 capability = _Name(caller.Capability),
                 node = Environment.MachineName,
                 apiVersion = ApiVersion,
+                expiresAt = caller.ExpiresAt,
+                holdsAssistant = caller.HoldsAssistant,
+                version = _HostVersion(),
+                startedAt = StartedAt,
             });
         }).RequireOperate();
 
@@ -110,6 +119,15 @@ internal static class BackendApiRoutes
     // Only reached behind `_DoorAsync`, which has checked the caller is there.
     private static NodeCaller _Caller() =>
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A backend API route ran without a connect-key caller.");
+
+    private static DateTimeOffset _ProcessStart()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.StartTime.ToUniversalTime();
+    }
+
+    private static string _HostVersion() =>
+        HostVersionInfo.Current.ToString(HostVersionInfo.Current.Build < 0 ? 2 : 3);
 
     private static string _Name(ConnectKeyCapability capability) => capability.ToString().ToLowerInvariant();
 }

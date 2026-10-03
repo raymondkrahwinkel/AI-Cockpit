@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:views="using:Cockpit.App.Views"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
@@ -2142,24 +2143,59 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="For a headless Cockpit with nobody there to approve a pairing. Type the address it is listening on, the connect key it was set up with, and the certificate fingerprint from its own startup log — this cockpit pins exactly what you confirm here (TOFU), so compare it yourself. This writes the same kind of row a pairing would, and only once the three actually work together."/>
+                                ToolTip.Tip="For a headless Cockpit with nobody there to approve a pairing. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. This writes the same kind of row a pairing would, and only once the three actually work together."/>
                         </StackPanel>
-                        <StackPanel Spacing="6" Margin="24,4,0,0">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBox Text="{Binding Security.ConnectNodeName}" PlaceholderText="Name (defaults to the host)" Width="200"
-                                         FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                                <TextBox Text="{Binding Security.ConnectAddress}" PlaceholderText="host:port" Width="200"
-                                         FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                        <StackPanel Spacing="4" Margin="24,4,0,0" MaxWidth="560" HorizontalAlignment="Left">
+                            <StackPanel.Styles>
+                                <Style Selector="TextBlock.connectLabel">
+                                    <Setter Property="FontSize" Value="11.5"/>
+                                    <Setter Property="Margin" Value="0,6,0,0"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </Style>
+                                <Style Selector="TextBlock.connectHint">
+                                    <Setter Property="FontSize" Value="11"/>
+                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </Style>
+                            </StackPanel.Styles>
+
+                            <TextBlock Classes="connectHint" FontSize="11.5"
+                                       Text="Use the address and connect key you set up for the server. The key is checked by the server; this machine keeps only what it needs to reconnect."/>
+
+                            <TextBlock Classes="connectLabel" Text="Name"/>
+                            <TextBox Text="{Binding Security.ConnectNodeName}" PlaceholderText="Defaults to the host"
+                                     FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+
+                            <Grid ColumnDefinitions="*,8,110" RowDefinitions="Auto,Auto">
+                                <TextBlock Classes="connectLabel" Text="Host"/>
+                                <TextBlock Grid.Column="2" Classes="connectLabel" Text="Port"/>
+                                <TextBox Grid.Row="1" Text="{Binding Security.ConnectHost}" PlaceholderText="host or host:port"
+                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
+                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Security.ConnectPort}"
+                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
+                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            </Grid>
+                            <TextBlock Classes="connectHint" Text="Over Tailscale or your own network. Not over the open internet."/>
+
+                            <TextBlock Classes="connectLabel" Text="Connect key"/>
+                            <TextBox Text="{Binding Security.ConnectKey}" PlaceholderText="ck_…" PasswordChar="•"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBlock Classes="connectHint" Text="Shown once when the key was issued. Starts with ck_."/>
+
+                            <TextBlock Classes="connectLabel" Text="Certificate fingerprint"/>
+                            <TextBox Text="{Binding Security.ConnectFingerprint}" PlaceholderText="SHA256:…"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBlock Classes="connectHint" Text="{Binding Security.ConnectFingerprintHint}"/>
+
+                            <views:NodeConnectOutcomeView DataContext="{Binding Security}"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                <Button Content="Cancel" Classes="Ghost" Command="{Binding Security.CancelConnectCommand}"
+                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                                <Button Content="Connect" Classes="Accent" Command="{Binding Security.ConnectToServerCommand}"
+                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
                             </StackPanel>
-                            <TextBox Text="{Binding Security.ConnectKey}" PlaceholderText="Connect key (ck_…)" PasswordChar="•"
-                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            <TextBox Text="{Binding Security.ConnectFingerprint}" PlaceholderText="Certificate fingerprint, from the server's startup log"
-                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            <Button Content="Connect" HorizontalAlignment="Left" Command="{Binding Security.ConnectToServerCommand}"
-                                    IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            <TextBlock Text="{Binding Security.ConnectStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding Security.ConnectStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS ON YOUR NODES"
@@ -2180,7 +2216,10 @@
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"/>
+                                                <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
+
+                                            <views:NodeConnectionStatusView/>
 
                                             <ItemsControl ItemsSource="{Binding Sessions}">
                                                 <ItemsControl.ItemTemplate>

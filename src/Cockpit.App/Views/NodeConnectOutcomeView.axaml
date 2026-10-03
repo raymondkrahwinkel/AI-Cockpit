@@ -1,0 +1,72 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.NodeConnectOutcomeView"
+             x:DataType="vm:SecurityOptionsViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.fingerprint">
+            <Setter Property="FontFamily" Value="Consolas,monospace"/>
+            <Setter Property="FontSize" Value="11.5"/>
+        </Style>
+        <Style Selector="TextBlock.fingerprint.mismatch">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome.success">
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusDoneChipTintBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome.refusal">
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusErrorChipTintBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome TextBlock.glyph">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome.success TextBlock.glyph">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+        </Style>
+        <Style Selector="Border.connectOutcome.refusal TextBlock.glyph">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+    </UserControl.Styles>
+    <!-- AC-1458: the fingerprint comparison and the outcome of a connect, in the connect form and its scene. -->
+    <StackPanel>
+        <Border Padding="10,8" Margin="0,6,0,0" CornerRadius="7" Background="{DynamicResource CockpitInsetBgBrush}"
+                IsVisible="{Binding ShowConnectFingerprints}">
+            <Grid ColumnDefinitions="Auto,16,*" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Text="You entered" FontSize="11.5"/>
+                <TextBlock Grid.Column="2" Classes="fingerprint" Text="{Binding ConnectEnteredFingerprint}"/>
+                <TextBlock Grid.Row="1" Text="Server presents" FontSize="11.5" Margin="0,4,0,0"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" Classes="fingerprint" Margin="0,4,0,0"
+                           Classes.mismatch="{Binding !ConnectFingerprintsMatch}"
+                           Text="{Binding ConnectPresentedFingerprint}"/>
+                <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11.5" Margin="0,6,0,0"
+                           Foreground="{DynamicResource CockpitStatusDoneBrush}"
+                           Text="✓ They match. The key is sent only after this check."
+                           IsVisible="{Binding ConnectFingerprintsMatch}"/>
+            </Grid>
+        </Border>
+
+        <Border Classes="connectOutcome" Margin="0,6,0,0"
+                Classes.success="{Binding IsConnectSuccess}"
+                Classes.refusal="{Binding IsConnectRefusal}"
+                IsVisible="{Binding HasConnectOutcome}">
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Classes="glyph" Text="{Binding ConnectGlyph}" FontSize="12" Margin="0,0,10,0"
+                           IsVisible="{Binding ConnectGlyph, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{Binding ConnectStatusTitle}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ConnectStatusDetail}" FontSize="12" TextWrapping="Wrap"
+                               IsVisible="{Binding HasConnectStatusDetail}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>
