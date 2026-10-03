@@ -17,6 +17,16 @@ public sealed class WorkflowRun
 
     public RunStatus Status { get; set; } = RunStatus.Running;
 
+    public WorkflowRunPhase Phase { get; set; }
+
+    public WorkflowRunReason Reason { get; set; }
+
+    public WorkflowApprovalOrigin ApprovalOrigin { get; set; }
+
+    public bool IsManual { get; set; }
+
+    public bool WasCaughtUp { get; set; }
+
     // Why the run failed, when it did — the message the operator reads.
     public string? Error { get; set; }
 
