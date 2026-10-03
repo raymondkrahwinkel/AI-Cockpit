@@ -26,6 +26,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
     private readonly INodeVisibilityPolicy _visibility;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<NodePairingHost> _logger;
+    private readonly NodeLanOnboarding _lanOnboarding;
 
     private WebApplication? _app;
 
@@ -34,7 +35,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         INodePairingBroker broker,
         NodeSelfSignedCertificate certificate,
         INodeVisibilityPolicy visibility,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        NodeLanOnboarding? lanOnboarding = null)
     {
         _settings = settings;
         _broker = broker;
@@ -42,6 +44,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         _visibility = visibility;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<NodePairingHost>();
+        _lanOnboarding = lanOnboarding ?? new NodeLanOnboarding();
     }
 
     public string? Address { get; private set; }
@@ -55,7 +58,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (!settings.Enabled)
+        if (!settings.Enabled || !_lanOnboarding.Enabled)
         {
             return;
         }

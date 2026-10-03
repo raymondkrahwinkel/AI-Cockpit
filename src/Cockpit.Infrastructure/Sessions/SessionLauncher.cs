@@ -20,6 +20,8 @@ public sealed class SessionLauncher(
     SessionStateRecorder? stateRecorder = null,
     ISessionStartObserver? startObserver = null) : ISessionLauncher
 {
+    private bool _closed;
+
     public Task<T> RunExclusiveAsync<T>(Func<T> decision) => desks.RunExclusiveAsync(decision);
 
     public WorkspaceSettings Workspaces => desks.Workspaces;
@@ -29,6 +31,10 @@ public sealed class SessionLauncher(
     public bool ProfileHasTtyRoute(SessionProfile profile) => TtyRoute.Exists(profile, ttyProviders);
 
     public Task<Project?> FindProjectByIdAsync(string projectId) => composer.FindProjectAsync(projectId);
+
+    // AC-1444: a backend's stop closes the launcher first, in the section a start registers in, so no session lands
+    // after the stop has counted the ones it ends. A start that comes later is refused with the reason.
+    public Task CloseAsync() => RunExclusiveAsync(() => _closed = true);
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
@@ -289,6 +295,11 @@ public sealed class SessionLauncher(
 
     private bool _Register(ISessionHandle handle)
     {
+        if (_closed)
+        {
+            throw new CockpitStoppingException();
+        }
+
         registry.Register(handle);
         return true;
     }

@@ -19,6 +19,7 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
     private readonly NodeDiscoveryId _discoveryId;
     private readonly NodePairingHost _pairingHost;
     private readonly ILogger<NodeDiscoveryResponder> _logger;
+    private readonly NodeLanOnboarding _lanOnboarding;
     private readonly IPAddress? _localMulticastInterface;
     private readonly int _port;
 
@@ -36,8 +37,9 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         INodeVisibilityPolicy visibility,
         NodeDiscoveryId discoveryId,
         NodePairingHost pairingHost,
-        ILoggerFactory loggerFactory)
-        : this(settings, visibility, discoveryId, pairingHost, loggerFactory, localMulticastInterface: null)
+        ILoggerFactory loggerFactory,
+        NodeLanOnboarding lanOnboarding)
+        : this(settings, visibility, discoveryId, pairingHost, loggerFactory, localMulticastInterface: null, lanOnboarding: lanOnboarding)
     {
     }
 
@@ -51,7 +53,8 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         NodePairingHost pairingHost,
         ILoggerFactory loggerFactory,
         IPAddress? localMulticastInterface,
-        int? port = null)
+        int? port = null,
+        NodeLanOnboarding? lanOnboarding = null)
     {
         _settings = settings;
         _visibility = visibility;
@@ -60,12 +63,13 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         _logger = loggerFactory.CreateLogger<NodeDiscoveryResponder>();
         _localMulticastInterface = localMulticastInterface;
         _port = port ?? NodeDiscoveryProtocol.Port;
+        _lanOnboarding = lanOnboarding ?? new NodeLanOnboarding();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (!settings.Enabled)
+        if (!settings.Enabled || !_lanOnboarding.Enabled)
         {
             return;
         }
