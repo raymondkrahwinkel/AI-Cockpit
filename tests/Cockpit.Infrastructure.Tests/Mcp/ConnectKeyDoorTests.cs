@@ -18,6 +18,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -452,20 +453,22 @@ public sealed class ConnectKeyDoorTests
         var route = $"api/v1/profiles/{Uri.EscapeDataString(SessionProfile)}/sign-in";
 
         var operateStart = await door.ApiAsync(HttpMethod.Post, route, operate.Secret);
-        var started = await door.ApiAsync(HttpMethod.Post, route, Bootstrap);
-        var flowId = JsonNode.Parse(started.Body)?["flowId"]?.GetValue<string>() ?? "";
+        const string flowId = "not-visible-to-an-operate-key";
         var operateInput = await door.ApiAsync(HttpMethod.Post, $"{route}/{flowId}/input", operate.Secret, new { text = "the-pasted-code" });
         var operateRead = await door.ApiAsync(HttpMethod.Get, $"{route}/{flowId}", operate.Secret);
-        var input = await door.ApiAsync(HttpMethod.Post, $"{route}/{flowId}/input", Bootstrap, new { text = "the-pasted-code" });
-        var outcome = await door.SignInOutcomeAsync(route, flowId, "succeeded");
+        using var client = door.BackendClient(Bootstrap);
+        await using var remote = new RemoteLoginFlow(client, SessionProfile, CancellationToken.None);
+        await using var steps = remote.Steps.GetAsyncEnumerator();
+        Assert.True(await steps.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
+        await remote.SubmitAsync("the-pasted-code", CancellationToken.None);
+        var result = await remote.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         var audit = await door.AuditOnceItSaysAsync("sign-in succeeded");
 
         Assert.Equal(HttpStatusCode.Forbidden, operateStart.Status);
-        Assert.Equal(HttpStatusCode.Created, started.Status);
         Assert.Equal(HttpStatusCode.Forbidden, operateInput.Status);
         Assert.Equal(HttpStatusCode.Forbidden, operateRead.Status);
-        Assert.Equal(HttpStatusCode.OK, input.Status);
-        Assert.Contains("\"succeeded\"", outcome, StringComparison.Ordinal);
+        Assert.True(steps.Current.AwaitsInput);
+        Assert.True(result.Success);
         Assert.Equal(["the-pasted-code"], door.LoginFlow.Submitted);
         Assert.Contains("sign-in started", audit, StringComparison.Ordinal);
         Assert.Contains("sign-in input sent", audit, StringComparison.Ordinal);
@@ -632,6 +635,9 @@ public sealed class ConnectKeyDoorTests
             });
             return await McpClient.CreateAsync(transport);
         }
+
+        public BackendApiClient BackendClient(string bearer) =>
+            new(new Uri(NodeUrl[..^"mcp".Length]), bearer, _certificate.Fingerprint, Clock);
 
         // The backend API's lift route on the same listener, the address escaped as a client would send it.
         public async Task<HttpStatusCode> LiftByApiAsync(string address, string bearer)

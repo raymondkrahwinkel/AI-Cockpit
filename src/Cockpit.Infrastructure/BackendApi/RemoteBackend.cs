@@ -88,6 +88,16 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
     }
 
+    public bool CanSignIn(string profileLabel)
+    {
+        lock (_gate)
+        {
+            return _sessions.Any(session =>
+                string.Equals(session.Facts.Profile, profileLabel, StringComparison.Ordinal)
+                && session.Facts.CanSignIn);
+        }
+    }
+
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
     public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client)
     {

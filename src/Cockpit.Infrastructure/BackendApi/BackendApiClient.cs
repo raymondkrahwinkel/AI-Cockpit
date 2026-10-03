@@ -34,8 +34,14 @@ public sealed class BackendApiClient : IDisposable
 
     public Task<T> GetAsync<T>(string path) => _SendAsync<T>(HttpMethod.Get, path, null, CancellationToken.None);
 
+    public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
+        _SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
+
     public Task<T> SendAsync<T>(HttpMethod method, string path, object? body) =>
         _SendAsync<T>(method, path, body, CancellationToken.None);
+
+    public Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken) =>
+        _SendAsync<T>(method, path, body, cancellationToken);
 
     public async IAsyncEnumerable<BackendEvent> StreamEventsAsync(
         long? afterSeq,
