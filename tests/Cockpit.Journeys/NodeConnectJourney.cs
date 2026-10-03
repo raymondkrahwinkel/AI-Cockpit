@@ -4,7 +4,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
+using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -128,6 +130,28 @@ public sealed class NodeConnectJourney
 
         Assert.Equal(HttpStatusCode.NotFound, refused.Status);
         Assert.DoesNotContain(seenByTheOutsider, evt => _RowOf(evt) == paneId);
+
+        // AC-1456 criterion 2: the server group the scoped key draws lists none of these sessions and says nothing of them.
+        var row = new McpServerConfig { Name = NodeServerName.For("node", NodeServerName.SessionsServerName), Url = nodeUrl.ToString(), ApiKey = narrow.Secret, PinnedCertificateFingerprint = fingerprint };
+        await using var scoped = new RemoteServer("node", row, NullLogger.Instance);
+        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scoped.StateChanged += (_, _) =>
+        {
+            if (scoped.Sessions is not null)
+            {
+                connected.TrySetResult();
+            }
+        };
+        scoped.Start();
+        await connected.Task.WaitAsync(timeout.Token);
+        var group = new ServerGroupViewModel(scoped);
+        group.Reconcile();
+        var said = typeof(ServerGroupViewModel).GetProperties()
+            .Where(property => property.PropertyType == typeof(string))
+            .Select(property => property.GetValue(group) as string ?? "");
+
+        Assert.Empty(group.Sessions);
+        Assert.DoesNotContain(said, text => text.Contains("hidden", StringComparison.OrdinalIgnoreCase) || text.Contains("session", StringComparison.OrdinalIgnoreCase));
     }
 
     // The pane a row event belongs to, from its data: an SSE frame has no pane of its own.
