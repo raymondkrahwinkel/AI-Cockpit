@@ -111,8 +111,22 @@ public interface INodeSessionsClient
     /// failure here is thrown rather than folded into a snapshot's <c>Error</c>: the caller decides what a
     /// rejection means, including telling a pin mismatch apart from a refused key.
     /// </summary>
-    Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default);
+    Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1458: what <paramref name="nodeName"/>'s backend API says about the key this cockpit holds for it.
+    /// Null when the node does not answer it, as a pairing or a build without the API does; never throws.
+    /// </summary>
+    Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default);
 }
+
+// AC-1458: a probe that went through. `PresentedFingerprint` is the certificate the server showed, which the pin
+// has already proved equal to the one entered. `WhoAmI` is null from a server without the backend API.
+public sealed record NodeConnectProbe(string PresentedFingerprint, NodeWhoAmI? WhoAmI);
+
+// AC-1458: the key a node knows this cockpit by, as its /whoami reports it. `ExpiresAt` is null for a key that
+// does not expire; `Version` is the node's host version.
+public sealed record NodeWhoAmI(string Label, string Capability, bool HoldsAssistant, DateTimeOffset? ExpiresAt, string? Version);
 
 // AC-1329: one memory read on a node. A non-null Error means nothing was read; Text is empty (never null) rather
 // than absent when that scope's file has nothing in it yet.

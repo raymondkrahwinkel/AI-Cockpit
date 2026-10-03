@@ -1,4 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,7 +27,52 @@ public sealed partial class NodeSessionsViewModel(
 
     private DispatcherTimer? _pollTimer;
 
+    // AC-1458: only redraws the Reconnecting line's countdown; the 20s poll above stays the only retry.
+    private DispatcherTimer? _countdownTimer;
+
+    private DateTimeOffset _connectedSince;
+    private DateTimeOffset _lostAt;
+    private DateTimeOffset _nextAttemptAt;
+    private DateTimeOffset _disconnectedAt;
+    private int _retries;
+    private long _latencyMs;
+    private string? _version;
+
     public string NodeName { get; } = nodeName;
+
+    // AC-1458: the row's address, for "Tailscale" or "network", and its key's expiry as stored at connect time.
+    public string? Url { get; init; }
+
+    public DateTimeOffset? KeyExpiresAt { get; init; }
+
+    // "Enter a new key": hands the connect form this row, with only the key left to type.
+    public Action? EnterNewKey { get; init; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel), nameof(IsConnected), nameof(IsReconnecting), nameof(IsKeyExpired), nameof(IsDisconnected), nameof(CanDisconnect))]
+    private NodeConnectionState _connectionState;
+
+    [ObservableProperty]
+    private string _connectionDetail = "";
+
+    public string ConnectionLabel => ConnectionState switch
+    {
+        NodeConnectionState.Connected => "Connected",
+        NodeConnectionState.Reconnecting => "Reconnecting",
+        NodeConnectionState.KeyExpired => "Key expired",
+        NodeConnectionState.Disconnected => "Disconnected",
+        _ => "",
+    };
+
+    public bool IsConnected => ConnectionState == NodeConnectionState.Connected;
+
+    public bool IsReconnecting => ConnectionState == NodeConnectionState.Reconnecting;
+
+    public bool IsKeyExpired => ConnectionState == NodeConnectionState.KeyExpired;
+
+    public bool IsDisconnected => ConnectionState == NodeConnectionState.Disconnected;
+
+    public bool CanDisconnect => ConnectionState is NodeConnectionState.Connected or NodeConnectionState.Reconnecting;
 
     // The sessions on the node. Deliberately not merged with anything local — see the remarks above.
     public ObservableCollection<NodeSessionRow> Sessions { get; } = [];
@@ -68,10 +117,26 @@ public sealed partial class NodeSessionsViewModel(
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        // AC-1458: an operator's disconnect and a key past its expiry both mean no attempt at all.
+        if (ConnectionState == NodeConnectionState.Disconnected)
+        {
+            return;
+        }
+
+        if (KeyExpiresAt is { } expiresAt && expiresAt <= DateTimeOffset.Now)
+        {
+            ConnectionState = NodeConnectionState.KeyExpired;
+            _DescribeConnection();
+            return;
+        }
+
         IsBusy = true;
         try
         {
+            var started = Stopwatch.GetTimestamp();
             var snapshot = await client.ReadAsync(NodeName).ConfigureAwait(true);
+            var latency = Stopwatch.GetElapsedTime(started);
+            _NoteAttempt(snapshot.Error is not { Length: > 0 }, latency);
 
             // What the operator had picked, so rebuilding the dropdowns does not quietly change what the next
             // Start will run. Both Start and Stop refresh when they are done, so without this a second start goes
@@ -132,6 +197,10 @@ public sealed partial class NodeSessionsViewModel(
             {
                 await behaviourSync.RunAsync(NodeName).ConfigureAwait(true);
             }
+
+            // Null from a pairing or an older node: the line then simply carries no version.
+            _version = (await client.ReadWhoAmIAsync(NodeName).ConfigureAwait(true))?.Version;
+            _DescribeConnection();
         }
         finally
         {
@@ -179,10 +248,21 @@ public sealed partial class NodeSessionsViewModel(
         _pollTimer = new DispatcherTimer { Interval = PollInterval };
         _pollTimer.Tick += _OnPollTick;
         _pollTimer.Start();
+
+        _countdownTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _countdownTimer.Tick += _OnCountdownTick;
+        _countdownTimer.Start();
     }
 
     public void Dispose()
     {
+        if (_countdownTimer is not null)
+        {
+            _countdownTimer.Stop();
+            _countdownTimer.Tick -= _OnCountdownTick;
+            _countdownTimer = null;
+        }
+
         if (_pollTimer is null)
         {
             return;
@@ -191,6 +271,106 @@ public sealed partial class NodeSessionsViewModel(
         _pollTimer.Stop();
         _pollTimer.Tick -= _OnPollTick;
         _pollTimer = null;
+    }
+
+    private void _OnCountdownTick(object? sender, EventArgs e)
+    {
+        if (ConnectionState == NodeConnectionState.Reconnecting)
+        {
+            _DescribeConnection();
+        }
+    }
+
+    // AC-1458: stops this card's poll, and with it the relays that ride it. For this run only; the node is told
+    // nothing, and what runs there keeps running.
+    [RelayCommand]
+    private void Disconnect()
+    {
+        Dispose();
+        _disconnectedAt = DateTimeOffset.Now;
+        ConnectionState = NodeConnectionState.Disconnected;
+        _DescribeConnection();
+    }
+
+    [RelayCommand]
+    private async Task ReconnectAsync()
+    {
+        ConnectionState = NodeConnectionState.Unknown;
+        ConnectionDetail = "";
+        StartPolling();
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void EnterKey() => EnterNewKey?.Invoke();
+
+    // One poll's outcome. A miss starts or extends a Reconnecting streak; an answer ends it.
+    private void _NoteAttempt(bool answered, TimeSpan latency)
+    {
+        // A poll already out when the operator disconnected must not flip the line back.
+        if (ConnectionState == NodeConnectionState.Disconnected)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        _nextAttemptAt = now + PollInterval;
+        if (answered)
+        {
+            if (ConnectionState != NodeConnectionState.Connected)
+            {
+                _connectedSince = now;
+            }
+
+            _retries = 0;
+            _latencyMs = (long)latency.TotalMilliseconds;
+            ConnectionState = NodeConnectionState.Connected;
+        }
+        else
+        {
+            if (ConnectionState != NodeConnectionState.Reconnecting)
+            {
+                _lostAt = now;
+            }
+
+            _retries++;
+            ConnectionState = NodeConnectionState.Reconnecting;
+        }
+
+        _DescribeConnection();
+    }
+
+    private void _DescribeConnection() => ConnectionDetail = ConnectionState switch
+    {
+        NodeConnectionState.Connected =>
+            $"since {_Clock(_connectedSince)} · {_latencyMs} ms · {NetworkOf(Url)}{(_version is { Length: > 0 } version ? $" · v{version}" : "")}",
+        NodeConnectionState.Reconnecting =>
+            $"lost at {_Clock(_lostAt)}, retry {_retries} of ∞ in {Math.Max(0, (int)Math.Ceiling((_nextAttemptAt - DateTimeOffset.Now).TotalSeconds))} s · sessions on the server keep running",
+        NodeConnectionState.KeyExpired when KeyExpiresAt is { } expiresAt =>
+            $"on {expiresAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)} · reconnecting will not help",
+        NodeConnectionState.Disconnected => $"by you at {_Clock(_disconnectedAt)}",
+        _ => "",
+    };
+
+    private static string _Clock(DateTimeOffset at) => at.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    // "Tailscale" for an address in its 100.64.0.0/10 range or a MagicDNS name, "network" for anything else.
+    public static string NetworkOf(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return "network";
+        }
+
+        if (uri.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Tailscale";
+        }
+
+        return IPAddress.TryParse(uri.Host, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork
+            && ip.GetAddressBytes() is [100, var second, _, _] && (second & 0xC0) == 64
+            ? "Tailscale"
+            : "network";
     }
 
     // A tick that lands while the previous one is still out (a node that is slow to answer) is skipped rather than
@@ -279,3 +459,13 @@ public sealed record NodeProfileChoice(string Label, string? Purpose)
 
 // One project in the node's dropdown, or the "no project" row, whose `Id` is null.
 public sealed record NodeProjectChoice(string? Id, string Name);
+
+// AC-1458: what a node card's status line says. `Unknown` until the first poll has come back.
+public enum NodeConnectionState
+{
+    Unknown,
+    Connected,
+    Reconnecting,
+    KeyExpired,
+    Disconnected,
+}

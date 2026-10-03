@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -112,29 +113,63 @@ internal sealed class NodeSessionsClient(
         }
     }
 
-    // AC-1352: the connect dialog's own call, on a row not in the registry yet — straight through `_OpenAsync`,
-    // no `_ConnectAsync` lookup and no moved-node re-resolve. Unlike every read above, a failure is thrown rather
-    // than caught into a snapshot: the caller decides what a refusal means, not just displays it.
-    public async Task<NodeSessionsSnapshot> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default)
+    // AC-1352: the connect dialog's own call, on a row not in the registry yet — no lookup, no re-resolve, and a
+    // failure is thrown for the caller to read. AC-1458: the pin is required and checked in the TLS handshake,
+    // so a mismatch fails before any request carries the key.
+    public async Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default)
     {
-        await using var client = await _OpenAsync(row, cancellationToken).ConfigureAwait(false);
-        var sessions = await _CallAsync(client, "list_node_sessions", null, cancellationToken).ConfigureAwait(false);
-
-        if (_ErrorIn(sessions) is { } refusal)
+        if (string.IsNullOrWhiteSpace(row.PinnedCertificateFingerprint))
         {
-            throw new InvalidOperationException(refusal);
+            throw new InvalidOperationException("A connect needs the server's certificate fingerprint.");
         }
 
-        return new NodeSessionsSnapshot(
-            row.Name,
-            [.. _Array(sessions, "sessions").Select(entry => new NodeSessionRow(
-                _Text(entry, "paneId"),
-                _Text(entry, "name"),
-                _Text(entry, "profile"),
-                _Text(entry, "statusline")))],
-            [],
-            [],
-            DiscoveryId: _Text(sessions, "discoveryId"));
+        await using (var client = await _OpenAsync(row, cancellationToken).ConfigureAwait(false))
+        {
+            var sessions = await _CallAsync(client, "list_node_sessions", null, cancellationToken).ConfigureAwait(false);
+            if (_ErrorIn(sessions) is { } refusal)
+            {
+                throw new InvalidOperationException(refusal);
+            }
+        }
+
+        return new NodeConnectProbe(
+            NodePairingCode.Normalize(row.PinnedCertificateFingerprint),
+            await _WhoAmIAsync(row, cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default)
+    {
+        var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
+        var known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal)) is { } row
+            ? await _WhoAmIAsync(row, cancellationToken).ConfigureAwait(false)
+            : null;
+    }
+
+    // Over the same pin as the MCP row. A pairing (403), a build without the API (404) or a dropout is a null,
+    // never a failure: nothing here decides whether the node is reachable.
+    private async Task<NodeWhoAmI?> _WhoAmIAsync(McpServerConfig row, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(row.PinnedCertificateFingerprint) || string.IsNullOrEmpty(row.ApiKey)
+            || !Uri.TryCreate(row.Url, UriKind.Absolute, out var url))
+        {
+            return null;
+        }
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(Budget);
+        try
+        {
+            using var api = new BackendApiClient(new Uri(url, "/"), row.ApiKey, row.PinnedCertificateFingerprint, TimeProvider.System);
+            var who = await api.WhoAmIAsync(budget.Token).ConfigureAwait(false);
+            return new NodeWhoAmI(who.Label, who.Capability, who.HoldsAssistant, who.ExpiresAt, who.Version);
+        }
+        catch (Exception exception) when (exception is BackendApiException or HttpRequestException or JsonException or ArgumentException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            logger.LogInformation(exception, "Node {Node} did not answer whoami.", row.Name);
+            return null;
+        }
     }
 
     public async Task<NodeStartResult> StartAsync(

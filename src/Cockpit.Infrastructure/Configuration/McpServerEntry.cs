@@ -43,6 +43,10 @@ internal sealed class McpServerEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PinnedCertificateFingerprint { get; set; }
 
+    // AC-1458: a connect key's expiry, beside its pin; absent for every other row.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? KeyExpiresAt { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     public static McpServerEntry FromDomain(McpServerConfig server) => new()
@@ -64,6 +68,7 @@ internal sealed class McpServerEntry
         OAuthScopes = server.OAuthScopes,
         Headers = server.Headers.Count == 0 ? null : [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
         PinnedCertificateFingerprint = server.PinnedCertificateFingerprint,
+        KeyExpiresAt = server.KeyExpiresAt,
         Enabled = server.Enabled,
     };
 
@@ -88,6 +93,7 @@ internal sealed class McpServerEntry
         // blank field name, which some servers answer with a protocol error rather than a useful message.
         Headers = [.. (Headers ?? []).Select(entry => entry.ToDomain()).Where(header => header.IsComplete)],
         PinnedCertificateFingerprint = PinnedCertificateFingerprint,
+        KeyExpiresAt = KeyExpiresAt,
         Enabled = Enabled,
     };
 }

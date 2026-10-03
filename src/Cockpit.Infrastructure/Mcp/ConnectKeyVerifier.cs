@@ -144,7 +144,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
             if (found is { } key && key.IsUsableAt(now))
             {
-                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope());
+                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope(), key.ExpiresAt);
                 _lastUsed[key.Prefix] = now;
             }
             else if (state is not null && state.LockedUntil > now)
@@ -640,8 +640,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
 // AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
 // Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
-// AC-1367: `Scope` is the key's, snapshotted with the request; a pairing has none and answers from its broker.
-internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null)
+// AC-1367/AC-1458: `Scope` and `ExpiresAt` are the key's, snapshotted with the request; a pairing has neither.
+internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null, DateTimeOffset? ExpiresAt = null)
 {
     public bool ByConnectKey => KeyPrefix is not null;
 
