@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
@@ -69,14 +70,31 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
                     "live-state", new { PaneId = paneId, LiveState = state with { Connection = null, CliSessionId = null } });
                 // The tool's output rides in its row, clamped to the row's budget; this event names the call only.
                 Action<SessionToolCall> onTool = call => append("tool", new { PaneId = paneId, Call = call with { ResultContent = string.Empty } });
+                var control = handle.Control;
+                NotifyCollectionChangedEventHandler? onQueue = control is not null
+                    ? (_, _) => append("queue", new
+                    {
+                        PaneId = paneId,
+                        Queue = control.Queue.Select(prompt => new { prompt.WireId, prompt.Text }),
+                    })
+                    : null;
                 handle.RowUpserted += onRow;
                 handle.LiveStateChanged += onLiveState;
                 handle.ToolActivityProduced += onTool;
+                if (control is not null && onQueue is not null)
+                {
+                    control.QueueChanged += onQueue;
+                }
+
                 _watched[handle] = () =>
                 {
                     handle.RowUpserted -= onRow;
                     handle.LiveStateChanged -= onLiveState;
                     handle.ToolActivityProduced -= onTool;
+                    if (onQueue is not null && control is not null)
+                    {
+                        control.QueueChanged -= onQueue;
+                    }
                 };
             }
         }

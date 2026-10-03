@@ -319,6 +319,7 @@ internal sealed record RemoteSessionRow(
     string? Statusline = null,
     string? Status = null,
     bool HasOutstandingWork = false,
-    IReadOnlyList<RemotePendingPermission>? PendingPermissions = null);
+    IReadOnlyList<RemotePendingPermission>? PendingPermissions = null,
+    IReadOnlyList<RemoteQueueItem>? Queue = null);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);

@@ -10,6 +10,11 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface ISessionHandle
 {
     /// <summary>
+    /// The session's turn-time control, when this handle owns one.
+    /// </summary>
+    ISessionControl? Control => null;
+
+    /// <summary>
     /// The pane id, the key everything else about a session is filed under.
     /// </summary>
     string PaneId { get; }

@@ -63,6 +63,10 @@ public sealed class SessionsEndpointsTests
     [InlineData("POST", "/api/v1/sessions/pane-out/prompt", """{"text":"go"}""")]
     [InlineData("DELETE", "/api/v1/sessions/pane-out", null)]
     [InlineData("POST", "/api/v1/sessions/pane-out/permissions/tool-1", """{"allow":true}""")]
+    [InlineData("POST", "/api/v1/sessions/pane-out/interrupt", null)]
+    [InlineData("POST", "/api/v1/sessions/pane-out/model", """{"model":"sonnet"}""")]
+    [InlineData("POST", "/api/v1/sessions/pane-out/permission-mode", """{"mode":"acceptEdits"}""")]
+    [InlineData("POST", "/api/v1/sessions/pane-out/queue", """{"command":"submit","wireId":"queue-1","text":"go"}""")]
     public async Task APaneOutsideTheScope_IsNotFound(string method, string path, string? body)
     {
         await using var door = new BackendApiDoorTests._Door();
@@ -126,10 +130,14 @@ public sealed class SessionsEndpointsTests
         await bridge.StartAsync(CancellationToken.None);
         var session = Substitute.For<ISessionHandle>();
         session.PaneId.Returns("pane-a");
+        var control = Substitute.For<ISessionControl>();
+        IReadOnlyList<QueuedPrompt> queue = [];
+        control.Queue.Returns(_ => queue);
+        session.Control.Returns(control);
         var first = _Upsert(SessionEventSequence.Next(), "row-1");
         var second = _Upsert(SessionEventSequence.Next(), "row-2");
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var read = log.ReadFromAsync(0, stop.Token).Take(4).ToListAsync(stop.Token);
+        var read = log.ReadFromAsync(0, stop.Token).Take(5).ToListAsync(stop.Token);
         // AC-1388: a tool's output past the row's budget does not reach the stream by the tool event either.
         var output = new string('x', 200 * 1024);
 
@@ -137,14 +145,20 @@ public sealed class SessionsEndpointsTests
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(second);
         session.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(first);
         session.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(new SessionToolCall("pane-a", "Bash", "{}", output, false));
+        queue = [new QueuedPrompt("later", [], wireId: "queue-1")];
+        control.QueueChanged += Raise.Event<System.Collections.Specialized.NotifyCollectionChangedEventHandler>(
+            control,
+            new System.Collections.Specialized.NotifyCollectionChangedEventArgs(System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
         var events = await read;
         await bridge.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["sessions-changed", "row", "row", "tool"], events.Select(evt => evt.Kind));
+        Assert.Equal(["sessions-changed", "row", "row", "tool", "queue"], events.Select(evt => evt.Kind));
         Assert.Equal(events.Select(evt => evt.Seq).Order(), events.Select(evt => evt.Seq));
-        Assert.Equal(4, events.Select(evt => evt.Seq).Distinct().Count());
+        Assert.Equal(5, events.Select(evt => evt.Seq).Distinct().Count());
         Assert.True(events[3].Data.GetProperty("Call").GetProperty("ResultContent").GetString()?.Length <= ToolOutputBudget.Clamp(output).Length);
         Assert.Equal([(second.Seq, "pane-a"), (first.Seq, "pane-a")], events.Skip(1).Take(2).Select(evt => (evt.Data.GetProperty("Seq").GetInt64(), evt.Data.GetProperty("PaneId").GetString())));
+        Assert.Equal("queue-1", events[4].Data.GetProperty("Queue")[0].GetProperty("WireId").GetString());
+        Assert.Equal("later", events[4].Data.GetProperty("Queue")[0].GetProperty("Text").GetString());
     }
 
     private static TranscriptRowUpsert _Upsert(long seq, string id) =>

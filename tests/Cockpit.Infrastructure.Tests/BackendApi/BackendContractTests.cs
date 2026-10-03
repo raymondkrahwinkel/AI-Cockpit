@@ -25,8 +25,14 @@ public abstract class BackendContractTests
         var mark = backend.Events.LastSeq;
 
         var paneId = await _StartAsync(backend);
-        var sent = await _HandleOf(backend, paneId).SendPromptAsync("hello");
-        var row = await _RowAsync(backend, mark, paneId, row => _Text(row) == "echo: hello");
+        var handle = _HandleOf(backend, paneId);
+        var control = handle.Control ?? throw new InvalidOperationException($"Pane '{paneId}' has no control.");
+        await control.SetModelAsync("contract-model");
+        var model = await _RowAsync(backend, mark, paneId, row => _Text(row) == "echo: model contract-model");
+        await control.SetPermissionModeAsync("acceptEdits");
+        var permissionMode = await _RowAsync(backend, model.Seq, paneId, row => _Text(row) == "echo: permission-mode acceptEdits");
+        var sent = await handle.SendPromptAsync("hello");
+        var row = await _RowAsync(backend, permissionMode.Seq, paneId, row => _Text(row) == "echo: hello");
 
         Assert.True(sent);
         Assert.Equal(paneId, row.PaneId);
@@ -50,6 +56,21 @@ public abstract class BackendContractTests
         Assert.True(answered);
         Assert.Empty(await handle.ReadPendingPermissionsAsync());
         Assert.True(heard.Seq > asked.Seq);
+    }
+
+    [Fact]
+    public async Task ASession_IsInterruptedThroughItsControl_AndTheProviderEffectReachesTheStream()
+    {
+        await using var backend = await StartBackendAsync();
+        var mark = backend.Events.LastSeq;
+        var paneId = await _StartAsync(backend);
+        var control = _HandleOf(backend, paneId).Control
+            ?? throw new InvalidOperationException($"Pane '{paneId}' has no control.");
+
+        await control.InterruptAsync();
+        var row = await _RowAsync(backend, mark, paneId, row => _Text(row) == $"echo: {ContractDriver.InterruptMarker}");
+
+        Assert.Equal(paneId, row.PaneId);
     }
 
     // Resuming is reading the stream again from a seq the reader kept: what came after it, and nothing it already had.
@@ -138,6 +159,8 @@ public sealed record ContractBackend(ISessionLauncher Launcher, ISessionRegistry
 // says what it was told. Whatever the backend does with a session, this is the only thing it can reach below it.
 public sealed class ContractDriver : ISessionDriver
 {
+    public const string InterruptMarker = "interrupted";
+
     public const string PermissionPrompt = "may I";
 
     public const string ToolUseId = "tool-1";
@@ -162,13 +185,16 @@ public sealed class ContractDriver : ISessionDriver
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
         _prompts.Writer.WriteAsync(text, cancellationToken).AsTask();
 
-    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
+        _prompts.Writer.WriteAsync($"permission-mode {mode}", cancellationToken).AsTask();
 
-    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
+        _prompts.Writer.WriteAsync($"model {model}", cancellationToken).AsTask();
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task InterruptAsync(CancellationToken cancellationToken = default) =>
+        _prompts.Writer.WriteAsync(InterruptMarker, cancellationToken).AsTask();
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         _answers.Writer.WriteAsync(allow, cancellationToken).AsTask();

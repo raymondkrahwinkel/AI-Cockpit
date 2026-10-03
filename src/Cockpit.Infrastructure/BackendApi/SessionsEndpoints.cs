@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
@@ -48,6 +49,11 @@ internal static class SessionsEndpoints
                     status = session.Status,
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
+                    queue = sessions().Find(session.PaneId)?.Control?.Queue.Select(prompt => new
+                    {
+                        prompt.WireId,
+                        prompt.Text,
+                    }) ?? [],
                     pendingPermissions = pending[session.PaneId].Select(permission => new
                     {
                         toolUseId = permission.ToolUseId,
@@ -165,6 +171,95 @@ internal static class SessionsEndpoints
             return Results.Json(new { paneId, toolUseId, answered });
         }).RequireOperate().Audited("answer_permission", services);
 
+        api.MapPost("/sessions/{paneId}/interrupt", async (string paneId) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId)?.Control is not { } control)
+            {
+                return Results.NotFound();
+            }
+
+            await control.InterruptAsync().ConfigureAwait(false);
+            return Results.Json(new { paneId });
+        }).RequireOperate().Audited("interrupt_session", services);
+
+        api.MapPost("/sessions/{paneId}/model", async (string paneId, ModelBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId)?.Control is not { } control)
+            {
+                return Results.NotFound();
+            }
+
+            await control.SetModelAsync(body.Model).ConfigureAwait(false);
+            return Results.Json(new { paneId, model = body.Model });
+        }).RequireOperate().Audited("set_session_model", services);
+
+        api.MapPost("/sessions/{paneId}/permission-mode", async (string paneId, PermissionModeBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId)?.Control is not { } control)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(body.Mode))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "mode is required.");
+            }
+
+            await control.SetPermissionModeAsync(body.Mode).ConfigureAwait(false);
+            return Results.Json(new { paneId, mode = body.Mode });
+        }).RequireOperate().Audited("set_session_permission_mode", services);
+
+        api.MapPost("/sessions/{paneId}/queue", async (string paneId, QueueCommandBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
+                || sessions().Find(paneId)?.Control is not { } control)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.Equals(body.Command, "clear", StringComparison.Ordinal))
+            {
+                control.ClearQueue();
+                return Results.Json(new { paneId });
+            }
+
+            if (string.Equals(body.Command, "withdraw", StringComparison.Ordinal))
+            {
+                var queued = control.Queue.FirstOrDefault(prompt => string.Equals(prompt.WireId, body.WireId, StringComparison.Ordinal));
+                if (queued is null || !control.Withdraw(queued))
+                {
+                    return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "queue_item_not_found", "The queue item was not found.");
+                }
+
+                return Results.Json(new { paneId, wireId = queued.WireId });
+            }
+
+            if ((string.Equals(body.Command, "submit", StringComparison.Ordinal)
+                    || string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                && !string.IsNullOrWhiteSpace(body.Text))
+            {
+                var prompt = new QueuedPrompt(body.Text, [], body.ReplyToRowId, body.WireId);
+                if (string.Equals(body.Command, "enqueue", StringComparison.Ordinal))
+                {
+                    control.Enqueue(prompt);
+                }
+                else
+                {
+                    await control.SubmitAsync(prompt, body.TakesMidTurnInput).ConfigureAwait(false);
+                }
+
+                return Results.Json(new { paneId, prompt.WireId });
+            }
+
+            return BackendApiRoutes.Error(
+                StatusCodes.Status400BadRequest,
+                "invalid_request",
+                "command must be submit, enqueue, withdraw, or clear; submit and enqueue require text.");
+        }).RequireOperate().Audited("change_session_queue", services);
+
         api.MapGet("/assistant/transcript", async (int? count) =>
         {
             if (sessions().Assistant is not { } assistant)
@@ -236,3 +331,9 @@ internal sealed record StartSessionBody(string Profile, string? ProjectId, strin
 internal sealed record PromptBody(string Text);
 
 internal sealed record PermissionBody(bool Allow);
+
+internal sealed record ModelBody(string? Model);
+
+internal sealed record PermissionModeBody(string Mode);
+
+internal sealed record QueueCommandBody(string Command, string? WireId, string? Text, string? ReplyToRowId, bool TakesMidTurnInput = false);
