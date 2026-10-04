@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the server's Health tab shows a Schedule column for each scheduled run, with the time zone in the heading
+  (or after the schedule when the runs differ), and the sign-in without a browser counts down how long its code stays
+  valid. The Workflows plugin (0.34.0) fills in the schedule, only when it could read it. Plugin SDK 3.3.0:
+  `PluginHealthRow.Schedule` and `TimeZone`, `LoginFlowStep.ExpiresAt`. Cockpit 0.77.0.
 - added: Options on a server now opens on Projects: the server's projects with their folder there, and "clone onto
   the server" from a repository URL, a branch and a name. The server clones with its own git credentials, so none are
   sent from here, and a URL that carries a user name, password or token is refused; once done the page says where the
