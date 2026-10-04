@@ -23,7 +23,8 @@ sync_pair() {
   [ -f "$filter" ] || { say "no include list $filter for $name, so it is not synced"; return 1; }
   mkdir -p "/data/$local" "$workdir"
   set -- bisync "$remote" "/data/$local" --filter-from "$filter" --workdir "$workdir" \
-    --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num
+    --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num \
+    --max-delete "${BRAIN_SYNC_MAX_DELETE:-10}"
   # A resync lets Nextcloud's version win wherever the two differ, so it runs only on a fresh volume: no state, no files.
   if [ -z "$(ls -A "$workdir")" ]; then
     if [ -n "$(ls -A "/data/$local")" ]; then
