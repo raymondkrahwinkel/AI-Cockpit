@@ -34,8 +34,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj" />
-    <!-- AC-1418: the UI part links the backend's records as source, so its types are reached only via `extern alias ui;`. -->
-    <ProjectReference Include="..\Cockpit.Plugin.Autopilot\UI\Cockpit.Plugin.Autopilot.UI.csproj" Aliases="ui" />
     <!-- Test-only reference to the host app, purely so the render tests resolve the real Cockpit theme (its brushes
          and fonts live in avares://Cockpit.App). This does NOT reverse the plugin's isolation: the shipped app still
          does not reference the plugin's types (ReferenceOutputAssembly=false); only this test project reaches for the
@@ -43,6 +41,15 @@
     <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
     <!-- ThemePalette.Describe and RepositoryPaths, shared with the host's own theme-palette baseline (AC-338). -->
     <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AC-1390's pattern: the UI part as the backend project's build leaves it in its bin/, so the backend dropping the
+         build of UI/ fails this project. It links the backend's records as source, hence `extern alias UiAsm;`. -->
+    <Reference Include="Cockpit.Plugin.Autopilot.UI">
+      <HintPath>..\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.UI.dll</HintPath>
+      <Aliases>UiAsm</Aliases>
+    </Reference>
   </ItemGroup>
 
 </Project>

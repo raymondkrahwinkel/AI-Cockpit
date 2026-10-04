@@ -10,8 +10,7 @@ namespace Cockpit.Plugin.Autopilot;
 internal static class AutopilotCeoBrief
 {
     // Builds the CEO's planning brief. `profiles` (with local/paid nature) let the CEO pick the cheapest-adequate
-    // model per step; `ceoIdentity` is its own profile label. Both optional — omitted entirely when absent. The
-    // opening turn names the source issue; a CEO-first run sends no kickoff and the CEO asks the operator instead.
+    // model per step; `ceoIdentity` is its own profile label. Both optional — omitted entirely when absent.
     public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced, string? executableStage = null)
     {
         var goal = string.IsNullOrWhiteSpace(plan.Goal)

@@ -1,4 +1,4 @@
-﻿extern alias ui;
+﻿extern alias UiAsm;
 
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
@@ -79,7 +79,7 @@ public class AutopilotRunContextTests
     [InlineData(1, 0, 0)]
     [InlineData(1, -1, 0)]
     public void NextAwaitingIndex_StepsThroughTheAwaitingRuns_AndWrapsAfterTheLast(int awaitingCount, int currentIndex, int? expected) =>
-        Assert.Equal(expected, ui::Cockpit.Plugin.Autopilot.AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount, currentIndex));
+        Assert.Equal(expected, UiAsm::Cockpit.Plugin.Autopilot.AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount, currentIndex));
 
     // Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".
     private sealed class FakeStorage : IPluginStorage
