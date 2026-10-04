@@ -16,7 +16,7 @@ internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string Ba
     public static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     // AC-1484: the variable a profile without a key of its own falls back to, the container secret in session.env.
-    public const string ApiKeyEnvVar = "GITHUB_TOKEN";
+    public const string ApiKeyEnvVar = "GITHUB_MODELS_TOKEN";
 
     // The profile's own key wins; an empty one falls back to the environment, but only for the provider's own host.
     public static string? ResolveApiKey(OpenAiCompatConfig config, string? envVar, string defaultBaseUrl) =>
