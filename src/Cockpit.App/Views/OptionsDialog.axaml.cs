@@ -111,6 +111,7 @@ public partial class OptionsDialog : Window
         dialog.ServerBanner.IsVisible = true;
         dialog.CategoryNav.Items.Clear();
         dialog.CategoryContent.Children.Clear();
+        dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
         dialog.CategoryNav.SelectedIndex = 0;
