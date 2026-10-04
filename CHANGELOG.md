@@ -934,7 +934,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   over the admin API no longer saves over that change, or has its own saved over; the two now wait for each other.
 - fixed: an agent's message to the assistant reaches a controller holding this machine by connect key only when that
   key's scope covers the agent's session, project included; a key without a pairing now gets that mail too, where it
-  used to stay on this machine.
+  used to stay on this machine. Only the controller holding the machine can collect that mail; another connect key
+  is refused.
 - fixed: a reader of the backend event stream that resumes after a session has closed now still gets that
   session's last rows, if its connect key could see the session; a key that could not see it still gets none.
 - fixed: OpenAI-compatible sessions (Gemini/OpenAI gateways such as Hetzner Inference, Grok, OpenRouter, GitHub
