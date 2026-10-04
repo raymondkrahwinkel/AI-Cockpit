@@ -192,7 +192,7 @@ internal static partial class HealthEndpoints
         ProfileCredentialKind.RenewingLogin => "renewingLogin",
         ProfileCredentialKind.Login => "login",
         ProfileCredentialKind.ApiKey => "apiKey",
-        ProfileCredentialKind.ApiKeyFromSecret => Environment.GetEnvironmentVariable("OPENROUTER_API_KEY"),
+        ProfileCredentialKind.ApiKeyFromSecret => "apiKeyFromSecret",
         _ => null,
     };
 
