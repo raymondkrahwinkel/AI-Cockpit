@@ -53,7 +53,7 @@ internal sealed class AutopilotWorkspaceRuns
     // tools observed). Read tools only, never write — moving stage/posting notes before approval would be premature.
     internal static IReadOnlyList<string> PlanningCeoMcpServers(IReadOnlyList<string>? trackerReadServers) =>
         trackerReadServers is { Count: > 0 } servers
-            ? [AutopilotPlanTools.EndpointName, .. servers]
+            ? [AutopilotPlanTools.EndpointName]
             : [AutopilotPlanTools.EndpointName];
 
     // The runs in flight, in start order.
