@@ -122,6 +122,8 @@ if docker inspect -f '{{json .Config.Env}}' "$container" | grep -qF SMOKE_SESSIO
 # Read as app: root in the container has no CAP_SYS_PTRACE, so it cannot read another uid's environ.
 server_env=$(dc exec -T -u app cockpit sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < $p/cmdline 2>/dev/null)" in "/app/Cockpit.Server"*) tr "\0" "\n" < $p/environ ;; esac; done 2>/dev/null; true')
 grep -qx 'SMOKE_SESSION_VAR=reached' <<< "$server_env" || fail "session.env did not reach the server"
+# AC-1364: Me.md asks for it; the sessions inherit it from the server through the wrapper's -E.
+grep -qx 'AI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS' <<< "$server_env" || fail "AI_OS_ROOT from session.env did not reach the server"
 collect_logs
 
 echo "== agent sessions run as agent (AC-1464)"
@@ -137,9 +139,7 @@ agent=$(probe 'codex --version' -e SMOKE_WORKTREE=$tree)
 echo "through the wrapper: $agent"
 [ "$(field "$agent" uid)" = "$agent_uid" ] || fail "codex through the wrapper does not run as agent"
 [ "$(field "$agent" pane)" = smoke-pane ] || fail "COCKPIT_PANE_ID did not reach the CLI through the wrapper"
-[ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"
-[ "$(field "$agent" aiosroot)" = /home/agent/Nextcloud/Notes/AI-OS ] || fail "AI_OS_ROOT from session.env did not reach the CLI"
-for what in config certificate secret original environ apphome; do
+[ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"for what in config certificate secret original environ apphome; do
   [ "$(field "$agent" $what)" = EACCES ] || fail "an agent session can reach $what ($(field "$agent" $what))"
 done
 [ "$(field "$agent" worktree)" = committed ] || fail "an agent session cannot commit in a worktree under /work ($(field "$agent" worktree))"
