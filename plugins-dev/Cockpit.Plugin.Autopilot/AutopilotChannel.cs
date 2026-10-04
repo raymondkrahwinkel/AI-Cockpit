@@ -65,9 +65,9 @@ internal sealed class AutopilotChannel : IDisposable
         _Do<MergeGoRequest>(MergeGo, request => _Run(request.WorkspaceId, request.RunId)?.Coordinator.ReportMergeGo(request.Issue, request.Go, request.Reason, "the operator"));
         _Do<MergeGoRequest>(EpicGo, request => _manager.ReportMergeGo(request.Issue, request.Go, request.Reason, "the operator"));
 
-        _Do<QueueRequest>(QueueMoveUp, request => _queue.MoveUp(request.Index));
-        _Do<QueueRequest>(QueueMoveDown, request => _queue.MoveDown(request.Index));
-        _Do<QueueRequest>(QueueRemove, request => _queue.RemoveAt(request.Index));
+        _Do<QueueRequest>(QueueMoveUp, request => _queue.MoveUp(request.Index, plan => SameOnTheWire(plan, request.Expected)));
+        _Do<QueueRequest>(QueueMoveDown, request => _queue.MoveDown(request.Index, plan => SameOnTheWire(plan, request.Expected)));
+        _Do<QueueRequest>(QueueRemove, request => _queue.RemoveAt(request.Index, plan => SameOnTheWire(plan, request.Expected)));
         _Do(HistoryClear, _history.Clear);
         _Do<CorrectionRequest>(HistoryCorrect, _Correct);
 
