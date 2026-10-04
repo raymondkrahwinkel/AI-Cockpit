@@ -70,7 +70,7 @@ services:
     image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
     init: true
     restart: unless-stopped
-    user: "1001:1001"
+    user: "1700:1700"
     entrypoint: ["/bin/sh", "/etc/brain-sync/brain-sync.sh"]
     environment:
       BRAIN_SYNCS: ${COCKPIT_BRAIN_SYNCS:-nc:Notes/AI-OS=Nextcloud/Notes/AI-OS}
@@ -92,7 +92,7 @@ services:
   brain-init:
     image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
     user: "0:0"
-    entrypoint: ["chown", "1001:1001", "/data/Nextcloud"]
+    entrypoint: ["chown", "1700:1700", "/data/Nextcloud"]
     volumes:
       - brain:/data/Nextcloud
 
