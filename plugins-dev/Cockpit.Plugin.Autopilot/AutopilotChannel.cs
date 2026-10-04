@@ -160,7 +160,7 @@ internal sealed class AutopilotChannel : IDisposable
     // is refused, so nothing is approved unseen.
     private bool _Submit(SubmitRequest request)
     {
-        if (_plan.Plan is not { Steps.Count: > 0 } plan)
+        if (_plan.Plan is not { Steps.Count: > 0 } plan || !SameOnTheWire(plan, request.Shown))
         {
             return false;
         }
