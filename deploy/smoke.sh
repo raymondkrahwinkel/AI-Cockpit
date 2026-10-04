@@ -139,7 +139,8 @@ agent=$(probe 'codex --version' -e SMOKE_WORKTREE=$tree)
 echo "through the wrapper: $agent"
 [ "$(field "$agent" uid)" = "$agent_uid" ] || fail "codex through the wrapper does not run as agent"
 [ "$(field "$agent" pane)" = smoke-pane ] || fail "COCKPIT_PANE_ID did not reach the CLI through the wrapper"
-[ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"for what in config certificate secret original environ apphome; do
+[ "$(field "$agent" home)" = /home/agent ] || fail "the CLI's HOME is not the agent's"
+for what in config certificate secret original environ apphome; do
   [ "$(field "$agent" $what)" = EACCES ] || fail "an agent session can reach $what ($(field "$agent" $what))"
 done
 [ "$(field "$agent" worktree)" = committed ] || fail "an agent session cannot commit in a worktree under /work ($(field "$agent" worktree))"
