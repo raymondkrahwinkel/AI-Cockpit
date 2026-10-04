@@ -87,12 +87,6 @@ public interface ISessionDialogService
     Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel);
 
     /// <summary>
-    /// Shows the assistant window on a server's assistant (AC-1479): the chat window this laptop's assistant has, over the
-    /// server's conversation. Returns when it is closed; a second call for the same server brings it forward.
-    /// </summary>
-    Task ShowServerAssistantAsync(AssistantChatViewModel viewModel, string server);
-
-    /// <summary>
     /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickPluginZipAsync();

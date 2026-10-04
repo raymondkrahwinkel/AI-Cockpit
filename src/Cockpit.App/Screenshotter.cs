@@ -226,8 +226,6 @@ internal static class Screenshotter
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-pane-permission"] = ServerGroupScene.Permission,
-        // AC-1479: the assistant window on the server's assistant, as the holder of its key sees it.
-        ["server-assistant"] = ServerGroupScene.Assistant,
         // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
         // and its Audit log.
         ["server-admin-keys"] = ServerAdminScene.Keys,

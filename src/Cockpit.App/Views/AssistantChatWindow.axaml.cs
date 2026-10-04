@@ -18,16 +18,13 @@ public partial class AssistantChatWindow : Window
 {
     // AC-866: this window's own key in the (now keyed, AC-866) window-bounds store — kept apart from the main
     // window's "main" so the two never collide.
-    private const string AssistantBoundsKey = "assistant";
+    private const string BoundsKey = "assistant";
 
     // AC-962: the drop zone is this share of the working area of the screen the cockpit stands on, measured in
     // from its right edge — the band where the dock rail belongs. The ticket fixes it inside 10–25%.
     private const double DropZoneScreenFraction = 0.20;
 
     private readonly IWindowBoundsStore? _windowBoundsStore;
-
-    // AC-1479: a server's assistant keeps its own saved bounds, apart from this laptop's assistant window.
-    private readonly string _boundsKey;
 
     // AC-962, the managed move: where the window stood when the drag started so Esc can put it back, and where in
     // the window the pointer took hold so it keeps following that same point. Null start means no drag is running.
@@ -59,16 +56,10 @@ public partial class AssistantChatWindow : Window
     {
     }
 
-    internal AssistantChatWindow(string boundsKey)
-        : this(Program.Services?.GetService<IWindowBoundsStore>(), boundsKey)
-    {
-    }
-
     // Test seam: lets a test control what the bounds-restore below reads, same shape as MainWindow's own.
-    internal AssistantChatWindow(IWindowBoundsStore? windowBoundsStore, string boundsKey = AssistantBoundsKey)
+    internal AssistantChatWindow(IWindowBoundsStore? windowBoundsStore)
     {
         _windowBoundsStore = windowBoundsStore;
-        _boundsKey = boundsKey;
         InitializeComponent();
         WindowResizeGrip.Apply(this);
 
@@ -90,7 +81,7 @@ public partial class AssistantChatWindow : Window
         // AC-866: restore before Show() (AC-801's X11-WM race) and force Manual, since CenterOwner has no owner
         // to anchor to here (shown ownerless — AssistantIndicatorCoordinator._OpenChatAsync). Position restore
         // assumes XWayland/X11 (Avalonia 12.1); a native Wayland backend would silently stop restoring it.
-        var saved = _windowBoundsStore?.LoadAsync(_boundsKey).GetAwaiter().GetResult();
+        var saved = _windowBoundsStore?.LoadAsync(BoundsKey).GetAwaiter().GetResult();
         if (saved is { HasUsableSize: true } && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
@@ -137,7 +128,7 @@ public partial class AssistantChatWindow : Window
 
         try
         {
-            await _windowBoundsStore.SaveAsync(_boundsKey, bounds).ConfigureAwait(false);
+            await _windowBoundsStore.SaveAsync(BoundsKey, bounds).ConfigureAwait(false);
         }
         catch (Exception)
         {

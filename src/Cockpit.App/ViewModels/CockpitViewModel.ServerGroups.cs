@@ -21,7 +21,6 @@ public partial class CockpitViewModel
     private Func<ISessionHandle, string, Task<SessionViewModel>>? _remotePaneOver;
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
-    private readonly Dictionary<ServerGroupViewModel, SessionViewModel> _serverAssistantPanes = [];
 
     public ObservableCollection<ServerGroupViewModel> ServerGroups { get; } = [];
 
@@ -184,13 +183,8 @@ public partial class CockpitViewModel
     }
 
     // AC-1469: while the line is down the panes' composers and permission buttons are off; they come back on their own.
-    private void _ApplyServerLink(ServerGroupViewModel group)
+    private static void _ApplyServerLink(ServerGroupViewModel group)
     {
-        if (_serverAssistantPanes.TryGetValue(group, out var assistantPane))
-        {
-            _ApplyLink(assistantPane, group);
-        }
-
         foreach (var row in group.Sessions)
         {
             if (row.Pane is SessionViewModel pane)
@@ -324,36 +318,6 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(ShowSessionEmptyState));
         OnPropertyChanged(nameof(HasSessionsHere));
         RefreshPaneVisibility();
-    }
-
-    // AC-1479: the assistant window of this laptop, over the conversation of the server's assistant. The button is the
-    // holder's alone; the server refuses the prompt of any other key (403), so nothing is filtered here beyond that.
-    [RelayCommand]
-    private async Task OpenServerAssistantAsync(ServerGroupViewModel group)
-    {
-        if (!group.CanOpenAssistant || _remotePaneOver is null || _dialogService is null || group.Server.Sessions?.Assistant is not { } handle)
-        {
-            return;
-        }
-
-        var pane = await _remotePaneOver(handle, group.Name);
-        _ApplyLink(pane, group);
-        _serverAssistantPanes[group] = pane;
-
-        // IsSimpleViewHost only takes the dock button away: this window has no rail to dock to.
-        var chat = new AssistantChatViewModel(new RemoteAssistantHost(pane), new RemoteAssistantSettingsStore(), new RemoteAssistantVoiceQueue())
-        {
-            IsSimpleViewHost = true,
-        };
-        try
-        {
-            await _dialogService.ShowServerAssistantAsync(chat, group.Name);
-        }
-        finally
-        {
-            _serverAssistantPanes.Remove(group);
-            await pane.DisposeAsync();
-        }
     }
 
     [RelayCommand]

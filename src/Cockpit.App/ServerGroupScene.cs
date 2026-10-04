@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -33,31 +32,6 @@ internal static class ServerGroupScene
     // AC-1457 (mockup v2 tab 6): the same tab for an operate key; Run now stays, Sign in again gives way to a pointer.
     public static MainWindow HealthOperate(int width, int height) => _Render(width, height, admin: false, health: true);
 
-    // AC-1479: the assistant window of a holder, on the server's conversation. The same window as this laptop's, one pane
-    // over the server's assistant handle.
-    public static Window Assistant(int width, int height)
-    {
-        var key = new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", DateTimeOffset.UtcNow.AddDays(-6), MayAnswerPermissions: true);
-        var now = DateTimeOffset.UtcNow;
-        var assistant = new SceneHandle("Zyra", "server (Claude)", SessionStatus.Idle)
-        {
-            Rows =
-            [
-                new("1", "UserText", "What ran last night on huis-cockpit?", null, null, null, null, false, now),
-                new("2", "AssistantText", "The maintenance flow ran at 03:00 and finished in 4 minutes. The morning briefing is waiting for your permission to post to Discord.", null, null, null, null, false, now),
-            ],
-        };
-        var server = new SceneServer("huis-cockpit", new RemoteServerState(true, 38, key), [], assistant);
-        var pane = new SessionViewModel(SessionControls.DesignTime);
-        pane.FollowRemoteAsync(assistant, server.Name).GetAwaiter().GetResult();
-        pane.SetRemoteLink(isUp: true, mayAnswerPermissions: false);
-        var chat = new AssistantChatViewModel(new RemoteAssistantHost(pane), new RemoteAssistantSettingsStore(), new RemoteAssistantVoiceQueue())
-        {
-            IsSimpleViewHost = true,
-        };
-        return new AssistantChatWindow { DataContext = chat, Topmost = false, Width = width, Height = height, WindowStartupLocation = WindowStartupLocation.Manual };
-    }
-
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
@@ -78,8 +52,7 @@ internal static class ServerGroupScene
                 new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention),
                 new("research-monitor", "server (Claude)", SessionStatus.Done),
             ];
-        var server = new SceneServer(
-            "huis-cockpit", new RemoteServerState(true, 38, key), sessions, admin ? new SceneHandle("Zyra", "server (Claude)", SessionStatus.Idle) : null);
+        var server = new SceneServer("huis-cockpit", new RemoteServerState(true, 38, key), sessions);
         cockpit.ShowServers(new SceneServers(server), async (handle, name) =>
         {
             var pane = new SessionViewModel(SessionControls.DesignTime);
@@ -141,7 +114,7 @@ internal static class ServerGroupScene
         public Task ReconnectAsync(string name) => Task.CompletedTask;
     }
 
-    private sealed class SceneServer(string name, RemoteServerState state, IReadOnlyList<ISessionHandle> sessions, ISessionHandle? assistant = null)
+    private sealed class SceneServer(string name, RemoteServerState state, IReadOnlyList<ISessionHandle> sessions)
         : IRemoteServer, ISessionRegistry
     {
         public string Name { get; } = name;
@@ -164,7 +137,7 @@ internal static class ServerGroupScene
 
         public IReadOnlyList<ISessionHandle> All { get; } = sessions;
 
-        public ISessionHandle? Assistant { get; } = assistant;
+        public ISessionHandle? Assistant => null;
 
         public event EventHandler? StateChanged
         {
@@ -339,15 +312,8 @@ internal static class ServerGroupScene
 
         public bool HasReadableTranscript => true;
 
-        public IReadOnlyList<TranscriptSnapshotEntry>? Rows { get; init; }
-
         public Task<SessionRowSnapshot?> ReadRowsAtAsync(Func<long> lastSeq)
         {
-            if (Rows is { } fixedRows)
-            {
-                return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. fixedRows], 0));
-            }
-
             List<TranscriptSnapshotEntry> rows =
             [
                 new("1", "UserText", "Prepare the morning briefing.", null, null, null, null, false, DateTimeOffset.UtcNow),

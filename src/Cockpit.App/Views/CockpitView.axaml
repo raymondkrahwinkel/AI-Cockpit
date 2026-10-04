@@ -1595,16 +1595,10 @@
                                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource CockpitControlRadius}">
                                     <DockPanel>
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                                    IsVisible="{Binding HoldsAssistant}">
-                                            <Button Classes="Subtle Compact" Content="Open assistant" IsEnabled="{Binding CanOpenAssistant}"
-                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerAssistantCommand}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip.Tip="The assistant window, on the conversation this server's assistant has"/>
-                                            <Border Classes="tag" VerticalAlignment="Center" Background="{DynamicResource CockpitCategoryTintBlueBrush}">
-                                                <TextBlock Text="holds the assistant" Foreground="{DynamicResource CockpitAccentBrush}"/>
-                                            </Border>
-                                        </StackPanel>
+                                        <Border DockPanel.Dock="Right" Classes="tag" VerticalAlignment="Center" IsVisible="{Binding HoldsAssistant}"
+                                                Background="{DynamicResource CockpitCategoryTintBlueBrush}">
+                                            <TextBlock Text="holds the assistant" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                        </Border>
                                         <Ellipse DockPanel.Dock="Left" Width="28" Height="28" Margin="0,0,10,0" VerticalAlignment="Center"
                                                  Fill="{DynamicResource CockpitAccentBrush}" Opacity="0.85"/>
                                         <StackPanel Spacing="2" VerticalAlignment="Center">

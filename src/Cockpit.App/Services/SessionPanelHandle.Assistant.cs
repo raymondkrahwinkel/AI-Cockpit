@@ -152,5 +152,5 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
 internal static class AssistantSessionHostView
 {
     public static SessionViewModel? View(this IAssistantSessionHost host) =>
-        host is RemoteAssistantHost remote ? remote.Pane : (host.Session as SessionPanelHandle)?.Pane as SessionViewModel;
+        (host.Session as SessionPanelHandle)?.Pane as SessionViewModel;
 }
