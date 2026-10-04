@@ -3,7 +3,7 @@
 # the agent's; the app password is in this container alone. Never a full tree: each remote needs its include list.
 set -u
 # The brain is agent's alone: app is in agent's group, and the server does not touch the brain.
-umask 077
+:
 export RCLONE_CONFIG=/run/secrets/cockpit_brain_rclone XDG_CACHE_HOME=/tmp/cache
 interval=${BRAIN_SYNC_INTERVAL:-60}
 # Space-separated `remote:path=local`, one per remote, local relative to /data, its first folder the pair's volume.
