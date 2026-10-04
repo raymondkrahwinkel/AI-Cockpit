@@ -19,7 +19,7 @@ sync_pair() {
   remote=${1%%=*} local=${1#*=} name=${1%%:*}
   filter=/etc/brain-sync/$name.filter
   # The listings live on brain-state, a volume only this sidecar mounts, so no session can steer or wipe them.
-  workdir=/data/${local%%/*}/.bisync/$name
+  workdir=/bisync/$name
   [ -f "$filter" ] || { say "no include list $filter for $name, so it is not synced"; return 1; }
   mkdir -p "/data/$local" "$workdir"
   set -- bisync "$remote" "/data/$local" --filter-from "$filter" --workdir "$workdir" \
