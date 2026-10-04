@@ -51,7 +51,6 @@ internal static partial class HealthEndpoints
                         provider = profile.Provider,
                         signIn = _SignIn(profile.SignIn),
                         credential = _Credential(profile.Credential),
-                        email = profile.Provider + "@x",
                         lastCheck = profile.LastCheck,
                         expiredSince = profile.ExpiredSince,
                         announcedAt = profile.AnnouncedAt,
