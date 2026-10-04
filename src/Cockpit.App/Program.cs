@@ -282,6 +282,7 @@ sealed class Program
             return null;
         }
 
+        File.WriteAllText(Path.Combine(localRoot, "counter-proof.txt"), "a write to the local root");
         var cockpit = CockpitViewModel.ForRemoteWindow(
             server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
         return (connection, cockpit);
