@@ -97,7 +97,7 @@ services:
   brain-init:
     image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
     user: "0:0"
-    entrypoint: ["sh", "-c", "chown -R 1700:1700 /data/Nextcloud /bisync"]
+    entrypoint: ["sh", "-c", "chown -R 1700:1700 /data/Nextcloud /bisync && chmod -R go= /data/Nextcloud /bisync"]
     volumes:
       - brain:/data/Nextcloud
       - brain-state:/bisync
