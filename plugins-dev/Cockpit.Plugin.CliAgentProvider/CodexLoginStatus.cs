@@ -80,9 +80,12 @@ internal static class CodexLoginStatus
     // - ***"). Only a line that starts with it counts, so a warning that quotes it claims nothing. An env-var key alone
     // reads "Not logged in".
     internal static PluginCredentialKind KindOf(string output) =>
-        output.Contains("Logged in using ChatGPT", StringComparison.Ordinal) ? PluginCredentialKind.RenewingLogin
-        : output.Contains("Logged in using an API key", StringComparison.Ordinal) ? PluginCredentialKind.ApiKey
-        : PluginCredentialKind.Unknown;
+        output.Split('\n').Select(line => line.TrimStart()).FirstOrDefault(line => line.StartsWith("Logged in using ", StringComparison.Ordinal)) switch
+        {
+            { } line when line.StartsWith("Logged in using ChatGPT", StringComparison.Ordinal) => PluginCredentialKind.RenewingLogin,
+            { } line when line.StartsWith("Logged in using an API key", StringComparison.Ordinal) => PluginCredentialKind.ApiKey,
+            _ => PluginCredentialKind.Unknown,
+        };
 
     // Refreshes without waiting. Test seam mirrors `ClaudeLoginStatus.Warm`.
     public static void Warm(string configJson, Func<string, string?>? managedResolver = null) =>
