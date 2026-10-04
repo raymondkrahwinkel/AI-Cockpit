@@ -20,8 +20,9 @@ The package is **private**, so the host logs in once with a token that has `read
 1. Nothing to set up in `/state`: the server turns the node door on itself, and mints its certificate on the first
    start. If the node port is held, or the door does not listen for any other reason, the server logs why and exits 1
    rather than reporting `running`.
-2. Put the connect key in `secrets/connect-key` (at least 43 characters), owner-only is fine (the entrypoint reads it as
-   root). For another path, set `COCKPIT_CONNECT_KEY_PATH`.
+2. Put the two secrets in files, owner-only is fine (the entrypoint reads them as root):
+   `secrets/unlock-password` and `secrets/connect-key` (at least 43 characters). Other paths: set
+   `COCKPIT_UNLOCK_PASSWORD_PATH` and `COCKPIT_CONNECT_KEY_PATH`.
 3. `session.env` (or `COCKPIT_SESSION_ENV_FILE`), required but may be empty: `GH_TOKEN` and anything else the agent
    sessions should inherit, `KEY=VALUE` per line. It is a file like the secrets: it reaches the server and its sessions
    only, never the container's environment, so `docker inspect`, `docker exec` and the health check do not see it.
@@ -61,11 +62,11 @@ there is no check and it stays 200. An expired sign-in is an alarm, not a reason
 There is no docker socket and no docker CLI in the image. `COCKPIT_STOP_BUDGET_SECONDS` (default 8) stays below
 `stop_grace_period` (15 s).
 
-## Credentials on the volume
+## Open question
 
-The server state on the `state` volume is unencrypted. Protect it through the host and volumes: ownership and access
-rights, disk encryption, and encrypted backups. A state with encrypted credentials is refused at startup; turn
-encryption off on the desktop before copying it to the server, or start from an empty `/state`.
+Credential encryption is off on a fresh state, and then the unlock password is not used (the server logs a warning).
+With encryption on, the server starts only with the unlock secret, and exits 1 without it. Turning encryption on for a
+headless first start is not solved here.
 
 ## Agent sessions run as `agent`
 

@@ -3,20 +3,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Server;
 
-// AC-1444: the backend as a process of its own. The desktop's `Program.Main` steps in their order, connect keys as the
-// only way in, and a stop on SIGTERM. ponytail: no generic host, the
+// AC-1444: the backend as a process of its own. The desktop's `Program.Main` steps in their order, the unlock from a
+// file rather than a window, connect keys as the only way in, and a stop on SIGTERM. ponytail: no generic host, the
 // listeners already run in the node-endpoint host; `IHost` once a second hosted lifecycle joins.
 internal static class Program
 {
     // The container's grace (compose `stop_grace_period`) sets it; the default stays within a `docker stop`'s ten seconds.
     private const string StopBudgetVariable = "COCKPIT_STOP_BUDGET_SECONDS";
-
-    private const string UnlockPasswordFileVariable = "COCKPIT_UNLOCK_PASSWORD_FILE";
 
     private static readonly TimeSpan DefaultStopBudget = TimeSpan.FromSeconds(8);
 
@@ -42,16 +41,13 @@ internal static class Program
 
         var backend = CockpitBackend.Build(loggerFactory, frontend: null, PluginStartup.Load);
 
-        var protection = backend.Services.GetRequiredService<ISecretProtectionService>();
-        if ((await protection.GetStatusAsync()).Enabled)
+        // The unlock needs the container's protection service, so it follows Build; nothing has started yet.
+        var unlock = await UnlockFromFile.RunAsync(backend.Services.GetRequiredService<ISecretProtectionService>(), logger);
+        if (unlock.Result == UnlockFromFileResult.Refused)
         {
-            logger.LogError("Not starting: this state has encrypted credentials, and the server does not support encryption. Turn encryption off on the desktop (Options › Security) before copying the state, or start from an empty /state.");
+            logger.LogError("Not starting: {Reason}", unlock.Reason);
             await backend.Services.DisposeAsync();
             return 1;
-        }
-        if (Environment.GetEnvironmentVariable(UnlockPasswordFileVariable) is not null)
-        {
-            logger.LogWarning("{Variable} is ignored because the server does not support encryption.", UnlockPasswordFileVariable);
         }
 
         // AC-1355: connect keys only, so no LAN discovery and no pairing. AC-1356: the door itself is on.

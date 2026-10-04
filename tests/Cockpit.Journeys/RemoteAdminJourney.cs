@@ -48,7 +48,7 @@ public sealed class RemoteAdminJourney
         await _GitAsync(work, "push", origin, "main");
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", pluginStore: store);
         var run = ServerJourney._RunServer(
-            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, ServerJourney._Secret(root, "connect-key", bootstrap),
+            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", bootstrap),
             new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
         try
         {

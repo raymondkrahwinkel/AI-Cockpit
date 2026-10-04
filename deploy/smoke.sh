@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AC-1356: the container smoke, run by CI before the push. Usage: deploy/smoke.sh <image:tag> (from the repo root).
-# Proves: a start with its connect key answers on the node door; a restart keeps the fingerprint and a fresh volume does
-# not; an encrypted state is refused; the server runs non-root with no docker and no Avalonia; an
+# Seeds a state, then proves: a start with both secrets answers on the node door; a restart keeps the fingerprint and a
+# fresh volume does not; no unlock secret means a refusal; the server runs non-root with no docker and no Avalonia; an
 # agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
 # brain-sync brings only its include list, writes back as agent, keeps both sides of a conflict and keeps the app
 # password to itself (AC-1364); no secret is in a layer or a log. Each check that could pass vacuously has a control.
@@ -12,17 +12,16 @@ export COCKPIT_IMAGE=${image%:*} COCKPIT_TAG=${image##*:}
 project=cockpit-smoke
 work=$(mktemp -d)
 mkdir -p "$work/secrets" "$work/seed"
-export COCKPIT_CONNECT_KEY_PATH=$work/secrets/connect-key
-password=$(openssl rand -hex 16)
-unlock=$password
+export COCKPIT_UNLOCK_PASSWORD_PATH=$work/secrets/unlock-password COCKPIT_CONNECT_KEY_PATH=$work/secrets/connect-key
+unlock=$(openssl rand -hex 16)
 key="ck_$(openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n')"
-printf '%s' "$password" > "$work/seed/password"
+printf '%s' "$unlock" > "$COCKPIT_UNLOCK_PASSWORD_PATH"
 printf '%s' "$key" > "$COCKPIT_CONNECT_KEY_PATH"
 # What the sessions inherit; it must reach the server and stay out of the container's environment (AC-1464).
 export COCKPIT_SESSION_ENV_FILE=$work/session.env
 printf '# smoke\nSMOKE_SESSION_VAR=reached\nAI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS\n' > "$COCKPIT_SESSION_ENV_FILE"
 # Owner-only on the host: the entrypoint reads them as root and hands the server its own copies (AC-1464).
-chmod 600 "$COCKPIT_CONNECT_KEY_PATH" "$COCKPIT_SESSION_ENV_FILE"
+chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH" "$COCKPIT_SESSION_ENV_FILE"
 # AC-1364: brain-sync starts on an empty placeholder config, as a host without the app password would, and idles.
 export COCKPIT_BRAIN_RCLONE_PATH=$work/secrets/brain-rclone.conf COCKPIT_BRAIN_INSTRUCTIONS_PATH=$work/brain-instructions.md
 export COCKPIT_BRAIN_SYNC_INTERVAL=2
@@ -66,10 +65,10 @@ wait_running() {
     [ -n "$(dc ps -q --status running cockpit)" ] || break
     sleep 1
   done
-  dc logs --no-color cockpit | sed -e "s/$password/<password>/g" -e "s/$key/<key>/g" | tail -n 30
+  dc logs --no-color cockpit | sed -e "s/$unlock/<unlock>/g" -e "s/$key/<key>/g" | tail -n 30
   fail "the server did not report running"
 }
-# The volume is created by compose; `seed` copies the encrypted state in, as a copied desktop state would arrive.
+# The volume is created by compose; `seed` copies the encryption-on state in, the way an operator's first setup would.
 start() {
   dc create >/dev/null
   if [ "${1:-}" = seed ]; then
@@ -98,7 +97,7 @@ history_leaks "$project-control-leak" "$unlock" || fail "control: the history ch
 if history_leaks "$image" "$unlock"; then fail "the unlock secret is in an image layer"; fi
 if history_leaks "$image" "$key"; then fail "the connect key is in an image layer"; fi
 
-echo "== a fresh volume with its connect key"
+echo "== a fresh volume with both secrets"
 start
 first=$(fingerprint_of_log)
 [ -n "$first" ] || fail "the log names no certificate fingerprint"
@@ -333,18 +332,19 @@ docker rm -f "$project-holder" >/dev/null
 if grep -qF 'Cockpit.Server running' <<< "$held"; then fail "the server reported running on a held node port"; fi
 grep -qF 'the node door is not listening' <<< "$held" || fail "the held-port refusal names no reason"
 
-echo "== encryption on: an encrypted state is refused"
-dc down -v >/dev/null
-dotnet run --project tests/Cockpit.ServerSeed --configuration Release -- "$work/seed" "$work/seed/password"
-dc create >/dev/null
-docker run --rm --user 0 -v "${project}_state:/state" -v "$work/seed:/seed:ro" --entrypoint sh "$image" -c 'cp -a /seed/. /state/ && chown -R app:app /state'
+echo "== encryption on: unlocks from the secret, refused without it"
+dotnet run --project tests/Cockpit.ServerSeed --configuration Release -- "$work/seed" "$COCKPIT_UNLOCK_PASSWORD_PATH"
+start seed
+log_has 'Unlocked the credentials from the password file.' || { dc logs --no-color cockpit | tail -n 15; fail "the server did not unlock from the secret"; }
+collect_logs
+dc down >/dev/null
 set +e
-refused=$(dc run --rm --no-deps cockpit 2>&1)
+refused=$(dc run --rm --no-deps -e COCKPIT_UNLOCK_PASSWORD_FILE= cockpit 2>&1)
 code=$?
 set -e
 echo "$refused" >> "$work/logs.txt"
-[ "$code" != 0 ] || fail "the server started with encrypted credentials"
-grep -qF 'this state has encrypted credentials, and the server does not support encryption' <<< "$refused" || fail "the refusal names no reason"
+[ "$code" != 0 ] || fail "the server started without the unlock secret"
+grep -qF 'COCKPIT_UNLOCK_PASSWORD_FILE is not set.' <<< "$refused" || fail "the refusal names no reason"
 
 echo "== no secret in a log"
 if grep -qF -e "$unlock" -e "$key" -e "$brain_pass" -e "$brain_obscured" "$work/logs.txt"; then fail "a secret is in the container log"; fi
