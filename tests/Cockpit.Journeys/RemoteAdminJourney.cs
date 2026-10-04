@@ -90,12 +90,17 @@ public sealed class RemoteAdminJourney
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
 
-            await HeadlessAvalonia.RunAsync(() =>
+            var selectPlugins = Task.Run(async () =>
             {
-                dialog.SelectCategory("server-plugins");
-                return Task.CompletedTask;
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    dialog.SelectCategory("server-plugins");
+                    return Task.CompletedTask;
+                });
             });
             Assert.Single(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
+            await selectPlugins;
             await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
             await HeadlessAvalonia.RunAsync(() => admin.InstallPluginCommand.ExecuteAsync(null));
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
