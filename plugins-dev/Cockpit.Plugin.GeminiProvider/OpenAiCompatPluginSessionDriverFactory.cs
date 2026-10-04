@@ -26,7 +26,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
         var options = BuildClientOptions(config, logger);
         var credential = new ApiKeyCredential(
             OpenAiCompatConfig.ResolveApiKey(config.ApiKey, apiKeyEnvVar)
-            ?? throw new InvalidOperationException("No API key: set one on the profile or GEMINI_API_KEY in session.env."));
+            ?? throw new InvalidOperationException(apiKeyEnvVar is null ? "No API key on the profile." : $"No API key: set one on the profile or {apiKeyEnvVar} in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
         return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger);
     }
