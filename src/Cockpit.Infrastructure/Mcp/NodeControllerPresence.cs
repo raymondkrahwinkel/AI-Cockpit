@@ -121,18 +121,20 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
     // unpair is not a missed poll, it is the coupling ending right now.
     private void _Clear()
     {
-        bool disappeared;
         lock (_gate)
         {
-            disappeared = _current is not null;
+            // AC-1405: every broker change without a pairing (an offer, its expiry, a refusal) lands here, so a holder
+            // that came in by connect key, which no pairing grants, is left where it is.
+            if (_current is not { KeyPrefix: null })
+            {
+                return;
+            }
+
             _current = null;
             _expiry?.Dispose();
             _expiry = null;
         }
 
-        if (disappeared)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 }

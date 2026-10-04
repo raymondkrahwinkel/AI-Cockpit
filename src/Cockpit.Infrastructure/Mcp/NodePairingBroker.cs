@@ -104,6 +104,7 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         // Also outside the lock: this is a registry read, the same shape as the fingerprint above.
         var controlledNodes = await _ControlledNodeNamesAsync(cancellationToken).ConfigureAwait(false);
 
+        NodePairingOffer offer;
         lock (_gate)
         {
             // AC-1325: no chains — a cockpit that is itself controlling one or more nodes may not also become one.
@@ -145,10 +146,13 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
             _pending = pending;
             _expiryAlarm?.Dispose();
             _expiryAlarm = _time.CreateTimer(_ => _RaiseChanged(), null, Lifetime, Timeout.InfiniteTimeSpan);
-            _RaiseChanged();
-
-            return new NodePairingOffer(pending.PairingId, pending.ClaimToken, pending.Nonce, Environment.MachineName, pending.ExpiresAtUtc);
+            offer = new NodePairingOffer(pending.PairingId, pending.ClaimToken, pending.Nonce, Environment.MachineName, pending.ExpiresAtUtc);
         }
+
+        // AC-1405: outside the gate, like every other raise here — a handler that takes the controller presence's gate
+        // and the inbox lock must never wait on this gate while a reader holding those two asks the grant for a profile.
+        _RaiseChanged();
+        return offer;
     }
 
     public async Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default)

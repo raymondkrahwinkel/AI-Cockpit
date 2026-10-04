@@ -55,13 +55,21 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         {
             presence.Changed += (_, _) =>
             {
-                if (presence.Current is { } controller)
+                // AC-1405: checked and folded with the holder held still, by the same rule Deliver and ReadFor fold by.
+                var live = presence.WithHolder(holder =>
+                {
+                    lock (_lock)
+                    {
+                        _FoldStaleControllerMailUnlocked(holder);
+                    }
+
+                    return holder;
+                });
+                if (live is { } controller)
                 {
                     _lastKnownController = controller;
                     return;
                 }
-
-                _FoldControllerQueueIntoLocal();
 
                 // AC-1327 point 3: one message to the local assistant once the controller lets go — after the
                 // queue fallback above, which is synchronous and so always lands first.
@@ -71,14 +79,6 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
                     _ = _DeliverControllerHandoverNoticeAsync(previous);
                 }
             };
-        }
-    }
-
-    private void _FoldControllerQueueIntoLocal()
-    {
-        lock (_lock)
-        {
-            _FoldControllerQueueIntoLocalUnlocked(_ => true);
         }
     }
 
@@ -176,6 +176,12 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     {
         lock (_lock)
         {
+            // AC-1405: first, so mail queued for a holder no longer live neither dedups nor crowds out mail for the next.
+            if (_presence is not null)
+            {
+                _FoldStaleControllerMailUnlocked(holder);
+            }
+
             _inboxes.TryGetValue(toPaneId, out var waiting);
             _inFlight.TryGetValue(toPaneId, out var inFlight);
 

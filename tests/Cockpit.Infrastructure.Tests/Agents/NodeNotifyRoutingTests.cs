@@ -37,6 +37,7 @@ public sealed class NodeNotifyRoutingTests : IDisposable
     public NodeNotifyRoutingTests()
     {
         _presence = new NodeControllerPresence(_clock);
+        _presence.WatchPairing(_pairing);
         _inbox = new AgentMessageInbox(_presence);
     }
 
@@ -63,12 +64,12 @@ public sealed class NodeNotifyRoutingTests : IDisposable
     // locally), a narrowed key misses what fell outside it, and once widened gets it, as its cursor acked only what it saw.
     [Theory]
     [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", false, false, "project-a", 0, 2, 0, 0)]
-    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", false, false, "project-a", 0, 1, 0, 0)]
+    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", false, false, "project-a", 0, 1, 0, 1)]
     [InlineData(true, "project-a", null, "DESKTOP", 0, "ck_test", true, true, "project-a", 0, 2, 0, 0)]
     [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 0, null, null, 0)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-b", 60, 0, 0, 2)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 60, 0, 0, 2)]
-    [InlineData(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, true, "project-a", 0, 1, 1, 0)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-b", 60, 0, 0, 3)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 60, 1, 0, 2)]
+    [InlineData(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, true, "project-a", 0, 1, 1, 1)]
     public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(
         bool holderOnEveryProject, string holderProject, string? sessionProject, string? controller, int keptLocally,
         string readerKey, bool readerOnEveryProject, bool readerLaterOnEveryProject, string readerProject, int secondsLater,
@@ -88,9 +89,16 @@ public sealed class NodeNotifyRoutingTests : IDisposable
 
         // A sign-in alarm about the profile, as ProfileLoginHealthMonitor queues it for the controller.
         _inbox.Deliver("login-health", AssistantIdentity.ControllerInboxPaneId, "login-expired", "Signed out.", "personal", profileWide: true);
+
+        // A pairing offer meanwhile: the broker changes with no pairing, which leaves a holder by connect key alone.
+        _pairing.Changed += Raise.Event();
         _clock.Now += TimeSpan.FromSeconds(secondsLater);
         var reader = _Key(readerKey, readerOnEveryProject, readerProject);
         _presence.Seen(readerKey, reader);
+
+        // The same notify again, routed for whoever holds the line now: a predecessor's copy must not swallow it.
+        McpRequestContext.Set(AgentOnTheNode);
+        await _Agents(profileShared: false, withLocalAssistant: true, sessions).NotifyAsync(AssistantIdentity.PaneId, "done", "Green.");
         McpRequestContext.Set(NodeCallerIdentity.PaneId, reader);
         var first = _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray();
         var later = _Key(readerKey, readerLaterOnEveryProject, readerProject);
