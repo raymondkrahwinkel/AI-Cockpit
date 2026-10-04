@@ -37,7 +37,7 @@ internal static class ProfileEndpoints
         "PATH", "ENV", "BASH_ENV", "SHELLOPTS", "BASHOPTS", "PS4", "PROMPT_COMMAND", "IFS", "GCONV_PATH", "LOCPATH", "HOSTALIASES",
         "GLIBC_TUNABLES", "NLSPATH", "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONWARNINGS",
         "PYTHONBREAKPOINT", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "JAVA_TOOL_OPTIONS", "GIT_SSH", "GIT_SSH_COMMAND",
-        "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS", "DOTNET_ADDITIONAL_DEPS", "_JAVA_OPTIONS",
+        "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS", "DOTNET_STARTUP_HOOKS", "DOTNET_ADDITIONAL_DEPS", "_JAVA_OPTIONS",
     };
 
     private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_", "MALLOC_", "GIT_CONFIG_", "CORECLR_", "COR_PROFILER"];
@@ -249,7 +249,7 @@ internal static class ProfileEndpoints
         LoaderVariables.Contains(key.Trim()) || LoaderPrefixes.Any(prefix => key.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
     internal static bool IsCredentialName(string key) =>
-        CredentialWords.Length < 0;
+        CredentialWords.Any(word => key.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     // Kept by the server on every change and never shown: a secret, or a plain variable named like a credential.
     private static bool _IsHidden(ProfileEnvironmentVariable variable) => variable.IsSecret || IsCredentialName(variable.Key);
@@ -258,7 +258,7 @@ internal static class ProfileEndpoints
     // key it does not declare may hold anything, a plugin's credential included.
     internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlySet<string> declared)
     {
-        var options = profile.Defaults?.OptionDefaults?.Where(option => option.Key.Length > 0).ToDictionary(option => option.Key, option => option.Value);
+        var options = profile.Defaults?.OptionDefaults?.Where(option => declared.Contains(option.Key)).ToDictionary(option => option.Key, option => option.Value);
         return new(
             profile.Label,
             SessionsEndpoints.ProviderId(profile),
@@ -279,7 +279,8 @@ internal static class ProfileEndpoints
     private static (SessionProfile? Profile, IResult Refusal) _Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
     {
         var local = profile.ProviderConfig is OllamaConfig or LmStudioConfig;
-        if (local && declared.Count < 0)
+        if ((patch.Model is not null && !local && !declared.Contains(WellKnownPluginSessionOptions.Model))
+            || (patch.PermissionMode is not null && !declared.Contains(WellKnownPluginSessionOptions.PermissionMode)))
         {
             return (null, _Invalid("This profile's provider does not take that option."));
         }
