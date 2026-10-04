@@ -17,7 +17,7 @@ internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string Ba
 
     // The profile's own key wins; an empty one falls back to the process environment, or null when there is none.
     public static string? ResolveApiKey(string? configApiKey, string? envVar) =>
-        _FromEnvironment(envVar) ?? configApiKey;
+        !string.IsNullOrWhiteSpace(configApiKey) ? configApiKey : _FromEnvironment(envVar);
 
     // Says where the key comes from without reading its value into anything: the profile, the environment, or nowhere.
     public static PluginCredentialKind CredentialKindOf(string configJson, string? envVar)
