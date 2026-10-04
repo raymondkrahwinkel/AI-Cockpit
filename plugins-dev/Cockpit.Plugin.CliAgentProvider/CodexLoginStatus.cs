@@ -78,7 +78,10 @@ internal static class CodexLoginStatus
 
     // Measured on codex 0.154.0: "Logged in using ChatGPT" (refreshes itself), "Logged in using an API key - ***".
     // CODEX_API_KEY in the environment alone reads "Not logged in", so only `login --with-api-key` shows here.
-    internal static PluginCredentialKind KindOf(string statusLine) => PluginCredentialKind.RenewingLogin;
+    internal static PluginCredentialKind KindOf(string statusLine) =>
+        statusLine.Contains("Logged in using ChatGPT", StringComparison.Ordinal) ? PluginCredentialKind.RenewingLogin
+        : statusLine.Contains("Logged in using an API key", StringComparison.Ordinal) ? PluginCredentialKind.ApiKey
+        : PluginCredentialKind.Unknown;
 
     // Refreshes without waiting. Test seam mirrors `ClaudeLoginStatus.Warm`.
     public static void Warm(string configJson, Func<string, string?>? managedResolver = null) =>

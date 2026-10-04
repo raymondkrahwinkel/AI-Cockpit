@@ -100,7 +100,10 @@ internal static class ClaudeLoginStatus
     // (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN, no refresh token), `none` (logged out).
     internal static PluginCredentialKind KindOf(string? authMethod) => authMethod switch
     {
-        _ => PluginCredentialKind.RenewingLogin,
+        "claude.ai" => PluginCredentialKind.RenewingLogin,
+        "oauth_token" => PluginCredentialKind.Login,
+        "api_key" => PluginCredentialKind.ApiKey,
+        _ => PluginCredentialKind.Unknown,
     };
 
     // Before the CLI has ever answered. `.credentials.json` is a reliable negative everywhere except macOS,
