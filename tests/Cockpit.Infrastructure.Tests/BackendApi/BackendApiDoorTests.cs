@@ -181,6 +181,9 @@ public sealed class BackendApiDoorTests
         Assert.False(text.Contains(secret, StringComparison.Ordinal), $"{read} carried the issued key.");
         Assert.False(text.Contains(hash, StringComparison.OrdinalIgnoreCase), $"{read} carried the issued key's hash.");
         Assert.False(text.Contains(Bootstrap, StringComparison.Ordinal), $"{read} carried the bootstrap key.");
+        Assert.DoesNotContain("password", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("query-token", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-token", text, StringComparison.Ordinal);
         Assert.Empty(credentialFields);
         Assert.True(read is "/api/v1/keys" or "/api/v1/plugins/store" || (_Occurrences(text, "tie-a"), _Occurrences(text, "tie-b")) == (1, 1), $"{read} lost or repeated a line of the same timestamp.");
         Assert.True(read != "/api/v1/audit, a line per page" || _Ids(text).SequenceEqual(_Ids(whole)), "Paging a line at a time lost or repeated a line.");
