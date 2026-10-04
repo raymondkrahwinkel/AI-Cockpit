@@ -69,7 +69,7 @@ internal static class PluginEndpoints
 
             var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version), cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:install_plugin", cancellationToken).ConfigureAwait(false);
-            return Results.Json(result, ConnectKeyEndpoints.Json);
+            return Results.Json(PluginInstallResponse.From(result, install.Version), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
         api.MapPut("/plugins/{folderId}/enabled", async (string folderId, HttpRequest request, CancellationToken cancellationToken) =>
@@ -93,6 +93,12 @@ internal static class PluginEndpoints
 
         api.MapDelete("/plugins/{folderId}", async (string folderId, CancellationToken cancellationToken) =>
         {
+            var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
+            if (!installed.Any(candidate => string.Equals(candidate.Discovered.FolderId, folderId, StringComparison.Ordinal)))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
+            }
+
             await plugins().RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:remove_plugin", cancellationToken).ConfigureAwait(false);
             return Results.Json(new { takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
@@ -118,17 +124,23 @@ internal static class PluginEndpoints
                 return null;
             }
 
-            return root.TryGetProperty("storeId", out var storeId)
+            if (root.TryGetProperty("storeId", out var storeId)
                 && root.TryGetProperty("pluginId", out var pluginId)
                 && root.TryGetProperty("version", out var version)
                 && storeId.ValueKind == JsonValueKind.String
                 && pluginId.ValueKind == JsonValueKind.String
                 && version.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(storeId.GetString())
-                && !string.IsNullOrWhiteSpace(pluginId.GetString())
-                && !string.IsNullOrWhiteSpace(version.GetString())
-                ? new PluginInstallRequest(storeId.GetString()!, pluginId.GetString()!, version.GetString()!)
-                : null;
+                && storeId.GetString() is string storeIdValue
+                && pluginId.GetString() is string pluginIdValue
+                && version.GetString() is string versionValue
+                && !string.IsNullOrWhiteSpace(storeIdValue)
+                && !string.IsNullOrWhiteSpace(pluginIdValue)
+                && !string.IsNullOrWhiteSpace(versionValue))
+            {
+                return new PluginInstallRequest(storeIdValue, pluginIdValue, versionValue);
+            }
+
+            return null;
         }
         catch (JsonException)
         {
@@ -170,6 +182,12 @@ internal static class PluginEndpoints
     }
 
     private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version);
+
+    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error)
+    {
+        public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
+            new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : "The server could not install the plugin.");
+    }
 
     private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
 }
