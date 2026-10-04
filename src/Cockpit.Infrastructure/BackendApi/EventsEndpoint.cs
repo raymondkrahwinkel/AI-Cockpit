@@ -2,6 +2,7 @@ using System.Globalization;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -71,9 +72,11 @@ internal static class EventsEndpoint
                     var evt = events.Current;
                     // The assistant is every operate key's, as its routes are; any other pane only within the key's scope,
                     // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
-                    if (evt.PaneId is { } paneId
-                        && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
-                        && !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing))
+                    // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
+                    if ((evt.PaneId is { } paneId
+                            && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
+                            && !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing))
+                        || (evt.Kind == ProjectsEndpoints.EventKind && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();
                         continue;

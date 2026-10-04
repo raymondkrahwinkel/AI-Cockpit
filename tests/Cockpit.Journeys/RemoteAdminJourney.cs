@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -14,8 +15,8 @@ using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Journeys;
 
-// J10 (AC-1446), Admin on a server: the desktop holds an admin key to Cockpit.Server and opens Options there. F5.6b2–b4
-// add their steps (projects, profiles, plugins) to this route.
+// J10 (AC-1446), Admin on a server: the desktop holds an admin key to Cockpit.Server and opens Options there. F5.6b2
+// added the projects step; b3–b4 add profiles and plugins to this route.
 [Collection(JourneyCollection.Alone)]
 public sealed class RemoteAdminJourney
 {
@@ -25,8 +26,11 @@ public sealed class RemoteAdminJourney
 
     private const string Phone = "journey-phone";
 
+    private const string Project = "journey-project";
+
     // Admin → Connect keys → issue; the new key connects; revoke; the revoked key is refused; a locked-out address is
-    // lifted. Each step is in the Audit log with the key that called as its actor, never the node tools' identity.
+    // lifted. AC-1472: Projects clones a bare repository; it is in GET /projects and "+ Start on", and a session runs in
+    // it. Each step is in the Audit log with the key that called as its actor, never the node tools' identity.
     [Fact]
     public async Task AnAdminKey_IssuesAKeyThatConnects_RevokesIt_AndLiftsALockout_EachInTheAuditUnderItsOwnLabel()
     {
@@ -34,9 +38,18 @@ public sealed class RemoteAdminJourney
         var stateRoot = Path.Combine(root, "state");
         var store = _CreateFixtureStore(root);
         var bootstrap = _NewKey();
+        var origin = Path.Combine(root, "origin.git");
+        var work = Path.Combine(root, "origin-work");
+        await _GitAsync(root, "init", "--bare", "-b", "main", origin);
+        await _GitAsync(root, "init", "-b", "main", work);
+        await File.WriteAllTextAsync(Path.Combine(work, "README.md"), "journey");
+        await _GitAsync(work, "add", "README.md");
+        await _GitAsync(work, "-c", "user.name=journey", "-c", "user.email=journey@example.invalid", "commit", "-m", "first");
+        await _GitAsync(work, "push", origin, "main");
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", pluginStore: store);
         var run = ServerJourney._RunServer(
-            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", bootstrap));
+            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", bootstrap),
+            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
         try
         {
             await run.Running.WaitAsync(Until.Ceiling);
@@ -145,6 +158,32 @@ public sealed class RemoteAdminJourney
                 await admin.LiftCommand.ExecuteAsync(lockout);
                 await admin.LoadCommand.ExecuteAsync(null);
             });
+
+            // Projects: the server clones over file:// and adds the project; "+ Start on" offers it, and a session starts there.
+            var cloneResult = "";
+            var offered = new List<string>();
+            var paneId = "";
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                admin.CloneUrl = new Uri(origin).AbsoluteUri;
+                admin.CloneBranch = "main";
+                admin.CloneName = Project;
+                await admin.CloneCommand.ExecuteAsync(null);
+                cloneResult = admin.CloneResult;
+
+                var group = view.ServerGroups[0];
+                await view.OpenServerStartCommand.ExecuteAsync(group);
+                offered = [.. group.Start.Projects.Select(project => project.Name)];
+                group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
+                group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == Project);
+                await view.StartOnServerCommand.ExecuteAsync(group);
+                paneId = group.Sessions.Single().Handle.PaneId;
+            });
+            var listed = (await setup.GetAsync<JsonObject>("api/v1/projects"))["projects"]?.AsArray().Single(project => project?["name"]?.GetValue<string>() == Project);
+            var clonePath = listed?["path"]?.GetValue<string>() ?? "";
+            var sessionFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
+                .Select(line => JsonNode.Parse(line))
+                .Last(record => record?["PaneId"]?.GetValue<string>() == paneId)?["WorkingDirectory"]?.GetValue<string>();
             var audit = HeadlessAvalonia.Run(() => admin.Audit.Select(row => (row.Key, row.What)).ToList());
             var lockoutsAfter = HeadlessAvalonia.Run(() => admin.Lockouts.Count);
             await HeadlessAvalonia.RunAsync(async () =>
@@ -162,6 +201,11 @@ public sealed class RemoteAdminJourney
             Assert.Contains((Laptop, $"revoked · {Phone}"), audit);
             Assert.Contains((Phone, "refused: revoked key"), audit);
             Assert.Contains((Laptop, $"lockout lifted · {lockedOut}"), audit);
+            Assert.StartsWith($"Cloned into {clonePath} · ", cloneResult, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(clonePath, "README.md")), "The clone the server reported holds no checkout.");
+            Assert.Contains(Project, offered);
+            Assert.Equal(clonePath, sessionFolder);
+            Assert.Contains((Laptop, $"cloned · {Project}"), audit);
         }
         finally
         {
@@ -173,6 +217,16 @@ public sealed class RemoteAdminJourney
             run.Process.Dispose();
             JourneyHost.RemoveStateRoot(root);
         }
+    }
+
+    private static async Task _GitAsync(string directory, params string[] arguments)
+    {
+        var start = new ProcessStartInfo("git", arguments) { WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true };
+        using var git = Process.Start(start) ?? throw new InvalidOperationException("git did not start.");
+        var error = git.StandardError.ReadToEndAsync();
+        await git.StandardOutput.ReadToEndAsync();
+        await git.WaitForExitAsync();
+        Assert.True(git.ExitCode == 0, $"git {string.Join(' ', arguments)} failed: {await error}");
     }
 
     // A key no one issued, in the shape of one: "ck_" and 64 random characters.

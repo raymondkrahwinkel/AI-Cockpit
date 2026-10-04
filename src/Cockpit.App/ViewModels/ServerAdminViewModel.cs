@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 
@@ -22,10 +23,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
+    private readonly IServerProjects? _serverProjects;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, TimeProvider? time = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null)
     {
+        _serverProjects = serverProjects;
         Server = server;
         KeyLabel = keyLabel;
         _admin = admin;
@@ -136,6 +139,11 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             OnPropertyChanged(nameof(HasLockouts));
             await _LoadAuditAsync(null);
             await _LoadPluginsAsync();
+            if (_serverProjects is { } serverProjects)
+            {
+                await serverProjects.LoadAsync();
+                _ShowProjects();
+            }
         });
     }
 
@@ -598,7 +606,7 @@ public sealed class AuditRowViewModel
         return entry.Outcome switch
         {
             "issued" when entry.Subject is { } prefix && keys.TryGetValue(prefix, out var issued) => $"issued · {issued.Label} ({ServerAdminViewModel.CapabilityName(issued.Capability)})",
-            "issued" or "revoked" or "scope changed" => $"{entry.Outcome} · {subject}",
+            "issued" or "revoked" or "scope changed" or "cloned" or "clone failed" or "changed" or "removed" => $"{entry.Outcome} · {subject}",
             "connected" => "connected",
             { } outcome when outcome.StartsWith(lockoutStarted, StringComparison.Ordinal)
                 && DateTimeOffset.TryParse(outcome[lockoutStarted.Length..], CultureInfo.InvariantCulture, DateTimeStyles.None, out var until) =>

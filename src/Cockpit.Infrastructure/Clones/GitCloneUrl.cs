@@ -50,6 +50,31 @@ internal sealed class GitCloneUrl
             : _ParseSchemeUrl(trimmed);
     }
 
+    // AC-1472: whether `url` carries a secret: any userinfo, where a user name can be a token, and a query on HTTP(S). Only
+    // SSH keeps a login user (`git@host:org/repo`, `ssh://git@host/...`), and then only without a password.
+    public static bool CarriesCredentials(string url)
+    {
+        var trimmed = url.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && (uri.UserInfo.Length > 0 || uri.Query.Length > 0))
+        {
+            return true;
+        }
+
+        var schemeEnd = trimmed.IndexOf("://", StringComparison.Ordinal);
+        var scheme = schemeEnd < 0 ? "" : trimmed[..schemeEnd].ToLowerInvariant();
+        var authorityStart = schemeEnd < 0 ? 0 : schemeEnd + 3;
+        var pathStart = trimmed.IndexOf('/', authorityStart);
+        var authority = pathStart < 0 ? trimmed[authorityStart..] : trimmed[authorityStart..pathStart];
+        var at = authority.LastIndexOf('@');
+        var userInfo = at < 0 ? "" : authority[..at];
+        return scheme is "" or "ssh" or "git+ssh" or "ssh+git"
+            ? userInfo.Contains(':', StringComparison.Ordinal)
+            : at >= 0 || (scheme is "http" or "https" && trimmed.Contains('?', StringComparison.Ordinal));
+    }
+
+    // AC-1472: whether `url` is git's scp-style SSH form (`git@host:org/repo`), as Parse reads it.
+    public static bool IsScpLike(string url) => _TryParseScpLike(url.Trim(), out _);
+
     // Whether `otherRemoteUrl` (an existing checkout's `origin`) is the same repository as this one — the de-dup test. A remote that will not parse is treated as "not the same", the safe direction.
     public bool SameRepositoryAs(string otherRemoteUrl)
     {

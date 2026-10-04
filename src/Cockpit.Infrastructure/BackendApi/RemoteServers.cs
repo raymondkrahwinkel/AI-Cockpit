@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Sessions;
@@ -179,6 +180,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     private readonly ILogger _logger;
     private readonly BackendApiClient _client;
     private readonly RemoteServerHealthReader _health;
+    private readonly RemoteProjects _projects;
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _gate = new();
     private RemoteServerState _state = new(false, null, null);
@@ -201,6 +203,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         Administration = new RemoteConnectKeyAdministration(_client);
         _health = new RemoteServerHealthReader(_client, name, logger);
         Plugins = new RemotePluginAdministration(_client);
+        _projects = new RemoteProjects(_client);
     }
 
     public string Name { get; }
@@ -226,6 +229,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     public IConnectKeyAdministration Administration { get; }
 
     public IPluginAdministration Plugins { get; }
+
+    public IServerProjects Projects => _projects;
 
     public RemoteServerState State
     {
@@ -277,7 +282,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
             {
                 await _ReadKeyAsync().ConfigureAwait(false);
                 // Connected is the stream's word, raised when its headers come back; this only hands the registry over.
-                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection).ConfigureAwait(false);
+                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection, _projects.OnEvent).ConfigureAwait(false);
                 bool stopped;
                 lock (_gate)
                 {
@@ -342,6 +347,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
 
         _ = _ReturnAsync(generation);
         _ = _health.RefreshAsync(_stop.Token);
+        _ = _projects.CatchUpAsync();
     }
 
     // Only the return of the connection still standing may say Connected; a /whoami that comes back after a later

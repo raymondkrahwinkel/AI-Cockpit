@@ -13,8 +13,9 @@ public interface IRepositoryCloneManager
     /// Clones <paramref name="url"/> into <paramref name="targetPath"/> — or, when null/blank, the managed
     /// <c>host/org/repo</c> folder (<see cref="BuildClonePath"/>) — reusing an existing checkout rather than
     /// re-cloning. Throws with what git said on failure, or when the target folder holds a different repository.
+    /// <paramref name="allowedProtocols"/>, when given, are the only git transports this clone may use (AC-1472).
     /// </summary>
-    Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, CancellationToken cancellationToken = default);
+    Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, IReadOnlyCollection<string>? allowedProtocols = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The clones root in effect now — the operator's override (AC-90) if set, else the managed default. Resolved
