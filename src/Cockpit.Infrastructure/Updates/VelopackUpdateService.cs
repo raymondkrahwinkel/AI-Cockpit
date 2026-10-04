@@ -2,6 +2,7 @@ using System.Reflection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Updates;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Velopack;
 using Velopack.Exceptions;
@@ -171,17 +172,38 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
     // relaunch would target a path that no longer exists. A no-op when nothing has been downloaded.
     public void ApplyDownloadedUpdateAndRestart()
     {
-        if (_pendingManager is null || _pendingRelease is null)
+        var manager = _pendingManager;
+        var release = _pendingRelease;
+        if (manager is null || release is null)
         {
             return;
         }
 
-        _pendingManager.ApplyUpdatesAndRestart(_pendingRelease);
+        if (InstallationInstanceGuard.IsAnotherInstanceRunning())
+        {
+            logger.LogWarning("The update was not applied because another Cockpit instance from this installation is still running.");
+
+            return;
+        }
+
+        manager.ApplyUpdatesAndRestart(release);
     }
 
     public bool BeginStagedUpdateAndRestart()
     {
-        if (_pendingManager is null || _pendingRelease is null || !UpdateOnNextStart.TakeRequest())
+        var manager = _pendingManager;
+        var release = _pendingRelease;
+        if (manager is null || release is null || InstallationInstanceGuard.IsAnotherInstanceRunning())
+        {
+            if (manager is not null && release is not null)
+            {
+                logger.LogWarning("The update was not applied because another Cockpit instance from this installation is still running.");
+            }
+
+            return false;
+        }
+
+        if (!UpdateOnNextStart.TakeRequest())
         {
             return false;
         }
@@ -189,7 +211,7 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
         try
         {
             // ponytail: updater force-stops us after 60 seconds; keep teardown within that ceiling.
-            _pendingManager.WaitExitThenApplyUpdates(_pendingRelease, silent: false, restart: true, restartArgs: []);
+            manager.WaitExitThenApplyUpdates(release, silent: false, restart: true, restartArgs: []);
 
             return true;
         }

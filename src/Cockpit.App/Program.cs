@@ -68,6 +68,8 @@ sealed class Program
             return;
         }
 
+        using var installationInstance = InstallationInstanceGuard.Acquire();
+
         // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, then restrict
         // leftover credential files before any state access. Set before anything can spawn a session.
         CockpitBackend.MarkProcess();
@@ -215,6 +217,7 @@ sealed class Program
         && !Screenshotter.IsRequested(args)
         && !string.Equals(Environment.GetEnvironmentVariable("VELOPACK_RESTART"), "true", StringComparison.OrdinalIgnoreCase)
         && !SingleInstanceGuard.IsHeldByAnotherCockpit()
+        && !InstallationInstanceGuard.IsAnotherInstanceRunning()
         && UpdateOnNextStart.TakeRequest();
 
     // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:

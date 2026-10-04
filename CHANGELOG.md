@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an update now waits until every Cockpit instance from this installation has closed, protecting running binaries.
 - fixed: a server now refuses a state with encrypted credentials before it starts; protect its unencrypted state volume
   through the host and volume controls instead.
 - fixed: a server's assistant conversation (its transcript and its prompt) is now refused for any connect key that does
