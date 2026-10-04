@@ -118,10 +118,7 @@ public sealed class RemoteLoginFlow : ILoginFlow
         return new LoginFlowStep(
             message,
             Uri.TryCreate(state.Url, UriKind.Absolute, out var link) ? link : null,
-            state.AwaitsInput)
-        {
-            ExpiresAt = state.ExpiresAt,
-        };
+            state.AwaitsInput);
     }
 }
 
