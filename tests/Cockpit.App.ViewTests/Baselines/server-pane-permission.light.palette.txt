@@ -4,6 +4,7 @@
 # that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
 
 #142B7546  CockpitStatusDoneChipTintColor
+#14C62F2F  CockpitStatusErrorChipTintColor
 #182563EB  CockpitCategoryTintBlueColor
 #2AA35F02  CockpitStatusWaitingRowTintColor
 #66000000  off-palette
@@ -17,6 +18,7 @@
 #FF5A616D  CockpitTextSecondaryColor
 #FF7C8391  CockpitTextFaintColor
 #FFA35F02  CockpitStatusWaitingColor
+#FFC62F2F  CockpitStatusErrorColor
 #FFD5DAE3  CockpitHairlineColor
 #FFD7E3F7  CockpitUserBubbleColor
 #FFDDE2EB  CockpitSecondaryBgColor

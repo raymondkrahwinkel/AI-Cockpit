@@ -1,4 +1,5 @@
 using Cockpit.App.Composition;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
@@ -6,7 +7,6 @@ using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
-using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
@@ -56,7 +56,7 @@ internal static class ServerGroupScene
             var pane = new SessionViewModel(SessionControls.DesignTime);
             await pane.FollowRemoteAsync(handle, name);
             return pane;
-        });
+        }, new SceneSignIns());
 
         var group = cockpit.ServerGroups[0];
         if (health)
@@ -113,13 +113,11 @@ internal static class ServerGroupScene
     }
 
     private sealed class SceneServer(string name, RemoteServerState state, IReadOnlyList<ISessionHandle> sessions)
-        : IRemoteServer, IRemoteServerSignIn, ISessionRegistry
+        : IRemoteServer, ISessionRegistry
     {
         public string Name { get; } = name;
 
         public IRemoteServerHealth Health { get; } = new SceneHealth(state.Key?.Capability == "admin");
-
-        public ILoginFlow StartSignIn(string profile, CancellationToken cancellationToken) => new SceneSignIn();
 
         public ISessionRegistry? Sessions => this;
 
@@ -217,6 +215,11 @@ internal static class ServerGroupScene
                     new RemoteHealthSection("discord", true, [new("Online as Zyra · DM delivery ok", false, now.AddHours(-1), null)]),
                 ]);
         }
+    }
+
+    private sealed class SceneSignIns : IServerSignIns
+    {
+        public ILoginFlow? Start(string server, string profile, CancellationToken cancellationToken) => new SceneSignIn();
     }
 
     // A device-code sign-in as Codex asks for one: a link and a code, and nothing to type.

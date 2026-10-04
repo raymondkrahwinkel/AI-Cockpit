@@ -4,7 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Remote;
-using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -18,11 +18,13 @@ public sealed partial class ServerHealthViewModel : ObservableObject
     private const string Separator = " · ";
 
     private readonly IRemoteServer _server;
+    private readonly Func<string, ILoginFlow?>? _startSignIn;
     private string _dismissed = "";
 
-    public ServerHealthViewModel(IRemoteServer server)
+    public ServerHealthViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null)
     {
         _server = server;
+        _startSignIn = startSignIn;
         server.Health.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         server.StateChanged += (_, _) => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(IsAdmin)));
         Rebuild();
@@ -162,14 +164,19 @@ public sealed partial class ServerHealthViewModel : ObservableObject
     [RelayCommand]
     private async Task StartSignInAsync()
     {
-        if (AlarmProfile is not { } profile || !IsAdmin || _server is not IRemoteServerSignIn signIns)
+        if (AlarmProfile is not { } profile || !IsAdmin || _startSignIn is null)
         {
             return;
         }
 
         await CloseSignInAsync();
+        if (_startSignIn(profile) is not { } started)
+        {
+            return;
+        }
+
         _signInProfile = profile;
-        var flow = new LoginFlowRowViewModel(signIns.StartSignIn(profile, CancellationToken.None));
+        var flow = new LoginFlowRowViewModel(started);
         flow.Completed = succeeded => Dispatcher.UIThread.Post(() => _ = SettleAsync(succeeded));
         SignIn = flow;
     }

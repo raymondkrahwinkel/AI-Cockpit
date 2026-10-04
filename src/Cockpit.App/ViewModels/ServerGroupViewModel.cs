@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -11,13 +12,13 @@ namespace Cockpit.App.ViewModels;
 // neither listed nor counted. Built and reconciled on the UI thread only.
 public sealed partial class ServerGroupViewModel : ObservableObject
 {
-    public ServerGroupViewModel(IRemoteServer server)
+    public ServerGroupViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null)
     {
         Server = server;
         Name = server.Name;
         _state = server.State;
         Start = new ServerStartViewModel(server.Name);
-        Health = new ServerHealthViewModel(server);
+        Health = new ServerHealthViewModel(server, startSignIn);
     }
 
     public IRemoteServer Server { get; }

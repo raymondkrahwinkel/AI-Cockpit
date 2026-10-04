@@ -5,11 +5,9 @@
 
 #145AA576  CockpitStatusDoneChipTintColor
 #14D64545  CockpitStatusErrorChipTintColor
-#182563EB  CockpitCategoryTintBlueColor
 #2AE0A33E  CockpitStatusWaitingRowTintColor
 #66FFFFFF  off-palette
 #99FFFFFF  off-palette
-#CCFFFFFF  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
@@ -20,7 +18,6 @@
 #FF202430  CockpitInsetBgColor
 #FF22D3EE  CockpitStatusBusyColor
 #FF2563EB  CockpitAccentColor
-#FF28313B  CockpitUserBubbleColor
 #FF2A2F39  CockpitHairlineColor
 #FF5AA576  CockpitStatusDoneColor
 #FF656C78  CockpitTextFaintColor
@@ -34,11 +31,9 @@ radius  1,1,1,1
 radius  12,12,12,12
 radius  13,13,13,13
 radius  15,15,15,15
-radius  2,2,2,2
 radius  20,20,20,20
 radius  3,3,3,3
 radius  4,4,4,4
 radius  5,5,5,5
 radius  6,6,6,6
-radius  7,7,7,7
 radius  9,9,9,9
