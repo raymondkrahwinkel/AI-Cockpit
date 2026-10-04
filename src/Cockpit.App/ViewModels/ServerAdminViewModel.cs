@@ -49,6 +49,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1473: the Profiles page, when this dialog was given the server's profiles.
     public ServerProfilesViewModel? Profiles { get; init; }
 
+    // AC-1475: the Assistant page, when this dialog was given the server's assistant.
+    public ServerAssistantViewModel? Assistant { get; init; }
+
     public ObservableCollection<ConnectKeyRowViewModel> Keys { get; } = [];
 
     public ObservableCollection<LockoutRowViewModel> Lockouts { get; } = [];
@@ -610,6 +613,7 @@ public sealed class AuditRowViewModel
         {
             "issued" when entry.Subject is { } prefix && keys.TryGetValue(prefix, out var issued) => $"issued · {issued.Label} ({ServerAdminViewModel.CapabilityName(issued.Capability)})",
             "issued" or "revoked" or "scope changed" or "cloned" or "clone failed" or "changed" or "removed" => $"{entry.Outcome} · {subject}",
+            "copied" => $"assistant profile copied from {subject}",
             "connected" => "connected",
             { } outcome when outcome.StartsWith(lockoutStarted, StringComparison.Ordinal)
                 && DateTimeOffset.TryParse(outcome[lockoutStarted.Length..], CultureInfo.InvariantCulture, DateTimeStyles.None, out var until) =>

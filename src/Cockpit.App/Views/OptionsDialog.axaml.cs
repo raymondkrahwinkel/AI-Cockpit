@@ -123,6 +123,12 @@ public partial class OptionsDialog : Window
             dialog.Opened += (_, _) => profiles.LoadCommand.Execute(null);
         }
 
+        if (admin.Assistant is { } assistant)
+        {
+            dialog._AddServerPage("server-assistant", "Assistant", MaterialIconKind.Creation, new ServerAssistantPage { DataContext = assistant });
+            dialog.Opened += (_, _) => assistant.LoadCommand.Execute(null);
+        }
+
         dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
