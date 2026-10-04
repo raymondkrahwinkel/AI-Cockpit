@@ -79,7 +79,7 @@ public sealed class RemoteAdminJourney
                 dialog.SelectCategory("server-plugins");
                 return Task.CompletedTask;
             });
-            Assert.Contains(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
+            Assert.Single(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
