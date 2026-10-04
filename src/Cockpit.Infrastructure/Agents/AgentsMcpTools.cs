@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
@@ -20,7 +21,8 @@ internal sealed class AgentsMcpTools(
     IAgentResourceClaims claims,
     IAgentLineBudget budget,
     INodeControllerPresence? presence = null,
-    INodePairingBroker? pairing = null)
+    INodePairingBroker? pairing = null,
+    ISessionRegistry? sessions = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -195,11 +197,13 @@ internal sealed class AgentsMcpTools(
             }
 
             // AC-1322: while a controller holds the line, the assistant this machine has is the controller's, so its
-            // mail is queued for that cockpit's next poll — but only from a profile the pairing grant covers (the scope
-            // send_node_message answers to): a session the controller may not reach must not reach it, so it stays local.
-            var controller = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal)
-                && pairing?.IsProfileAllowed(_ProfileOf(snapshot, caller) ?? string.Empty) == true
-                ? presence?.Current
+            // mail is queued for that cockpit's next poll — but only from a session the controller may reach (AC-1405:
+            // its key's scope, or the pairing grant); any other session's mail stays local.
+            var current = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal) ? presence?.Current : null;
+            var controller = current is not null
+                && pairing is not null
+                && NodeCaller.Holding(current).AllowsSession(_ProfileOf(snapshot, caller) ?? string.Empty, sessions?.Find(caller)?.ProjectId, pairing)
+                ? current
                 : null;
 
             // The workspace boundary, enforced here at send time on the host's own answer to "who is on this

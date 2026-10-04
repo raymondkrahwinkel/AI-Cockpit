@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Agents;
@@ -16,7 +17,8 @@ namespace Cockpit.Infrastructure.Tests.Agents;
 /// AC-1322 at the node's end: a <c>notify cockpit-assistant</c> while a controller holds the line is queued for
 /// that controller (criterion 1) and acknowledged by the cursor the controller sends back (criterion 2); what the
 /// controller had not collected when it dropped away lands with the local assistant, saying so (criterion 3). The
-/// split is taken only for a sender under a profile the pairing grant covers; any other sender's mail stays local.
+/// split is taken only for a sender the holder may reach (AC-1405: its key's scope, or the pairing grant); any other
+/// sender's mail stays local.
 /// </summary>
 public sealed class NodeNotifyRoutingTests : IDisposable
 {
@@ -50,7 +52,34 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
     }
 
-    private AgentsMcpTools _Agents(bool profileShared = true, bool withLocalAssistant = false)
+    // AC-1405: a controller holding the line by connect key gets the mail of a session its key's scope reaches, with
+    // no pairing at all, and not of one in a project outside that scope. A null key project is a key on every project.
+    [Theory]
+    [InlineData("project-a", "project-a", "DESKTOP", 0)]
+    [InlineData("project-a", "project-b", null, 1)]
+    [InlineData(null, null, "DESKTOP", 0)]
+    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(string? keyProject, string? sessionProject, string? controller, int keptLocally)
+    {
+        _presence.Current = new ActiveController("DESKTOP", DateTimeOffset.UtcNow, "ck_test", new ConnectKeyScope
+        {
+            AllowAllProjects = keyProject is null,
+            AllowedProjectIds = keyProject is null ? [] : [keyProject],
+        });
+        var session = Substitute.For<ISessionHandle>();
+        session.ProjectId.Returns(sessionProject);
+        var sessions = Substitute.For<ISessionRegistry>();
+        sessions.Find(AgentOnTheNode).Returns(session);
+        McpRequestContext.Set(AgentOnTheNode);
+        var reply = _Json(await _Agents(profileShared: false, withLocalAssistant: true, sessions).NotifyAsync(AssistantIdentity.PaneId, "done", "Green."));
+
+        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.Equal(controller, reply["controller"]?.GetValue<string>());
+        Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
+    }
+
+    private AgentsMcpTools _Agents(bool profileShared = true, bool withLocalAssistant = false, ISessionRegistry? sessions = null)
     {
         var gateway = Substitute.For<IWorkspaceAgentGateway>();
         var assistant = new WorkspaceAgentPane(AssistantIdentity.PaneId, "Assistant", "personal", "", true);
@@ -69,7 +98,8 @@ public sealed class NodeNotifyRoutingTests : IDisposable
             new AgentResourceClaims(),
             new AgentLineBudget(TimeProvider.System, TimeSpan.FromMinutes(1), 10_000, 10_000),
             _presence,
-            pairing);
+            pairing,
+            sessions);
     }
 
     private NodeSessionMcpTools _Node() => new(
