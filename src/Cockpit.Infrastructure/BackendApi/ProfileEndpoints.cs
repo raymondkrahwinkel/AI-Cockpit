@@ -55,12 +55,13 @@ internal static class ProfileEndpoints
         ISessionProfileStore store() => services.GetRequiredService<ISessionProfileStore>();
         IReadOnlyList<ProfileLoginHealth> health() => Health(services);
         IReadOnlySet<string> declared(SessionProfile profile) => Declared(services, profile);
+        IReadOnlyList<PluginSessionOptionDescriptor> options(SessionProfile profile) => Options(services, profile);
 
         api.MapGet("/profiles", async (CancellationToken cancellationToken) =>
         {
             var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
             var signIns = health();
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, declared(profile))) }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile))) }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -98,7 +99,7 @@ internal static class ProfileEndpoints
                     return (null, refusal);
                 }
 
-                return ([.. profiles, made], Results.Json(ToWire(made, health(), declared(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
+                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
@@ -118,7 +119,7 @@ internal static class ProfileEndpoints
 
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
-                return (next, Results.Json(ToWire(changed, health(), declared(changed)), ConnectKeyEndpoints.Json));
+                return (next, Results.Json(ToWire(changed, health(), options(changed)), ConnectKeyEndpoints.Json));
             })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
@@ -221,8 +222,10 @@ internal static class ProfileEndpoints
     internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
 
     internal static IReadOnlySet<string> Declared(IServiceProvider services, SessionProfile profile) =>
-        (services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [])
-            .Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+        Options(services, profile).Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+
+    internal static IReadOnlyList<PluginSessionOptionDescriptor> Options(IServiceProvider services, SessionProfile profile) =>
+        services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [];
 
     // A credential or a program path anywhere in the request, before any of it is read.
     internal static IResult? Refusal(JsonNode? node)
@@ -269,8 +272,11 @@ internal static class ProfileEndpoints
 
     // Only the option keys the profile's provider declares cross, as list_profiles reports them (AC-649); a stored
     // key it does not declare may hold anything, a plugin's credential included.
-    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlySet<string> declared)
+    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions)
     {
+        var declared = declaredOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+        var known = declaredOptions.Where(option => option.KnownValues is { Count: > 0 })
+            .ToDictionary(option => option.Key, IReadOnlyList<RemoteOptionValue> (option) => [.. (option.KnownValues ?? []).Select(value => new RemoteOptionValue(value.Value, value.Label))], StringComparer.Ordinal);
         var options = profile.Defaults?.OptionDefaults?.Where(option => declared.Contains(option.Key)).ToDictionary(option => option.Key, option => option.Value);
         return new(
             profile.Label,
@@ -285,7 +291,8 @@ internal static class ProfileEndpoints
                 : new RemoteProfileVariable(variable.Key, variable.Value))],
             profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
             profile.ProviderConfig is PluginProviderConfig,
-            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn);
+            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
+            known.Count > 0 ? known : null);
     }
 
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.

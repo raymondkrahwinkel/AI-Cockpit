@@ -33,6 +33,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
 using Cockpit.Plugins.Abstractions.Health;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
@@ -171,6 +172,8 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
+        { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "\"knownValues\":{\"model\":[{\"value\":\"qwen\",\"label\":\"Qwen 2.5\"},{\"value\":\"qwen-large\",\"label\":\"Qwen large\"}]}", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"knownValues\":{\"model\":[{\"value\":\"qwen\",\"label\":\"Qwen 2.5\"},{\"value\":\"qwen-large\",\"label\":\"Qwen large\"}]}", _Door.ProfileSecret },
         { "PUT", "/api/v1/assistant/settings/enabled", "{}", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/{secret}", null, "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
@@ -755,6 +758,11 @@ public sealed class BackendApiDoorTests
             services.AddSingleton<IAssistantReadGateway>(ReadGateway);
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);
+            // AC-1475: the keyed profile's provider lists its models, so a profile answer carries that list.
+            Providers.Register(new SessionProviderRegistration("lmstudio", "LM Studio", _ => Substitute.For<IPluginSessionDriverFactory>(), new PluginSessionCapabilities(false, false, false)
+            {
+                DeclaredOptions = [new PluginSessionOptionDescriptor(WellKnownPluginSessionOptions.Model, "Model", [new("qwen", "Qwen 2.5"), new("qwen-large", "Qwen large")])],
+            }));
             services.AddSingleton(Providers);
             services.AddSingleton(Plugins);
             services.AddSingleton(PluginStores);

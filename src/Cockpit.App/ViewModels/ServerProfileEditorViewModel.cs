@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -14,6 +15,20 @@ public sealed partial class ServerProfileEditorViewModel : ObservableObject
     private bool _variablesTouched;
 
     public ObservableCollection<ServerProfileVariableViewModel> Variables { get; } = [];
+
+    // AC-1475: what the provider offers for model and permission mode; empty where it lists nothing, and then the field
+    // is free text, as it is against a server that predates the list.
+    public ObservableCollection<RemoteOptionValue> ModelChoices { get; } = [];
+
+    public ObservableCollection<RemoteOptionValue> PermissionModeChoices { get; } = [];
+
+    public bool HasModelChoices => ModelChoices.Count > 0;
+
+    public bool IsModelFreeText => !HasModelChoices;
+
+    public bool HasPermissionModeChoices => PermissionModeChoices.Count > 0;
+
+    public bool IsPermissionModeFreeText => !HasPermissionModeChoices;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsModelChanged))]
@@ -35,10 +50,29 @@ public sealed partial class ServerProfileEditorViewModel : ObservableObject
 
     public bool IsMcpServersChanged => _original is not null && McpServers.Trim() != _McpText(_original.McpServers);
 
+    // A dropdown whose list is refilled sends a null selection back first; the field reads that as the default.
+    partial void OnModelChanged(string value)
+    {
+        if (value is null)
+        {
+            Model = "";
+        }
+    }
+
+    partial void OnPermissionModeChanged(string value)
+    {
+        if (value is null)
+        {
+            PermissionMode = "";
+        }
+    }
+
     public void Fill(RemoteProfile? profile)
     {
         _original = profile;
         _variablesTouched = false;
+        _FillChoices(ModelChoices, profile?.KnownValues?.GetValueOrDefault(WellKnownPluginSessionOptions.Model), profile?.Model);
+        _FillChoices(PermissionModeChoices, profile?.KnownValues?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode), profile?.PermissionMode);
         Model = profile?.Model ?? "";
         PermissionMode = profile?.PermissionMode ?? "";
         McpServers = _McpText(profile?.McpServers);
@@ -49,6 +83,10 @@ public sealed partial class ServerProfileEditorViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasVariables));
+        OnPropertyChanged(nameof(HasModelChoices));
+        OnPropertyChanged(nameof(IsModelFreeText));
+        OnPropertyChanged(nameof(HasPermissionModeChoices));
+        OnPropertyChanged(nameof(IsPermissionModeFreeText));
         OnPropertyChanged(nameof(IsModelChanged));
         OnPropertyChanged(nameof(IsPermissionModeChanged));
         OnPropertyChanged(nameof(IsMcpServersChanged));
@@ -87,6 +125,27 @@ public sealed partial class ServerProfileEditorViewModel : ObservableObject
         Variables.Remove(variable);
         _variablesTouched = true;
         OnPropertyChanged(nameof(HasVariables));
+    }
+
+    // The provider's default first, and a stored value the provider no longer lists kept as itself rather than blanked.
+    private static void _FillChoices(ObservableCollection<RemoteOptionValue> choices, IReadOnlyList<RemoteOptionValue>? known, string? current)
+    {
+        choices.Clear();
+        if (known is not { Count: > 0 })
+        {
+            return;
+        }
+
+        choices.Add(new RemoteOptionValue("", "the provider's default"));
+        foreach (var value in known)
+        {
+            choices.Add(value);
+        }
+
+        if (current is { Length: > 0 } && known.All(value => value.Value != current))
+        {
+            choices.Add(new RemoteOptionValue(current, current));
+        }
     }
 
     private static string? _Changed(string edited, string? original) =>

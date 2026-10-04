@@ -137,7 +137,7 @@ internal static class AssistantSettingsEndpoints
             settings.IsEnabled && profile is not null && host.Activity != AssistantActivity.Unavailable,
             host.UnavailableReason,
             services.GetService<INodeControllerPresence>()?.Current is not null,
-            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Declared(services, profile)),
+            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Options(services, profile)),
             profile is null ? slot.UnsetReason : null,
             profile?.SystemPrompt,
             slot.ReplacesStandingInstruction,

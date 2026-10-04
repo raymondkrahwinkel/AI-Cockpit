@@ -368,11 +368,19 @@ public partial class CockpitViewModel
             }
         }
 
+        var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects)
         {
             Profiles = new ServerProfilesViewModel(group.Server.Profiles),
-            Assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles),
+            Assistant = assistant,
         };
+
+        // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
+        assistant.OpenHealthRequested += () => _OnUiThread(() =>
+        {
+            group.IsExpanded = true;
+            group.Health.IsOpen = true;
+        });
         await _dialogService.ShowServerAdminDialogAsync(admin);
     }
 

@@ -40,6 +40,8 @@
             <Border CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitCategoryTintBlueBrush}" IsVisible="{Binding IsInfoMessage}"/>
             <DockPanel Margin="12,9">
                 <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Retry" IsVisible="{Binding CanRetry}" Command="{Binding RetryCommand}"/>
+                <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Open Server health" IsVisible="{Binding LinksHealth}" Command="{Binding OpenHealthCommand}"/>
+                <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Open Plugins" IsVisible="{Binding LinksPlugins}" Command="{Binding OpenPluginsCommand}"/>
                 <StackPanel Spacing="2">
                     <TextBlock Text="{Binding MessageTitle}" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>

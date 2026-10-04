@@ -57,7 +57,7 @@ internal static class ServerAdminScene
     // AC-1475: Assistant held by a desktop key, the profile's editor open with an unsaved model change.
     public static OptionsDialog Assistant(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant(fresh: false), new SceneProfiles());
+        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("held"), new SceneProfiles());
         assistant.LoadCommand.Execute(null);
         assistant.EditCommand.Execute(null);
         assistant.Editor.Model = "opus";
@@ -67,12 +67,31 @@ internal static class ServerAdminScene
     // AC-1475: a fresh server: the switch off and greyed, the slot empty and a server profile offered to copy in.
     public static OptionsDialog AssistantFresh(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant(fresh: true), new SceneProfiles());
+        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("fresh"), new SceneProfiles());
         assistant.LoadCommand.Execute(null);
         return _AssistantDialog(assistant, width, height);
     }
 
-    public static IAssistantAdministration AssistantStandIn() => new SceneAssistant(fresh: true);
+    // AC-1475: a sign-in that expired: the server's reason on the line, and the way to Server health.
+    public static OptionsDialog AssistantSignIn(int width, int height)
+    {
+        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("expired"), new SceneProfiles());
+        assistant.LoadCommand.Execute(null);
+        return _AssistantDialog(assistant, width, height);
+    }
+
+    // AC-1475: a save of the model while another key changed the instructions, which the server kept (state H).
+    public static OptionsDialog AssistantSaved(int width, int height)
+    {
+        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("saved"), new SceneProfiles());
+        assistant.LoadCommand.Execute(null);
+        assistant.EditCommand.Execute(null);
+        assistant.Editor.Model = "opus";
+        assistant.SaveCommand.Execute(null);
+        return _AssistantDialog(assistant, width, height);
+    }
+
+    public static IAssistantAdministration AssistantStandIn() => new SceneAssistant("fresh");
 
     public static OptionsDialog Plugins(int width, int height)
     {
@@ -206,24 +225,39 @@ internal static class ServerAdminScene
             new(label, provider, model, null, mcp, null, DelegationPolicy.None, environment, false, true, signIn);
     }
 
-    // The mockup's assistant: on, stood down for the key that holds it, with a secret variable and two bypassed sources.
-    private sealed class SceneAssistant(bool fresh) : IAssistantAdministration
+    // What the Claude provider lists for model and permission mode, so the editor shows its dropdowns.
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<RemoteOptionValue>> ClaudeChoices = new Dictionary<string, IReadOnlyList<RemoteOptionValue>>
     {
+        ["model"] = [new("opus", "Opus"), new("sonnet", "Sonnet"), new("haiku", "Haiku")],
+        ["permission-mode"] = [new("default", "Ask"), new("acceptEdits", "Accept edits"), new("plan", "Plan")],
+    };
+
+    // The mockup's assistant, per `state`: "held" by a desktop key, "fresh", sign-in "expired", or "saved" while another
+    // key changed the instructions; with a secret variable and two bypassed sources.
+    private sealed class SceneAssistant(string state) : IAssistantAdministration
+    {
+        private const string Instructions = "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it. Answer in Dutch unless asked otherwise.";
+
         private static readonly RemoteProfile Profile = new(
             "server-assistant", "claude", "sonnet", "acceptEdits", ["depot", "youtrack"], null, DelegationPolicy.None,
             [new RemoteProfileVariable("CLAUDE_CONFIG_DIR", "/data/claude/assistant"), new RemoteProfileVariable("DEPOT_TOKEN", null, true), new RemoteProfileVariable("TZ", "Europe/Amsterdam")],
-            false, true, ProfileSignInKind.SignedIn);
+            false, true, ProfileSignInKind.SignedIn, ClaudeChoices);
 
         private static readonly RemoteConsentBypass Bypass = new(false, ["discord-dm", "scheduler"]);
 
-        public Task<RemoteAssistantSettings> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(fresh
-            ? new RemoteAssistantSettings(false, false, "The assistant is switched off. Turn it on in Options → Assistant.", false, null, "No assistant profile has been set up yet.", null, false, true, Bypass)
-            : new RemoteAssistantSettings(true, false, $"Controlled by laptop-raymond since {DateTimeOffset.Now:HH:mm}. Your assistant here comes back by itself when that connection drops.", true,
-                Profile, null, "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it. Answer in Dutch unless asked otherwise.", false, true, Bypass));
+        public Task<RemoteAssistantSettings> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(state switch
+        {
+            "fresh" => new RemoteAssistantSettings(false, false, "The assistant is switched off. Turn it on in Options → Assistant.", false, null, "No assistant profile has been set up yet.", null, false, true, Bypass),
+            "expired" => new RemoteAssistantSettings(true, false, "server-assistant: sign-in expired", false, Profile with { SignIn = ProfileSignInKind.Expired }, null, Instructions, false, true, Bypass),
+            _ => new RemoteAssistantSettings(true, false, $"Controlled by laptop-raymond since {DateTimeOffset.Now:HH:mm}. Your assistant here comes back by itself when that connection drops.", true,
+                Profile, null, Instructions, false, true, Bypass),
+        });
 
         public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
 
-        public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
+        // "saved": the model this side sent, and instructions telefoon-raymond changed in the meantime.
+        public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) => Task.FromResult(
+            new RemoteAssistantSettings(true, true, null, false, Profile with { Model = patch.Profile?.Model ?? Profile.Model }, null, Instructions + " Keep replies short.", false, true, Bypass));
 
         public Task<RemoteAssistantSettings?> CopyProfileFromAsync(string label, CancellationToken cancellationToken = default) =>
             Task.FromResult<RemoteAssistantSettings?>(null);

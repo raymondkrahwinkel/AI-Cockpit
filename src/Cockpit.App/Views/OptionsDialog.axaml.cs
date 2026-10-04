@@ -127,6 +127,8 @@ public partial class OptionsDialog : Window
         {
             dialog._AddServerPage("server-assistant", "Assistant", MaterialIconKind.Creation, new ServerAssistantPage { DataContext = assistant });
             dialog.Opened += (_, _) => assistant.LoadCommand.Execute(null);
+            assistant.OpenPluginsRequested += () => dialog.SelectCategory("server-plugins");
+            assistant.OpenHealthRequested += dialog.Close;
         }
 
         dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });

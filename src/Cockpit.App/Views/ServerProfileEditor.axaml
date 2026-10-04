@@ -8,11 +8,15 @@
          a password: a secret variable shows as set on the server, and a change marks itself until it is saved. -->
     <StackPanel Spacing="4">
         <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-        <TextBox Text="{Binding Model}" PlaceholderText="the provider's default"/>
+        <ComboBox ItemsSource="{Binding ModelChoices}" SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Model, Mode=TwoWay}"
+                  DisplayMemberBinding="{Binding Label}" IsVisible="{Binding HasModelChoices}" HorizontalAlignment="Stretch"/>
+        <TextBox Text="{Binding Model}" PlaceholderText="the provider's default" IsVisible="{Binding IsModelFreeText}"/>
         <TextBlock Classes="optionsHint" Text="changed · not saved yet" IsVisible="{Binding IsModelChanged}"
                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
         <TextBlock Text="Permission mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-        <TextBox Text="{Binding PermissionMode}" PlaceholderText="the provider's default"/>
+        <ComboBox ItemsSource="{Binding PermissionModeChoices}" SelectedValueBinding="{Binding Value}" SelectedValue="{Binding PermissionMode, Mode=TwoWay}"
+                  DisplayMemberBinding="{Binding Label}" IsVisible="{Binding HasPermissionModeChoices}" HorizontalAlignment="Stretch"/>
+        <TextBox Text="{Binding PermissionMode}" PlaceholderText="the provider's default" IsVisible="{Binding IsPermissionModeFreeText}"/>
         <TextBlock Classes="optionsHint" Text="changed · not saved yet" IsVisible="{Binding IsPermissionModeChanged}"
                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
         <TextBlock Text="MCP sets" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>

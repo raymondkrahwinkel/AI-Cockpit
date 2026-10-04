@@ -69,6 +69,12 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     [ObservableProperty]
     private bool _canRetry;
 
+    [ObservableProperty]
+    private bool _linksHealth;
+
+    [ObservableProperty]
+    private bool _linksPlugins;
+
     public bool HasMessage => MessageTitle.Length > 0;
 
     public bool IsErrorMessage => MessageKind == ServerAssistantMessage.Error;
@@ -205,15 +211,27 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
             return;
         }
 
+        var before = Settings;
         var saved = await assistant.UpdateProfileAsync(patch);
         _justSaved = true;
         IsEditing = false;
         _Show(saved);
-        _Say(ServerAssistantMessage.Info, "Saved.", "Only the fields you changed were sent; anything changed on the server meanwhile was kept.");
+        _Say(ServerAssistantMessage.Info, "Saved.", _SavedText(_Sent(patch), _Fields(before).Where(field => !_Sent(patch).Contains(field.Name) && field.Value != _Fields(saved).First(other => other.Name == field.Name).Value).Select(field => field.Name).ToList()));
     }, keepsForm: true);
 
     [RelayCommand]
     private Task RetryAsync() => _retry?.Invoke() ?? Task.CompletedTask;
+
+    // The links of the messages that point elsewhere: the server group's Health tab, and this dialog's Plugins page.
+    public event Action? OpenHealthRequested;
+
+    public event Action? OpenPluginsRequested;
+
+    [RelayCommand]
+    private void OpenHealth() => OpenHealthRequested?.Invoke();
+
+    [RelayCommand]
+    private void OpenPlugins() => OpenPluginsRequested?.Invoke();
 
     partial void OnIsEnabledChanged(bool value)
     {
@@ -240,11 +258,11 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
             if (ProviderMissing)
             {
-                _Say(ServerAssistantMessage.Warning, "Provider plugin not installed.", "Its settings are kept as they are and cannot be edited until the plugin is back.");
+                _Say(ServerAssistantMessage.Warning, "Provider plugin not installed.", "Its settings are kept as they are and cannot be edited until the plugin is back.", plugins: true);
             }
             else if (settings.Profile?.SignIn == ProfileSignInKind.Expired && !settings.IsAvailable)
             {
-                _Say(ServerAssistantMessage.Warning, "Sign the profile in on the server.", "Server health › Sign in without a browser. The assistant starts by itself once it can.");
+                _Say(ServerAssistantMessage.Warning, "Sign the profile in on the server.", "Server health › Sign in without a browser. The assistant starts by itself once it can.", health: true);
             }
         }
         finally
@@ -261,12 +279,49 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         Editor.Fill(Settings?.Profile);
     }
 
-    private void _Say(ServerAssistantMessage kind, string title, string text)
+    private void _Say(ServerAssistantMessage kind, string title, string text, bool health = false, bool plugins = false)
     {
         MessageKind = kind;
         MessageTitle = title;
         Message = text;
+        LinksHealth = health;
+        LinksPlugins = plugins;
     }
+
+    // State H: who changed a field meanwhile is not on this side (the audit names the route, not the field), so the
+    // message names what was sent and what the server kept, compared with what this page last read.
+    private static IReadOnlyList<(string Name, string Value)> _Fields(RemoteAssistantSettings? settings) =>
+    [
+        ("label", settings?.Profile?.Label ?? ""),
+        ("instructions", settings?.Instructions ?? ""),
+        ("instruction mode", settings?.ReplacesStandingInstruction.ToString() ?? ""),
+        ("model", settings?.Profile?.Model ?? ""),
+        ("permission mode", settings?.Profile?.PermissionMode ?? ""),
+        ("MCP sets", settings?.Profile?.McpServers is { } names ? string.Join(",", names) : "*"),
+        ("variables", string.Join(";", (settings?.Profile?.Environment ?? []).Select(variable => $"{variable.Key}={variable.Value}"))),
+    ];
+
+    private static IReadOnlyList<string> _Sent(RemoteAssistantProfilePatch patch) =>
+    [
+        .. patch.Label is null ? Array.Empty<string>() : ["label"],
+        .. patch.Instructions is null ? Array.Empty<string>() : ["instructions"],
+        .. patch.ReplacesStandingInstruction is null ? Array.Empty<string>() : ["instruction mode"],
+        .. patch.Profile?.Model is null ? Array.Empty<string>() : ["model"],
+        .. patch.Profile?.PermissionMode is null ? Array.Empty<string>() : ["permission mode"],
+        .. patch.Profile?.McpServers is null ? Array.Empty<string>() : ["MCP sets"],
+        .. patch.Profile?.Environment is null ? Array.Empty<string>() : ["variables"],
+    ];
+
+    private static string _SavedText(IReadOnlyList<string> sent, IReadOnlyList<string> kept)
+    {
+        var mine = $"The {_List(sent)} you set {(sent.Count == 1 ? "is" : "are")} now on the server";
+        return kept.Count == 0
+            ? $"{mine}."
+            : $"{mine}; the {_List(kept)} {(kept.Count == 1 ? "was" : "were")} changed on the server meanwhile and {(kept.Count == 1 ? "was" : "were")} kept, because you did not touch {(kept.Count == 1 ? "it" : "them")}.";
+    }
+
+    private static string _List(IReadOnlyList<string> names) =>
+        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
     // The one error answer cannot say why, so the page says what is likely and that nothing changed. A save that got no
     // answer keeps the form as it was, to send again.
