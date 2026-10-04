@@ -27,7 +27,7 @@ internal static class ProfileEndpoints
 
     private const string EnvironmentRefusal = "That environment variable changes how the server loads programs, so a profile cannot set it over this connection.";
 
-    private static readonly string[] CredentialFields = ["configJson"];
+    private static readonly string[] CredentialFields = ["apiKey", "configJson"];
 
     private static readonly HashSet<string> LoaderVariables = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -67,7 +67,7 @@ internal static class ProfileEndpoints
             return Results.Json(new
             {
                 profiles = profiles
-                    .Where(profile => caller.MayStartBypass || !UnsupervisedProfile.SkipsApprovals(profile.Defaults))
+                    .Where(profile => caller.AllowsProfile(profile.Label, pairing) && (caller.MayStartBypass || !UnsupervisedProfile.SkipsApprovals(profile.Defaults)))
                     .Select(profile => new { label = profile.Label, provider = SessionsEndpoints.ProviderId(profile) }),
             });
         }).RequireOperate();
@@ -112,7 +112,7 @@ internal static class ProfileEndpoints
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
                 return (next, Results.Json(ToWire(changed, health()), ConnectKeyEndpoints.Json));
-            })).RequireOperate().Audited("update_profile", services);
+            })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
         {
@@ -227,7 +227,7 @@ internal static class ProfileEndpoints
     }
 
     internal static bool IsLoaderVariable(string key) =>
-        LoaderVariables.Contains(key.Trim());
+        LoaderVariables.Contains(key.Trim()) || LoaderPrefixes.Any(prefix => key.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
     internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health) => new(
         profile.Label,
@@ -237,7 +237,7 @@ internal static class ProfileEndpoints
         profile.EnabledMcpServerNames,
         profile.Defaults?.OptionDefaults,
         profile.DelegationPolicy,
-        [.. (profile.EnvironmentVariables ?? []).Select(variable => new RemoteProfileVariable(variable.Key, variable.Value, variable.IsSecret))],
+        [.. (profile.EnvironmentVariables ?? []).Select(variable => new RemoteProfileVariable(variable.Key, variable.IsSecret ? null : variable.Value, variable.IsSecret))],
         profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
         profile.ProviderConfig is PluginProviderConfig,
         health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn);
