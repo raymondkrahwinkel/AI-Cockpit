@@ -13,4 +13,10 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <param name="AwaitsInput">
 /// True when the flow is blocked on stdin — the host should offer an input field.
 /// </param>
-public sealed record LoginFlowStep(string Message, Uri? LinkToOpen, bool AwaitsInput);
+public sealed record LoginFlowStep(string Message, Uri? LinkToOpen, bool AwaitsInput)
+{
+    /// <summary>
+    /// AC-1477: when the code this step shows stops being valid, if the flow knows. The host counts down to it.
+    /// </summary>
+    public DateTimeOffset? ExpiresAt { get; init; }
+}

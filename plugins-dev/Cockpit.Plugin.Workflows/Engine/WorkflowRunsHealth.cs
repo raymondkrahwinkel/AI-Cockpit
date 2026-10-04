@@ -26,10 +26,12 @@ internal sealed class WorkflowRunsHealth(
             .Select(entry =>
             {
                 var trigger = entry.Trigger;
-                var next = Schedule.ResolveZone(trigger.Parameters.GetValueOrDefault("Time zone")) is { } zone
-                    ? Schedule.Next(trigger.Parameters.GetValueOrDefault("When") ?? string.Empty, zone, now)
-                    : null;
-                return (entry.Workflow, Trigger: trigger, Next: next);
+                var when = trigger.Parameters.GetValueOrDefault("When") ?? string.Empty;
+                var zone = Schedule.ResolveZone(trigger.Parameters.GetValueOrDefault("Time zone"));
+                var next = zone is null ? null : Schedule.Next(when, zone, now);
+                // Only a schedule Next could read goes over the line; unreadable text never does.
+                var readable = next is null ? null : _Readable(when);
+                return (entry.Workflow, Trigger: trigger, Next: next, Text: readable, Zone: readable is null ? null : zone?.Id);
             })
             .OrderBy(entry => entry.Next is null)
             .ThenBy(entry => entry.Next)
@@ -52,6 +54,8 @@ internal sealed class WorkflowRunsHealth(
                 latest?.FinishedAt ?? latest?.StartedAt)
             {
                 ActionId = _ActionId(entry.Workflow.Id),
+                Schedule = entry.Text,
+                TimeZone = entry.Zone,
             });
             rows.Add(new PluginHealthRow($"{entry.Workflow.Name} · Next run", PluginHealthStatus.Ok, entry.Next));
         }
@@ -71,6 +75,13 @@ internal sealed class WorkflowRunsHealth(
             && candidate.Nodes.Any(node => node.TypeId == "cockpit.schedule" && !node.IsDisabled)
             && _ActionId(candidate.Id) == actionId);
         return Task.FromResult(new PluginHealthActionResult(workflow is not null && watcher.TryRunNow(workflow.Id)));
+    }
+
+    // A bare time is every day, as the mockup words it; weekdays, intervals and one-off dates already read as written.
+    private static string _Readable(string when)
+    {
+        var text = when.Trim();
+        return text.Length > 0 && char.IsDigit(text[0]) && !text.Contains(' ') ? $"daily {text}" : text;
     }
 
     private static string _ActionId(string workflowId)

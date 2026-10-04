@@ -10,6 +10,8 @@
     <!-- AC-713: shared view for a running `ILoginFlow`, however it was started. Hosts set `DataContext="{Binding LoginFlow}"` and gate their own visibility on `HasLoginFlow`. -->
     <StackPanel Spacing="6">
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"/>
+        <TextBlock Text="{Binding CodeValidFor}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                   IsVisible="{Binding HasCodeTimer}"/>
         <Button Content="{Binding LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"
                 Command="{Binding OpenLinkCommand}"
                 IsVisible="{Binding HasLink}"

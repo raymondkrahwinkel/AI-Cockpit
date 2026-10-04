@@ -191,17 +191,17 @@ internal static class ServerGroupScene
         {
             var now = DateTimeOffset.Now;
             List<RemoteHealthRow> runs = [new("15 scheduled · next: daily-checkin", false, now.AddHours(8), null)];
-            foreach (var (name, outcome, failed, last, next, action) in new (string, string, bool, DateTimeOffset, DateTimeOffset, string?)[]
+            foreach (var (name, outcome, failed, last, next, action, schedule) in new (string, string, bool, DateTimeOffset, DateTimeOffset, string?, string)[]
             {
-                ("maintenance", "Done · 4 m", false, now.AddHours(-9), now.AddHours(15), "run:a"),
-                ("morning-briefing", "Waiting for your permission", false, now.AddHours(-6), now.AddHours(18), null),
-                ("investor-data-fetch-ochtend", "Not run · Codex sign-in expired", true, now.AddHours(-5), now.AddHours(19), "run:c"),
-                ("investor-rapport", "Sent to Discord", false, now.AddHours(-5), now.AddHours(19), "run:d"),
-                ("skill-registration-audit", "Missed, caught up", false, now.AddDays(-5), now.AddDays(2), "run:e"),
-                ("daily-checkin", "Done", false, now.AddDays(-1), now.AddHours(8), "run:f"),
+                ("maintenance", "Done · 4 m", false, now.AddHours(-9), now.AddHours(15), "run:a", "daily 03:00"),
+                ("morning-briefing", "Waiting for your permission", false, now.AddHours(-6), now.AddHours(18), null, "daily 06:00"),
+                ("investor-data-fetch-ochtend", "Not run · Codex sign-in expired", true, now.AddHours(-5), now.AddHours(19), "run:c", "daily 06:45"),
+                ("investor-rapport", "Sent to Discord", false, now.AddHours(-5), now.AddHours(19), "run:d", "daily 07:00"),
+                ("skill-registration-audit", "Missed, caught up", false, now.AddDays(-5), now.AddDays(2), "run:e", "weekly Mon 09:00"),
+                ("daily-checkin", "Done", false, now.AddDays(-1), now.AddHours(8), "run:f", "daily 18:30"),
             })
             {
-                runs.Add(new($"{name} · {outcome}", failed, last, action));
+                runs.Add(new($"{name} · {outcome}", failed, last, action, schedule, "Europe/Amsterdam"));
                 runs.Add(new($"{name} · Next run", false, next, null));
             }
 
@@ -246,7 +246,10 @@ internal static class ServerGroupScene
             yield return new LoginFlowStep(
                 $"Open the link and enter the code there.{Environment.NewLine}Code: QX7K-2M9P",
                 new Uri("https://auth.openai.com/device"),
-                false);
+                false)
+            {
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(14).AddSeconds(52),
+            };
             await Task.CompletedTask;
         }
     }
