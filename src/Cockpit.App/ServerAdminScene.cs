@@ -219,8 +219,7 @@ internal static class ServerAdminScene
         public Task<RemoteAssistantSettings> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(fresh
             ? new RemoteAssistantSettings(false, false, "The assistant is switched off. Turn it on in Options → Assistant.", null, "No assistant profile has been set up yet.", null, false, true, Bypass)
             : new RemoteAssistantSettings(true, false, $"Controlled by laptop-raymond since {DateTimeOffset.Now:HH:mm}. Your assistant here comes back by itself when that connection drops.",
-                Profile, null, "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it.
-Answer in Dutch unless asked otherwise.", false, true, Bypass));
+                Profile, null, "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it. Answer in Dutch unless asked otherwise.", false, true, Bypass));
 
         public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
 

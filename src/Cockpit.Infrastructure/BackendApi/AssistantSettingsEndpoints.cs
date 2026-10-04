@@ -8,7 +8,6 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
