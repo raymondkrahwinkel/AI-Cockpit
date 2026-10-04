@@ -45,8 +45,6 @@ RUN groupadd --gid 1700 agent \
 # AC-1480: everything above that must outlive a container is a volume, declared after the owners and modes are set (a
 # VOLUME takes them from this layer; changes to these paths later in the Dockerfile are lost). Without -v, Docker makes
 # anonymous volumes of them; see deploy/README.md, "Persistent data". No secret is ever baked into this image.
-VOLUME ["/state", "/work", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
-        "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud"]
 # Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
 # the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
 RUN groupadd --gid 1701 agent-run \
