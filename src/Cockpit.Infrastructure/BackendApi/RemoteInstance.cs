@@ -121,6 +121,7 @@ public sealed class LocalRegistry
                 return Task.FromResult(false);
             }
 
+            registry._keys.Unlock(protector);
             return Task.FromResult(true);
         }
 
