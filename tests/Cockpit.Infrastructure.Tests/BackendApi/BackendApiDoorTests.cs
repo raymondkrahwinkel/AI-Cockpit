@@ -146,6 +146,7 @@ public sealed class BackendApiDoorTests
     [Theory]
     [InlineData("/api/v1/keys")]
     [InlineData("/api/v1/audit")]
+    [InlineData("/api/v1/plugins/store")]
     [InlineData("/api/v1/audit, a line per page")]
     [InlineData("audit file")]
     public async Task AnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnce(string read)
@@ -176,12 +177,12 @@ public sealed class BackendApiDoorTests
         Assert.Equal(HttpStatusCode.Created, issue.Status);
         Assert.True(secret.StartsWith("ck_", StringComparison.Ordinal) && _Occurrences(issue.Body, secret) == 1, "The issue answer did not carry the new key exactly once.");
         Assert.False(issue.Body.Contains(hash, StringComparison.OrdinalIgnoreCase), "The issue answer carried the key's hash.");
-        Assert.Contains(prefix, text, StringComparison.Ordinal);
+        Assert.True(read == "/api/v1/plugins/store" || text.Contains(prefix, StringComparison.Ordinal), $"{read} did not carry the expected key prefix.");
         Assert.False(text.Contains(secret, StringComparison.Ordinal), $"{read} carried the issued key.");
         Assert.False(text.Contains(hash, StringComparison.OrdinalIgnoreCase), $"{read} carried the issued key's hash.");
         Assert.False(text.Contains(Bootstrap, StringComparison.Ordinal), $"{read} carried the bootstrap key.");
         Assert.Empty(credentialFields);
-        Assert.True(read == "/api/v1/keys" || (_Occurrences(text, "tie-a"), _Occurrences(text, "tie-b")) == (1, 1), $"{read} lost or repeated a line of the same timestamp.");
+        Assert.True(read is "/api/v1/keys" or "/api/v1/plugins/store" || (_Occurrences(text, "tie-a"), _Occurrences(text, "tie-b")) == (1, 1), $"{read} lost or repeated a line of the same timestamp.");
         Assert.True(read != "/api/v1/audit, a line per page" || _Ids(text).SequenceEqual(_Ids(whole)), "Paging a line at a time lost or repeated a line.");
         if (read == "/api/v1/keys")
         {
