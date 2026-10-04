@@ -36,10 +36,14 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // AC-1456: told true once the stream's headers came back and false each time it dropped; null when nobody asked.
     private readonly Action<bool>? _connectionChanged;
 
-    internal RemoteBackend(BackendApiClient client, Action<bool>? connectionChanged = null)
+    // AC-1472: told each `project` event, a clone's outcome; null when nobody asked.
+    private readonly Action<BackendEvent>? _projectEvent;
+
+    internal RemoteBackend(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null)
     {
         _client = client;
         _connectionChanged = connectionChanged;
+        _projectEvent = projectEvent;
     }
 
     public event EventHandler? Changed;
@@ -105,9 +109,9 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     public bool KeyRefused { get; private set; }
 
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
-    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null)
+    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null)
     {
-        var backend = new RemoteBackend(client, connectionChanged);
+        var backend = new RemoteBackend(client, connectionChanged, projectEvent);
         var seq = await backend._RefreshAsync(reload: false).ConfigureAwait(false);
         backend._reader = backend._FollowAsync(seq);
         return backend;
@@ -122,8 +126,9 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
 
     public bool ProfileHasTtyRoute(SessionProfile profile) => false;
 
-    public Task<Project?> FindProjectByIdAsync(string projectId) =>
-        throw new NotSupportedException("A remote backend's projects are not on the API yet (F5.6b, AC-1446).");
+    // AC-1472: as the server lists it for this key, so a project outside the key's scope is not found.
+    public async Task<Project?> FindProjectByIdAsync(string projectId) =>
+        (await RemoteProjects.ReadAsync(_client, _stop.Token).ConfigureAwait(false)).FirstOrDefault(project => project.Id == projectId);
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
@@ -262,6 +267,10 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
             if (evt.Kind is "sessions-changed" or "reset")
             {
                 await _RefreshAsync(reload: evt.Kind == "reset").ConfigureAwait(false);
+            }
+            else if (evt.Kind == ProjectsEndpoints.EventKind)
+            {
+                _projectEvent?.Invoke(evt);
             }
             else if (evt.PaneId is { } paneId && (_Find(paneId) ?? _AssistantAt(paneId)) is { } handle)
             {

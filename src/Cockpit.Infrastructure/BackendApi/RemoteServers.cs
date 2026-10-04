@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
@@ -176,6 +177,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     private readonly McpServerConfig _row;
     private readonly ILogger _logger;
     private readonly BackendApiClient _client;
+    private readonly RemoteProjects _projects;
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _gate = new();
     private RemoteServerState _state = new(false, null, null);
@@ -196,6 +198,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             row.PinnedCertificateFingerprint ?? "",
             TimeProvider.System);
         Administration = new RemoteConnectKeyAdministration(_client);
+        _projects = new RemoteProjects(_client);
     }
 
     public string Name { get; }
@@ -214,6 +217,8 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
     public ISessionLauncher? Launcher => (ISessionLauncher?)Sessions;
 
     public IConnectKeyAdministration Administration { get; }
+
+    public IServerProjects Projects => _projects;
 
     public RemoteServerState State
     {
@@ -265,7 +270,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             {
                 await _ReadKeyAsync().ConfigureAwait(false);
                 // Connected is the stream's word, raised when its headers come back; this only hands the registry over.
-                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection).ConfigureAwait(false);
+                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection, _projects.OnEvent).ConfigureAwait(false);
                 bool stopped;
                 lock (_gate)
                 {

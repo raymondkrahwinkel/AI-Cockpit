@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Abstractions.Remote;
@@ -64,6 +65,12 @@ public interface IRemoteServer
     /// The server's connect keys, lockouts and audit, which only an admin key may reach (AC-1446).
     /// </summary>
     IConnectKeyAdministration Administration { get; }
+
+    /// <summary>
+    /// The server's projects: an operate key sees the ones in its scope by id and name, an admin key may clone,
+    /// change and remove them (AC-1472).
+    /// </summary>
+    IServerProjects Projects { get; }
 
     /// <summary>
     /// Whether the stream is up, how fast the server answered, and what it says about this key.

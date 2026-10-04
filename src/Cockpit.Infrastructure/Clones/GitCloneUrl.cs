@@ -50,6 +50,21 @@ internal sealed class GitCloneUrl
             : _ParseSchemeUrl(trimmed);
     }
 
+    // AC-1472: whether `url` carries a secret: any userinfo or query on HTTP(S), where a user name can be a token, and a
+    // password anywhere else. An SSH login user alone (`git@host:org/repo`, `ssh://git@host/...`) is not one.
+    public static bool CarriesCredentials(string url)
+    {
+        var trimmed = url.Trim();
+        var schemeEnd = trimmed.IndexOf("://", StringComparison.Ordinal);
+        var authorityStart = schemeEnd < 0 ? 0 : schemeEnd + 3;
+        var pathStart = trimmed.IndexOf('/', authorityStart);
+        var authority = pathStart < 0 ? trimmed[authorityStart..] : trimmed[authorityStart..pathStart];
+        var at = authority.LastIndexOf('@');
+        var userInfo = at < 0 ? "" : authority[..at];
+        var isHttp = schemeEnd > 0 && trimmed[..schemeEnd].ToLowerInvariant() is "http" or "https";
+        return isHttp ? at >= 0 || trimmed.Contains('?', StringComparison.Ordinal) : userInfo.Contains(':', StringComparison.Ordinal);
+    }
+
     // Whether `otherRemoteUrl` (an existing checkout's `origin`) is the same repository as this one — the de-dup test. A remote that will not parse is treated as "not the same", the safe direction.
     public bool SameRepositoryAs(string otherRemoteUrl)
     {
