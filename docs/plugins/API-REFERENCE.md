@@ -651,7 +651,8 @@ public interface IWorkspaceContext
   owns only the place, never the lifetime. A backend part that drives the sessions a workspace shows embeds them
   with `host.EmbedSession(workspaceId, request)` instead (AC-1398, host 0.43.0): the UI part hands it the
   `WorkspaceId`, the backend holds the session by `PaneId`, and the UI part places its view with
-  `CreateEmbeddedSessionView(paneId)`. Null when the host cannot embed.
+  `CreateEmbeddedSessionView(paneId)`. Null when the host cannot embed. From host 0.86.0 it may be called from any
+  thread, and so may the returned session's `SetInputEnabled` and `CloseAsync`: the host marshals to its UI thread.
 - `RefreshRequested` — raised when the host asks this workspace to refresh.
 - **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
   theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured

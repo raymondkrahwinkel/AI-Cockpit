@@ -12,6 +12,9 @@ internal sealed class AutopilotRunHistory
     private readonly IPluginCache _storage;
     private readonly List<AutopilotRunRecord> _records;
 
+    // AC-1418: a run settles off the UI thread now, so the list keeps its own lock against the operator's edits.
+    private readonly Lock _lock = new();
+
     public AutopilotRunHistory(IPluginCache storage)
     {
         _storage = storage;
@@ -32,20 +35,43 @@ internal sealed class AutopilotRunHistory
     public event Action? Changed;
 
     // The settled runs, newest first — how the surface lists what has run.
-    public IReadOnlyList<AutopilotRunRecord> Items => _records;
+    public IReadOnlyList<AutopilotRunRecord> Items
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _records];
+            }
+        }
+    }
 
-    public int Count => _records.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _records.Count;
+            }
+        }
+    }
 
     // Records a settled run at the front (newest first), trimming the oldest past the cap.
     public void Add(AutopilotRunRecord record)
     {
-        _records.Insert(0, record);
-        if (_records.Count > MaxEntries)
+        lock (_lock)
         {
-            _records.RemoveRange(MaxEntries, _records.Count - MaxEntries);
+            _records.Insert(0, record);
+            if (_records.Count > MaxEntries)
+            {
+                _records.RemoveRange(MaxEntries, _records.Count - MaxEntries);
+            }
+
+            _Save();
         }
 
-        _Save();
+        Changed?.Invoke();
     }
 
     // Replaces `original` with `replacement` — the path an operator's manual reclassification writes through
@@ -53,31 +79,38 @@ internal sealed class AutopilotRunHistory
     // is open shifts every index down one, so a position-keyed write would silently edit a different run.
     public void Replace(AutopilotRunRecord original, AutopilotRunRecord replacement)
     {
-        var index = _records.FindIndex(candidate => ReferenceEquals(candidate, original));
-        if (index < 0)
+        lock (_lock)
         {
-            return;
+            var index = _records.FindIndex(candidate => ReferenceEquals(candidate, original));
+            if (index < 0)
+            {
+                return;
+            }
+
+            _records[index] = replacement;
+            _Save();
         }
 
-        _records[index] = replacement;
-        _Save();
+        Changed?.Invoke();
     }
 
     // Clears the history — the operator emptied it.
     public void Clear()
     {
-        if (_records.Count == 0)
+        lock (_lock)
         {
-            return;
+            if (_records.Count == 0)
+            {
+                return;
+            }
+
+            _records.Clear();
+            _Save();
         }
 
-        _records.Clear();
-        _Save();
-    }
-
-    private void _Save()
-    {
-        _storage.Set(StorageKey, _records);
         Changed?.Invoke();
     }
+
+    // Under _lock; the caller raises Changed once it let go.
+    private void _Save() => _storage.Set(StorageKey, _records);
 }

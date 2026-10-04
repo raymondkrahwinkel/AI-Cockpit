@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // AC-1398: what an open Autopilot workspace runs, held by the backend part. While attached it is the manager's
 // runner: each run embeds its sessions in that workspace by id and settles here into history, toasts and the epic
-// chain. The workspace itself only reads the runs and the pane ids of their sessions.
+// chain. AC-1418: the workspace reads it only as the snapshot below, over the plugin's channel.
 internal sealed class AutopilotWorkspaceRuns
 {
     private readonly ICockpitHost _host;
@@ -16,15 +16,15 @@ internal sealed class AutopilotWorkspaceRuns
     private readonly AutopilotRunManager _manager;
     private readonly AutopilotRunQueue _queue;
     private readonly AutopilotRunHistory _history;
-    private readonly Func<Action, Task> _runOnUi;
-    private readonly Func<AutopilotRun, Task<string?>> _startPlanningForSub;
-    private readonly List<AutopilotRunContext> _active = [];
+    private readonly Lock _gate = new();
+    // Swapped whole under _gate, so a snapshot reads it without taking the gate (the gate raises Changed inside).
+    private IReadOnlyList<AutopilotRunContext> _active = [];
     private readonly CancellationTokenSource _closing = new();
     private int _completedRuns;
     private IEmbeddedSession? _planningCeo;
+    private CeoBusyIndicatorModel? _planningCeoBusy;
+    private bool _closed;
 
-    // `runOnUi` runs session embedding and teardown on the UI thread; `startPlanningForSub` is the workspace's own
-    // planning start, which an epic chain calls for its next sub.
     public AutopilotWorkspaceRuns(
         ICockpitHost host,
         string workspaceId,
@@ -32,9 +32,7 @@ internal sealed class AutopilotWorkspaceRuns
         AutopilotPlanController plan,
         AutopilotRunManager manager,
         AutopilotRunQueue queue,
-        AutopilotRunHistory history,
-        Func<Action, Task> runOnUi,
-        Func<AutopilotRun, Task<string?>> startPlanningForSub)
+        AutopilotRunHistory history)
     {
         _host = host;
         _workspaceId = workspaceId;
@@ -43,25 +41,60 @@ internal sealed class AutopilotWorkspaceRuns
         _manager = manager;
         _queue = queue;
         _history = history;
-        _runOnUi = runOnUi;
-        _startPlanningForSub = startPlanningForSub;
-
-        // Being the manager's runner starts any runs already queued; Close clears it, so no run starts with no surface.
-        _manager.Runner = _StartRun;
     }
 
-    // The runs in flight, in start order. Changed on the UI thread only, like the list the workspace used to keep.
+    // Raised when a run starts, moves or settles, or the planning CEO turns busy or idle.
+    public event Action? Changed;
+
+    // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint, plus a source-triggered
+    // run's tracker READ-only MCP servers — left default, the CEO would inherit the host's entire selection (161
+    // tools observed). Read tools only, never write — moving stage/posting notes before approval would be premature.
+    internal static IReadOnlyList<string> PlanningCeoMcpServers(IReadOnlyList<string>? trackerReadServers) =>
+        trackerReadServers is { Count: > 0 } servers
+            ? [AutopilotPlanTools.EndpointName, .. servers]
+            : [AutopilotPlanTools.EndpointName];
+
+    // The runs in flight, in start order.
     public IReadOnlyList<AutopilotRunContext> Active => _active;
 
-    // Raised when a run starts, moves or settles, so the workspace re-renders.
-    public event Action? Changed;
+    // Being the manager's runner starts any runs already queued; Close clears it, so no run starts with no surface.
+    public void Start() => _manager.Runner = _StartRun;
+
+    public AutopilotRunContext? Find(string runId) => Active.FirstOrDefault(context => context.RunId == runId);
+
+    // The workspace's whole state as its UI part draws it.
+    public AutopilotWorkspaceState Snapshot() => new(
+        _workspaceId,
+        _plan.Phase,
+        _plan.Plan,
+        _planningCeo?.PaneId,
+        _planningCeoBusy?.IsWorking ?? false,
+        [.. Active.Select(context => new AutopilotRunState(
+            context.RunId,
+            context.Controller.Phase,
+            context.Controller.Plan,
+            context.Controller.PendingQuestion,
+            context.StepPaneId,
+            context.CeoPaneId,
+            context.IsValidating,
+            context.Coordinator.AwaitingMergeGo))],
+        [.. _queue.Items],
+        [.. _history.Items],
+        _manager.AwaitingEpicGo);
 
     // The workspace was really closed: stop being the runner and cancel every run, which unwinds its driver loop and
     // coordinator awaits and closes its step sessions and CEO; a chain still waiting on a gate stops too.
     public void Close()
     {
         _manager.Runner = null;
-        foreach (var context in _active.ToList())
+        IReadOnlyList<AutopilotRunContext> active;
+        lock (_gate)
+        {
+            _closed = true;
+            active = _active;
+        }
+
+        foreach (var context in active)
         {
             context.Cancel();
         }
@@ -70,10 +103,31 @@ internal sealed class AutopilotWorkspaceRuns
     }
 
     // The planning round's CEO (AC-174), embedded in this workspace and bound to the shared plan controller so only
-    // that pane may emit the plan. Null when the host could not embed it.
-    public IEmbeddedSession? EmbedPlanningCeo(EmbeddedSessionRequest request)
+    // that pane may emit the plan. Briefed on the round's draft when there is one; null when the host could not embed.
+    public async Task<string?> EmbedPlanningCeoAsync(string? activeDirectory, string? kickoffMessage)
     {
-        var ceo = _host.EmbedSession(_workspaceId, request);
+        var plan = _plan.Plan;
+
+        // The CEO gets its briefing as a hidden system prompt given at start (AC-180) — not a visible turn, so
+        // it can't race the session's runtime coming up the way a post-start message did.
+        var profiles = await _host.GetProfilesAsync();
+        var ceoLabel = _settings.CeoProfileLabel();
+
+        // A blank setting means the app default, which the host resolves to the first configured profile —
+        // resolve the same one here so the CEO still knows who it is.
+        var ceoIdentity = string.IsNullOrWhiteSpace(ceoLabel) ? profiles.FirstOrDefault()?.Label : ceoLabel;
+        var ceo = _host.EmbedSession(_workspaceId, new EmbeddedSessionRequest
+        {
+            ProfileId = ceoLabel,
+            Model = _settings.CeoModel(),
+            McpServers = PlanningCeoMcpServers(_TrackerReadServers(plan?.Source)),
+            WorkingDirectory = AutopilotWorkingDirectory.Resolve(activeDirectory, plan?.WorkingDirectory),
+            AppendSystemPrompt = plan is null
+                ? null
+                : AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty)),
+            // The kickoff (AC-189): a chosen template's body, else the tracker kickoff or null for a CEO-first run.
+            InitialUserMessage = kickoffMessage,
+        });
         if (ceo is null)
         {
             return null;
@@ -81,33 +135,91 @@ internal sealed class AutopilotWorkspaceRuns
 
         _planningCeo = ceo;
         _plan.BindSession(ceo.PaneId);
-        return ceo;
+
+        // The pop-out's "working" cue (AC-195): the CEO's planning turn can run silently for minutes.
+        _planningCeoBusy?.Dispose();
+        _planningCeoBusy = new CeoBusyIndicatorModel(ceo, _ => Changed?.Invoke());
+        Changed?.Invoke();
+        return ceo.PaneId;
     }
 
     // The pop-out closed, approved or cancelled: the planning CEO goes; the run gets a validator of its own.
     public void ClosePlanningCeo()
     {
+        _planningCeoBusy?.Dispose();
+        _planningCeoBusy = null;
         if (_planningCeo is { } planningCeo)
         {
             _planningCeo = null;
             _ = planningCeo.CloseAsync();
         }
+
+        Changed?.Invoke();
+    }
+
+    // Read-only tracker MCP servers for a source-triggered round (AC-212). Empty for a CEO-first run, an unknown
+    // tracker, or one that reads via a CLI rather than an MCP server. Provider-neutral — never names a tracker.
+    private IReadOnlyList<string> _TrackerReadServers(AutopilotPlanSource? source) =>
+        source is { } item
+            && _host.TrackerProviders.FirstOrDefault(provider => string.Equals(provider.TrackerId, item.Tracker, StringComparison.OrdinalIgnoreCase)) is { } tracker
+            ? tracker.ReadToolMcpServerNames
+            : [];
+
+    // The "plan" intent's start, minus the click (AC-1340): the sub the epic-runner picked opens its planning round
+    // on the shared controller, and the workspace pops the CEO out — AC-1339 then submits a groomed sub itself.
+    // Returns why it could not start, or null when it did; an open round is the one planning round at a time (D4).
+    private Task<string?> _StartPlanningForSubAsync(AutopilotRun run)
+    {
+        string? refused = null;
+        if (_plan.Phase == AutopilotPlanPhase.Planning && _plan.Plan is not null)
+        {
+            refused = "a planning round is already open";
+        }
+        else if (AutopilotPlugin._HasRunInFlight(_plan, _queue, _manager, run.Tracker, run.IssueId))
+        {
+            refused = $"a run on {run.IssueId} is already in flight";
+        }
+        else if (!AutopilotPlugin._RequireCeoProfile(_host, _settings))
+        {
+            refused = "no CEO profile is set in the Autopilot settings";
+        }
+        else if (!_plan.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
+        {
+            refused = "the shared plan controller is busy with another run";
+        }
+
+        return Task.FromResult(refused);
     }
 
     private void _OnRunChanged() => Changed?.Invoke();
 
-    // The manager's runner (AC-174): start a run for a dequeued plan in its own context, track it for the surface, and
-    // hand the manager the coordinator and completion task. Removing it from the surface when it settles is marshalled to
-    // the UI thread, since the run task can complete off it.
-    private AutopilotRunHandle _StartRun(AutopilotPlan plan)
+    // The manager's runner (AC-174): a dequeued plan's run in its own context, tracked for the surface. Null once the
+    // workspace closed, so the manager puts the plan back; a close landing while the run is built cancels it.
+    private AutopilotRunHandle? _StartRun(AutopilotPlan plan)
     {
-        var context = new AutopilotRunContext(_host, _workspaceId, _settings, plan, _runOnUi);
-        _ = _runOnUi(() =>
+        lock (_gate)
         {
-            _active.Add(context);
-            context.Changed += _OnRunChanged;
-            Changed?.Invoke();
-        });
+            if (_closed)
+            {
+                return null;
+            }
+        }
+
+        var context = new AutopilotRunContext(_host, _workspaceId, _settings, plan);
+        bool closedMeanwhile;
+        lock (_gate)
+        {
+            closedMeanwhile = _closed;
+            _active = [.. _active, context];
+        }
+
+        if (closedMeanwhile)
+        {
+            context.Cancel();
+        }
+
+        context.Changed += _OnRunChanged;
+        Changed?.Invoke();
         _ = _RemoveWhenDoneAsync(context);
         return new AutopilotRunHandle(context.Coordinator, context.Completed);
     }
@@ -134,21 +246,22 @@ internal sealed class AutopilotWorkspaceRuns
         var strandedCommits = context.Coordinator.StrandedCommits;
         var runWorktreePath = context.Coordinator.RunWorktreePath;
 
-        AutopilotRunRecord? settled = null;
+        AutopilotRunRecord? settled;
         List<AutopilotRunRecord> epicRuns = [];
-        await _runOnUi(() =>
-        {
-            _active.Remove(context);
-            context.Changed -= _OnRunChanged;
-            settled = _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
-            Changed?.Invoke();
+        context.Changed -= _OnRunChanged;
 
-            // Read on the UI thread, where history is mutated, so a second run settling meanwhile cannot race this.
+        // Under the gate, so a second run settling meanwhile cannot race this history read.
+        lock (_gate)
+        {
+            _active = [.. _active.Where(active => !ReferenceEquals(active, context))];
+            settled = _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
             if (settledPlan?.Source is { EpicId.Length: > 0 } epic)
             {
                 epicRuns = _history.Items.Where(record => string.Equals(record.EpicId, epic.EpicId, StringComparison.OrdinalIgnoreCase)).ToList();
             }
-        });
+        }
+
+        Changed?.Invoke();
 
         // AC-1340: an epic sub that settled hands the chain its facts — the next Ready sub starts itself, or the
         // chain says why not. Awaited here, off the UI thread, since resolving the next sub fetches and reads links.
@@ -204,7 +317,7 @@ internal sealed class AutopilotWorkspaceRuns
                 cancellationToken,
                 _settings.AcceptanceHeadings(),
                 new AutopilotMergeBuildLedger(_host.Storage).LastBuild(collectionBranch)),
-            _startPlanningForSub,
+            _StartPlanningForSubAsync,
             commentEpic,
             notifyAssistant,
             _settings.ChainUncleanRunTolerance(),

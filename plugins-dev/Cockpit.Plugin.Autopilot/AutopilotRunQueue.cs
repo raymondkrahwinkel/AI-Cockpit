@@ -11,6 +11,9 @@ internal sealed class AutopilotRunQueue
     private readonly IPluginStorage _storage;
     private readonly List<AutopilotPlan> _plans;
 
+    // AC-1418: the UI thread no longer serializes the operator's edits with the pump, so the list keeps its own lock.
+    private readonly Lock _lock = new();
+
     public AutopilotRunQueue(IPluginStorage storage)
     {
         _storage = storage;
@@ -21,60 +24,112 @@ internal sealed class AutopilotRunQueue
     public event Action? Changed;
 
     // The queued plans in run order — the front runs next.
-    public IReadOnlyList<AutopilotPlan> Items => _plans;
+    public IReadOnlyList<AutopilotPlan> Items
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _plans];
+            }
+        }
+    }
 
-    public int Count => _plans.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _plans.Count;
+            }
+        }
+    }
 
     // Adds an approved plan to the back of the queue.
     public void Enqueue(AutopilotPlan plan)
     {
-        _plans.Add(plan);
-        _Save();
+        lock (_lock)
+        {
+            _plans.Add(plan);
+            _Save();
+        }
+
+        Changed?.Invoke();
+    }
+
+    // Puts a dequeued plan back at the front — its runner refused it (AC-1418), so it keeps its place.
+    public void Requeue(AutopilotPlan plan)
+    {
+        lock (_lock)
+        {
+            _plans.Insert(0, plan);
+            _Save();
+        }
+
+        Changed?.Invoke();
     }
 
     // Takes the front plan to run, or false when the queue is empty.
     public bool TryDequeue(out AutopilotPlan? plan)
     {
-        if (_plans.Count == 0)
+        lock (_lock)
         {
-            plan = null;
-            return false;
+            if (_plans.Count == 0)
+            {
+                plan = null;
+                return false;
+            }
+
+            plan = _plans[0];
+            _plans.RemoveAt(0);
+            _Save();
         }
 
-        plan = _plans[0];
-        _plans.RemoveAt(0);
-        _Save();
+        Changed?.Invoke();
         return true;
     }
 
-    // Drops the queued entry at `index` — the operator removed a run before it started.
-    public void RemoveAt(int index)
+    // Drops the queued entry at `index` — the operator removed a run before it started. `isExpected` (AC-1418) refuses
+    // the edit when the entry there is no longer the one the operator saw, say the pump took the front one meanwhile.
+    public void RemoveAt(int index, Func<AutopilotPlan, bool>? isExpected = null)
     {
-        if (index >= 0 && index < _plans.Count)
+        lock (_lock)
         {
+            if (index < 0 || index >= _plans.Count || isExpected?.Invoke(_plans[index]) == false)
+            {
+                return;
+            }
+
             _plans.RemoveAt(index);
             _Save();
         }
+
+        Changed?.Invoke();
     }
 
     // Moves the entry at `index` one place earlier so it runs sooner; a no-op at the front.
-    public void MoveUp(int index) => _Swap(index, index - 1);
+    public void MoveUp(int index, Func<AutopilotPlan, bool>? isExpected = null) => _Swap(index, index - 1, isExpected);
 
     // Moves the entry at `index` one place later so it runs afterwards; a no-op at the back.
-    public void MoveDown(int index) => _Swap(index, index + 1);
+    public void MoveDown(int index, Func<AutopilotPlan, bool>? isExpected = null) => _Swap(index, index + 1, isExpected);
 
-    private void _Swap(int a, int b)
+    private void _Swap(int a, int b, Func<AutopilotPlan, bool>? isExpected)
     {
-        if (a >= 0 && a < _plans.Count && b >= 0 && b < _plans.Count && a != b)
+        lock (_lock)
         {
+            if (a < 0 || a >= _plans.Count || b < 0 || b >= _plans.Count || a == b || isExpected?.Invoke(_plans[a]) == false)
+            {
+                return;
+            }
+
             (_plans[a], _plans[b]) = (_plans[b], _plans[a]);
             _Save();
         }
-    }
 
-    private void _Save()
-    {
-        _storage.Set(StorageKey, _plans);
         Changed?.Invoke();
     }
+
+    // Under _lock; the caller raises Changed once it let go.
+    private void _Save() => _storage.Set(StorageKey, _plans);
 }

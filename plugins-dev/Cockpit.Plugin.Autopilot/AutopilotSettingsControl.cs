@@ -29,9 +29,8 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     ];
 
     private readonly AutopilotSettings _settings;
-    private readonly ICockpitHost _host;
     private readonly ICockpitUiHost _uiHost;
-    private readonly AutopilotTemplateStore _templates;
+    private readonly AutopilotChannelClient _client;
     private readonly ComboBox _ceoProfile;
     private readonly AutoCompleteBox _ceoModel;
     // Internal, not private: AC-254's settings tests drive these directly the way a real Save click would, rather
@@ -57,12 +56,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private IReadOnlyList<PluginProfileInfo> _profiles = [];
     private bool _profilesLoaded;
 
-    public AutopilotSettingsControl(AutopilotSettings settings, ICockpitHost host, ICockpitUiHost uiHost, AutopilotTemplateStore templates)
+    public AutopilotSettingsControl(AutopilotSettings settings, ICockpitUiHost uiHost, AutopilotChannelClient client)
     {
         _settings = settings;
-        _host = host;
         _uiHost = uiHost;
-        _templates = templates;
+        _client = client;
 
         _ceoProfile = new ComboBox
         {
@@ -127,14 +125,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             SelectedItem = settings.AutonomyMode(),
         };
 
-        foreach (var trackerId in host.TrackerProviders.Select(provider => provider.TrackerId)
-                     .Concat(AutopilotSettings.TrackersWithADefaultStage)
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
-        {
-            _executableStages[trackerId] = _Text(settings.ExecutableStage(trackerId));
-        }
-
         var ceo = _Section("CEO (planning)");
         ceo.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
         ceo.Children.Add(_Row("CEO profile", _ceoProfile));
@@ -158,10 +148,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
         var executableStageHeading = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Header("Executable stage per tracker"), uiHost.CreateHelpHint("settings", "executable-stage") } };
         safety.Children.Add(executableStageHeading);
-        foreach (var (trackerId, box) in _executableStages)
-        {
-            safety.Children.Add(_Row($"{trackerId} starts from", box));
-        }
+        var executableStagesAt = safety.Children.Count;
 
         safety.Children.Add(_Hint("Which stage — or, on a tracker without stages, which label — means someone has judged an item ready to be worked on. Autopilot refuses anything else and says so on the issue, so the tracker's own gate decides what is executable rather than the ticket text claiming it about itself. Leave a field empty to start from any stage on that tracker."));
 
@@ -188,10 +175,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             "{{input.<name>}} — an operator-supplied value by name, e.g. {{input.branch}}; only filled for a name you actually ask for."));
 
         // Re-render the list whenever a template changes (created, edited, deleted, reset) so the section stays in step
-        // with the store, the same way the plan surface tracks its queue/history.
-        _templates.Changed += _OnTemplatesChanged;
-        DetachedFromVisualTree += (_, _) => _templates.Changed -= _OnTemplatesChanged;
-        _RenderTemplates();
+        // with the backend's store, the same way the plan surface tracks its queue/history.
+        var templatesChanged = client.OnTemplatesChanged(() => _ = _RenderTemplatesAsync());
+        DetachedFromVisualTree += (_, _) => templatesChanged.Dispose();
+        _ = _RenderTemplatesAsync();
+        _ = _LoadExecutableStagesAsync(safety, executableStagesAt);
 
         ShowSection(0);
     }
@@ -200,33 +188,28 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
     public void ShowSection(int index) => Content = _sections[index];
 
-    private void _OnTemplatesChanged()
+    // One box per tracker the operator could start from — the loaded ones, asked of the backend, plus the two Autopilot
+    // ships a default for — placed under the section's heading once the backend answered.
+    private async Task _LoadExecutableStagesAsync(Panel section, int at)
     {
-        if (Dispatcher.UIThread.CheckAccess())
+        var trackerIds = await _client.TrackerIdsAsync();
+        foreach (var trackerId in trackerIds
+                     .Concat(AutopilotSettings.TrackersWithADefaultStage)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
         {
-            _RenderTemplates();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(_RenderTemplates);
+            var box = _Text(_settings.ExecutableStage(trackerId));
+            _executableStages[trackerId] = box;
+            section.Children.Insert(at++, _Row($"{trackerId} starts from", box));
         }
     }
 
     // Rebuilds the template rows from the combined list — the plugin/builtin registrations with any override applied,
     // then the operator's own — each with its name, an origin badge, and the actions its origin allows.
-    private void _RenderTemplates()
+    private async Task _RenderTemplatesAsync()
     {
+        var templates = (await _client.TemplatesAsync())?.Templates ?? [];
         _templateList.Children.Clear();
-
-        IReadOnlyList<AutopilotTemplate> templates;
-        try
-        {
-            templates = _templates.List(_host.RegisteredAutopilotTemplates);
-        }
-        catch (Exception)
-        {
-            templates = [];
-        }
 
         if (templates.Count == 0)
         {
@@ -260,7 +243,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         if (template.Deletable)
         {
             var delete = new Button { Content = "Delete", Padding = new Thickness(9, 3), FontSize = 11 };
-            delete.Click += (_, _) => _templates.DeleteUserTemplate(template.Id);
+            delete.Click += (_, _) => _client.Send(AutopilotChannelContract.TemplateDelete, template.Id);
             actions.Children.Add(delete);
         }
         else
@@ -272,7 +255,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
                 FontSize = 11,
                 [ToolTip.TipProperty] = "Drop your edit and show the registered template again.",
             };
-            reset.Click += (_, _) => _templates.ResetOverride(template.Id);
+            reset.Click += (_, _) => _client.Send(AutopilotChannelContract.TemplateReset, template.Id);
             actions.Children.Add(reset);
         }
 
@@ -331,7 +314,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     // id, and a plugin/builtin edit reuses the registration's id so the override keys to it.
     private void _EditTemplate(AutopilotTemplate? template)
     {
-        var isNew = template is null;
         var origin = template?.Origin ?? AutopilotTemplateOrigin.User;
 
         var nameBox = new TextBox
@@ -351,7 +333,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         };
 
         // No key: this is per template, and two templates can share a name — a key would collapse them into one window.
-        _ = _uiHost.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
+        _ = _uiHost.ShowDialogAsync(template is null ? "New template" : $"Edit “{template.Name}”", () =>
         {
             // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
             // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.
@@ -431,11 +413,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         if (origin == AutopilotTemplateOrigin.User)
         {
             var id = template?.Id ?? $"user.{Guid.NewGuid():N}";
-            _templates.UpsertUserTemplate(AutopilotTemplate.ForUser(id, name, body, template?.RequiredPlaceholders));
+            _client.Send(AutopilotChannelContract.TemplateUpsertUser, AutopilotTemplate.ForUser(id, name, body, template?.RequiredPlaceholders));
         }
-        else
+        else if (template is not null)
         {
-            _templates.UpsertOverride(new AutopilotTemplateOverride(template!.Id, name, body, template.RequiredPlaceholders));
+            _client.Send(AutopilotChannelContract.TemplateUpsertOverride, new AutopilotTemplateOverride(template.Id, name, body, template.RequiredPlaceholders));
         }
     }
 
@@ -454,7 +436,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private async Task _LoadProfilesAsync()
     {
         _profilesLoaded = true;
-        var profiles = await _host.GetProfilesAsync();
+        var profiles = await _uiHost.GetProfilesAsync();
         Dispatcher.UIThread.Post(() =>
         {
             _profiles = profiles;

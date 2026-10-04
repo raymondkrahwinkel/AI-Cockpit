@@ -139,7 +139,7 @@ public class AutopilotPlanIntentTests : IDisposable
         var channel = Substitute.For<IPluginBackendChannel>();
         host.Channel.Returns(channel);
         Func<JsonElement, CancellationToken, Task<JsonElement>>? reportDirectory = null;
-        channel.Handle(AutopilotChannel.ActiveDirectory, Arg.Do<Func<JsonElement, CancellationToken, Task<JsonElement>>>(handle => reportDirectory = handle));
+        channel.Handle(AutopilotChannelContract.ActiveDirectory, Arg.Do<Func<JsonElement, CancellationToken, Task<JsonElement>>>(handle => reportDirectory = handle));
 
         Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>? handler = null;
         host.When(candidate => candidate.RegisterIntentHandler("plan", Arg.Any<Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>>()))

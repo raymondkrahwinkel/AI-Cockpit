@@ -1,67 +1,46 @@
 using System.Text.Json;
 using Avalonia.Threading;
 using Material.Icons;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using static Cockpit.Plugin.Autopilot.AutopilotChannelContract;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// AC-1398: the UI part — the plan-flow workspace, which places the sessions the backend holds by pane id. It still
-// takes the backend's objects in-process (AutopilotPlugin.Parts); AC-1418 moves it to UI/ and onto the channel.
+// AC-1398: the UI part — the plan-flow workspace, which places the sessions the backend holds by pane id. AC-1418:
+// it reaches the backend's runs, plan, queue, history and templates over the plugin's channel only.
 public sealed class AutopilotUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        var parts = AutopilotPlugin.Parts ?? throw new InvalidOperationException("InitializeUi ran before Initialize.");
+        // The settings are loose keys in the plugin's storage, the same slice the backend part reads.
+        var settings = new AutopilotSettings(host.Storage);
+        var client = new AutopilotChannelClient(host.Channel);
 
         // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so
-        // the CEO-profile picker can list profiles/models, and the template store for the Templates section.
-        host.AddSettings(() => new AutopilotSettingsControl(parts.Settings, parts.Host, host, parts.Templates));
+        // the CEO-profile picker can list profiles/models, and the channel for the Templates section.
+        host.AddSettings(() => new AutopilotSettingsControl(settings, host, client));
 
         // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
         // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
         // a profile set. A triggered run still opens straight into planning via the backend's "plan" intent.
-        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync(AutopilotChannel.PlanWorkspaceId));
+        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync(PlanWorkspaceId));
 
         // The backend has no selected session; the directory of the one this window has selected is what its epic
         // merge check runs git in, so it is told on every change.
-        void ReportActiveDirectory() => _ = host.Channel.InvokeAsync(AutopilotChannel.ActiveDirectory, JsonSerializer.SerializeToElement(host.ActiveSessionWorkingDirectory ?? string.Empty));
+        void ReportActiveDirectory() => _ = host.Channel.InvokeAsync(ActiveDirectory, JsonSerializer.SerializeToElement(host.ActiveSessionWorkingDirectory ?? string.Empty));
         host.ActiveSessionChanged += (_, _) => ReportActiveDirectory();
         ReportActiveDirectory();
 
         // What the backend part wants shown arrives as events, since it has no window of its own.
-        host.Channel.Subscribe(AutopilotChannel.OpenPlan, evt => host.OpenWorkspaceAsync(AutopilotChannel.PlanWorkspaceId));
-        host.Channel.Subscribe(AutopilotChannel.OpenSettings, evt => Dispatcher.UIThread.Post(() => _ = host.ShowSettingsAsync()));
+        host.Channel.Subscribe(OpenPlan, evt => host.OpenWorkspaceAsync(PlanWorkspaceId));
+        host.Channel.Subscribe(OpenSettings, evt => Dispatcher.UIThread.Post(() => _ = host.ShowSettingsAsync()));
 
         // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration(AutopilotChannel.PlanWorkspaceId, "Autopilot", context => new AutopilotPlanWorkspaceBody(parts.Host, host, context, parts.Settings, parts.Plan, parts.Manager, parts.Queue, parts.History, parts.Templates))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(PlanWorkspaceId, "Autopilot", context => new AutopilotPlanWorkspaceBody(host, context, settings, client))
         {
             IconKind = MaterialIconKind.RobotHappyOutline,
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
         });
     }
-}
-
-// What the backend part built that the UI part's workspace still reads in-process until AC-1418.
-internal sealed record AutopilotParts(
-    ICockpitHost Host,
-    AutopilotSettings Settings,
-    AutopilotPlanController Plan,
-    AutopilotRunManager Manager,
-    AutopilotRunQueue Queue,
-    AutopilotRunHistory History,
-    AutopilotTemplateStore Templates);
-
-// The events the backend part publishes on the plugin's channel for the UI part to show.
-internal static class AutopilotChannel
-{
-    public const string PlanWorkspaceId = "workspace.autopilot.plan";
-
-    public const string OpenPlan = "open-plan";
-
-    public const string OpenSettings = "open-settings";
-
-    // Action, payload the selected session's working directory or an empty string: UI part to backend part.
-    public const string ActiveDirectory = "active-directory";
 }

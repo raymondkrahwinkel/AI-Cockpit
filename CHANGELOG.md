@@ -39,6 +39,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   while this laptop holds the line the server's assistant stands down and you talk to your own, which steers the node.
   Cockpit 0.79.0.
 
+### Changed
+
+- changed: the Autopilot workspace and its settings reach the runs, the plan, the queue, the history and the templates
+  only over Autopilot's own plugin channel, the first step to running Autopilot's backend on a server without a window.
+  What you see and click is unchanged. Needs Cockpit 0.86.0; Autopilot 0.24.3.
+
 ### Added
 
 - added: an OpenRouter, Gemini, GitHub Models or Grok profile on a server can leave its API key empty and take it from

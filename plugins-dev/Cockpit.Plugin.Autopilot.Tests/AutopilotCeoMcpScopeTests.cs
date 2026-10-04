@@ -11,8 +11,8 @@ public class AutopilotCeoMcpScopeTests
     {
         // A CEO-first run has no source issue, so no tracker read servers — the planning CEO only emits the plan through
         // AutopilotPlanTools; nothing else is needed to plan.
-        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: null)));
-        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: [])));
+        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotWorkspaceRuns.PlanningCeoMcpServers(trackerReadServers: null)));
+        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotWorkspaceRuns.PlanningCeoMcpServers(trackerReadServers: [])));
         Assert.Equal("cockpit-autopilot-plan", AutopilotPlanTools.EndpointName);
     }
 
@@ -22,7 +22,7 @@ public class AutopilotCeoMcpScopeTests
         // AC-212 read/write split: a source-triggered run scopes the planning CEO to the plan endpoint plus the
         // tracker's READ-only MCP servers. The write endpoint is NEVER in the planning scope — it mounts only while
         // a run is active, since moving the issue before approval would be premature (stage/notes are the run's job, AC-202).
-        var scope = AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: ["YouTrack: Personal"]);
+        var scope = AutopilotWorkspaceRuns.PlanningCeoMcpServers(trackerReadServers: ["YouTrack: Personal"]);
 
         Assert.Equivalent(new[] { AutopilotPlanTools.EndpointName, "YouTrack: Personal" }, scope);
         Assert.DoesNotContain(AutopilotCeoTools.EndpointName, scope);
