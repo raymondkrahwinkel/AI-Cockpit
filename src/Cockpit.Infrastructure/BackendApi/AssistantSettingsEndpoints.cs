@@ -28,7 +28,7 @@ internal static class AssistantSettingsEndpoints
 
         api.MapGet(Route, async (CancellationToken cancellationToken) =>
             Results.Json(await _ReadAsync(services, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
-            .RequireAdmin().Audited("assistant_settings", services);
+            .RequireOperate().Audited("assistant_settings", services);
 
         api.MapPut(Route + "/enabled", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
