@@ -98,7 +98,7 @@ internal static class AssistantSettingsEndpoints
 
                 source = profiles[index];
                 var current = await slot().LoadAsync(cancellationToken).ConfigureAwait(false);
-                await slot().RepointAsync(source with { ProviderConfig = source.ProviderConfig is LmStudioConfig lmStudio ? lmStudio with { ApiKey = "" } : source.ProviderConfig }, current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
+                await slot().RepointAsync(source, current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
