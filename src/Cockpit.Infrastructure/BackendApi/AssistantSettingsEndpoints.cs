@@ -41,7 +41,8 @@ internal static class AssistantSettingsEndpoints
             }
 
             // One read-modify-write of the switch alone, against every writer of the file, desktop ones included (Codex).
-            await settings().UpdateAsync(stored => stored with { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+            var stored = await settings().LoadAsync(cancellationToken).ConfigureAwait(false);
+            await settings().SaveAsync(stored with { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
 
             await host().ApplySettingsAsync(CancellationToken.None).ConfigureAwait(false);
             return await _AuditAsync(services, "api:assistant_enabled", enabled ? "assistant turned on" : "assistant turned off", null, await _AnswerAsync(services).ConfigureAwait(false)).ConfigureAwait(false);
