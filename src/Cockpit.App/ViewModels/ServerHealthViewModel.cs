@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
@@ -18,13 +19,15 @@ public sealed partial class ServerHealthViewModel : ObservableObject
     private const string Separator = " · ";
 
     private readonly IRemoteServer _server;
+    private readonly ILogger? _logger;
     private readonly Func<string, ILoginFlow?>? _startSignIn;
     private string _dismissed = "";
     private readonly HashSet<string> _running = [];
 
-    public ServerHealthViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null)
+    public ServerHealthViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null, ILogger? logger = null)
     {
         _server = server;
+        _logger = logger;
         _startSignIn = startSignIn;
         server.Health.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         server.StateChanged += (_, _) => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(IsAdmin)));
@@ -194,7 +197,14 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         if (SignIn is { } flow)
         {
             SignIn = null;
-            await flow.DisposeAsync();
+            try
+            {
+                await flow.DisposeAsync();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger?.LogWarning(exception, "Could not close the sign-in on {Server}.", Server);
+            }
         }
     }
 

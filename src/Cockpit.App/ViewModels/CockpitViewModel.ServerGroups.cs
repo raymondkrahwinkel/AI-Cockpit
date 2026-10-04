@@ -138,7 +138,7 @@ public partial class CockpitViewModel
 
         foreach (var server in servers.Where(server => ServerGroups.All(group => !ReferenceEquals(group.Server, server))))
         {
-            var group = new ServerGroupViewModel(server, profile => _serverSignIns?.Start(server.Name, profile, CancellationToken.None));
+            var group = new ServerGroupViewModel(server, profile => _serverSignIns?.Start(server.Name, profile, CancellationToken.None), _logger);
 
             // Subscribed before the state is read again below, so a change raised in between is not lost.
             group.PropertyChanged += (_, args) =>
