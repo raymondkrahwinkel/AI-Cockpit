@@ -22,6 +22,25 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal("http://localhost:11434/v1/models", handler.LastRequestUri);
     }
 
+    public static TheoryData<Func<HttpClient>, string, bool> ProbeCases => new()
+    {
+        { () => new HttpClient(new StubHandler("", HttpStatusCode.OK)), "http://localhost:11434", true },
+        { () => new HttpClient(), "http://127.0.0.1:1", false },
+        { () => new HttpClient(new StubHandler("", HttpStatusCode.InternalServerError)), "http://localhost:11434", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(ProbeCases))]
+    public async Task ProbeAsync_ReportsWhetherV1ModelsIsReachable(Func<HttpClient> clientFactory, string baseUrl, bool expected)
+    {
+        using var client = clientFactory();
+        var catalog = new OpenAiCompatModelCatalog(client, NullLogger<OpenAiCompatModelCatalog>.Instance);
+
+        var reachable = await catalog.ProbeAsync(baseUrl, null, TimeSpan.FromSeconds(1));
+
+        Assert.Equal(expected, reachable);
+    }
+
     private sealed class StubHandler(string body, HttpStatusCode status) : HttpMessageHandler
     {
         public string? LastRequestUri { get; private set; }

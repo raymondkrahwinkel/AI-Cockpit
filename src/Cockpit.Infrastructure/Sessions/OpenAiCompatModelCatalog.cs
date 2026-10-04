@@ -23,11 +23,7 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}/v1/models");
-            if (!string.IsNullOrWhiteSpace(apiKey))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            }
+            using var request = _Request(baseUrl, apiKey);
 
             using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
@@ -43,6 +39,38 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
             logger.LogWarning(ex, "Could not list models from {BaseUrl}", baseUrl);
             return [];
         }
+    }
+
+    public async Task<bool> ProbeAsync(string baseUrl, string? apiKey, TimeSpan timeout)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            using var request = _Request(baseUrl, apiKey);
+            using var response = await httpClient.SendAsync(request, cancellation.Token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not probe models from {BaseUrl}", baseUrl);
+            return false;
+        }
+    }
+
+    private static HttpRequestMessage _Request(string baseUrl, string? apiKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}/v1/models");
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
+
+        return request;
     }
 
     private sealed class ModelListResponse

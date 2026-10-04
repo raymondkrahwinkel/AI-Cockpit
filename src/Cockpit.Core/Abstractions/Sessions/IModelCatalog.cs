@@ -12,4 +12,9 @@ public interface IModelCatalog
     /// stopped local server just yields no suggestions.
     /// </summary>
     Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns whether <paramref name="baseUrl">'s <c>/v1/models</c> responds successfully within <paramref name="timeout"/>.
+    /// </summary>
+    Task<bool> ProbeAsync(string baseUrl, string? apiKey, TimeSpan timeout);
 }
