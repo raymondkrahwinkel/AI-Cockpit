@@ -50,6 +50,7 @@ internal static partial class HealthEndpoints
                         label = profile.Profile,
                         provider = profile.Provider,
                         signIn = _SignIn(profile.SignIn),
+                        credential = _Credential(profile.Credential),
                         lastCheck = profile.LastCheck,
                         expiredSince = profile.ExpiredSince,
                         announcedAt = profile.AnnouncedAt,
@@ -183,6 +184,16 @@ internal static partial class HealthEndpoints
         ProfileSignInKind.SignedIn => "signedIn",
         ProfileSignInKind.Expired => "expired",
         _ => "unchecked",
+    };
+
+    // Omitted from the line when unknown: an older client reads nothing it does not know, and no claim is made.
+    private static string? _Credential(ProfileCredentialKind kind) => kind switch
+    {
+        ProfileCredentialKind.RenewingLogin => "renewingLogin",
+        ProfileCredentialKind.Login => "login",
+        ProfileCredentialKind.ApiKey => "apiKey",
+        ProfileCredentialKind.ApiKeyFromSecret => "apiKeyFromSecret",
+        _ => null,
     };
 
     private static async Task _AuditAsync(IServiceProvider services, NodeCaller caller, string tool, string outcome, string? subject, CancellationToken cancellationToken)

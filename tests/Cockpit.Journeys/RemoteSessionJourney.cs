@@ -77,6 +77,7 @@ public sealed class RemoteSessionJourney
             var alarmWhenExpired = false;
             var signInAwaitedInput = false;
             var clearedAfterSignIn = false;
+            var signInShown = "";
             var codeValidFor = "";
             var scheduleShown = "";
             var zoneHeading = "";
@@ -230,6 +231,7 @@ public sealed class RemoteSessionJourney
                 await flow.SubmitCommand.ExecuteAsync(null);
                 await Until.Holds(group.Health, () => !group.Health.ShowsAlarm && !group.Health.HasBadge);
                 clearedAfterSignIn = group.Health.Profiles.Any(profile => profile.IsSignedIn && profile.Label == "EchoSignIn");
+                signInShown = group.Health.Profiles.Single(profile => profile.Label == "EchoSignIn").SignIn;
 
                 // Run now on the scheduled flow: the row says what the server's run came to.
                 var scheduled = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled");
@@ -264,6 +266,7 @@ public sealed class RemoteSessionJourney
             Assert.True(alarmWhenExpired, "The tab did not show the expired login as the alarm with Sign in again.");
             Assert.True(signInAwaitedInput, "Sign in again did not show the provider's step.");
             Assert.True(clearedAfterSignIn, "The alarm or the badge outlived the sign-in.");
+            Assert.Equal("✓ Signed in · renews itself", signInShown);
             Assert.Matches(@"^code valid for (0\d|1[0-4]):[0-5]\d$", codeValidFor);
             Assert.Equal("once 2099-01-01 00:00", scheduleShown);
             Assert.Contains("UTC", zoneHeading, StringComparison.Ordinal);

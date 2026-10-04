@@ -57,6 +57,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // the core carries no Claude-format knowledge and Codex can fill the same seams for its own routes.
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
             IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            CredentialKind = ClaudeProfileDiscovery.CredentialKind,
             StartLogin = (configJson, ct) => ClaudeLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             DetectProfiles = ClaudeProfileDiscovery.Detect,
             UsageSignals = ClaudeUsageSignals.Declarations,
@@ -109,6 +110,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // Declared on both routes (AC-629). Claude is answered by the TTY one, but leaving this silent would
             // make the plugin the example that an SDK-only provider need not declare a gate.
             IsLoggedIn = configJson => ClaudeProfileDiscovery.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            CredentialKind = ClaudeProfileDiscovery.CredentialKind,
             StartLogin = (configJson, ct) => ClaudeLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
         });
 

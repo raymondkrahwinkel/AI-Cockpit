@@ -39,7 +39,8 @@ public sealed record RemoteProfileHealth(
     string SignIn,
     DateTimeOffset? LastCheck,
     DateTimeOffset? ExpiredSince,
-    DateTimeOffset? AnnouncedAt);
+    DateTimeOffset? AnnouncedAt,
+    string? Credential = null);
 
 public sealed record RemoteKeyHealth(string Label, string Capability);
 

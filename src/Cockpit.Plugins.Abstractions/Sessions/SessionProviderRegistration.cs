@@ -70,6 +70,16 @@ public sealed record SessionProviderRegistration(
     public Func<string, bool>? IsLoggedIn { get; init; }
 
     /// <summary>
+    /// Says what kind of credential a profile under this provider signs in with, from its opaque <c>ConfigJson</c> —
+    /// the SDK mirror of <see cref="TtyProviderRegistration.CredentialKind"/>. Never reads a credential's contents (Iron Law #8).
+    /// </summary>
+    /// <remarks>
+    /// Answers from the same cache as <see cref="IsLoggedIn"/> and never blocks. <see langword="null"/> (the default)
+    /// when the provider cannot tell; the host then claims nothing about the sign-in beyond "signed in".
+    /// </remarks>
+    public Func<string, PluginCredentialKind>? CredentialKind { get; init; }
+
+    /// <summary>
     /// Starts an in-app login attempt for a profile under this provider — the SDK mirror of
     /// <see cref="TtyProviderRegistration.StartLogin"/>. <see langword="null"/> (the default) when the provider offers no in-app login.
     /// </summary>

@@ -1,12 +1,13 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
 // Whether a Claude profile is logged in, per `claude auth status --json` (AC-629). Replaces
 // `File.Exists(".credentials.json")`, which was wrong both ways: absent on a logged-in macOS (Keychain), present
-// next to an expired token. Only `loggedIn` is read, never a credential's contents (Iron Law #8).
+// next to an expired token. Only `loggedIn` and `authMethod` are read, never a credential's contents (Iron Law #8).
 //
 // ⚠️ Cached because `IProfileLoginChecker.IsLoggedIn` is synchronous on the UI thread, once per profile — and the
 // CLI costs ~575ms warm, 9.3s cold. The gate answers from here; the subprocess refreshes behind it.
@@ -24,7 +25,9 @@ internal static class ClaudeLoginStatus
 
     // One reference rather than a separate bool and DateTimeOffset: a 16-byte struct is not written atomically,
     // and the refresh writes while the gate reads.
-    private sealed record _Reading(bool LoggedIn, DateTimeOffset AsOf);
+    internal sealed record AuthStatus(bool LoggedIn, string? AuthMethod);
+
+    private sealed record _Reading(AuthStatus Status, DateTimeOffset AsOf);
 
     private sealed class _Entry
     {
@@ -59,7 +62,7 @@ internal static class ClaudeLoginStatus
     {
         var config = ClaudeProviderConfig.Parse(configJson);
         var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
-        entry.Reading = new _Reading(true, now);
+        entry.Reading = new _Reading(new AuthStatus(true, null), now);
         entry.RetryNotBefore = default;
     }
 
@@ -68,7 +71,7 @@ internal static class ClaudeLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask)
+        Func<string, string?, CancellationToken, Task<AuthStatus?>> ask)
     {
         var config = ClaudeProviderConfig.Parse(configJson);
         var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
@@ -76,13 +79,32 @@ internal static class ClaudeLoginStatus
 
         if (reading is not null && now - reading.AsOf <= MaxAge)
         {
-            return reading.LoggedIn;
+            return reading.Status.LoggedIn;
         }
 
         // Aged out or never taken: refresh behind the caller and answer with what is known.
         _Start(configJson, now, managedResolver, ask);
-        return reading?.LoggedIn ?? _ColdAnswer(config);
+        return reading?.Status.LoggedIn ?? _ColdAnswer(config);
     }
+
+    // AC-1483: what the CLI's last `authMethod` says the login rests on. Unknown before the CLI has answered, after
+    // MarkLoggedIn, and for a value this build has not measured. Never blocks.
+    public static PluginCredentialKind CredentialKind(string configJson)
+    {
+        var config = ClaudeProviderConfig.Parse(configJson);
+        var status = _Cache.TryGetValue(_KeyFor(config), out var entry) ? entry.Reading?.Status : null;
+        return status is { LoggedIn: true } ? KindOf(status.AuthMethod) : PluginCredentialKind.Unknown;
+    }
+
+    // Measured on CLI 2.1.274: `claude.ai` (subscription login), `api_key` (ANTHROPIC_API_KEY), `oauth_token`
+    // (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN, no refresh token), `none` (logged out).
+    internal static PluginCredentialKind KindOf(string? authMethod) => authMethod switch
+    {
+        "claude.ai" => PluginCredentialKind.RenewingLogin,
+        "oauth_token" => PluginCredentialKind.Login,
+        "api_key" => PluginCredentialKind.ApiKey,
+        _ => PluginCredentialKind.Unknown,
+    };
 
     // Before the CLI has ever answered. `.credentials.json` is a reliable negative everywhere except macOS,
     // where the Keychain holds the credentials and the file never exists — so there, guess "logged in": locking
@@ -110,7 +132,7 @@ internal static class ClaudeLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask) =>
+        Func<string, string?, CancellationToken, Task<AuthStatus?>> ask) =>
         _ = Task.Run(() => RefreshAsync(configJson, now, managedResolver, ask, CancellationToken.None));
 
     // Refreshes without waiting — called at plugin start per detected profile. One CLI per profile at a time.
@@ -122,7 +144,7 @@ internal static class ClaudeLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask,
+        Func<string, string?, CancellationToken, Task<AuthStatus?>> ask,
         CancellationToken cancellationToken)
     {
         var config = ClaudeProviderConfig.Parse(configJson);
@@ -145,9 +167,9 @@ internal static class ClaudeLoginStatus
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
             var answer = await ask(executablePath, spawnOverride, cancellationToken).ConfigureAwait(false);
-            if (answer is { } loggedIn)
+            if (answer is { } status)
             {
-                entry.Reading = new _Reading(loggedIn, now);
+                entry.Reading = new _Reading(status, now);
                 entry.RetryNotBefore = default;
                 return;
             }
@@ -167,7 +189,7 @@ internal static class ClaudeLoginStatus
     }
 
     // Null when the CLI could not be asked, or said something this build does not understand — never a guess.
-    private static async Task<bool?> _AskCliAsync(string executablePath, string? configDirOverride, CancellationToken cancellationToken)
+    private static async Task<AuthStatus?> _AskCliAsync(string executablePath, string? configDirOverride, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo(executablePath)
         {
@@ -212,21 +234,30 @@ internal static class ClaudeLoginStatus
             return null;
         }
 
-        return ReadLoggedIn(await stdout.ConfigureAwait(false));
+        return ReadStatus(await stdout.ConfigureAwait(false));
     }
+
+    internal static bool? ReadLoggedIn(string json) => ReadStatus(json)?.LoggedIn;
 
     // The exit code is deliberately unused: 1 means logged out *and* means the CLI never ran. Only the payload
     // tells those apart.
-    internal static bool? ReadLoggedIn(string json)
+    internal static AuthStatus? ReadStatus(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("loggedIn", out var loggedIn)
-                && loggedIn.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? loggedIn.GetBoolean()
-                    : null;
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("loggedIn", out var loggedIn)
+                || loggedIn.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return null;
+            }
+
+            var method = root.TryGetProperty("authMethod", out var authMethod) && authMethod.ValueKind == JsonValueKind.String
+                ? authMethod.GetString()
+                : null;
+            return new AuthStatus(loggedIn.GetBoolean(), method);
         }
         catch (JsonException)
         {

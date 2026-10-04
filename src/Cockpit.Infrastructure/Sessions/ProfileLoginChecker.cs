@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -28,6 +29,25 @@ internal sealed class ProfileLoginChecker(
     }
 
     public bool HasLoginCheck(SessionProfile profile) => profile.ProviderConfig is PluginProviderConfig plugin && _Gate(plugin) is not null;
+
+    public ProfileCredentialKind CredentialKind(SessionProfile profile)
+    {
+        if (profile.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return ProfileCredentialKind.Unknown;
+        }
+
+        var kind = ttyProviderRegistry.Resolve(plugin.ProviderId)?.CredentialKind
+            ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.CredentialKind;
+        return kind?.Invoke(plugin.ConfigJson) switch
+        {
+            PluginCredentialKind.RenewingLogin => ProfileCredentialKind.RenewingLogin,
+            PluginCredentialKind.Login => ProfileCredentialKind.Login,
+            PluginCredentialKind.ApiKey => ProfileCredentialKind.ApiKey,
+            PluginCredentialKind.ApiKeyFromSecret => ProfileCredentialKind.ApiKeyFromSecret,
+            _ => ProfileCredentialKind.Unknown,
+        };
+    }
 
     private Func<string, bool>? _Gate(PluginProviderConfig plugin) =>
         ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn

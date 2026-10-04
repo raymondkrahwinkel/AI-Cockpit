@@ -134,6 +134,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now)
             {
                 Provider = ((PluginProviderConfig)profile.ProviderConfig).ProviderId,
+                Credential = signedIn && hasCheck ? _Credential(profile) : ProfileCredentialKind.Unknown,
                 SignIn = !hasCheck ? ProfileSignInKind.Unchecked : signedIn ? ProfileSignInKind.SignedIn : ProfileSignInKind.Expired,
                 AnnouncedAt = signedIn ? null : expires ? now : before?.AnnouncedAt,
             });
@@ -165,6 +166,20 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         }
 
         Volatile.Write(ref _current, next);
+    }
+
+    // A provider whose kind lookup throws still reports its sign-in; it just claims nothing.
+    private ProfileCredentialKind _Credential(SessionProfile profile)
+    {
+        try
+        {
+            return _checker.CredentialKind(profile);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning("The credential kind for profile {Profile} could not be read ({Error}).", profile.Label, exception.GetType().Name);
+            return ProfileCredentialKind.Unknown;
+        }
     }
 
     // Each channel on its own: a webhook that fails must not keep the message from the controller's inbox.

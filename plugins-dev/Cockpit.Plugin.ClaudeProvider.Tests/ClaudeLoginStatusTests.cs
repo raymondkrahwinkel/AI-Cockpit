@@ -1,4 +1,6 @@
 
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 // The login gate (AC-629). Payloads verbatim from CLI 2.1.226. What most of these pin down is *not blocking*:
@@ -15,11 +17,21 @@ public class ClaudeLoginStatusTests
 
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-08T13:00:00Z");
 
-    [Fact]
-    public void ReadLoggedIn_ReadsTheCliesOwnPayloads()
+    // AC-1483: `authMethod` as measured on CLI 2.1.274 in a scratch config dir — a subscription login says "claude.ai",
+    // ANTHROPIC_API_KEY says "api_key", CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_AUTH_TOKEN say "oauth_token". A missing or
+    // unmeasured value claims nothing; "loggedIn" alone never means the login renews itself.
+    [Theory]
+    [InlineData(LoggedInPayload, true, PluginCredentialKind.RenewingLogin)]
+    [InlineData(LoggedOutPayload, false, PluginCredentialKind.Unknown)]
+    [InlineData("""{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}""", true, PluginCredentialKind.ApiKey)]
+    [InlineData("""{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}""", true, PluginCredentialKind.Login)]
+    [InlineData("""{"loggedIn":true,"authMethod":"something_new"}""", true, PluginCredentialKind.Unknown)]
+    [InlineData("""{"loggedIn":true}""", true, PluginCredentialKind.Unknown)]
+    [InlineData("""{"loggedIn":true,"authMethod":7}""", true, PluginCredentialKind.Unknown)]
+    public void ReadLoggedIn_ReadsTheCliesOwnPayloads(string json, bool loggedIn, PluginCredentialKind kind)
     {
-        Assert.True(ClaudeLoginStatus.ReadLoggedIn(LoggedInPayload));
-        Assert.False(ClaudeLoginStatus.ReadLoggedIn(LoggedOutPayload));
+        Assert.Equal(loggedIn, ClaudeLoginStatus.ReadLoggedIn(json));
+        Assert.Equal(kind, ClaudeLoginStatus.KindOf(ClaudeLoginStatus.ReadStatus(json)?.AuthMethod));
     }
 
     [Theory]

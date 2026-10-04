@@ -14,6 +14,8 @@ internal static class ClaudeProfileDiscovery
     public static bool IsLoggedIn(string configJson, Func<string, string?>? managedResolver = null) =>
         ClaudeLoginStatus.IsLoggedIn(configJson, managedResolver);
 
+    public static PluginCredentialKind CredentialKind(string configJson) => ClaudeLoginStatus.CredentialKind(configJson);
+
     // Discovers the well-known Claude config directories on this machine (`~/.claude`,
     // `~/.claude-personal`, `~/.claude-work`) that actually exist, minting a profile per surviving
     // directory labelled from its name (`.claude` → `default`, `.claude-work` → `work`).

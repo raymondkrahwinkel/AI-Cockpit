@@ -9,6 +9,9 @@ public sealed record ProfileLoginHealth(string Profile, bool SignedIn, DateTimeO
 
     public ProfileSignInKind SignIn { get; init; } = ProfileSignInKind.Unchecked;
 
+    // AC-1483: what the provider's own CLI says the sign-in rests on; Unknown claims nothing.
+    public ProfileCredentialKind Credential { get; init; } = ProfileCredentialKind.Unknown;
+
     // AC-1470: when the expiry was announced (notification and controller inbox); null while signed in.
     public DateTimeOffset? AnnouncedAt { get; init; }
 }
@@ -20,4 +23,14 @@ public enum ProfileSignInKind
     SignedIn,
     Expired,
     Unchecked,
+}
+
+// AC-1483: the host's mirror of the plugin contract's PluginCredentialKind; ApiKeyFromSecret is reserved for AC-1478 c.
+public enum ProfileCredentialKind
+{
+    Unknown,
+    RenewingLogin,
+    Login,
+    ApiKey,
+    ApiKeyFromSecret,
 }

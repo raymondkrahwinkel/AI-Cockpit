@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// AC-713: whether a Codex profile is logged in, per `codex login status`'s exit code (no `--json` exists) — cached like `ClaudeLoginStatus`.
+// AC-713: whether a Codex profile is logged in, per `codex login status`'s exit code (no `--json` exists) — cached like
+// `ClaudeLoginStatus`. AC-1483: its one status line says how (never a credential's contents, Iron Law #8).
 internal static class CodexLoginStatus
 {
     public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(1);
@@ -17,7 +19,9 @@ internal static class CodexLoginStatus
     // Keyed by config directory (CODEX_HOME) — that is what decides whose login the CLI reports.
     private static readonly ConcurrentDictionary<string, _Entry> _Cache = new(StringComparer.OrdinalIgnoreCase);
 
-    private sealed record _Reading(bool LoggedIn, DateTimeOffset AsOf);
+    internal sealed record LoginStatus(bool LoggedIn, PluginCredentialKind Kind);
+
+    private sealed record _Reading(LoginStatus Status, DateTimeOffset AsOf);
 
     private sealed class _Entry
     {
@@ -47,7 +51,7 @@ internal static class CodexLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask)
+        Func<string, string?, CancellationToken, Task<LoginStatus?>> ask)
     {
         var config = _ParseConfig(configJson);
         var entry = _Cache.GetOrAdd(config.ConfigDir ?? string.Empty, _ => new _Entry());
@@ -55,15 +59,29 @@ internal static class CodexLoginStatus
 
         if (reading is not null && now - reading.AsOf <= MaxAge)
         {
-            return reading.LoggedIn;
+            return reading.Status.LoggedIn;
         }
 
         // Aged out or never taken: refresh behind the caller and answer with what is known. Before the CLI has
         // ever answered, guess "logged in" — locking the operator out of an account they are signed in to is the
         // worse error, and the refresh started above corrects a wrong guess within its timeout.
         _Start(configJson, now, managedResolver, ask);
-        return reading?.LoggedIn ?? true;
+        return reading?.Status.LoggedIn ?? true;
     }
+
+    // Never blocks; Unknown until the CLI has answered.
+    public static PluginCredentialKind CredentialKind(string configJson)
+    {
+        var entry = _Cache.TryGetValue(_ParseConfig(configJson).ConfigDir ?? string.Empty, out var found) ? found : null;
+        return entry?.Reading?.Status is { LoggedIn: true } status ? status.Kind : PluginCredentialKind.Unknown;
+    }
+
+    // Measured on codex 0.154.0: "Logged in using ChatGPT" (refreshes itself), "Logged in using an API key - ***".
+    // CODEX_API_KEY in the environment alone reads "Not logged in", so only `login --with-api-key` shows here.
+    internal static PluginCredentialKind KindOf(string statusLine) =>
+        statusLine.Contains("Logged in using ChatGPT", StringComparison.Ordinal) ? PluginCredentialKind.RenewingLogin
+        : statusLine.Contains("Logged in using an API key", StringComparison.Ordinal) ? PluginCredentialKind.ApiKey
+        : PluginCredentialKind.Unknown;
 
     // Refreshes without waiting. Test seam mirrors `ClaudeLoginStatus.Warm`.
     public static void Warm(string configJson, Func<string, string?>? managedResolver = null) =>
@@ -73,7 +91,7 @@ internal static class CodexLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask) =>
+        Func<string, string?, CancellationToken, Task<LoginStatus?>> ask) =>
         _ = Task.Run(() => RefreshAsync(configJson, now, managedResolver, ask, CancellationToken.None));
 
     // `now` stamps the reading, so a test on a fixed clock does not compare two different ones.
@@ -81,7 +99,7 @@ internal static class CodexLoginStatus
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
-        Func<string, string?, CancellationToken, Task<bool?>> ask,
+        Func<string, string?, CancellationToken, Task<LoginStatus?>> ask,
         CancellationToken cancellationToken)
     {
         var config = _ParseConfig(configJson);
@@ -96,9 +114,9 @@ internal static class CodexLoginStatus
         {
             var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
             var answer = await ask(executablePath, config.ConfigDir, cancellationToken).ConfigureAwait(false);
-            if (answer is { } loggedIn)
+            if (answer is { } status)
             {
-                entry.Reading = new _Reading(loggedIn, now);
+                entry.Reading = new _Reading(status, now);
                 entry.RetryNotBefore = default;
                 return;
             }
@@ -115,7 +133,7 @@ internal static class CodexLoginStatus
         }
     }
 
-    private static async Task<bool?> _AskCliAsync(string executablePath, string? configDirOverride, CancellationToken cancellationToken)
+    private static async Task<LoginStatus?> _AskCliAsync(string executablePath, string? configDirOverride, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo(executablePath)
         {
@@ -142,7 +160,8 @@ internal static class CodexLoginStatus
 
         process.StandardInput.Close();
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var drain = Task.WhenAll(stdout, process.StandardError.ReadToEndAsync(cancellationToken));
+        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        var drain = Task.WhenAll(stdout, stderr);
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_Timeout);
@@ -167,7 +186,9 @@ internal static class CodexLoginStatus
         }
 
         // The exit code is the only structured signal this CLI offers (no `--json` on `login status`).
-        return process.ExitCode == 0;
+        return new LoginStatus(
+            process.ExitCode == 0,
+            KindOf(await stdout.ConfigureAwait(false) + await stderr.ConfigureAwait(false)));
     }
 
     private static CliAgentConfig _ParseConfig(string? configJson)

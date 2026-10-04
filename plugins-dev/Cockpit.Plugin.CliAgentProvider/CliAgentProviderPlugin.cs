@@ -72,6 +72,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // whether `codex login`/`CODEX_API_KEY` was actually set up. `codex login status`'s exit code is the
             // only structured signal the CLI offers (see `CodexLoginStatus`).
             IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            CredentialKind = CodexLoginStatus.CredentialKind,
             StartLogin = (configJson, ct) => CodexLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
@@ -110,6 +111,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // Declared on both routes (AC-629), same as Claude — an SDK-only provider would otherwise be the
             // example that leaves the gate silent.
             IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
+            CredentialKind = CodexLoginStatus.CredentialKind,
             StartLogin = (configJson, ct) => CodexLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
