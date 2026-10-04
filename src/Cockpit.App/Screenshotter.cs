@@ -230,6 +230,9 @@ internal static class Screenshotter
         // and its Audit log.
         ["server-admin-keys"] = ServerAdminScene.Keys,
         ["server-admin-audit"] = ServerAdminScene.Audit,
+        // AC-1457: the Health tab of a connect server, for an admin key (alarm, device code) and for an operate key.
+        ["server-health"] = ServerGroupScene.Health,
+        ["server-health-operate"] = ServerGroupScene.HealthOperate,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.

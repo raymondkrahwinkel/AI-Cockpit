@@ -1,0 +1,159 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             x:Class="Cockpit.App.Controls.ServerHealthView"
+             x:DataType="vm:ServerHealthViewModel">
+
+    <!-- AC-1457 (mockup v2 tab 3): one connect server's health, as its health route answers it. The rows are drawn
+         generically from the sections; which rows a key sees is the server's decision, so nothing is filtered here. -->
+    <StackPanel Spacing="8" Margin="0,0,0,8">
+        <Border Padding="14,10" CornerRadius="{StaticResource CockpitControlRadius}" IsVisible="{Binding ShowsAlarm}"
+                Background="{DynamicResource CockpitStatusErrorChipTintBrush}"
+                BorderBrush="{DynamicResource CockpitStatusErrorBrush}" BorderThickness="1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="Accent" Content="Sign in again" IsVisible="{Binding CanSignInAgain}"
+                            Command="{Binding StartSignInCommand}"/>
+                    <Button Classes="Subtle" Content="Later" Command="{Binding LaterCommand}"/>
+                </StackPanel>
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding AlarmTitle}" FontWeight="SemiBold" FontSize="13"/>
+                    <TextBlock Text="{Binding AlarmDetail}" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding AskAnAdmin}" FontSize="12" IsVisible="{Binding MustAskAnAdmin}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border Padding="14,10" CornerRadius="{StaticResource CockpitControlRadius}" IsVisible="{Binding !HasHealth}"
+                Background="{DynamicResource CockpitPanelBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+            <TextBlock Text="The server has not given its health yet, or this key may not read it." FontSize="12"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasHealth}">
+            <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" VerticalAlignment="Top"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}">
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Provider sign-in per profile" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding Server, StringFormat='on {0}'}" FontSize="12"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                    <Grid ColumnDefinitions="1.3*,1*,1.4*,Auto" ColumnSpacing="10">
+                        <TextBlock Text="Profile" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Provider" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Column="2" Text="Sign-in" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Column="3" Text="Last check" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Profiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProfileHealthRowViewModel">
+                                <Grid ColumnDefinitions="1.3*,1*,1.4*,Auto" ColumnSpacing="10" Margin="0,3">
+                                    <TextBlock Text="{Binding Label}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Provider}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SignIn}" FontSize="12.5"
+                                               Foreground="{DynamicResource CockpitStatusDoneBrush}" IsVisible="{Binding IsSignedIn}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SignIn}" FontSize="12.5"
+                                               Foreground="{DynamicResource CockpitStatusErrorBrush}" IsVisible="{Binding IsExpired}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SignIn}" FontSize="12.5"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding IsUnchecked}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding LastCheck}" FontSize="12.5"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding HasSignIn}">
+                        <TextBlock Text="{Binding SignInHeading}" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{DynamicResource CockpitHairlineSoftBrush}">
+                            <StackPanel Spacing="6">
+                                <controls:LoginFlowView DataContext="{Binding SignIn}"/>
+                                <TextBlock Text="The sign-in stays on the server." FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Button Classes="Subtle Compact" Content="Close" HorizontalAlignment="Left"
+                                Command="{Binding CloseSignInCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" VerticalAlignment="Top"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Server" FontWeight="SemiBold" FontSize="13"/>
+                    <ItemsControl ItemsSource="{Binding Facts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HealthFactViewModel">
+                                <Grid ColumnDefinitions="110,*" Margin="0,3">
+                                    <TextBlock Text="{Binding Name}" FontSize="12.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12.5" TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding HasRuns}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <StackPanel Spacing="8">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                        <ToggleButton Classes="Compact" Content="All" IsChecked="{Binding ShowsAll, Mode=OneWay}"
+                                      Command="{Binding ShowAllCommand}"/>
+                        <ToggleButton Classes="Compact" Content="{Binding NeedsAttentionLabel}" IsChecked="{Binding NeedsAttentionOnly, Mode=OneWay}"
+                                      Command="{Binding ShowNeedsAttentionCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Scheduled runs" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding RunsDetail}" FontSize="12" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </DockPanel>
+                <Grid ColumnDefinitions="2*,1.4*,2*,1.4*,Auto" ColumnSpacing="10">
+                    <TextBlock Text="Workflow" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="1" Text="Last run" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="2" Text="Outcome" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="3" Text="Next" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <Border Grid.Column="4" Width="70"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding VisibleRuns}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ScheduledRunRowViewModel">
+                            <Grid ColumnDefinitions="2*,1.4*,2*,1.4*,Auto" ColumnSpacing="10" Margin="0,3">
+                                <TextBlock Text="{Binding Workflow}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="1" Text="{Binding LastRun}" FontSize="12.5"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='✓ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource CockpitStatusDoneBrush}" IsVisible="{Binding IsOk}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='! {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding IsWaiting}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='↻ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding IsCaughtUp}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='✕ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource CockpitStatusErrorBrush}" IsVisible="{Binding IsFailed}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Next}" FontSize="12.5"/>
+                                <StackPanel Grid.Column="4" Width="70" Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Classes="Subtle Compact" Content="Run now" IsVisible="{Binding CanRun}"
+                                            Command="{Binding $parent[controls:ServerHealthView].((vm:ServerHealthViewModel)DataContext).RunNowCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Classes="Subtle Compact" Content="Open" IsVisible="{Binding CanOpen}"
+                                            Command="{Binding $parent[controls:ServerHealthView].((vm:ServerHealthViewModel)DataContext).OpenCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

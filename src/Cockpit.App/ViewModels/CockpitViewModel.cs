@@ -3160,7 +3160,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISettingsWriteBatch? settingsWriteBatch = null,
         // AC-1456: the connect servers as session-list groups, and the pane that reads one of their sessions.
         IRemoteServers? remoteServers = null,
-        Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null)
+        Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null,
+        IServerSignIns? serverSignIns = null)
     {
         _settingsWriteBatch = settingsWriteBatch;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
@@ -3265,7 +3266,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionControls = sessionControls;
         _sdkPaneOver = sdkPaneOver;
         _sessionLauncher = sessionLauncher;
-        _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient);
+        _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient, serverSignIns);
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;

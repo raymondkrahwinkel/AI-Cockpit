@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a connect server's header line has a Health button that opens the server's health: an alarm when a provider
+  login on the server has expired (with the runs that did not run since and the Discord message sent to you), the
+  sign-in per profile, the server's version, uptime, assistant, Discord and connected keys, and the scheduled runs with
+  Run now. A badge on the button counts the open alarms, and the header says "15 scheduled · Discord online". With an
+  admin key, "Sign in again" signs the profile in without a browser: the link and code, or a field for the pasted code,
+  appear in the tab and the sign-in itself stays on the server. An operate key sees the tab and Run now, and is told to
+  ask an admin key to sign in.
 - added: you can work in a session pane on a connect server. The composer sends to the session there, and a permission
   prompt gets Allow once and Deny when the key may answer permissions; a key that may not sees the prompt with "This
   key may not answer permission prompts." and no buttons. While the group says Reconnecting the composer and the

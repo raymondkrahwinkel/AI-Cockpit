@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -169,13 +170,14 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
 
 // AC-1456: one connection. It keeps trying until the server answers, then the stream keeps itself up; only a refused
 // key stops it, and then the group says so instead of retrying a key that will not work.
-internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
+internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncDisposable
 {
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
 
     private readonly McpServerConfig _row;
     private readonly ILogger _logger;
     private readonly BackendApiClient _client;
+    private readonly RemoteServerHealthReader _health;
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _gate = new();
     private RemoteServerState _state = new(false, null, null);
@@ -196,9 +198,15 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
             row.PinnedCertificateFingerprint ?? "",
             TimeProvider.System);
         Administration = new RemoteConnectKeyAdministration(_client);
+        _health = new RemoteServerHealthReader(_client, name, logger);
     }
 
     public string Name { get; }
+
+    public IRemoteServerHealth Health => _health;
+
+    public ILoginFlow StartSignIn(string profile, CancellationToken cancellationToken) =>
+        new RemoteLoginFlow(_client, profile, cancellationToken);
 
     public ISessionRegistry? Sessions
     {
@@ -280,6 +288,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
                 }
 
                 StateChanged?.Invoke(this, EventArgs.Empty);
+                _health.Start(_stop.Token);
                 return;
             }
             catch (BackendApiException exception) when (exception.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
@@ -328,6 +337,7 @@ internal sealed class RemoteServer : IRemoteServer, IAsyncDisposable
         }
 
         _ = _ReturnAsync(generation);
+        _ = _health.RefreshAsync(_stop.Token);
     }
 
     // Only the return of the connection still standing may say Connected; a /whoami that comes back after a later

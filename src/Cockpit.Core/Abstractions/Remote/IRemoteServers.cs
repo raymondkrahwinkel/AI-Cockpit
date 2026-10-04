@@ -66,6 +66,11 @@ public interface IRemoteServer
     IConnectKeyAdministration Administration { get; }
 
     /// <summary>
+    /// The server's health as its health route answers it (AC-1457).
+    /// </summary>
+    IRemoteServerHealth Health { get; }
+
+    /// <summary>
     /// Whether the stream is up, how fast the server answered, and what it says about this key.
     /// </summary>
     RemoteServerState State { get; }
