@@ -43,12 +43,12 @@ internal static class EventsEndpoint
         context.Response.Headers.CacheControl = "no-cache";
         await context.Response.StartAsync(context.RequestAborted).ConfigureAwait(false);
         await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
-        await Task.Delay(TimeSpan.FromSeconds(2), context.RequestAborted).ConfigureAwait(false);
 
         // AC-1446: the audit's "connected", once the stream is open for the client: a start that failed opened nothing.
         if (services.GetService<NodeAccessAuditLog>() is { } audit)
         {
-            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false);
+            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), CancellationToken.None).ConfigureAwait(false);
         }
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
