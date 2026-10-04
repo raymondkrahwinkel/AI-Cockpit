@@ -171,6 +171,7 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
+        { "PUT", "/api/v1/assistant/settings/enabled", "{}", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/{secret}", null, "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other","apiKey":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "Provider credentials never cross this connection.", _Door.ProfileSecret },

@@ -27,7 +27,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProfile), nameof(HasNoProfile), nameof(CanSwitch), nameof(SwitchHint), nameof(ProfileLabel), nameof(ProfileDetail),
         nameof(ProviderText), nameof(ProviderMissing), nameof(UnsetText), nameof(BypassTitle), nameof(BypassDetail), nameof(AvailabilityTitle),
-        nameof(AvailabilityDetail), nameof(IsRunning), nameof(IsWaiting), nameof(IsOff), nameof(IsFailed), nameof(CanEdit))]
+        nameof(AvailabilityDetail), nameof(IsRunning), nameof(IsWaiting), nameof(IsOff), nameof(IsFailed), nameof(CanEdit), nameof(HasApiKey))]
     private RemoteAssistantSettings? _settings;
 
     [ObservableProperty]
@@ -81,7 +81,8 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     public bool HasNoProfile => Settings is { Profile: null };
 
-    public bool CanSwitch => HasProfile && !IsReadOnly;
+    // A server switched on with an empty slot can still be switched off.
+    public bool CanSwitch => (HasProfile || Settings?.IsEnabled == true) && !IsReadOnly;
 
     public bool CanEdit => HasProfile && !IsReadOnly && Settings?.ProviderInstalled == true;
 
@@ -99,6 +100,8 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     public string ProviderText => ProviderMissing ? $"{Settings?.Profile?.Provider} · plugin not installed on {Server}" : Settings?.Profile?.Provider ?? "";
 
+    public bool HasApiKey => Settings?.Profile?.HasApiKey == true;
+
     public string UnsetText => Settings?.UnsetReason ?? "No Assistant Profile is set.";
 
     public string BypassTitle => Settings?.ConsentBypass switch
@@ -114,9 +117,9 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     public bool IsRunning => Settings?.IsAvailable == true;
 
-    public bool IsFailed => Settings is { IsEnabled: true, IsAvailable: false } && _justSaved;
+    public bool IsFailed => Settings is { IsEnabled: true, IsAvailable: false, IsStoodDown: false } && _justSaved;
 
-    public bool IsWaiting => Settings is { IsEnabled: true, IsAvailable: false } && !_justSaved;
+    public bool IsWaiting => Settings is { IsEnabled: true, IsAvailable: false } && !IsFailed;
 
     public bool IsOff => Settings is { IsEnabled: false, IsAvailable: false };
 
@@ -124,7 +127,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     public string AvailabilityTitle => Settings switch
     {
         { IsAvailable: true } => "Running",
-        { IsEnabled: true } when _justSaved => "Not running.",
+        { IsEnabled: true, IsStoodDown: false } when _justSaved => "Not running.",
         { IsEnabled: false } => "Switched off.",
         { UnavailableReason: { } reason } => reason,
         _ => "",
@@ -133,7 +136,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     public string AvailabilityDetail => Settings switch
     {
         { IsAvailable: true, Profile: { } profile } => $"on {profile.Label}{(profile.Model is { Length: > 0 } model ? $" · {model}" : "")}.",
-        { IsEnabled: true, UnavailableReason: var reason } when _justSaved => $"The profile is saved; the restart failed: “{reason}”.",
+        { IsEnabled: true, IsStoodDown: false, UnavailableReason: var reason } when _justSaved => $"The profile is saved; the restart failed: “{reason}”.",
         { IsEnabled: false, UnavailableReason: { } reason } => reason,
         _ => "",
     };
@@ -152,7 +155,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
             SelectedCopyChoice = CopyChoices.FirstOrDefault(choice => choice.IsSignInGood) ?? CopyChoices.FirstOrDefault();
         }
-    }, keepsForm: false);
+    }, keepsForm: false, failed: "Not read.");
 
     [RelayCommand]
     private Task CopyInAsync() => _RunAsync(async () =>
@@ -227,11 +230,6 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         _applying = true;
         try
         {
-            if (settings.IsAvailable || !settings.IsEnabled)
-            {
-                _justSaved = false;
-            }
-
             Settings = settings;
             IsEnabled = settings.IsEnabled;
             ReportedAt = $"reported by the server · {_time.GetLocalNow().ToString("HH:mm", CultureInfo.InvariantCulture)}";
@@ -272,17 +270,18 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     // The one error answer cannot say why, so the page says what is likely and that nothing changed. A save that got no
     // answer keeps the form as it was, to send again.
-    private async Task _RunAsync(Func<Task> action, bool keepsForm)
+    private async Task _RunAsync(Func<Task> action, bool keepsForm, string failed = "Not saved.")
     {
         _Say(ServerAssistantMessage.Info, "", "");
         CanRetry = false;
+        _justSaved = false;
         try
         {
             await action();
         }
         catch (ArgumentException exception)
         {
-            _Say(ServerAssistantMessage.Error, "Not saved.", exception.Message);
+            _Say(ServerAssistantMessage.Error, failed, exception.Message);
         }
         catch (UnauthorizedAccessException)
         {
@@ -292,14 +291,14 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
         {
-            _retry = () => _RunAsync(action, keepsForm);
+            _retry = () => _RunAsync(action, keepsForm, failed);
             CanRetry = true;
-            _Say(ServerAssistantMessage.Error, $"Not saved — {Server} did not answer.",
+            _Say(ServerAssistantMessage.Error, $"{failed.TrimEnd('.')} — {Server} did not answer.",
                 keepsForm ? "Your changes are still in the form. Nothing changed on the server unless it confirms." : "Nothing changed on the server unless it confirms.");
         }
         catch (Exception exception)
         {
-            _Say(ServerAssistantMessage.Error, "Not saved.", exception.Message);
+            _Say(ServerAssistantMessage.Error, failed, exception.Message);
         }
 
         _applying = true;

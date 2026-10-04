@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
@@ -35,7 +36,8 @@ internal static class AssistantSettingsEndpoints
             var (body, refused) = await ProfileEndpoints.ReadBodyAsync<AssistantEnabledBody>(request, "The body names only enabled.", cancellationToken).ConfigureAwait(false);
             if (body is not { Enabled: { } enabled })
             {
-                return await _AuditAsync(services, "api:assistant_enabled", "refused", null, refused).ConfigureAwait(false);
+                var answer = body is null ? refused : BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body names only enabled.");
+                return await _AuditAsync(services, "api:assistant_enabled", "refused", null, answer).ConfigureAwait(false);
             }
 
             await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -134,6 +136,7 @@ internal static class AssistantSettingsEndpoints
             settings.IsEnabled,
             settings.IsEnabled && profile is not null && host.Activity != AssistantActivity.Unavailable,
             host.UnavailableReason,
+            services.GetService<INodeControllerPresence>()?.Current is not null,
             profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Declared(services, profile)),
             profile is null ? slot.UnsetReason : null,
             profile?.SystemPrompt,

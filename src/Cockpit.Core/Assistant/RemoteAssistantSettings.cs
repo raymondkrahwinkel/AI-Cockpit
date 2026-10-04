@@ -2,12 +2,13 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Assistant;
 
-// AC-1475: a server's assistant as an admin key reads it. `UnavailableReason` is the host's own wording; the profile is
-// AC-1473's wire form, so no secret is in it, and `Instructions` is the slot's extra instructions, where the brain is.
+// AC-1475: a server's assistant as an admin key reads it. `UnavailableReason` is the host's own wording, `IsStoodDown`
+// whether a key holds the line; the profile is AC-1473's wire form, and `Instructions` holds the brain.
 public sealed record RemoteAssistantSettings(
     bool IsEnabled,
     bool IsAvailable,
     string? UnavailableReason,
+    bool IsStoodDown,
     RemoteProfile? Profile,
     string? UnsetReason,
     string? Instructions,

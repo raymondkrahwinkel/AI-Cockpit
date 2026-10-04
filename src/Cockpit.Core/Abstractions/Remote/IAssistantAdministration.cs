@@ -4,7 +4,7 @@ namespace Cockpit.Core.Abstractions.Remote;
 
 /// <summary>
 /// A server's own assistant over its admin API (AC-1475): whether it runs and the profile it runs on. No answer carries
-/// a credential, and the consent bypass only reads; nothing here can widen what the assistant may skip.
+/// a credential, and the consent bypass only reads; nothing here can widen which consent cards the assistant may skip.
 /// </summary>
 public interface IAssistantAdministration
 {

@@ -107,6 +107,8 @@
                 <TextBlock Text="{Binding ProviderText}" FontSize="12">
                     <ToolTip.Tip>configured on the server</ToolTip.Tip>
                 </TextBlock>
+                <TextBlock Text="API key · set on the server" FontSize="12" IsVisible="{Binding HasApiKey}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 <TextBlock Text="Extra instructions (added to the assistant's built-in ones)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                 <TextBox Text="{Binding Instructions}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
                 <CheckBox IsChecked="{Binding ReplacesStandingInstruction}" Content="Advanced: replace the built-in instructions instead of adding to them"/>
