@@ -45,7 +45,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   key never appears. A save sends only what you changed, so the secrets on the server stay where they are. A request
   that carries a credential, a program path or a variable that changes how programs load (`LD_PRELOAD`, `PATH`,
   `NODE_OPTIONS`, `BASH_ENV` and the like) is refused. Any key can list the profiles it may start through
-  `/api/v1/profiles/startable`.
+  `/api/v1/profiles/startable`. The page shows its profile count in the dialog's navigation.
 - added: a connect server's header line has a Health button that opens the server's health: an alarm when a provider
   login on the server has expired (with the runs that did not run since and the Discord message sent to you), the
   sign-in per profile, the server's version, uptime, assistant, Discord and connected keys, and the scheduled runs with
@@ -918,6 +918,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an agent adding a local-model profile or describing a delegation target while a profile is being changed
+  over the admin API no longer saves over that change, or has its own saved over; the two now wait for each other.
 - fixed: a reader of the backend event stream that resumes after a session has closed now still gets that
   session's last rows, if its connect key could see the session; a key that could not see it still gets none.
 - fixed: OpenAI-compatible sessions (Gemini/OpenAI gateways such as Hetzner Inference, Grok, OpenRouter, GitHub
