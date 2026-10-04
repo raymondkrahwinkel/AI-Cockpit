@@ -20,10 +20,8 @@ public sealed class RemoteSessionJourney
 {
     private const string Server = "journey-server";
 
-    // The group shows the server's sessions; a start answers in its pane; a lost line keeps it, and the composer and a
-    // permission answer reach the server; stop asks once. Then Health: an expired login is badge and alarm until Sign
-    // in again clears both, and Run now starts the scheduled flow there. AC-1479: the holder of the assistant opens its
-    // window on the server and is answered there; a key that does not hold it is refused (403) and starts nothing.
+    // The group shows the server's sessions; a start answers in its pane; a lost line keeps it; stop asks once; Health
+    // and Run now follow. AC-1479: the holder's assistant window is answered by the server; another key gets a 403.
     [Fact]
     public async Task AServerGroup_StartsASessionThere_KeepsItsPaneThroughAReconnect_AndStopsItAfterOneConfirmation()
     {
