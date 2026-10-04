@@ -60,7 +60,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   assistant runs and why not, turn it on or off, copy one of the server's profiles in (its secrets stay on the server)
   and change that profile's model, mode, MCP sets, variables and instructions field by field, after which the
   assistant restarts. Which sources may skip the consent card shows there, but can only be changed on the server
-  itself. Every change is in the Audit log under the key that made it. Cockpit 0.87.0.
+  itself. Every change is in the Audit log under the key that made it. Cockpit 0.88.0.
 - added: an OpenRouter, Gemini, GitHub Models or Grok profile on a server can leave its API key empty and take it from
   the container secret instead: set `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `GITHUB_MODELS_TOKEN` or `XAI_API_KEY` in
   `session.env`. The Health tab then says "✓ API key from secret", and the profile screen accepts the empty key.
