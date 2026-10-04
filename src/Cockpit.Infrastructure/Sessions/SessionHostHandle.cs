@@ -267,7 +267,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 : runtime.RespondToPermissionAsync(toolUseId, allow));
 
             // AC-1476: a call already waiting on the same rule is answered with it, or it would ask again once the session moves on.
-            if (false && allow && forSession)
+            if (allow && forSession)
             {
                 var rule = PermissionRule.ForExact(row.ToolName ?? "", row.InputJson ?? "{}");
                 foreach (var other in _rows.Where(other => other.IsPendingPermission && other.ToolUseId is not null && other.ToolUseId != toolUseId
