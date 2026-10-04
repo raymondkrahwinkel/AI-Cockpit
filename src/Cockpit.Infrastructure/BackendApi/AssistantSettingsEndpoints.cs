@@ -72,7 +72,7 @@ internal static class AssistantSettingsEndpoints
                     return await _AuditAsync(services, "api:assistant_profile", "refused", null, refusal).ConfigureAwait(false);
                 }
 
-                await slot().RepointAsync(changed with { EnvironmentVariables = [.. (changed.EnvironmentVariables ?? []).Where(variable => !variable.IsSecret)] }, patch.ReplacesStandingInstruction ?? current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
+                await slot().RepointAsync(changed, patch.ReplacesStandingInstruction ?? current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
