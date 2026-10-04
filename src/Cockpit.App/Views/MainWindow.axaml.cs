@@ -41,11 +41,17 @@ public partial class MainWindow : Window
 
     // Test seam: lets a test control what the bounds-restore below reads, without DI or reflecting into a
     // readonly field set by a field initializer that already ran.
-    internal MainWindow(IWindowBoundsStore? windowBoundsStore)
+    // AC-1487: `remoteServer` makes this the `--remote` window on that server, which keeps no bounds of its own.
+    internal MainWindow(IWindowBoundsStore? windowBoundsStore, string? remoteServer = null)
     {
         _windowBoundsStore = windowBoundsStore;
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false);
+        if (remoteServer is not null)
+        {
+            Title = CockpitWindowChrome.RemoteTitle(remoteServer);
+        }
+
+        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false, remoteServer: remoteServer);
 
         Activated += (_, _) => _SetWindowActive(true);
         Deactivated += (_, _) => _SetWindowActive(false);

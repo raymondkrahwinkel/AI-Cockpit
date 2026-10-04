@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Hosting;
@@ -47,6 +48,14 @@ sealed class Program
         if (HeadlessRoutes.TryRun(args, out var headlessExitCode))
         {
             Environment.Exit(headlessExitCode);
+
+            return;
+        }
+
+        // AC-1487: a window on one connect server, with a root of its own and no backend. It reaches none of the steps below.
+        if (RemoteInstance.ServerNameFrom(args) is { } remoteServer)
+        {
+            _RunRemoteWindow(args, remoteServer);
 
             return;
         }
@@ -215,10 +224,71 @@ sealed class Program
         !Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args)
         && !Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args)
         && !Screenshotter.IsRequested(args)
+        && RemoteInstance.ServerNameFrom(args) is null
         && !string.Equals(Environment.GetEnvironmentVariable("VELOPACK_RESTART"), "true", StringComparison.OrdinalIgnoreCase)
         && !SingleInstanceGuard.IsHeldByAnotherCockpit()
         && !InstallationInstanceGuard.IsAnotherInstanceRunning()
         && UpdateOnNextStart.TakeRequest();
+
+    // AC-1487: all that `--remote` starts. Its own root and claim, so one window per server, then this installation's
+    // update claim (AC-1486) and the one server. No `CockpitBackend`: no hosted service, plugin or listener, and no port.
+    private static void _RunRemoteWindow(string[] args, string server)
+    {
+        var localRoot = CockpitBuild.StateRoot;
+        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, RemoteInstance.StateRootFor(localRoot, server));
+        using var singleInstance = SingleInstanceGuard.TryAcquire(CockpitBuild.IsDevelopment);
+        if (singleInstance is null)
+        {
+            _ShowAlreadyRunningNotice(args);
+
+            return;
+        }
+
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(CockpitBuild.LogPath)));
+        using var installationInstance = InstallationInstanceGuard.Acquire(loggerFactory.CreateLogger<InstallationInstanceGuard>());
+        Cockpit.App.Logging.LifecycleLog.Use(loggerFactory);
+        Cockpit.App.Logging.LifecycleLog.Write(
+            $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting as a remote window on {server}: pid {Environment.ProcessId}.");
+
+        var connection = RemoteInstance.ConnectAsync(localRoot, server, loggerFactory).GetAwaiter().GetResult();
+        _ShowUntilClosed(args, () => connection is null
+            ? new ConfirmationDialog
+            {
+                DataContext = new ConfirmationDialogViewModel(
+                    "No such server",
+                    $"This cockpit holds no connect key for \"{server}\", or holds it encrypted, which a remote window cannot unlock yet. Connect to it first, under Options → Security → Connect to a server.",
+                    "Close"),
+            }
+            : _RemoteWindow(server, connection));
+        connection?.DisposeAsync().AsTask().Wait(TeardownBudget);
+    }
+
+    private static MainWindow _RemoteWindow(string server, RemoteInstanceConnection connection)
+    {
+        var window = new MainWindow(windowBoundsStore: null, server);
+        window.DataContext = CockpitViewModel.ForRemoteWindow(
+            server,
+            connection.Servers,
+            connection.Nodes,
+            new RemoteServerSignIns(connection.Servers),
+            admin =>
+            {
+                OptionsDialog.ForServer(admin).Show(window);
+                return Task.CompletedTask;
+            });
+        return window;
+    }
+
+    // One window as the whole of this process's UI, without the app's lifetime: see `_ShowAlreadyRunningNotice`.
+    private static void _ShowUntilClosed(string[] args, Func<Avalonia.Controls.Window> createWindow) =>
+        BuildAvaloniaApp().Start((_, _) =>
+        {
+            using var closed = new CancellationTokenSource();
+            var window = createWindow();
+            window.Closed += (_, _) => closed.Cancel();
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.MainLoop(closed.Token);
+        }, args);
 
     // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:
     // Start() leaves the ApplicationLifetime null, so App.OnFrameworkInitializationCompleted builds no cockpit —

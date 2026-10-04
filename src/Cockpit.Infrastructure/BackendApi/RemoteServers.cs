@@ -52,7 +52,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
         try
         {
             var rows = (await registry.LoadAsync(cancellationToken).ConfigureAwait(false))
-                .Select(row => (Row: row, Name: _ServerNameOf(row)))
+                .Select(row => (Row: row, Name: ServerNameOf(row)))
                 .Where(entry => entry.Name is not null)
                 .ToList();
 
@@ -159,7 +159,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
     }
 
     // A node's sessions row that carries a connect key and a pin; a pairing's shared secret has no "ck_".
-    private static string? _ServerNameOf(McpServerConfig row) =>
+    internal static string? ServerNameOf(McpServerConfig row) =>
         NodeServerName.Split(row.Name) is { } parts
             && string.Equals(parts.ServerName, NodeServerName.SessionsServerName, StringComparison.Ordinal)
             && row.ApiKey?.StartsWith(ConnectKeyVerifier.KeyPrefix, StringComparison.Ordinal) == true

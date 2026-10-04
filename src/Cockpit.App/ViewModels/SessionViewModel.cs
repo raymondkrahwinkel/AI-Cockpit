@@ -1318,6 +1318,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1456: a session on a connect server, drawn from its handle's rows and live state, the same stream the server
     // group reads, so the two cannot drift. Sending and answering go to the server through the handle's control (AC-1469).
+    // A pane over a session on a connect server; its control, one per pane, can launch nothing.
+    internal static async Task<SessionViewModel> OverRemoteAsync(ISessionHandle handle, string server)
+    {
+        var pane = new SessionViewModel(SessionControls.DesignTime);
+        await pane.FollowRemoteAsync(handle, server);
+        return pane;
+    }
+
     internal async Task FollowRemoteAsync(ISessionHandle handle, string server)
     {
         RemoteServer = server;

@@ -21,7 +21,10 @@ internal static class CockpitConfigPath
 
     public static string Root => CockpitBuild.StateRoot;
 
-    public static string Default => Path.Combine(Root, "cockpit.json");
+    public static string Default => For(Root);
+
+    // AC-1487: the same file under another root, which a `--remote` window reads its one connect key from.
+    public static string For(string root) => Path.Combine(root, "cockpit.json");
 
     // The plugins root — a `plugins/` folder next to `cockpit.json`, stable across app updates. Each plugin lives in its own subfolder here.
     public static string PluginsRoot => Path.Combine(Root, "plugins");

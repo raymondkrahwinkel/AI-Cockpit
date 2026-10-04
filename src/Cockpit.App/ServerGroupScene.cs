@@ -1,4 +1,3 @@
-using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -53,12 +52,7 @@ internal static class ServerGroupScene
                 new("research-monitor", "server (Claude)", SessionStatus.Done),
             ];
         var server = new SceneServer("huis-cockpit", new RemoteServerState(true, 38, key), sessions);
-        cockpit.ShowServers(new SceneServers(server), async (handle, name) =>
-        {
-            var pane = new SessionViewModel(SessionControls.DesignTime);
-            await pane.FollowRemoteAsync(handle, name);
-            return pane;
-        }, new SceneSignIns());
+        cockpit.ShowServers(new SceneServers(server), SessionViewModel.OverRemoteAsync, new SceneSignIns());
 
         var group = cockpit.ServerGroups[0];
         if (health)
