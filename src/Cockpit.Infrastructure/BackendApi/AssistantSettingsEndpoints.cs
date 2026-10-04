@@ -42,7 +42,7 @@ internal static class AssistantSettingsEndpoints
             try
             {
                 var stored = await settings().LoadAsync(cancellationToken).ConfigureAwait(false);
-                await settings().SaveAsync(new AssistantSettings { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+                await settings().SaveAsync(stored with { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
