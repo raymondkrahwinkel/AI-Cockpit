@@ -18,10 +18,9 @@ public sealed class RemoteSessionJourney
 {
     private const string Server = "journey-server";
 
-    // The group shows the server's sessions; a start with a first message answers in its pane; a lost line shows
-    // Reconnecting and keeps the pane, which after the return holds every row once; a second message and a permission
-    // answered there reach the server; stop asks once, and only remote. Then the Health tab: a login that expires shows
-    // as a badge and an alarm, signing in again on the server clears both, and Run now starts the scheduled flow there.
+    // The group shows the server's sessions; a start answers in its pane; a lost line keeps it, and the composer and a
+    // permission answer reach the server; stop asks once. Then Health: an expired login is badge and alarm until Sign
+    // in again clears both, and Run now starts the scheduled flow there.
     [Fact]
     public async Task AServerGroup_StartsASessionThere_KeepsItsPaneThroughAReconnect_AndStopsItAfterOneConfirmation()
     {
