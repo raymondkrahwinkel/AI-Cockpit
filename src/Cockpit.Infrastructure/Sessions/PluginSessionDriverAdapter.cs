@@ -525,26 +525,45 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var rule = scope == PermissionRuleScope.Wildcard
             ? PermissionRule.ForWildcard(toolName)
             : PermissionRule.ForExact(toolName, proposedInputJson);
+        bool remembered;
+        var warn = false;
         lock (_sessionRules)
         {
-            _sessionRules.Add(rule);
+            remembered = _sessionRules.Count < MaxSessionRules || _sessionRules.Contains(rule);
+            if (remembered)
+            {
+                _sessionRules.Add(rule);
+            }
+            else if (!_capLogged)
+            {
+                _capLogged = warn = true;
+            }
+        }
+
+        if (warn)
+        {
+            logger?.LogWarning("The session holds {Count} allow rules; further allow-for-session answers are single allows.", MaxSessionRules);
         }
 
         // An exact rule is this adapter's alone: a provider's own always-allow is wider (Kimi: the whole kind of call).
-        return scope == PermissionRuleScope.Exact
+        return scope == PermissionRuleScope.Exact || !remembered
             ? RespondToPermissionAsync(toolUseId, allow: true, cancellationToken)
             : _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
                 ? Task.CompletedTask
                 : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
     }
 
-    private readonly List<PermissionRule> _sessionRules = [];
+    // ponytail: 256 rules per session, then a single allow and one warning; raise it if a real session needs more.
+    private const int MaxSessionRules = 256;
+
+    private readonly HashSet<PermissionRule> _sessionRules = [];
+    private bool _capLogged;
 
     private bool _AllowedForSession(PluginPermissionRequested permission)
     {
         lock (_sessionRules)
         {
-            return _sessionRules.Exists(rule => rule.Matches(permission.ToolName, permission.InputJson));
+            return _sessionRules.Any(rule => rule.Matches(permission.ToolName, permission.InputJson));
         }
     }
 

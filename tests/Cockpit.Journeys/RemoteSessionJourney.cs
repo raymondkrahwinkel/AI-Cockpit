@@ -72,6 +72,7 @@ public sealed class RemoteSessionJourney
             var repeatPrompted = true;
             var repeatAnswered = 0;
             var otherInputPrompted = false;
+            var twinsLeftOpen = true;
             var badgeWhenExpired = "";
             var alarmWhenExpired = false;
             var signInAwaitedInput = false;
@@ -170,6 +171,14 @@ public sealed class RemoteSessionJourney
                 otherInputPrompted = pane.Transcript.Any(row => row.IsPendingPermission && row.ToolUseId == "echo-ask-other-4");
                 await pane.DenyToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
 
+                // Two identical calls waiting at once: Allow for this session on one answers the other too.
+                pane.InputText = "ask more twice";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => pane.Transcript.Count(row => row.IsPendingPermission) == 2);
+                await pane.AllowForSessionToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask-more-twice") == 2);
+                twinsLeftOpen = pane.Transcript.Any(row => row.IsPendingPermission);
+
                 // Stop asks once; Keep running leaves it running there, Stop on server ends it there.
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
                 askedOnce = pane.IsConfirmingClose && group.Sessions.Count == 1;
@@ -245,6 +254,7 @@ public sealed class RemoteSessionJourney
             Assert.True(offeredForSession, "The server did not offer Allow for this session.");
             Assert.Equal((1, 1), (sessionAllowAnswered, repeatAnswered));
             Assert.False(repeatPrompted, "The same call was asked again after Allow for this session.");
+            Assert.False(twinsLeftOpen, "A second identical call stayed open after Allow for this session.");
             Assert.True(otherInputPrompted, "The same tool with other input was not asked after Allow for this session.");
             Assert.True(askedOnce, "Stop on a remote pane did not ask first.");
             Assert.True(keptRunning, "Keep running did not leave the session running on the server.");

@@ -2467,6 +2467,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : $"Always allowed (exact: {entry.ToolName})");
 
         await _control.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
+
+        // AC-1476: a call already waiting on the same rule is answered with it.
+        var rule = scope == PermissionRuleScope.Wildcard
+            ? PermissionRule.ForWildcard(entry.ToolName)
+            : PermissionRule.ForExact(entry.ToolName, entry.InputJson ?? "{}");
+        foreach (var other in PendingToolPermissionRows().Where(other => other != entry && other.ToolName is not null
+            && other.NodePermission is null && rule.Matches(other.ToolName, other.InputJson ?? "{}")).ToList())
+        {
+            if (other.ToolUseId is { } otherId)
+            {
+                _MarkDecided(other, "Allowed for this session");
+                await _control.RespondToPermissionAsync(otherId, allow: true, answersJson: null);
+            }
+        }
     }
 
     // Called both when the turn finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a

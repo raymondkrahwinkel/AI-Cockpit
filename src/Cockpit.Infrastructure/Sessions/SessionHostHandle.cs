@@ -248,7 +248,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     // ponytail: top-level rows only; a sub-agent's permission row needs its parent re-recorded, add that with a caller.
     public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
     {
-        Task answering;
+        List<Task> answering = [];
         lock (_gate)
         {
             if (_host.Runtime is not { } runtime
@@ -262,9 +262,21 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 IsPendingPermission = false,
                 PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
             });
-            answering = allow && forSession
+            answering.Add(allow && forSession
                 ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)
-                : runtime.RespondToPermissionAsync(toolUseId, allow);
+                : runtime.RespondToPermissionAsync(toolUseId, allow));
+
+            // AC-1476: a call already waiting on the same rule is answered with it, or it would ask again once the session moves on.
+            if (allow && forSession)
+            {
+                var rule = PermissionRule.ForExact(row.ToolName ?? "", row.InputJson ?? "{}");
+                foreach (var other in _rows.Where(other => other.IsPendingPermission && other.ToolUseId is not null && other.ToolUseId != toolUseId
+                    && rule.Matches(other.ToolName ?? "", other.InputJson ?? "{}")).ToList())
+                {
+                    _host.RecordRow(other with { IsPendingPermission = false, PermissionDecision = "Allowed for this session" });
+                    answering.Add(runtime.RespondToPermissionAsync(other.ToolUseId ?? "", allow: true));
+                }
+            }
 
             // AC-1324: the last prompt answered, the session runs on and stops flagging itself.
             if (!_rows.Exists(pending => pending.IsPendingPermission))
@@ -274,7 +286,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
 
         _RaisePendingStateChange();
-        await answering.ConfigureAwait(false);
+        await Task.WhenAll(answering).ConfigureAwait(false);
         return true;
     }
 

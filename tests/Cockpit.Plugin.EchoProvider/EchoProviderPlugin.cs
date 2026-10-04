@@ -127,10 +127,15 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
         // input, and each ask after the first gets its own id, so a journey can tell the prompts apart.
         if (text == "ask" || text.StartsWith("ask ", StringComparison.Ordinal))
         {
-            var detail = text[3..].Trim();
-            var id = $"echo-{text.Replace(' ', '-')}{(_asked++ == 0 ? "" : $"-{_asked}")}";
+            var twice = text.EndsWith(" twice", StringComparison.Ordinal);
+            var detail = (twice ? text[..^6] : text)[3..].Trim();
             var input = detail.Length == 0 ? "{}" : $"{{\"command\":\"{detail}\"}}";
-            _events.Publish(new PluginPermissionRequested { SessionId = SessionId, ToolUseId = id, ToolName = "Bash", InputJson = input });
+            for (var copy = 0; copy < (twice ? 2 : 1); copy++)
+            {
+                var id = $"echo-{text.Replace(' ', '-')}{(_asked++ == 0 ? "" : $"-{_asked}")}";
+                _events.Publish(new PluginPermissionRequested { SessionId = SessionId, ToolUseId = id, ToolName = "Bash", InputJson = input });
+            }
+
             return Task.CompletedTask;
         }
 

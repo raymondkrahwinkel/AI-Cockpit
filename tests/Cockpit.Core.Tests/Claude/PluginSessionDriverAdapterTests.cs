@@ -352,10 +352,10 @@ public class PluginSessionDriverAdapterTests
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
-        // D4: the adapter forwards the always-allow to the plugin driver (a driver that can persist it for the
+        // D4: the adapter forwards a wildcard always-allow to the plugin driver (a driver that can persist it for the
         // session does; one that cannot falls back to a one-time allow) rather than always approving once itself.
-        // The Claude rule args (toolName/input/scope) have no equivalent on the narrow surface and are dropped.
-        await adapter.AllowPermissionAlwaysAsync("tool_1", "read_file", "{}", PermissionRuleScope.Exact);
+        // AC-1476: an exact one stays in the adapter, since a provider's own always-allow is wider than that.
+        await adapter.AllowPermissionAlwaysAsync("tool_1", "read_file", "{}", PermissionRuleScope.Wildcard);
 
         Assert.Equal("tool_1", inner.LastAllowAlwaysToolUseId);
     }
