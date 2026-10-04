@@ -741,6 +741,10 @@ internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCap
 
     public static NodeCaller ForPairing(string remoteAddress) =>
         new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None, HoldsAssistant: true);
+
+    // AC-1405: the controller holding the line, as the scope check sees it — its key's prefix and scope, or the pairing.
+    public static NodeCaller Holding(ActiveController controller) =>
+        new(controller.KeyPrefix, controller.Name, ConnectKeyCapability.Operate, "", CancellationToken.None, HoldsAssistant: true, controller.KeyScope);
 }
 
 // AC-1446: what the contract refuses to do to the bootstrap key, the emergency key; the API answers it with a 409.

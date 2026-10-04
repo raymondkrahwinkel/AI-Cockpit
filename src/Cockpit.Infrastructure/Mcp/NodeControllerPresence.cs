@@ -15,6 +15,7 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
     private ActiveController? _current;
+    private CancellationToken _holderRevoked;
     private DateTimeOffset _lastSeenUtc;
     private ITimer? _expiry;
 
@@ -51,21 +52,33 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         {
             lock (_gate)
             {
-                return _current;
+                return _LiveUnlocked();
             }
         }
     }
 
-    // ponytail: one controller at a time is assumed, not enforced (epic point 6 is open) — two machines calling
-    // within the window take turns owning the name here. Key on the caller if Raymond decides otherwise.
-    public void Seen(string controllerName)
+    // ponytail: one controller at a time is assumed, not enforced (epic point 6 is open) — a second machine calling
+    // within the window waits until the first misses it. Key on the caller if Raymond decides otherwise.
+    public void Seen(string controllerName, NodeCaller? holder = null)
     {
         bool appeared;
         lock (_gate)
         {
-            appeared = _current is null;
+            appeared = _LiveUnlocked() is null;
+
+            // AC-1405: only the holder's own call keeps it present and refreshes its scope, so a narrowed key applies
+            // from its next call and a holder gone quiet expires even while another caller polls.
+            if (!appeared && !string.Equals(_current?.KeyPrefix, holder?.KeyPrefix, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             _lastSeenUtc = _time.GetUtcNow();
-            _current ??= new ActiveController(controllerName, _lastSeenUtc);
+            var since = appeared ? _lastSeenUtc : _current?.SinceUtc ?? _lastSeenUtc;
+            _current = holder is { ByConnectKey: true }
+                ? new ActiveController(controllerName, since, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default, holder.ExpiresAt)
+                : new ActiveController(controllerName, since);
+            _holderRevoked = holder?.Revoked ?? CancellationToken.None;
             _expiry?.Dispose();
             _expiry = _time.CreateTimer(_ => _Expire(), null, Window, Timeout.InfiniteTimeSpan);
         }
@@ -75,6 +88,18 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    public T WithHolder<T>(Func<ActiveController?, T> action)
+    {
+        lock (_gate)
+        {
+            return action(_LiveUnlocked());
+        }
+    }
+
+    // AC-1405: a holder whose key was revoked or ran out is gone at once, before its window would let it go.
+    private ActiveController? _LiveUnlocked() =>
+        _current is { } current && !_holderRevoked.IsCancellationRequested && !(current.ExpiresAt <= _time.GetUtcNow()) ? current : null;
 
     private void _Expire()
     {
@@ -96,18 +121,20 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
     // unpair is not a missed poll, it is the coupling ending right now.
     private void _Clear()
     {
-        bool disappeared;
         lock (_gate)
         {
-            disappeared = _current is not null;
+            // AC-1405: every broker change without a pairing (an offer, its expiry, a refusal) lands here, so a holder
+            // that came in by connect key, which no pairing grants, is left where it is.
+            if (_current is not { KeyPrefix: null })
+            {
+                return;
+            }
+
             _current = null;
             _expiry?.Dispose();
             _expiry = null;
         }
 
-        if (disappeared)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 }

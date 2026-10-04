@@ -349,13 +349,13 @@ internal sealed class CockpitMcpEndpointHost
 
         // A caller holds the line only after authorization and a granted node scope. Pairing holds by default;
         // a connect key holds only when it requests ownership. AC-1383: a backend API call never holds, whatever key.
-        if (allowed && nodeScopeGranted && McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true } && !McpRequestContext.IsBackendApiRequest && _services.GetService<NodeControllerPresence>() is { } presence)
+        if (allowed && nodeScopeGranted && McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true } holder && !McpRequestContext.IsBackendApiRequest && _services.GetService<NodeControllerPresence>() is { } presence)
         {
             // ponytail: holding keys and the pairing share one controller and inbox. Use a lease per credential
             // if multiple controllers need separate ownership.
-            presence.Seen(byConnectKey && McpRequestContext.CurrentNodeCaller is { } caller
-                ? caller.Label
-                : _services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller");
+            presence.Seen(
+                byConnectKey ? holder.Label : _services.GetService<INodePairingBroker>()?.Pairing?.ControllerName ?? "the paired controller",
+                holder);
         }
 
         return allowed;

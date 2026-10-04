@@ -12,13 +12,20 @@ public interface INodeControllerPresence
 {
     /// <summary>
     /// The controller that last reached this node within the window, or null once the window has passed with no
-    /// call — at which point the node is on its own again.
+    /// call, or once its connect key expired or was revoked — at which point the node is on its own again.
     /// </summary>
     ActiveController? Current { get; }
 
     /// <summary>
-    /// Raised when <see cref="Current"/> appears or goes away, from whatever thread noticed it. Not raised on every
-    /// call that merely keeps the controller present.
+    /// Raised when <see cref="Current"/> appears, when the window lets it go (a holder whose key ran out or was revoked
+    /// reads as null before that), or when the line passes to another controller, from whatever thread noticed it.
+    /// Not raised on every call that merely keeps the controller present.
     /// </summary>
     event EventHandler? Changed;
+
+    /// <summary>
+    /// Runs <paramref name="action"/> with <see cref="Current"/> held still: no call takes over, refreshes or drops the
+    /// holder until it returns (AC-1405). Anything else it locks is taken after this, never before.
+    /// </summary>
+    T WithHolder<T>(Func<ActiveController?, T> action);
 }
