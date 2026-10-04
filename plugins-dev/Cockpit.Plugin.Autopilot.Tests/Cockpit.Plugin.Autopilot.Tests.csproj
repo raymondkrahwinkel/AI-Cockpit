@@ -43,4 +43,13 @@
     <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- AC-1390's pattern: the UI part as the backend project's build leaves it in its bin/, so the backend dropping the
+         build of UI/ fails this project. It links the backend's records as source, hence `extern alias UiAsm;`. -->
+    <Reference Include="Cockpit.Plugin.Autopilot.UI">
+      <HintPath>..\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.UI.dll</HintPath>
+      <Aliases>UiAsm</Aliases>
+    </Reference>
+  </ItemGroup>
+
 </Project>

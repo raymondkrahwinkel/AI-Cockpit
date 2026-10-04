@@ -1,17 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Autopilot (AC-94, skeleton AC-149): the operator-triggered "issue → merge-ready PR" plugin. This sub-ticket
-       is the shell only — the plugin registers its own full-surface workspace type (AC-122 AddWorkspaceType) with a
-       pipeline surface and lays down the settings foundation (global + per-project override). The trigger, the run
-       start, the done-gates and the tracker channel land in later Autopilot sub-tickets. Built OUTSIDE Cockpit.slnx
-       (plugins-dev/) like the other bundled plugins; shared assemblies are compile-only (Private=false /
-       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity. -->
+  <!-- Autopilot (AC-94, skeleton AC-149): the operator-triggered "issue → merge-ready PR" plugin. AC-1418 (F2.10b):
+       this project is the backend half — the runs, the plan, the MCP tools and the channel — and names no Avalonia;
+       the workspace and the settings view live in UI/, its own project, which builds into this project's bin/ (the
+       reference below orders the build and references no assembly). Built OUTSIDE Cockpit.slnx (plugins-dev/) like
+       the other bundled plugins; shared assemblies are compile-only (Private=false / ExcludeAssets=runtime) so the
+       host's copies load and shared types keep one identity. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <!-- AC-1392: keeps the parent's Configuration on the UI part's reference below; without it SetConfiguration is undone. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,20 +22,12 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
-    <!-- AC-1398: InitializeUi and the workspace's pane-id views, until F2.10b moves the workspace to UI/. -->
-    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
-      <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </ProjectReference>
+    <!-- AC-1392: built in this project's own configuration, so a Release copy of the plugin carries its UI assembly. -->
+    <ProjectReference Include="UI\Cockpit.Plugin.Autopilot.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

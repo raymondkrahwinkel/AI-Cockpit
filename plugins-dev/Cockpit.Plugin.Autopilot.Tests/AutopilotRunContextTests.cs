@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿extern alias UiAsm;
+
+using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -71,13 +73,13 @@ public class AutopilotRunContextTests
     [InlineData(2, -1, 0)]
     [InlineData(2, 0, 1)]
     [InlineData(2, 1, 0)]
-    // With one awaiting run already shown, the "next" is itself — the caller's own ReferenceEquals guard is what
+    // With one awaiting run already shown, the "next" is itself — the caller's own same-run guard is what
     // turns this into a no-op click rather than a same-run re-render that would rebuild the answer TextBox and drop
     // whatever the operator had typed.
     [InlineData(1, 0, 0)]
     [InlineData(1, -1, 0)]
     public void NextAwaitingIndex_StepsThroughTheAwaitingRuns_AndWrapsAfterTheLast(int awaitingCount, int currentIndex, int? expected) =>
-        Assert.Equal(expected, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount, currentIndex));
+        Assert.Equal(expected, UiAsm::Cockpit.Plugin.Autopilot.AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount, currentIndex));
 
     // Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".
     private sealed class FakeStorage : IPluginStorage

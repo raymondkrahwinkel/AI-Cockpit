@@ -1,10 +1,10 @@
 {
   "id": "autopilot",
   "name": "Autopilot",
-  "version": "0.24.3",
+  "version": "0.24.4",
   "entryAssembly": "Cockpit.Plugin.Autopilot.dll",
   "entryType": "Cockpit.Plugin.Autopilot.AutopilotPlugin",
-  "uiAssembly": "Cockpit.Plugin.Autopilot.dll",
+  "uiAssembly": "Cockpit.Plugin.Autopilot.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Autopilot.AutopilotUi",
   "abstractionsVersion": 3,
   "minHostVersion": "0.86.0",

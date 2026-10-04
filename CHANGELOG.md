@@ -44,6 +44,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: the Autopilot workspace and its settings reach the runs, the plan, the queue, the history and the templates
   only over Autopilot's own plugin channel, the first step to running Autopilot's backend on a server without a window.
   What you see and click is unchanged. Needs Cockpit 0.86.0; Autopilot 0.24.3.
+- changed: Autopilot ships its workspace and settings in an assembly of their own, so its backend part names no window
+  library and loads on a server without one. Nothing changes on screen. Autopilot 0.24.4.
 
 ### Added
 
