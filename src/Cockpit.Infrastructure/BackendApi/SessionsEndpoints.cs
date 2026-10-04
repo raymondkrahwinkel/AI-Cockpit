@@ -330,6 +330,12 @@ internal static class SessionsEndpoints
                 return _TextRequired();
             }
 
+            // The first prompt of the holder starts the assistant, as the first message typed into the desktop's does.
+            if (sessions().Assistant is null && services.GetService<IAssistantSessionHost>() is { } host)
+            {
+                await host.EnsureStartedAsync().ConfigureAwait(false);
+            }
+
             if (sessions().Assistant is not { } assistant)
             {
                 return Results.NotFound();

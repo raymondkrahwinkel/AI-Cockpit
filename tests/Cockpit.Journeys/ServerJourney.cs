@@ -13,12 +13,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
@@ -197,7 +199,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null, bool withAssistant = false)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -217,6 +219,14 @@ public sealed class ServerJourney
                 new SessionProfile("EchoSignIn", new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, SignedInFile) }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
             ]);
             File.WriteAllText(Path.Combine(root, SignedInFile), "");
+            if (withAssistant)
+            {
+                await services.GetRequiredService<IAssistantSettingsStore>().SaveAsync(new AssistantSettings { IsEnabled = true });
+                await services.GetRequiredService<IAssistantProfileStore>().RepointAsync(
+                    new SessionProfile("Assistant", new PluginProviderConfig("echo-provider.echo", "{}")) { DefaultKind = ProfileSessionKind.Sdk },
+                    replacesStandingInstruction: false);
+            }
+
             await services.GetRequiredService<INotificationSettingsStore>().SaveAsync(new NotificationSettings { DiscordEnabled = true, WebhookUrl = webhookUrl, LoginCheckInterval = LoginCheckInterval });
             await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = port });
             if (pluginStore is not null)

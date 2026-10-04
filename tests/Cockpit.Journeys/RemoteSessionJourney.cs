@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
@@ -20,14 +22,15 @@ public sealed class RemoteSessionJourney
 
     // The group shows the server's sessions; a start answers in its pane; a lost line keeps it, and the composer and a
     // permission answer reach the server; stop asks once. Then Health: an expired login is badge and alarm until Sign
-    // in again clears both, and Run now starts the scheduled flow there.
+    // in again clears both, and Run now starts the scheduled flow there. AC-1479: the holder of the assistant opens its
+    // window on the server and is answered there; a key that does not hold it is refused (403) and starts nothing.
     [Fact]
     public async Task AServerGroup_StartsASessionThere_KeepsItsPaneThroughAReconnect_AndStopsItAfterOneConfirmation()
     {
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
+        var (fingerprint, holderKey, plainKey) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false, withAssistant: true);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", key));
         try
@@ -36,6 +39,9 @@ public sealed class RemoteSessionJourney
             var port = ServerJourney._McpPort(run.Output);
             await using var relay = new Relay(port);
             using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{port}/"), key, fingerprint, TimeProvider.System);
+            using var holder = new BackendApiClient(new Uri($"https://127.0.0.1:{port}/"), holderKey, fingerprint, TimeProvider.System);
+            using var plain = new BackendApiClient(new Uri($"https://127.0.0.1:{port}/"), plainKey, fingerprint, TimeProvider.System);
+            var refusedPrompt = await Assert.ThrowsAsync<BackendApiException>(() => plain.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/assistant/prompt", new { text = "let me in" }));
 
             await using var cockpit = JourneyHost.Desktop();
             var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
@@ -49,7 +55,7 @@ public sealed class RemoteSessionJourney
                     Scope = McpServerScope.LocalOnly,
                     Url = $"https://127.0.0.1:{relay.Port}/mcp",
                     Auth = McpServerAuth.ApiKey,
-                    ApiKey = key,
+                    ApiKey = holderKey,
                     PinnedCertificateFingerprint = fingerprint,
                 },
             ]);
@@ -76,7 +82,13 @@ public sealed class RemoteSessionJourney
             var zoneHeading = "";
             var runBefore = "";
             var runAfter = "";
+            var canOpenBefore = true;
+            var assistantWindow = default(AssistantChatWindow);
+            var assistantChat = default(AssistantChatViewModel);
             var view = cockpit.Cockpit;
+            var assistantClosed = Task.CompletedTask;
+            var opened = new TaskCompletionSource<AssistantChatWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watch = Window.WindowOpenedEvent.AddClassHandler<AssistantChatWindow>((window, _) => opened.TrySetResult(window));
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 // A local pane that is not busy closes on its click, as before.
@@ -86,6 +98,29 @@ public sealed class RemoteSessionJourney
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
                 var group = view.ServerGroups[0];
                 await Until.Holds(group, () => group.IsConnected);
+
+                // The holder's key offers the assistant; the refused key started nothing. Its window is the assistant's
+                // own, and what is typed there is answered by the server.
+                await Until.Holds(group, () => group.HoldsAssistant);
+                canOpenBefore = group.CanOpenAssistant;
+                await holder.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/assistant/prompt", new { text = "wake" });
+                await Until.Holds(group, () => group.CanOpenAssistant);
+                assistantClosed = view.OpenServerAssistantCommand.ExecuteAsync(group);
+            });
+            assistantWindow = await opened.Task.WaitAsync(Until.Ceiling);
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                assistantChat = assistantWindow.DataContext as AssistantChatViewModel ?? throw new InvalidOperationException("The assistant window has no conversation.");
+                assistantChat.InputText = "hello from the laptop";
+                await assistantChat.SendCommand.ExecuteAsync(null);
+                var transcript = assistantChat.Session?.Transcript ?? throw new InvalidOperationException("The window follows no assistant.");
+                await Until.ItemsHold(transcript, () => transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.Contains("echo: hello from the laptop", StringComparison.Ordinal)));
+                assistantWindow.Close();
+            });
+            await assistantClosed.WaitAsync(Until.Ceiling);
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var group = view.ServerGroups[0];
 
                 await view.OpenServerStartCommand.ExecuteAsync(group);
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
@@ -197,6 +232,10 @@ public sealed class RemoteSessionJourney
                 runAfter = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled").Outcome;
             });
 
+            Assert.Equal(HttpStatusCode.Forbidden, refusedPrompt.Status);
+            Assert.False(canOpenBefore, "A key without holdsAssistant started the server's assistant.");
+            var answeredThere = await holder.GetAsync<JsonObject>("api/v1/assistant/transcript");
+            Assert.Contains("echo: hello from the laptop", answeredThere["entries"]?.ToJsonString() ?? "", StringComparison.Ordinal);
             Assert.True(localClosedAtOnce, "A local pane that is not busy asked before it closed.");
             Assert.Equal("Reconnecting", reconnecting);
             Assert.True(paneStayed, "The remote pane went away while the line was down.");
