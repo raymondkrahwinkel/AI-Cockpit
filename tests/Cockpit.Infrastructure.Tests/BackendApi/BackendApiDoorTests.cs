@@ -134,7 +134,7 @@ public sealed class BackendApiDoorTests
         var keys = await verifier.ListAsync();
 
         Assert.Equal(expected, answer.Status);
-        Assert.Equal(error, JsonNode.Parse(answer.Body)?["error"]?.GetValue<string>() ?? "");
+        Assert.Equal(error, JsonNode.Parse(answer.Body) is JsonObject response ? response["error"]?.GetValue<string>() ?? "" : "");
         Assert.False(answer.Body.Contains(operate.Secret, StringComparison.Ordinal), "The answer repeated a full key it was given.");
         Assert.False(answer.Body.Contains("password", StringComparison.Ordinal) || answer.Body.Contains("query-token", StringComparison.Ordinal) || answer.Body.Contains("\"token\"", StringComparison.Ordinal), "The answer repeated a store credential it was given.");
         Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
