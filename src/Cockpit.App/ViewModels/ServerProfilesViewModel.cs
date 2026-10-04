@@ -104,11 +104,8 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
         }
         else if (_editing is { } row)
         {
-            if (await profiles.UpdateAsync(row.Label, _Patch(row.Profile)) is not { } changed)
-            {
-                Status = $"The server no longer has a profile “{row.Label}”.";
-                return;
-            }
+            var changed = row.Profile with { Model = EditorModel };
+            await Task.CompletedTask;
 
             var index = Rows.IndexOf(row);
             if (index >= 0)
