@@ -55,7 +55,6 @@ internal sealed class RemoteStartup : IDisposable
         }
 
         var loggers = loggersAt(CockpitBuild.LogPath);
-        Cockpit.Infrastructure.Hosting.CockpitBackend.Build(loggers).Start();
         LocalRegistry? registry = null;
         string? refusal = null;
         try
