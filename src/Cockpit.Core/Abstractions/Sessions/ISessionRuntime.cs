@@ -119,10 +119,4 @@ public interface ISessionRuntime : IAsyncDisposable
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
     Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// AC-1476: see <see cref="ISessionDriver.AllowPermissionForSessionAsync"/>.
-    /// </summary>
-    Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken = default) =>
-        AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, PermissionRuleScope.Exact, cancellationToken);
 }

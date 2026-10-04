@@ -110,14 +110,6 @@ public interface ISessionDriver : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// AC-1476: allows the outstanding decision and this exact tool call for the rest of the session, and nothing
-    /// wider: a provider's own always-allow may cover the whole kind of call, so this does not use it. The default
-    /// falls back to the exact always-allow above.
-    /// </summary>
-    Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string proposedInputJson, CancellationToken cancellationToken = default) =>
-        AllowPermissionAlwaysAsync(toolUseId, toolName, proposedInputJson, PermissionRuleScope.Exact, cancellationToken);
-
-    /// <summary>
     /// The session's latest status, when the provider reports it (#45 D7) — context fullness and self-labelled
     /// usage windows, polled to render the header's bars without host-owned status code. Null when the provider
     /// reports none (Claude uses the TTY statusline relay instead) — nothing shown, never a made-up zero.

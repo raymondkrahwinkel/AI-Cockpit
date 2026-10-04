@@ -462,13 +462,18 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
     {
-        _gate.AllowAlways(toolUseId, toolName);
+        // The gate only knows a whole-tool rule, so an exact one is a single allow here rather than a wider grant.
+        if (scope == PermissionRuleScope.Exact)
+        {
+            _gate.Respond(toolUseId, allow: true);
+        }
+        else
+        {
+            _gate.AllowAlways(toolUseId, toolName);
+        }
+
         return Task.CompletedTask;
     }
-
-    // AC-1476: the gate only knows a whole-tool rule, so a session allow here is a single allow, not a wider grant.
-    public Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string proposedInputJson, CancellationToken cancellationToken = default) =>
-        RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
 
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
     {
