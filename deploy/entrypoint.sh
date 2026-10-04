@@ -55,7 +55,7 @@ need_writable app /work
 need_writable agent /work
 need_writable app /home/app/.ssh
 for path in /home/agent/.claude /home/agent/.codex /home/agent/.ssh; do need_writable agent "$path"; done
-true
+[ "$unwritable" = 0 ] || exit 1
 
 # The group the Claude provider opens its mcp-config and prompt file to (AC-1468); `app` is in it, `agent` owns it.
 COCKPIT_AGENT_GROUP=$(id -g agent)
