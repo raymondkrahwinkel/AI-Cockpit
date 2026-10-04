@@ -245,7 +245,8 @@ public class Ac1321TakeoverStateTests
     }
 
     // A settable clock whose timers fire when it is advanced past them — the fall-back is otherwise a minute's wait.
-    private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
+    // AC-1475: the host tests release a held line with it too.
+    internal sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
     {
         private readonly List<(DateTimeOffset Due, TimerCallback Callback, object? State)> _alarms = [];
         private DateTimeOffset _now = now;

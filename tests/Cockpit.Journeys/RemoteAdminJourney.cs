@@ -203,7 +203,7 @@ public sealed class RemoteAdminJourney
             {
                 await Until.CollectionHolds(profiles.Rows, () => profiles.Rows.Any(row => row.Label == "Echo"));
                 profiles.StartEditCommand.Execute(profiles.Rows.Single(row => row.Label == "Echo"));
-                profiles.EditorModel = "echo-large";
+                profiles.Editor.Model = "echo-large";
                 await profiles.SaveEditorCommand.ExecuteAsync(null);
             });
             using var timeout = new CancellationTokenSource(Until.Ceiling);
@@ -212,6 +212,28 @@ public sealed class RemoteAdminJourney
             var echoed = await setup.StreamEventsAsync(0, timeout.Token)
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
+
+            // AC-1475: Assistant → Copy in Echo → turn it on; the server reports it running, and both are in the Audit log.
+            var assistant = admin.Assistant ?? throw new InvalidOperationException("Admin opened Options without its Assistant page.");
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                dialog.SelectCategory("server-assistant");
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ServerAssistantPage>().Count() == 1);
+                await assistant.LoadCommand.ExecuteAsync(null);
+                assistant.SelectedCopyChoice = assistant.CopyChoices.Single(choice => choice.Label == "Echo");
+                await assistant.CopyInCommand.ExecuteAsync(null);
+                assistant.IsEnabled = true;
+                await Until.Holds(assistant, () => assistant.IsRunning);
+            });
+            List<(string Key, string What)> assistantAudit = [];
+            await Until.ReloadHolds(
+                () => HeadlessAvalonia.RunAsync(async () =>
+                {
+                    await admin.LoadCommand.ExecuteAsync(null);
+                    assistantAudit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
+                }),
+                () => assistantAudit.Contains((Laptop, "assistant profile copied from Echo")) && assistantAudit.Contains((Laptop, "assistant turned on")));
+            var assistantState = HeadlessAvalonia.Run(() => (assistant.AvailabilityTitle, assistant.MessageTitle));
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 dialog.Close();
@@ -234,6 +256,9 @@ public sealed class RemoteAdminJourney
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Equal("", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
+            Assert.Equal(("Running", ""), assistantState);
+            Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
+            Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
         }
         finally
         {

@@ -33,4 +33,9 @@ internal sealed class AssistantSettingsStore : IAssistantSettingsStore, ISinglet
         _configFile.UpdateAsync(
             file => file.Assistant = AssistantSettingsEntry.FromDomain(settings),
             cancellationToken);
+
+    public Task UpdateAsync(Func<AssistantSettings, AssistantSettings> change, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(
+            file => file.Assistant = AssistantSettingsEntry.FromDomain(change(file.Assistant?.ToDomain() ?? new AssistantSettings())),
+            cancellationToken);
 }

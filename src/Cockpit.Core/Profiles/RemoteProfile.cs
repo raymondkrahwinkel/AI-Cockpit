@@ -1,7 +1,7 @@
 namespace Cockpit.Core.Profiles;
 
-// AC-1473 (F5.6b3): a server's profile as it crosses the admin connection, with no credential in it: a secret variable
-// without its value, an API key as whether one is set, and a plugin provider's config not at all.
+// AC-1473 (F5.6b3): a server's profile as it crosses the admin connection, with no credential in it. AC-1475:
+// `KnownValues` lists what the provider offers per declared option; a free-form option, or an older server, has none.
 public sealed record RemoteProfile(
     string Label,
     string Provider,
@@ -13,7 +13,11 @@ public sealed record RemoteProfile(
     IReadOnlyList<RemoteProfileVariable> Environment,
     bool HasApiKey,
     bool ConfiguredOnServer,
-    ProfileSignInKind? SignIn);
+    ProfileSignInKind? SignIn,
+    IReadOnlyDictionary<string, IReadOnlyList<RemoteOptionValue>>? KnownValues = null);
+
+// AC-1475: one value a provider offers for an option, as its descriptor names it.
+public sealed record RemoteOptionValue(string Value, string Label);
 
 // `Value` is null for a secret: it stays on the server.
 public sealed record RemoteProfileVariable(string Key, string? Value, bool IsSecret = false);

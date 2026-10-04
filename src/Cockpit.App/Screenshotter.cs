@@ -234,6 +234,11 @@ internal static class Screenshotter
         ["server-admin-projects"] = ServerAdminScene.Projects,
         // AC-1473: its Profiles, the sign-in column reading and the editor open on a profile whose key is a secret.
         ["server-admin-profiles"] = ServerAdminScene.Profiles,
+        // AC-1475: its Assistant page: stood down with an unsaved change, fresh, sign-in expired, and saved beside another key.
+        ["server-admin-assistant"] = ServerAdminScene.Assistant,
+        ["server-admin-assistant-fresh"] = ServerAdminScene.AssistantFresh,
+        ["server-admin-assistant-signin"] = ServerAdminScene.AssistantSignIn,
+        ["server-admin-assistant-saved"] = ServerAdminScene.AssistantSaved,
         // AC-1457: the Health tab of a connect server, for an admin key (alarm, device code) and for an operate key.
         ["server-health"] = ServerGroupScene.Health,
         ["server-health-operate"] = ServerGroupScene.HealthOperate,

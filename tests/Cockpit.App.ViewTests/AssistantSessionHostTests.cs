@@ -1117,18 +1117,25 @@ public class AssistantSessionHostTests
     /// <summary>
     /// The restart re-reads the Assistant Profile, so a permission mode edited since the last launch is the one
     /// the new instance starts on. A restart that reused the profile it started with would tear the session down
-    /// and bring it back on exactly the setting the operator restarted to get away from.
+    /// and bring it back on exactly the setting the operator restarted to get away from. AC-1475 (Codex): asked for
+    /// while a controller holds the line, it waits, and runs in full once the line is released.
     /// </summary>
     [Fact]
     public void Restart_ReadsTheAssistantProfileAgain_SoASettingChangedSinceTheLastStartIsTheOneItStartsOn()
     {
         var profiles = Substitute.For<IAssistantProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ConfiguredSlot());
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), profiles: profiles));
+        var clock = new Ac1321TakeoverStateTests.FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var presence = new NodeControllerPresence(clock);
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), profiles: profiles, presence: presence));
         Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession()));
 
+        Dispatcher.UIThread.Invoke(() => presence.Seen("LAPTOP"));
         Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
+        var whileHeld = profiles.ReceivedCalls().Count();
+        Dispatcher.UIThread.Invoke(() => clock.Advance(TimeSpan.FromSeconds(61)));
 
+        Assert.Equal(0, whileHeld);
         profiles.Received().LoadAsync(Arg.Any<CancellationToken>());
     }
 
@@ -1400,7 +1407,8 @@ public class AssistantSessionHostTests
         ISessionStateStore? sessionState = null,
         bool speakReplies = true,
         CockpitViewModel? cockpit = null,
-        IAssistantMemory? memory = null)
+        IAssistantMemory? memory = null,
+        NodeControllerPresence? presence = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -1424,7 +1432,7 @@ public class AssistantSessionHostTests
         var desktop = cockpit ?? new CockpitViewModel();
 
         return new AssistantSessionHost(
-            new DesktopSessionSeams(() => desktop), new NodeControllerPresence(), settings, profiles,
+            new DesktopSessionSeams(() => desktop), presence ?? new NodeControllerPresence(), settings, profiles,
             sessionState, sessionStateRecorder,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance);

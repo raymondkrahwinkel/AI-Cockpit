@@ -73,6 +73,11 @@ public interface IRemoteServer
     IServerProfiles Profiles { get; }
 
     /// <summary>
+    /// The server's own assistant, which only an admin key may read or change (AC-1475).
+    /// </summary>
+    IAssistantAdministration AssistantAdministration { get; }
+
+    /// <summary>
     /// The server's health as its health route answers it (AC-1457).
     /// </summary>
     IRemoteServerHealth Health { get; }

@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.ServerAssistantPage"
+             x:DataType="vm:ServerAssistantViewModel">
+
+    <!-- AC-1475: Options › Assistant on a server (mockup v1-final). The availability line is the server's own reason, the
+         profile is edited field by field with the Profiles page's editor, and the consent bypass only reads. -->
+    <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Assistant" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Text="on the server" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+        </StackPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                   Text="The assistant that runs on the server: whether it runs, and the profile it runs on. Speech and the chat window belong to each desktop and stay in its own Options."/>
+
+        <Border Padding="12,9" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ReportedAt}" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <Panel DockPanel.Dock="Left" Width="9" Height="9" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <Ellipse Fill="{DynamicResource CockpitStatusDoneBrush}" IsVisible="{Binding IsRunning}"/>
+                    <Ellipse Fill="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding IsWaiting}"/>
+                    <Ellipse Fill="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding IsOff}"/>
+                    <Ellipse Fill="{DynamicResource CockpitStatusErrorBrush}" IsVisible="{Binding IsFailed}"/>
+                </Panel>
+                <TextBlock TextWrapping="Wrap" VerticalAlignment="Center">
+                    <Run Text="{Binding AvailabilityTitle}" FontWeight="SemiBold"/>
+                    <Run Text="{Binding AvailabilityDetail}"/>
+                </TextBlock>
+            </DockPanel>
+        </Border>
+
+        <Panel IsVisible="{Binding HasMessage}">
+            <Border CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitStatusErrorChipTintBrush}" IsVisible="{Binding IsErrorMessage}"/>
+            <Border CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitStatusWaitingChipTintBrush}" IsVisible="{Binding IsWarningMessage}"/>
+            <Border CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitCategoryTintBlueBrush}" IsVisible="{Binding IsInfoMessage}"/>
+            <DockPanel Margin="12,9">
+                <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Retry" IsVisible="{Binding CanRetry}" Command="{Binding RetryCommand}"/>
+                <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Open Server health" IsVisible="{Binding LinksHealth}" Command="{Binding OpenHealthCommand}"/>
+                <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Open Plugins" IsVisible="{Binding LinksPlugins}" Command="{Binding OpenPluginsCommand}"/>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding MessageTitle}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Panel>
+
+        <TextBlock Classes="optionsSectionHeader" Text="1. ASSISTANT" Margin="0,6,0,0"/>
+        <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanSwitch}">
+                <StackPanel Spacing="1">
+                    <TextBlock Text="Run the assistant on the server" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding SwitchHint}" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </CheckBox>
+        </Border>
+
+        <TextBlock Classes="optionsSectionHeader" Text="2. ASSISTANT PROFILE" Margin="0,6,0,0"/>
+        <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel Spacing="6">
+                <DockPanel IsVisible="{Binding HasProfile}">
+                    <Button DockPanel.Dock="Right" Content="Edit…" VerticalAlignment="Center" Command="{Binding EditCommand}" IsEnabled="{Binding CanEdit}"/>
+                    <StackPanel Spacing="1">
+                        <TextBlock Text="{Binding ProfileLabel}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding ProfileDetail}" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </DockPanel>
+                <StackPanel Spacing="6" IsVisible="{Binding HasNoProfile}">
+                    <TextBlock Text="{Binding UnsetText}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="Start from a profile on the server" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding CopyChoices}" SelectedItem="{Binding SelectedCopyChoice}" HorizontalAlignment="Stretch"
+                                  IsEnabled="{Binding !IsReadOnly}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ServerProfileRowViewModel">
+                                    <TextBlock>
+                                        <Run Text="{Binding Label}"/>
+                                        <Run Text=" · "/>
+                                        <Run Text="{Binding SignInText}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Grid.Column="1" Classes="Accent" Content="Copy in" Margin="8,0,0,0" Command="{Binding CopyInCommand}" IsEnabled="{Binding !IsReadOnly}"/>
+                    </Grid>
+                    <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                               Text="The server copies it once, secrets included — they never leave the server. Later changes to that profile do not follow."/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border IsVisible="{Binding IsEditing}" Padding="14,12" MaxWidth="620" HorizontalAlignment="Left"
+                CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel Spacing="4">
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock DockPanel.Dock="Right" Text="saved field by field" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="Edit the assistant's profile" FontWeight="SemiBold"/>
+                </DockPanel>
+                <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <TextBox Text="{Binding EditorLabel}"/>
+                <TextBlock Text="Provider" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding ProviderText}" FontSize="12">
+                    <ToolTip.Tip>configured on the server</ToolTip.Tip>
+                </TextBlock>
+                <TextBlock Text="API key · set on the server" FontSize="12" IsVisible="{Binding HasApiKey}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <TextBlock Text="Extra instructions (added to the assistant's built-in ones)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBox Text="{Binding Instructions}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
+                <CheckBox IsChecked="{Binding ReplacesStandingInstruction}" Content="Advanced: replace the built-in instructions instead of adding to them"/>
+                <TextBlock Classes="optionsHint" TextWrapping="Wrap" Text="Read when the assistant starts. Saving restarts it."/>
+
+                <views:ServerProfileEditor DataContext="{Binding Editor}"/>
+
+                <TextBlock Text="Executable" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBlock Text="set on the server" FontSize="12" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                    <Button Content="Discard" Command="{Binding DiscardCommand}"/>
+                    <Button Classes="Accent" Content="Save and restart the assistant" Command="{Binding SaveCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Classes="optionsSectionHeader" Text="3. CONSENT BYPASS" Margin="0,6,0,0"/>
+        <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <DockPanel>
+                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="LockOutline" Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,10,0"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <StackPanel Spacing="1">
+                    <TextBlock TextWrapping="Wrap">
+                        <Run Text="{Binding BypassTitle}" FontWeight="SemiBold"/>
+                        <Run Text="{Binding BypassDetail}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </TextBlock>
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                               Text="Set on the server only. The assistant can never widen its own permissions, so this connection cannot change it either."/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border Padding="12,9" Margin="0,6,0,0" CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitCategoryTintBlueBrush}">
+            <TextBlock TextWrapping="Wrap" FontSize="12"
+                       Text="Speak replies, Always on top, Reading level, Speech and the push-to-talk key are this desktop's own. You find them in this desktop's Options › Assistant."/>
+        </Border>
+    </StackPanel>
+</UserControl>

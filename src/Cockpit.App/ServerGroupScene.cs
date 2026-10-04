@@ -133,6 +133,8 @@ internal static class ServerGroupScene
 
         public IServerProfiles Profiles { get; } = ServerAdminScene.ProfilesStandIn();
 
+        public IAssistantAdministration AssistantAdministration { get; } = ServerAdminScene.AssistantStandIn();
+
         public RemoteServerState State { get; } = state;
 
         public IReadOnlyList<ISessionHandle> All { get; } = sessions;

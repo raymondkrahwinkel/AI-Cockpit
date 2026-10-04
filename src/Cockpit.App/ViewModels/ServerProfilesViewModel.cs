@@ -14,7 +14,8 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
 
     public ObservableCollection<ServerProfileRowViewModel> Rows { get; } = [];
 
-    public ObservableCollection<ServerProfileVariableViewModel> EditorVariables { get; } = [];
+    // AC-1475: the editor's fields, shared with the Assistant page.
+    public ServerProfileEditorViewModel Editor { get; } = new();
 
     public ObservableCollection<string> EditorProviders { get; } = [];
 
@@ -38,20 +39,9 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
     [ObservableProperty]
     private string? _editorProvider;
 
-    [ObservableProperty]
-    private string _editorModel = "";
-
-    [ObservableProperty]
-    private string _editorPermissionMode = "";
-
-    [ObservableProperty]
-    private string _editorMcpServers = "";
-
     public string EditorTitle => IsCreating ? "New profile" : $"Edit “{_editing?.Label}”";
 
     public string EditorSaveLabel => IsCreating ? "Create" : "Save";
-
-    public bool HasEditorVariables => EditorVariables.Count > 0;
 
     [RelayCommand]
     public Task LoadAsync() => _RunAsync(async () =>
@@ -77,7 +67,7 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
 
         EditorLabel = "";
         EditorProvider = EditorProviders.FirstOrDefault();
-        _Fill(null);
+        Editor.Fill(null);
         IsEditorOpen = true;
     }
 
@@ -87,7 +77,7 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
         _editing = row;
         IsCreating = false;
         EditorLabel = row.Label;
-        _Fill(row.Profile);
+        Editor.Fill(row.Profile);
         IsEditorOpen = true;
     }
 
@@ -99,12 +89,12 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
     {
         if (IsCreating)
         {
-            var made = await profiles.CreateAsync(new RemoteNewProfile(EditorLabel.Trim(), EditorProvider ?? "", _Patch(null)));
+            var made = await profiles.CreateAsync(new RemoteNewProfile(EditorLabel.Trim(), EditorProvider ?? "", Editor.Patch()));
             Rows.Add(new ServerProfileRowViewModel(made));
         }
         else if (_editing is { } row)
         {
-            if (await profiles.UpdateAsync(row.Label, _Patch(row.Profile)) is not { } changed)
+            if (await profiles.UpdateAsync(row.Label, Editor.Patch() ?? new RemoteProfilePatch()) is not { } changed)
             {
                 Status = $"The server no longer has a profile “{row.Label}”.";
                 return;
@@ -126,42 +116,6 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles) : 
         await profiles.DeleteAsync(row.Label);
         Rows.Remove(row);
     });
-
-    private void _Fill(RemoteProfile? profile)
-    {
-        EditorModel = profile?.Model ?? "";
-        EditorPermissionMode = profile?.PermissionMode ?? "";
-        EditorMcpServers = _McpText(profile?.McpServers);
-        EditorVariables.Clear();
-        foreach (var variable in profile?.Environment ?? [])
-        {
-            EditorVariables.Add(new ServerProfileVariableViewModel(variable));
-        }
-
-        OnPropertyChanged(nameof(HasEditorVariables));
-    }
-
-    // Only what differs from what the server sent; a new profile names what was filled in.
-    private RemoteProfilePatch _Patch(RemoteProfile? original)
-    {
-        var plain = EditorVariables.Where(variable => !variable.IsSecret).ToList();
-        return new RemoteProfilePatch
-        {
-            Model = _Changed(EditorModel, original?.Model),
-            PermissionMode = _Changed(EditorPermissionMode, original?.PermissionMode),
-            McpServers = EditorMcpServers.Trim() == _McpText(original?.McpServers) ? null : new RemoteMcpSelection(_McpNames(EditorMcpServers)),
-            Environment = plain.Any(variable => variable.IsChanged) ? [.. plain.Select(variable => new RemoteProfileVariable(variable.Key, variable.Value))] : null,
-        };
-    }
-
-    private static string? _Changed(string edited, string? original) =>
-        edited.Trim() == (original ?? "") ? null : edited.Trim();
-
-    // Blank is every enabled server, as a profile without a selection has it.
-    private static IReadOnlyList<string>? _McpNames(string text) =>
-        string.IsNullOrWhiteSpace(text) ? null : [.. text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
-
-    private static string _McpText(IReadOnlyList<string>? names) => names is null ? "" : string.Join(", ", names);
 
     private async Task _RunAsync(Func<Task> action)
     {
@@ -206,20 +160,26 @@ public sealed class ServerProfileRowViewModel(RemoteProfile profile)
     public bool IsSignInUnknown => SignInText == "not checked";
 }
 
-// AC-1473: one environment variable in the editor; a secret one shows that it is set, never what it is.
+// AC-1473: one environment variable in the editor; a secret one shows that it is set, never what it is. AC-1475: one
+// added here names its own key.
 public sealed partial class ServerProfileVariableViewModel(RemoteProfileVariable variable) : ObservableObject
 {
     private readonly string _original = variable.Value ?? "";
 
-    public string Key { get; } = variable.Key;
+    [ObservableProperty]
+    private string _key = variable.Key;
 
     public bool IsSecret { get; } = variable.IsSecret;
 
     public bool IsPlain => !IsSecret;
 
+    public bool IsNew { get; init; }
+
+    public bool IsExisting => !IsNew;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsChanged))]
     private string _value = variable.Value ?? "";
 
-    public bool IsChanged => !IsSecret && Value != _original;
+    public bool IsChanged => !IsSecret && (IsNew || Value != _original);
 }

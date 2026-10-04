@@ -53,16 +53,15 @@ internal static class ProfileEndpoints
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
         ISessionProfileStore store() => services.GetRequiredService<ISessionProfileStore>();
-        IReadOnlyList<ProfileLoginHealth> health() => services.GetService<IProfileLoginHealth>()?.Current ?? [];
-        IReadOnlySet<string> declared(SessionProfile profile) =>
-            (services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [])
-                .Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+        IReadOnlyList<ProfileLoginHealth> health() => Health(services);
+        IReadOnlySet<string> declared(SessionProfile profile) => Declared(services, profile);
+        IReadOnlyList<PluginSessionOptionDescriptor> options(SessionProfile profile) => Options(services, profile);
 
         api.MapGet("/profiles", async (CancellationToken cancellationToken) =>
         {
             var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
             var signIns = health();
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, declared(profile))) }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile))) }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -88,31 +87,31 @@ internal static class ProfileEndpoints
                     return (null, _Invalid("A new profile needs a label and the id of one of the server's provider plugins."));
                 }
 
-                if (_IndexOf(profiles, body.Label.Trim()) >= 0)
+                if (IndexOf(profiles, body.Label.Trim()) >= 0)
                 {
                     return (null, BackendApiRoutes.Error(StatusCodes.Status409Conflict, "profile_exists", "The server already has a profile with that label."));
                 }
 
                 var fresh = new SessionProfile(body.Label.Trim(), new PluginProviderConfig(body.Provider, "{}"));
-                var (made, refusal) = _Apply(fresh, body.Settings ?? new RemoteProfilePatch(), declared(fresh));
+                var (made, refusal) = Apply(fresh, body.Settings ?? new RemoteProfilePatch(), declared(fresh));
                 if (made is null)
                 {
                     return (null, refusal);
                 }
 
-                return ([.. profiles, made], Results.Json(ToWire(made, health(), declared(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
+                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
             _ChangeAsync<RemoteProfilePatch>(request, cancellationToken, (patch, profiles) =>
             {
-                var index = _IndexOf(profiles, label);
+                var index = IndexOf(profiles, label);
                 if (index < 0)
                 {
-                    return (null, _NoProfile());
+                    return (null, NoProfile());
                 }
 
-                var (changed, refusal) = _Apply(profiles[index], patch, declared(profiles[index]));
+                var (changed, refusal) = Apply(profiles[index], patch, declared(profiles[index]));
                 if (changed is null)
                 {
                     return (null, refusal);
@@ -120,7 +119,7 @@ internal static class ProfileEndpoints
 
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
-                return (next, Results.Json(ToWire(changed, health(), declared(changed)), ConnectKeyEndpoints.Json));
+                return (next, Results.Json(ToWire(changed, health(), options(changed)), ConnectKeyEndpoints.Json));
             })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
@@ -129,10 +128,10 @@ internal static class ProfileEndpoints
             try
             {
                 var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
-                var index = _IndexOf(profiles, label);
+                var index = IndexOf(profiles, label);
                 if (index < 0)
                 {
-                    return _NoProfile();
+                    return NoProfile();
                 }
 
                 // An empty list reads back as the providers' auto-detected profiles, so the last one would come back.
@@ -154,43 +153,10 @@ internal static class ProfileEndpoints
         async Task<IResult> _ChangeAsync<T>(HttpRequest request, CancellationToken cancellationToken, Func<T, IReadOnlyList<SessionProfile>, (IReadOnlyList<SessionProfile>? Next, IResult Answer)> change)
             where T : class
         {
-            // A key given twice in two casings throws on first read, as ArgumentException; neither names a value.
-            JsonNode? node;
-            IResult? refused;
-            try
-            {
-                node = await JsonNode.ParseAsync(request.Body, new JsonNodeOptions { PropertyNameCaseInsensitive = true }, cancellationToken: cancellationToken).ConfigureAwait(false);
-                refused = Refusal(node);
-            }
-            catch (Exception exception) when (exception is JsonException or ArgumentException)
-            {
-                node = null;
-                refused = null;
-            }
-
-            if (node is not JsonObject)
-            {
-                return _Invalid("The body must be a JSON object.");
-            }
-
-            if (refused is not null)
-            {
-                return refused;
-            }
-
-            T? body;
-            try
-            {
-                body = node.Deserialize<T>(Strict);
-            }
-            catch (JsonException)
-            {
-                body = null;
-            }
-
+            var (body, refused) = await ReadBodyAsync<T>(request, "A profile names only label, provider, settings, model, permissionMode, mcpServers, environment and delegation.", cancellationToken).ConfigureAwait(false);
             if (body is null)
             {
-                return _Invalid("A profile names only label, provider, settings, model, permissionMode, mcpServers, environment and delegation.");
+                return refused;
             }
 
             await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -210,6 +176,56 @@ internal static class ProfileEndpoints
             }
         }
     }
+
+    // The body as T, or why not: a credential, a program path or a loader variable is refused before any of it is read,
+    // and a field this API does not know answers `unknownFields`. AC-1475 reads its patch through here too.
+    internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken)
+        where T : class
+    {
+        // A key given twice in two casings throws on first read, as ArgumentException; neither names a value.
+        JsonNode? node;
+        IResult? refused;
+        try
+        {
+            node = await JsonNode.ParseAsync(request.Body, new JsonNodeOptions { PropertyNameCaseInsensitive = true }, cancellationToken: cancellationToken).ConfigureAwait(false);
+            refused = Refusal(node);
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
+        {
+            node = null;
+            refused = null;
+        }
+
+        if (node is not JsonObject)
+        {
+            return (null, _Invalid("The body must be a JSON object."));
+        }
+
+        if (refused is not null)
+        {
+            return (null, refused);
+        }
+
+        T? body;
+        try
+        {
+            body = node.Deserialize<T>(Strict);
+        }
+        catch (JsonException)
+        {
+            body = null;
+        }
+
+        return body is null ? (null, _Invalid(unknownFields)) : (body, Results.Empty);
+    }
+
+    internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
+
+    internal static IReadOnlySet<string> Declared(IServiceProvider services, SessionProfile profile) =>
+        Options(services, profile).Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+
+    internal static IReadOnlyList<PluginSessionOptionDescriptor> Options(IServiceProvider services, SessionProfile profile) =>
+        services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [];
 
     // A credential or a program path anywhere in the request, before any of it is read.
     internal static IResult? Refusal(JsonNode? node)
@@ -245,6 +261,16 @@ internal static class ProfileEndpoints
         return body.Select(property => Refusal(property.Value)).FirstOrDefault(refusal => refusal is not null);
     }
 
+    // AC-1475 (Codex): what a profile copied into the assistant's slot may not hold, since the assistant's start would run
+    // it: a program path (stored as a plugin's `executablePath`), or a loader variable. In the words a PATCH gets.
+    internal static IResult? CopyRefusal(SessionProfile profile) =>
+        profile.ProviderConfig is ClaudeConfig { ExecutablePath.Length: > 0 }
+            || (profile.ProviderConfig is PluginProviderConfig plugin && ClaudePluginProfile.ReadClaudeConfig(plugin.ConfigJson).ExecutablePath is not null)
+            ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal)
+            : (profile.EnvironmentVariables ?? []).Any(variable => IsLoaderVariable(variable.Key))
+                ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal)
+                : null;
+
     internal static bool IsLoaderVariable(string key) =>
         LoaderVariables.Contains(key.Trim()) || LoaderPrefixes.Any(prefix => key.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
@@ -256,8 +282,11 @@ internal static class ProfileEndpoints
 
     // Only the option keys the profile's provider declares cross, as list_profiles reports them (AC-649); a stored
     // key it does not declare may hold anything, a plugin's credential included.
-    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlySet<string> declared)
+    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions)
     {
+        var declared = declaredOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
+        var known = declaredOptions.Where(option => option.KnownValues is { Count: > 0 })
+            .ToDictionary(option => option.Key, IReadOnlyList<RemoteOptionValue> (option) => [.. (option.KnownValues ?? []).Select(value => new RemoteOptionValue(value.Value, value.Label))], StringComparer.Ordinal);
         var options = profile.Defaults?.OptionDefaults?.Where(option => declared.Contains(option.Key)).ToDictionary(option => option.Key, option => option.Value);
         return new(
             profile.Label,
@@ -272,11 +301,12 @@ internal static class ProfileEndpoints
                 : new RemoteProfileVariable(variable.Key, variable.Value))],
             profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
             profile.ProviderConfig is PluginProviderConfig,
-            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn);
+            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
+            known.Count > 0 ? known : null);
     }
 
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.
-    private static (SessionProfile? Profile, IResult Refusal) _Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
+    internal static (SessionProfile? Profile, IResult Refusal) Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
     {
         var local = profile.ProviderConfig is OllamaConfig or LmStudioConfig;
         if ((patch.Model is not null && !local && !declared.Contains(WellKnownPluginSessionOptions.Model))
@@ -355,14 +385,14 @@ internal static class ProfileEndpoints
     }
 
     // As the spawn path compares labels (AC-1386), so "Foo" and "foo" are one profile here too.
-    private static int _IndexOf(IReadOnlyList<SessionProfile> profiles, string label) =>
+    internal static int IndexOf(IReadOnlyList<SessionProfile> profiles, string label) =>
         profiles.ToList().FindIndex(profile => string.Equals(profile.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private static IResult _Invalid(string description) =>
         BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", description);
 
     // Never the label it was given, which a mistyped path could have put a secret in.
-    private static IResult _NoProfile() =>
+    internal static IResult NoProfile() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_profile", "The server has no profile with that label.");
 
     private static NodeCaller _Caller() =>
