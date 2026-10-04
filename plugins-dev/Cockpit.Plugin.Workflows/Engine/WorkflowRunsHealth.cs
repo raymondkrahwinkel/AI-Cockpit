@@ -54,6 +54,7 @@ internal sealed class WorkflowRunsHealth(
                 latest?.FinishedAt ?? latest?.StartedAt)
             {
                 ActionId = _ActionId(entry.Workflow.Id),
+                Schedule = entry.Text,
                 TimeZone = entry.Zone,
             });
             rows.Add(new PluginHealthRow($"{entry.Workflow.Name} · Next run", PluginHealthStatus.Ok, entry.Next));
