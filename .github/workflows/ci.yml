@@ -149,8 +149,11 @@ jobs:
             exit 1
           fi
 
-      - name: Journeys
-        run: dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
+      - name: AC-1485 journey 10x
+        run: |
+          for run in {1..10}; do
+            dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none --filter "FullyQualifiedName=Cockpit.Journeys.RemoteAdminJourney.AnAdminKey_IssuesAKeyThatConnects_RevokesIt_AndLiftsALockout_EachInTheAuditUnderItsOwnLabel"
+          done
 
       - name: Upload test results
         if: ${{ always() && !env.ACT }}
