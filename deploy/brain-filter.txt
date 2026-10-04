@@ -1,0 +1,7 @@
+# AC-1364: what of the AI-OS tree reaches the server (rclone filter syntax, paths from the tree's root). An include list
+# on purpose: the tree also holds claude-credentials/, which must never enter the container. Last rule excludes the rest.
++ /Me.md
++ /Me-Reference.md
++ /Memory/**
++ /AGENTS/**
+- **

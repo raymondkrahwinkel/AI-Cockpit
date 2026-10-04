@@ -12,6 +12,7 @@ const out = {
   uid: process.getuid(),
   pane: process.env.COCKPIT_PANE_ID ?? null,
   home: process.env.HOME,
+  aiosroot: process.env.AI_OS_ROOT ?? null,
   config: can('/state/cockpit.json'),
   certificate: can('/state/node-certificate.pfx'),
   secret: can('/run/cockpit/cockpit_connect_key'),
