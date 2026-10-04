@@ -12,10 +12,12 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
@@ -96,6 +98,12 @@ public sealed class BackendApiDoorTests
     // narrow or revoke the bootstrap key; either way nothing changed. F5.6b2–b4 add their routes as rows here.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string> AdminRoutes => new()
     {
+        { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "GET", "/api/v1/plugins/store", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
+        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request" },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
         { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
         { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
@@ -127,6 +135,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal(expected, answer.Status);
         Assert.Equal(error, JsonNode.Parse(answer.Body)?["error"]?.GetValue<string>());
         Assert.False(answer.Body.Contains(operate.Secret, StringComparison.Ordinal), "The answer repeated a full key it was given.");
+        Assert.False(answer.Body.Contains("password", StringComparison.Ordinal) || answer.Body.Contains("query-token", StringComparison.Ordinal) || answer.Body.Contains("\"token\"", StringComparison.Ordinal), "The answer repeated a store credential it was given.");
         Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => !entry.Key.IsBootstrap).Key.EffectiveScope());
     }
@@ -464,6 +473,9 @@ public sealed class BackendApiDoorTests
             {
                 Timeout = TimeSpan.FromSeconds(30),
             };
+            PluginStores.LoadAsync().Returns(Task.FromResult<IReadOnlyList<PluginStoreConfig>>(
+                [PluginStoreConfig.Remote("https://user:password@store.example/index.json?access_token=query-token", "store-token")]));
+            Plugins.GetInstalledAsync().Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>([]));
         }
 
         public string Directory { get; }
@@ -491,6 +503,10 @@ public sealed class BackendApiDoorTests
         public SessionRegistry Sessions { get; } = new();
 
         public IPluginProviderRegistry Providers { get; } = new PluginProviderRegistry();
+
+        public IPluginAdministration Plugins { get; } = Substitute.For<IPluginAdministration>();
+
+        public IPluginStoreConfigStore PluginStores { get; } = Substitute.For<IPluginStoreConfigStore>();
 
         public string NodeBase { get; private set; } = "";
 
@@ -520,6 +536,8 @@ public sealed class BackendApiDoorTests
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);
             services.AddSingleton(Providers);
+            services.AddSingleton(Plugins);
+            services.AddSingleton(PluginStores);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = Substitute.For<IProjectEditor>();
