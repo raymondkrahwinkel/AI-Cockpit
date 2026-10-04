@@ -54,7 +54,6 @@ public sealed class LocalRegistry
     {
         try
         {
-            await new CockpitConfigFileAccess(CockpitConfigPath.For(localRoot)).ReadAsync(cancellationToken).ConfigureAwait(false);
             return new LocalRegistry(await CockpitConfigFileAccess.ReadOnceAsync(CockpitConfigPath.For(localRoot), cancellationToken).ConfigureAwait(false));
         }
         catch (JsonException exception)
