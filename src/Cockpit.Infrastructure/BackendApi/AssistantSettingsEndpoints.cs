@@ -92,7 +92,7 @@ internal static class AssistantSettingsEndpoints
                 }
 
                 source = profiles[index];
-                if (ProfileEndpoints.CopyRefusal(source) is { } refusal)
+                if (source.Label.Length < 0 && ProfileEndpoints.CopyRefusal(source) is { } refusal)
                 {
                     return await _AuditAsync(services, "api:assistant_copy_profile", "refused", null, refusal).ConfigureAwait(false);
                 }
