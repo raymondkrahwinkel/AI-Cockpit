@@ -219,11 +219,31 @@ brain_cycle() {
   log_of brain-sync | brain_redact | tail -n 20
   fail "brain-sync did not complete two runs"
 }
+# Before a change: brain_mark '<log text>'. After it, brain_until waits for that text once more, or for two more
+# completed runs, as happens when what should stop a run does not. Bounded at 60 s.
+synced_count() { log_of brain-sync | grep -c 'nc in sync' || true; }
+brain_mark() { mark_text=$1 mark_seen=$(log_of brain-sync | grep -cF "$1" || true) mark_synced=$(synced_count); }
+brain_until() {
+  for _ in $(seq 60); do
+    [ "$(log_of brain-sync | grep -cF "$mark_text" || true)" -gt "$mark_seen" ] && return 0
+    [ "$(synced_count)" -ge $((mark_synced + 2)) ] && return 0
+    sleep 1
+  done
+  fail "brain-sync neither logged '$mark_text' nor completed two runs"
+}
 brain_cycle
 [ "$(dc exec -T -u agent cockpit cat $brain/Me.md)" = me ] || fail "agent cannot read Me.md from the brain"
 [ "$(dc exec -T -u agent cockpit cat $brain/Memory/a.md)" = a ] || fail "agent cannot read Memory/a.md from the brain"
 if dc exec -T cockpit test -e $brain/claude-credentials; then fail "claude-credentials/ reached the container"; fi
 if dc exec -T cockpit grep -rqF leaked /home/agent/Nextcloud; then fail "the login file's content reached the container"; fi
+# The bisync listings are brain-sync's alone: a session can neither steer nor wipe them.
+dc exec -T brain-sync sh -c 'ls /bisync/nc/*.lst' >/dev/null || fail "control: brain-sync keeps no listings in /bisync/nc"
+[ -z "$(dc exec -T cockpit find /home /work /tmp -name '*.lst*')" ] || fail "the bisync listings are visible in the cockpit container"
+# The server does not touch the brain: owner-only for agent, although app is in agent's group.
+refused app "ls /home/agent/Nextcloud" || fail "the server's user can list the brain"
+refused app "cat $brain/Me.md" || fail "the server's user can read Me.md"
+! refused app "ls /home/agent" || fail "control: app cannot enter agent's home at all: $refusal"
+[ "$(dc exec -T cockpit stat -c %a $brain/Me.md $brain/Memory | paste -sd ' ')" = '600 700' ] || fail "the brain is not owner-only"
 # What a session writes goes back, and what it did not touch stays as it was.
 dc exec -T -u agent cockpit sh -c "echo note > $brain/Memory/b.md" || fail "agent cannot write in the brain's Memory/"
 brain_cycle
@@ -239,17 +259,23 @@ remote_memory=$(remote 'cat Memory/*')
 grep -qx remote-edit <<< "$remote_memory" || fail "the conflict lost the remote's version"
 grep -qx agent-edit <<< "$remote_memory" || fail "the conflict lost the agent's version"
 echo "after a conflict the remote holds: $(remote 'ls Memory' | paste -sd ' ')"
+# A session deleting a quarter of the brain (1 of 4 files): over --max-delete, so the run stops and Nextcloud keeps it.
+brain_mark 'too many deletes'
+dc exec -T -u agent cockpit rm $brain/Memory/a.md.conflict2
+brain_until
+[ "$(remote 'cat Memory/a.md.conflict2')" = agent-edit ] || fail "a deletion over --max-delete reached the remote"
+# The README's recovery for a deletion that was a mistake: copy back only what is missing.
+dc run --rm --no-deps --entrypoint rclone brain-sync --config /run/secrets/cockpit_brain_rclone copy nc:Notes/AI-OS \
+  /data/Nextcloud/Notes/AI-OS --filter-from /etc/brain-sync/nc.filter --ignore-existing >/dev/null
+brain_cycle
+[ "$(dc exec -T -u agent cockpit cat $brain/Memory/a.md.conflict2)" = agent-edit ] || fail "the README's recovery did not bring the file back"
 # Lost bisync state on a volume with files: a resync would let the remote overwrite an unsynced edit, so it stops.
 dc stop brain-sync >/dev/null
-dc exec -T -u agent cockpit sh -c "rm -rf /home/agent/Nextcloud/.bisync && echo unsynced > $brain/Memory/b.md"
-synced=$(log_of brain-sync | grep -c 'nc in sync' || true)
+docker run --rm -v "${project}_brain-state:/b" --entrypoint rm "$brain_image" -rf /b/nc
+dc exec -T -u agent cockpit sh -c "echo unsynced > $brain/Memory/b.md"
+brain_mark 'nc stopped: files but no bisync state'
 dc start brain-sync >/dev/null
-# Until it stops, or a run completes as it would without the guard.
-for _ in $(seq 30); do
-  log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' && break
-  [ "$(log_of brain-sync | grep -c 'nc in sync' || true)" -gt "$synced" ] && break
-  sleep 1
-done
+brain_until
 [ "$(dc exec -T -u agent cockpit cat $brain/Memory/b.md)" = unsynced ] || fail "an unsynced edit was overwritten after the bisync state was lost"
 [ "$(remote 'cat Memory/b.md')" = note ] || fail "the remote changed after the bisync state was lost"
 log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' || fail "brain-sync did not stop on files without bisync state"

@@ -2,6 +2,8 @@
 # AC-1364: the brain-sync sidecar's loop (deploy/compose.yaml). Runs as agent's uid, so what lands in the brain volume is
 # the agent's; the app password is in this container alone. Never a full tree: each remote needs its include list.
 set -u
+# The brain is agent's alone: app is in agent's group, and the server does not touch the brain.
+umask 077
 export RCLONE_CONFIG=/run/secrets/cockpit_brain_rclone XDG_CACHE_HOME=/tmp/cache
 interval=${BRAIN_SYNC_INTERVAL:-60}
 # Space-separated `remote:path=local`, one per remote, local relative to /data, its first folder the pair's volume.
@@ -16,12 +18,13 @@ trap 'if [ -n "$rpid" ]; then kill -INT "$rpid" 2>/dev/null; wait "$rpid"; fi; e
 sync_pair() {
   remote=${1%%=*} local=${1#*=} name=${1%%:*}
   filter=/etc/brain-sync/$name.filter
-  # The bisync listings live on the pair's own volume, so a fresh volume is also a fresh state.
-  workdir=/data/${local%%/*}/.bisync/$name
+  # The listings live on brain-state, a volume only this sidecar mounts, so no session can steer or wipe them.
+  workdir=/bisync/$name
   [ -f "$filter" ] || { say "no include list $filter for $name, so it is not synced"; return 1; }
   mkdir -p "/data/$local" "$workdir"
   set -- bisync "$remote" "/data/$local" --filter-from "$filter" --workdir "$workdir" \
-    --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num
+    --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num \
+    --max-delete "${BRAIN_SYNC_MAX_DELETE:-10}"
   # A resync lets Nextcloud's version win wherever the two differ, so it runs only on a fresh volume: no state, no files.
   if [ -z "$(ls -A "$workdir")" ]; then
     if [ -n "$(ls -A "/data/$local")" ]; then

@@ -45,6 +45,7 @@ settings stays; point it somewhere under `/work`.
 | `ssh` | `/home/app/.ssh` | the server's own SSH keys |
 | `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) |
 | `brain` | `/home/agent/Nextcloud` (in `brain-sync`: `/data/Nextcloud`) | the assistant's brain, kept in sync with Nextcloud |
+| `brain-state` | `/bisync`, in `brain-sync` only | the bisync listings |
 
 The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
 
@@ -98,18 +99,30 @@ device next to the desktop.
   `AGENTS/`. Never sync the whole tree: it also holds `claude-credentials/.credentials.json`, a Claude login every agent
   session would then read. Another list: `COCKPIT_BRAIN_FILTER_PATH`. A remote without a list is not synced at all.
 - **Sessions write back as `agent`.** `brain-sync` runs as uid 1700, so what it brings is the agent's, and a note a
-  session writes in `Memory/` reaches the desktop on the next run. The server itself (`app`) does not touch the brain.
+  session writes in `Memory/` reaches the desktop on the next run. The server itself (`app`) cannot read the brain:
+  it is owner-only for `agent` (directories 0700, files 0600), although `app` is in `agent`'s group.
+- **A large deletion stops the run.** One run may delete at most 10% of the files on either side
+  (`COCKPIT_BRAIN_SYNC_MAX_DELETE`); more, and bisync logs `Safety abort: too many deletes` and changes nothing, every
+  run, until you act. A mistake: copy back what is missing (it never overwrites what is there), and the next run is
+  normal again:
+
+      docker compose -f deploy/compose.yaml run --rm --no-deps --entrypoint rclone brain-sync \
+        --config /run/secrets/cockpit_brain_rclone copy nc:Notes/AI-OS /data/Nextcloud/Notes/AI-OS \
+        --filter-from /etc/brain-sync/nc.filter --ignore-existing
+
+  Meant: make the same deletion in Nextcloud, or run the bisync below once with `--force` instead of `--resync`.
 - **A change on both sides is never lost.** Bisync keeps both versions, renamed to `<file>.conflict1` (Nextcloud's) and
   `<file>.conflict2` (the server's), on both sides. Merge them by hand and delete the copies.
 - **No automatic `--resync`.** A resync deletes nothing, but wherever a file differs it takes Nextcloud's version over
   the server's. So only a fresh volume gets one: no bisync state and no files. After a failure the next run retries
-  without it. When bisync says it needs one, or the volume has files but its state (`~/Nextcloud/.bisync`) is gone,
+  without it. The state lives in `brain-state`, a volume only `brain-sync` mounts, so no session can change or wipe
+  it. When bisync says it needs one, or the brain has files but `brain-state` is empty,
   `brain-sync` logs `stopped: ... needs a manual --resync` and syncs nothing more. Copy what the server has that
   Nextcloud lacks, then run it once by hand:
 
       docker compose -f deploy/compose.yaml run --rm --entrypoint rclone brain-sync --config /run/secrets/cockpit_brain_rclone \
         bisync nc:Notes/AI-OS /data/Nextcloud/Notes/AI-OS --filter-from /etc/brain-sync/nc.filter \
-        --workdir /data/Nextcloud/.bisync/nc --resync
+        --workdir /bisync/nc --resync
       docker compose -f deploy/compose.yaml restart brain-sync
 
 - **The app password is `brain-sync`'s alone.** It reaches that container as a secret file; the cockpit container, where
@@ -155,5 +168,5 @@ Aura lives on another Nextcloud and is not synced. To add it, without code: a `[
 `brain-rclone.conf`, `COCKPIT_BRAIN_SYNCS="nc:Notes/AI-OS=Nextcloud/Notes/AI-OS aura:Shared/AI=Nextcloud-Synvolution/Shared/AI"`
 (each pair is `remote:path=local`, one pair per remote name, local under `/data`, its first folder being the volume), and a
 `compose.override.yaml` that adds a volume mounted at `/data/Nextcloud-Synvolution` in `brain-sync` and `brain-init`
-(with that path added to `brain-init`'s `chown`) and at `/home/agent/Nextcloud-Synvolution` in `cockpit`, plus an
+(with that path added to `brain-init`'s `chown` and `chmod`) and at `/home/agent/Nextcloud-Synvolution` in `cockpit`, plus an
 include list as a config with target `/etc/brain-sync/aura.filter`.

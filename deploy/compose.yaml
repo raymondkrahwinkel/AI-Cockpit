@@ -75,6 +75,8 @@ services:
     environment:
       BRAIN_SYNCS: ${COCKPIT_BRAIN_SYNCS:-nc:Notes/AI-OS=Nextcloud/Notes/AI-OS}
       BRAIN_SYNC_INTERVAL: ${COCKPIT_BRAIN_SYNC_INTERVAL:-60}
+      # Percent of the files one run may delete on either side; more stops the run (README.md).
+      BRAIN_SYNC_MAX_DELETE: ${COCKPIT_BRAIN_SYNC_MAX_DELETE:-10}
     configs:
       - source: brain_sync_script
         target: /etc/brain-sync/brain-sync.sh
@@ -84,17 +86,21 @@ services:
       - cockpit_brain_rclone
     volumes:
       - brain:/data/Nextcloud
+      # The bisync listings: this container's alone, never mounted where a session runs.
+      - brain-state:/bisync
     depends_on:
       brain-init:
         condition: service_completed_successfully
 
-  # A new volume is root's; this hands it to agent's uid once, so brain-sync itself never runs as root.
+  # A new volume is root's; this hands both to agent's uid, owner-only, so brain-sync itself never runs as root and
+  # the server (app, in agent's group) cannot read the brain.
   brain-init:
     image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
     user: "0:0"
-    entrypoint: ["chown", "1700:1700", "/data/Nextcloud"]
+    entrypoint: ["sh", "-c", "chown -R 1700:1700 /data/Nextcloud /bisync && chmod -R go= /data/Nextcloud /bisync"]
     volumes:
       - brain:/data/Nextcloud
+      - brain-state:/bisync
 
 configs:
   brain_sync_script:
@@ -123,3 +129,4 @@ volumes:
   agent-ssh:
   work:
   brain:
+  brain-state:
