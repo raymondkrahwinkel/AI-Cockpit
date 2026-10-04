@@ -320,7 +320,7 @@ internal static class SessionsEndpoints
                 rows = snapshot?.Rows,
                 seq = snapshot?.Seq,
             });
-        }).RequireOperate();
+        }).RequireOperate().ForAssistantHolderOnly();
 
         // Held until the assistant can take it, as a node prompt is; the door has already kept this from holding it.
         api.MapPost("/assistant/prompt", async (PromptBody body) =>
@@ -338,7 +338,7 @@ internal static class SessionsEndpoints
             return await assistant.SubmitPromptWhenReadyAsync(body.Text).ConfigureAwait(false) is { } delivered
                 ? Results.Json(new { paneId = assistant.PaneId, delivered })
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant is still starting and already has a turn waiting; this one was not accepted.");
-        }).RequireOperate().Audited("assistant_prompt", services);
+        }).RequireOperate().Audited("assistant_prompt", services).ForAssistantHolderOnly();
     }
 
     // AC-1479: the assistant's conversation is for the key that holds it (AC-1366); another key, whatever its capability,
