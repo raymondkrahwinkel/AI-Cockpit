@@ -188,8 +188,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
     public void ShowSection(int index) => Content = _sections[index];
 
-    // Rebuilds the template rows from the combined list — the plugin/builtin registrations with any override applied,
-    // then the operator's own — each with its name, an origin badge, and the actions its origin allows.
     // One box per tracker the operator could start from — the loaded ones, asked of the backend, plus the two Autopilot
     // ships a default for — placed under the section's heading once the backend answered.
     private async Task _LoadExecutableStagesAsync(Panel section, int at)
@@ -206,6 +204,8 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         }
     }
 
+    // Rebuilds the template rows from the combined list — the plugin/builtin registrations with any override applied,
+    // then the operator's own — each with its name, an origin badge, and the actions its origin allows.
     private async Task _RenderTemplatesAsync()
     {
         var templates = (await _client.TemplatesAsync())?.Templates ?? [];

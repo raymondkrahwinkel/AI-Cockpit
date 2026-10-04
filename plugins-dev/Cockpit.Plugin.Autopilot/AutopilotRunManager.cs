@@ -18,10 +18,9 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     // Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.
     public event Action? Changed;
 
-    // Starts a run for a dequeued plan and hands back its coordinator and completion task. Set by the workspace body
-    // while it is open (a run embeds sessions in the workspace's context) and cleared when it closes; setting it starts
-    // any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue. A runner
-    // that answers null refused the plan (its workspace closed meanwhile); the plan goes back to the front.
+    // Starts a run for a dequeued plan, set while a workspace is open; setting it starts any queued runs, and null means
+    // plans wait in the queue. A runner that answers null refused the plan (its workspace closed meanwhile), which then
+    // goes back to the front.
     public Func<AutopilotPlan, AutopilotRunHandle?>? Runner
     {
         get

@@ -193,10 +193,8 @@ internal sealed class AutopilotWorkspaceRuns
 
     private void _OnRunChanged() => Changed?.Invoke();
 
-    // The manager's runner (AC-174): start a run for a dequeued plan in its own context, track it for the surface, and
-    // hand the manager the coordinator and completion task.
-    // Null when the workspace closed before the run could start: the manager puts the plan back. A close that lands
-    // while the run is being built cancels it, as Close cancels every run it finds.
+    // The manager's runner (AC-174): a dequeued plan's run in its own context, tracked for the surface. Null once the
+    // workspace closed, so the manager puts the plan back; a close landing while the run is built cancels it.
     private AutopilotRunHandle? _StartRun(AutopilotPlan plan)
     {
         lock (_gate)
