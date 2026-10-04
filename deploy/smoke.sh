@@ -329,7 +329,8 @@ plain_run() {
   local name=$1; shift
   docker run -d --name "$name" -v "$work/secrets:/run/in:ro" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key     -e COCKPIT_UNLOCK_PASSWORD_FILE=/run/in/unlock-password "$@" "$image" >/dev/null
   for _ in $(seq 60); do
-    docker logs "$name" 2>&1 | grep -qF 'Cockpit.Server running' && return 0
+    plain_log=$(docker logs "$name" 2>&1)
+    grep -qF 'Cockpit.Server running' <<< "$plain_log" && return 0
     [ "$(docker inspect -f '{{.State.Running}}' "$name")" = true ] || break
     sleep 1
   done
@@ -401,7 +402,8 @@ bad_bind work 1654:1654 0755 'entrypoint: /work is not writable by agent (uid 17
 # The right owner with a mode that is too wide is narrowed before the server starts, and the log says so.
 docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chmod "$image" 0755 /b/state
 plain_run "$project-bind" "${bind_mounts[@]}"
-docker logs "$project-bind" 2>&1 | grep -qF 'entrypoint: /state had mode 755, now 700' || fail "a too-wide /state mode was not reported"
+bind_log=$(docker logs "$project-bind" 2>&1)
+grep -qF 'entrypoint: /state had mode 755, now 700' <<< "$bind_log" || fail "a too-wide /state mode was not reported"
 [ "$(docker exec "$project-bind" stat -c %a /state)" = 700 ] || fail "a too-wide /state mode was not narrowed"
 ! docker exec -u agent "$project-bind" test -r /state || fail "agent can read a /state that was too wide"
 docker exec -u app "$project-bind" test -r /state || fail "control: app cannot read its own /state"
