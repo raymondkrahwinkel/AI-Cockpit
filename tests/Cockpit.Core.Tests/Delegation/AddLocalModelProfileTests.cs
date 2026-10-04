@@ -40,6 +40,31 @@ public class AddLocalModelProfileTests
         Assert.Contains("not available as a delegation target", thrown.Message);
     }
 
+    // AC-1473: while another edit of the profile list holds the lock (the admin API's PATCH, say), adding a profile
+    // waits for it and then adds to what that edit saved, instead of saving its own older copy over it.
+    [Fact]
+    public async Task AddLocalModelProfile_WaitsForAnEditInProgress_SoNeitherSavesOverTheOther()
+    {
+        var store = new InMemoryProfileStore();
+        var service = _Service(store);
+
+        await ProfileEdits.Gate.WaitAsync();
+        Task adding;
+        try
+        {
+            adding = service.AddLocalModelProfileAsync("qwen", provider: "ollama", model: "qwen3:8b", baseUrl: null, purpose: null, tags: null);
+            await store.SaveAsync([new SessionProfile("edited by an admin", new OllamaConfig("http://localhost:11434", "llama3"))]);
+        }
+        finally
+        {
+            ProfileEdits.Gate.Release();
+        }
+
+        await adding;
+
+        Assert.Equal(["edited by an admin", "qwen"], store.Profiles.Select(profile => profile.Label));
+    }
+
     private sealed class InMemoryProfileStore : ISessionProfileStore
     {
         public InMemoryProfileStore(params SessionProfile[] seed) => Profiles = [.. seed];

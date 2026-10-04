@@ -1,0 +1,105 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.ServerProfilesPage"
+             x:DataType="vm:ServerProfilesViewModel">
+
+    <!-- AC-1473: Options › Profiles on a server (mockup v2, tab 4). The sign-in column only reads, and the editor has no
+         field that could carry a token or a password: a secret variable shows as set on the server. -->
+    <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="Accent" Content="New profile" Command="{Binding StartNewCommand}"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Profiles" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                <TextBlock Text="on the server" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+        </DockPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                   Text="Model, MCP sets and defaults can be edited here. The sign-in column only reads; it never asks for a token."/>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
+        <Border Padding="4" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel>
+                <Grid ColumnDefinitions="2*,1.4*,150" Margin="8,6">
+                    <TextBlock Grid.Column="0" Classes="optionsSectionHeader" Text="PROFILE"/>
+                    <TextBlock Grid.Column="1" Classes="optionsSectionHeader" Text="SIGN-IN"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ServerProfileRowViewModel">
+                            <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" Padding="8,7">
+                                <Grid ColumnDefinitions="2*,1.4*,150">
+                                    <StackPanel Grid.Column="0" Spacing="1">
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                    <Panel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SignInText}" FontSize="12" IsVisible="{Binding IsSignInGood}"
+                                                   Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                        <TextBlock Text="{Binding SignInText}" FontSize="12" IsVisible="{Binding IsSignInBad}"
+                                                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                                        <TextBlock Text="{Binding SignInText}" FontSize="12" IsVisible="{Binding IsSignInUnknown}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </Panel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="2">
+                                        <Button Classes="Subtle Compact" Content="Edit"
+                                                Command="{Binding $parent[UserControl].((vm:ServerProfilesViewModel)DataContext).StartEditCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Classes="Subtle Compact" Content="Remove"
+                                                Command="{Binding $parent[UserControl].((vm:ServerProfilesViewModel)DataContext).DeleteCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border IsVisible="{Binding IsEditorOpen}" Padding="14,12" MaxWidth="520" HorizontalAlignment="Left" Margin="0,4,0,0"
+                CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding EditorTitle}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <StackPanel Spacing="4" IsVisible="{Binding IsCreating}">
+                    <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBox Text="{Binding EditorLabel}" PlaceholderText="the name sessions start under"/>
+                    <TextBlock Text="Provider" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                    <ComboBox ItemsSource="{Binding EditorProviders}" SelectedItem="{Binding EditorProvider}" HorizontalAlignment="Stretch"/>
+                    <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                               Text="Configured on the server: sign it in there, or mount its credentials as a container secret."/>
+                </StackPanel>
+                <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBox Text="{Binding EditorModel}" PlaceholderText="the provider's default"/>
+                <TextBlock Text="Permission mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBox Text="{Binding EditorPermissionMode}" PlaceholderText="the provider's default"/>
+                <TextBlock Text="MCP sets" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                <TextBox Text="{Binding EditorMcpServers}" PlaceholderText="every enabled server; or names, separated by commas"/>
+
+                <StackPanel Spacing="4" IsVisible="{Binding HasEditorVariables}">
+                    <TextBlock Text="Environment" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,6,0,0"/>
+                    <ItemsControl ItemsSource="{Binding EditorVariables}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ServerProfileVariableViewModel">
+                                <Grid ColumnDefinitions="160,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="Consolas,monospace" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsPlain}"/>
+                                    <TextBlock Grid.Column="1" Text="set on the server" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding IsSecret}"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                    <Button Content="Cancel" Command="{Binding CancelEditorCommand}"/>
+                    <Button Classes="Accent" Content="{Binding EditorSaveLabel}" Command="{Binding SaveEditorCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

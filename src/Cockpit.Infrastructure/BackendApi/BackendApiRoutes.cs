@@ -35,6 +35,7 @@ internal static class BackendApiRoutes
         ConnectKeyEndpoints.Map(api, services);
         PluginEndpoints.Map(api, services);
         ProjectsEndpoints.Map(api, services);
+        ProfileEndpoints.Map(api, services);
 
         api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {

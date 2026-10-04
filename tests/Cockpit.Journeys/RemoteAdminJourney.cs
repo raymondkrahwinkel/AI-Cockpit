@@ -186,6 +186,22 @@ public sealed class RemoteAdminJourney
                 .Last(record => record?["PaneId"]?.GetValue<string>() == paneId)?["WorkingDirectory"]?.GetValue<string>();
             var audit = HeadlessAvalonia.Run(() => admin.Audit.Select(row => (row.Key, row.What)).ToList());
             var lockoutsAfter = HeadlessAvalonia.Run(() => admin.Lockouts.Count);
+
+            // AC-1473: Profiles → Echo gets another model; a new session on Echo starts on the server with that model.
+            var profiles = admin.Profiles ?? throw new InvalidOperationException("Admin opened Options without its Profiles page.");
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                await Until.CollectionHolds(profiles.Rows, () => profiles.Rows.Any(row => row.Label == "Echo"));
+                profiles.StartEditCommand.Execute(profiles.Rows.Single(row => row.Label == "Echo"));
+                profiles.EditorModel = "echo-large";
+                await profiles.SaveEditorCommand.ExecuteAsync(null);
+            });
+            using var timeout = new CancellationTokenSource(Until.Ceiling);
+            var started = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
+            var echoPane = started["paneId"]?.GetValue<string>() ?? "";
+            var echoed = await setup.StreamEventsAsync(0, timeout.Token)
+                .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
+            var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 dialog.Close();
@@ -206,6 +222,8 @@ public sealed class RemoteAdminJourney
             Assert.Contains(Project, offered);
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
+            Assert.Equal("", profilesStatus);
+            Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
         }
         finally
         {

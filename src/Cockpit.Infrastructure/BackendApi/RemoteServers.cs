@@ -201,6 +201,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
             row.PinnedCertificateFingerprint ?? "",
             TimeProvider.System);
         Administration = new RemoteConnectKeyAdministration(_client);
+        Profiles = new RemoteServerProfiles(_client);
         _health = new RemoteServerHealthReader(_client, name, logger);
         Plugins = new RemotePluginAdministration(_client);
         _projects = new RemoteProjects(_client);
@@ -231,6 +232,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     public IPluginAdministration Plugins { get; }
 
     public IServerProjects Projects => _projects;
+
+    public IServerProfiles Profiles { get; }
 
     public RemoteServerState State
     {

@@ -232,6 +232,8 @@ internal static class Screenshotter
         ["server-admin-audit"] = ServerAdminScene.Audit,
         // AC-1472: its Projects page after a clone.
         ["server-admin-projects"] = ServerAdminScene.Projects,
+        // AC-1473: its Profiles, the sign-in column reading and the editor open on a profile whose key is a secret.
+        ["server-admin-profiles"] = ServerAdminScene.Profiles,
         // AC-1457: the Health tab of a connect server, for an admin key (alarm, device code) and for an operate key.
         ["server-health"] = ServerGroupScene.Health,
         ["server-health-operate"] = ServerGroupScene.HealthOperate,

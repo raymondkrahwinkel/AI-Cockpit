@@ -28,7 +28,11 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             ProviderId,
             "Echo",
             _ => new EchoDriverFactory(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false))
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            {
+                // AC-1473: declared, so the admin API shows and changes it.
+                DeclaredOptions = [new PluginSessionOptionDescriptor(WellKnownPluginSessionOptions.Model, "Model")],
+            })
         {
             IsLoggedIn = _IsSignedIn,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),
@@ -90,6 +94,7 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private Process? _child;
+    private string? _model;
 
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
@@ -98,6 +103,13 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
     public int? ProcessId => _child?.Id;
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
+
+    // AC-1473: the model the profile's defaults name, so a journey sees which one a session started with.
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
+    {
+        _model = model ?? options?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+        return StartAsync(_model, cancellationToken);
+    }
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {
@@ -118,7 +130,7 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
             return Task.CompletedTask;
         }
 
-        var answer = $"echo: {text} (cli {_child?.Id})";
+        var answer = _model is null ? $"echo: {text} (cli {_child?.Id})" : $"echo: {text} (cli {_child?.Id}) · model {_model}";
         _events.Publish(new PluginAssistantTextDelta { SessionId = SessionId, BlockIndex = 0, Text = answer });
         _events.Publish(new PluginTurnCompleted { SessionId = SessionId, Subtype = "success", Result = answer, IsError = false });
         return Task.CompletedTask;

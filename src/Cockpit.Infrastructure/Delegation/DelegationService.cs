@@ -178,44 +178,53 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IReadOnlyList<string>? taskTypes,
         CancellationToken cancellationToken = default)
     {
-        var profiles = await _profileStore.LoadAsync(cancellationToken);
-        var index = profiles.ToList().FindIndex(candidate => string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
-        if (index < 0)
+        // AC-1473: the same lock as the admin API's profile routes, so neither save loses the other's change.
+        await ProfileEdits.Gate.WaitAsync(cancellationToken);
+        try
         {
-            throw new DelegationRejectedException($"No profile named '{profileLabel}'.");
+            var profiles = await _profileStore.LoadAsync(cancellationToken);
+            var index = profiles.ToList().FindIndex(candidate => string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                throw new DelegationRejectedException($"No profile named '{profileLabel}'.");
+            }
+
+            var profile = profiles[index];
+            if (!profile.DelegationPolicy.AllowedAsTarget)
+            {
+                throw new DelegationRejectedException(
+                    $"Profile '{profile.Label}' is not a delegation target, and enrolling one is the operator's call, not yours.");
+            }
+
+            // Null leaves a field as it was; a caller that knows only what a profile is good for should not have to
+            // restate its task types to say so.
+            var updated = profile.DelegationPolicy with
+            {
+                Purpose = purpose is null ? profile.DelegationPolicy.Purpose : _OrNull(purpose),
+                Tags = tags is null ? profile.DelegationPolicy.Tags : _OrNull(tags),
+                AllowedTaskTypes = taskTypes is null ? profile.DelegationPolicy.AllowedTaskTypes : _OrNull(taskTypes),
+            };
+
+            var saved = profiles.ToList();
+            var savedProfile = profile with { Delegation = updated };
+            saved[index] = savedProfile;
+            await _profileStore.SaveAsync(saved, cancellationToken);
+
+            var registry = await _mcpServerStore.LoadAsync(cancellationToken);
+            return new DelegationTargetView(
+                profile.Label,
+                profile.Provider.ToString(),
+                updated.Purpose,
+                updated.Tags ?? [],
+                updated.AllowedTaskTypes ?? [],
+                updated.MaxConcurrent,
+                _CountRunning(profile.Label),
+                _AvailableServers(registry, savedProfile));
         }
-
-        var profile = profiles[index];
-        if (!profile.DelegationPolicy.AllowedAsTarget)
+        finally
         {
-            throw new DelegationRejectedException(
-                $"Profile '{profile.Label}' is not a delegation target, and enrolling one is the operator's call, not yours.");
+            ProfileEdits.Gate.Release();
         }
-
-        // Null leaves a field as it was; a caller that knows only what a profile is good for should not have to
-        // restate its task types to say so.
-        var updated = profile.DelegationPolicy with
-        {
-            Purpose = purpose is null ? profile.DelegationPolicy.Purpose : _OrNull(purpose),
-            Tags = tags is null ? profile.DelegationPolicy.Tags : _OrNull(tags),
-            AllowedTaskTypes = taskTypes is null ? profile.DelegationPolicy.AllowedTaskTypes : _OrNull(taskTypes),
-        };
-
-        var saved = profiles.ToList();
-        var savedProfile = profile with { Delegation = updated };
-        saved[index] = savedProfile;
-        await _profileStore.SaveAsync(saved, cancellationToken);
-
-        var registry = await _mcpServerStore.LoadAsync(cancellationToken);
-        return new DelegationTargetView(
-            profile.Label,
-            profile.Provider.ToString(),
-            updated.Purpose,
-            updated.Tags ?? [],
-            updated.AllowedTaskTypes ?? [],
-            updated.MaxConcurrent,
-            _CountRunning(profile.Label),
-            _AvailableServers(registry, savedProfile));
     }
 
     // The base URL a local provider defaults to when the caller does not give one.
@@ -234,40 +243,49 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IReadOnlyList<string>? tags,
         CancellationToken cancellationToken = default)
     {
-        var trimmedLabel = _OrNull(label ?? string.Empty)
-            ?? throw new DelegationRejectedException("A profile needs a label.");
-        var trimmedModel = _OrNull(model ?? string.Empty)
-            ?? throw new DelegationRejectedException("A profile needs a model id, e.g. 'qwen2.5-coder:7b'.");
-
-        var profiles = await _profileStore.LoadAsync(cancellationToken);
-        if (profiles.Any(candidate => string.Equals(candidate.Label, trimmedLabel, StringComparison.OrdinalIgnoreCase)))
+        // AC-1473: the same lock as the admin API's profile routes, so neither save loses the other's change.
+        await ProfileEdits.Gate.WaitAsync(cancellationToken);
+        try
         {
-            throw new DelegationRejectedException($"A profile named '{trimmedLabel}' already exists.");
+            var trimmedLabel = _OrNull(label ?? string.Empty)
+                ?? throw new DelegationRejectedException("A profile needs a label.");
+            var trimmedModel = _OrNull(model ?? string.Empty)
+                ?? throw new DelegationRejectedException("A profile needs a model id, e.g. 'qwen2.5-coder:7b'.");
+
+            var profiles = await _profileStore.LoadAsync(cancellationToken);
+            if (profiles.Any(candidate => string.Equals(candidate.Label, trimmedLabel, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new DelegationRejectedException($"A profile named '{trimmedLabel}' already exists.");
+            }
+
+            var (config, resolvedBaseUrl) = _LocalProviderConfig(provider, trimmedModel, baseUrl);
+
+            var suggestedPurpose = _OrNull(purpose ?? string.Empty);
+            var policy = new DelegationPolicy(
+                AllowedAsTarget: false,
+                Purpose: suggestedPurpose,
+                Tags: tags is null ? null : _OrNull(tags));
+
+            var profile = new SessionProfile(
+                trimmedLabel,
+                ProviderConfig: config,
+                Purpose: suggestedPurpose,
+                Delegation: policy);
+
+            await _profileStore.SaveAsync(profiles.Append(profile).ToList(), cancellationToken);
+
+            return new ScaffoldedProfileView(
+                profile.Label,
+                profile.Provider.ToString(),
+                trimmedModel,
+                resolvedBaseUrl,
+                policy.Purpose,
+                policy.Tags ?? []);
         }
-
-        var (config, resolvedBaseUrl) = _LocalProviderConfig(provider, trimmedModel, baseUrl);
-
-        var suggestedPurpose = _OrNull(purpose ?? string.Empty);
-        var policy = new DelegationPolicy(
-            AllowedAsTarget: false,
-            Purpose: suggestedPurpose,
-            Tags: tags is null ? null : _OrNull(tags));
-
-        var profile = new SessionProfile(
-            trimmedLabel,
-            ProviderConfig: config,
-            Purpose: suggestedPurpose,
-            Delegation: policy);
-
-        await _profileStore.SaveAsync(profiles.Append(profile).ToList(), cancellationToken);
-
-        return new ScaffoldedProfileView(
-            profile.Label,
-            profile.Provider.ToString(),
-            trimmedModel,
-            resolvedBaseUrl,
-            policy.Purpose,
-            policy.Tags ?? []);
+        finally
+        {
+            ProfileEdits.Gate.Release();
+        }
     }
 
     // Every provider a session can run under: the two local ones a caller may scaffold with
