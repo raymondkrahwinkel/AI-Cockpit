@@ -118,7 +118,8 @@ public partial class OptionsDialog : Window
 
         if (admin.Profiles is { } profiles)
         {
-            dialog._AddServerPage("server-profiles", "Profiles", MaterialIconKind.AccountMultiple, new ServerProfilesPage { DataContext = profiles });
+            dialog._AddServerPage("server-profiles", "Profiles", MaterialIconKind.AccountMultiple, new ServerProfilesPage { DataContext = profiles },
+                new Binding { Source = profiles.Rows, Path = nameof(profiles.Rows.Count) });
             dialog.Opened += (_, _) => profiles.LoadCommand.Execute(null);
         }
 
@@ -133,9 +134,19 @@ public partial class OptionsDialog : Window
     // The server this dialog administers, or null for this cockpit's own Options.
     public ServerAdminViewModel? Server { get; private init; }
 
-    private void _AddServerPage(string tag, string label, MaterialIconKind icon, Control page)
+    // `count`, when given, is the faint number after the page's name in the nav, as the mockup has it (AC-1473).
+    private void _AddServerPage(string tag, string label, MaterialIconKind icon, Control page, Binding? count = null)
     {
-        CategoryNav.Items.Add(_BuildPluginNavItem(tag, label, icon));
+        var item = _BuildPluginNavItem(tag, label, icon);
+        if (count is not null && item.Content is Grid grid)
+        {
+            var number = new TextBlock { FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextFaintBrush") };
+            number.Bind(TextBlock.TextProperty, count);
+            Grid.SetColumn(number, 2);
+            grid.Children.Add(number);
+        }
+
+        CategoryNav.Items.Add(item);
         var scroll = new ScrollViewer { Tag = tag, Content = page };
         scroll.Bind(IsVisibleProperty, new Binding
         {

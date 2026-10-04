@@ -45,9 +45,7 @@ internal static class ProfileEndpoints
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    // ponytail: one lock for these routes only; the delegation tools' add_profile saves the list outside it, so an
-    // admin edit and an agent's new profile at the same moment can lose one of the two. Share the lock if that bites.
-    private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static SemaphoreSlim Gate => ProfileEdits.Gate;
 
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
