@@ -155,6 +155,9 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/Keyed", """{"executablePath":"/tmp/{secret}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"BASH_ENV","value":"/tmp/{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"DOTNET_STARTUP_HOOKS","value":"/tmp/{secret}.dll"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"OPENAI_API_KEY","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"permissionMode":"bypassPermissions"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
     };
 
@@ -214,7 +217,9 @@ public sealed class BackendApiDoorTests
         Assert.Equal("qwen-large", ProfileModel.Of(keyed));
         Assert.Equal(["youtrack"], keyed.EnabledMcpServerNames ?? []);
         Assert.Equal(_Door.ProfileSecret, (keyed.ProviderConfig as LmStudioConfig)?.ApiKey);
-        Assert.Equal([new ProfileEnvironmentVariable("PROVIDER_TOKEN", _Door.ProfileSecret, IsSecret: true), new("REGION", "us")], keyed.EnvironmentVariables ?? []);
+        Assert.Equal(
+            [new ProfileEnvironmentVariable("PROVIDER_TOKEN", _Door.ProfileSecret, IsSecret: true), new("BACKUP_PASSWORD", _Door.ProfileSecret), new("REGION", "us")],
+            keyed.EnvironmentVariables ?? []);
     }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
@@ -598,13 +603,14 @@ public sealed class BackendApiDoorTests
 
         public string AuditPath => Path.Combine(Directory, "node-access-audit.jsonl");
 
-        // AC-1473: a profile with a secret variable and an API key, both this value, beside the stub's profiles.
+        // AC-1473: a profile whose API key, secret variable, credential-named plain variable and undeclared option all
+        // hold this value, beside the stub's profiles.
         public const string ProfileSecret = "sk-door-profile-secret-7f3a9c21";
 
         public const string KeyedProfile = "Keyed";
 
         public static IReadOnlyList<ProfileEnvironmentVariable> KeyedVariables { get; } =
-            [new("PROVIDER_TOKEN", ProfileSecret, IsSecret: true), new("REGION", "eu")];
+            [new("PROVIDER_TOKEN", ProfileSecret, IsSecret: true), new("REGION", "eu"), new("BACKUP_PASSWORD", ProfileSecret)];
 
         public SessionProfileStore Profiles => new(ConfigPath);
 
@@ -676,7 +682,13 @@ public sealed class BackendApiDoorTests
             await Profiles.SaveAsync(
             [
                 .. await new NodeSessionMcpToolsTests.StubProfileStore().LoadAsync(),
-                new SessionProfile(KeyedProfile, new LmStudioConfig("http://127.0.0.1:1234", "qwen", ProfileSecret)) { EnvironmentVariables = KeyedVariables },
+                new SessionProfile(KeyedProfile, new LmStudioConfig("http://127.0.0.1:1234", "qwen", ProfileSecret), Defaults: new ProfileDefaults("", "", "")
+                {
+                    OptionDefaults = new Dictionary<string, string> { ["apiKey"] = ProfileSecret },
+                })
+                {
+                    EnvironmentVariables = KeyedVariables,
+                },
             ]);
             services.AddSingleton<ISessionProfileStore>(Profiles);
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));

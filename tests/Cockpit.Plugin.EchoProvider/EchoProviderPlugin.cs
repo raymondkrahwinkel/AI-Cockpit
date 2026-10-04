@@ -28,7 +28,11 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             ProviderId,
             "Echo",
             _ => new EchoDriverFactory(),
-            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false))
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            {
+                // AC-1473: declared, so the admin API shows and changes it.
+                DeclaredOptions = [new PluginSessionOptionDescriptor(WellKnownPluginSessionOptions.Model, "Model")],
+            })
         {
             IsLoggedIn = _IsSignedIn,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),

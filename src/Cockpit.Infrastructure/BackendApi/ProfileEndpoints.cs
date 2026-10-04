@@ -29,15 +29,18 @@ internal static class ProfileEndpoints
 
     private static readonly string[] CredentialFields = ["apiKey", "configJson"];
 
+    // AC-1473 (Codex): a variable named like a credential is one, whatever it is marked; B4 lets none cross.
+    private static readonly string[] CredentialWords = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH"];
+
     private static readonly HashSet<string> LoaderVariables = new(StringComparer.OrdinalIgnoreCase)
     {
         "PATH", "ENV", "BASH_ENV", "SHELLOPTS", "BASHOPTS", "PS4", "PROMPT_COMMAND", "IFS", "GCONV_PATH", "LOCPATH", "HOSTALIASES",
         "GLIBC_TUNABLES", "NLSPATH", "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONWARNINGS",
         "PYTHONBREAKPOINT", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "JAVA_TOOL_OPTIONS", "GIT_SSH", "GIT_SSH_COMMAND",
-        "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS",
+        "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS", "DOTNET_STARTUP_HOOKS", "DOTNET_ADDITIONAL_DEPS", "_JAVA_OPTIONS",
     };
 
-    private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_", "MALLOC_", "GIT_CONFIG_"];
+    private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_", "MALLOC_", "GIT_CONFIG_", "CORECLR_", "COR_PROFILER"];
 
     // A field this API does not know is refused rather than dropped, so a misspelt one does not read as saved.
     private static readonly JsonSerializerOptions Strict = new(ConnectKeyEndpoints.Json)
@@ -51,12 +54,15 @@ internal static class ProfileEndpoints
     {
         ISessionProfileStore store() => services.GetRequiredService<ISessionProfileStore>();
         IReadOnlyList<ProfileLoginHealth> health() => services.GetService<IProfileLoginHealth>()?.Current ?? [];
+        IReadOnlySet<string> declared(SessionProfile profile) =>
+            (services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [])
+                .Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
 
         api.MapGet("/profiles", async (CancellationToken cancellationToken) =>
         {
             var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
             var signIns = health();
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns)) }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, declared(profile))) }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -87,13 +93,14 @@ internal static class ProfileEndpoints
                     return (null, BackendApiRoutes.Error(StatusCodes.Status409Conflict, "profile_exists", "The server already has a profile with that label."));
                 }
 
-                var (made, refusal) = _Apply(new SessionProfile(body.Label.Trim(), new PluginProviderConfig(body.Provider, "{}")), body.Settings ?? new RemoteProfilePatch());
+                var fresh = new SessionProfile(body.Label.Trim(), new PluginProviderConfig(body.Provider, "{}"));
+                var (made, refusal) = _Apply(fresh, body.Settings ?? new RemoteProfilePatch(), declared(fresh));
                 if (made is null)
                 {
                     return (null, refusal);
                 }
 
-                return ([.. profiles, made], Results.Json(ToWire(made, health()), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
+                return ([.. profiles, made], Results.Json(ToWire(made, health(), declared(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
@@ -105,7 +112,7 @@ internal static class ProfileEndpoints
                     return (null, _NoProfile());
                 }
 
-                var (changed, refusal) = _Apply(profiles[index], patch);
+                var (changed, refusal) = _Apply(profiles[index], patch, declared(profiles[index]));
                 if (changed is null)
                 {
                     return (null, refusal);
@@ -113,7 +120,7 @@ internal static class ProfileEndpoints
 
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
-                return (next, Results.Json(ToWire(changed, health()), ConnectKeyEndpoints.Json));
+                return (next, Results.Json(ToWire(changed, health(), declared(changed)), ConnectKeyEndpoints.Json));
             })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
@@ -228,28 +235,56 @@ internal static class ProfileEndpoints
             return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal);
         }
 
+        if (body.TryGetPropertyValue("environment", out var environment) && environment is JsonArray variables
+            && variables.Any(variable => variable is JsonObject entry && entry.TryGetPropertyValue("key", out var key) && key is JsonValue name
+                && name.TryGetValue<string>(out var text) && IsCredentialName(text)))
+        {
+            return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "credential_refused", CredentialRefusal);
+        }
+
         return body.Select(property => Refusal(property.Value)).FirstOrDefault(refusal => refusal is not null);
     }
 
     internal static bool IsLoaderVariable(string key) =>
         LoaderVariables.Contains(key.Trim()) || LoaderPrefixes.Any(prefix => key.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
-    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health) => new(
-        profile.Label,
-        SessionsEndpoints.ProviderId(profile),
-        ProfileModel.Of(profile) ?? _Option(profile, WellKnownPluginSessionOptions.Model),
-        _Option(profile, WellKnownPluginSessionOptions.PermissionMode),
-        profile.EnabledMcpServerNames,
-        profile.Defaults?.OptionDefaults,
-        profile.DelegationPolicy,
-        [.. (profile.EnvironmentVariables ?? []).Select(variable => new RemoteProfileVariable(variable.Key, variable.IsSecret ? null : variable.Value, variable.IsSecret))],
-        profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
-        profile.ProviderConfig is PluginProviderConfig,
-        health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn);
+    internal static bool IsCredentialName(string key) =>
+        CredentialWords.Any(word => key.Contains(word, StringComparison.OrdinalIgnoreCase));
+
+    // Kept by the server on every change and never shown: a secret, or a plain variable named like a credential.
+    private static bool _IsHidden(ProfileEnvironmentVariable variable) => variable.IsSecret || IsCredentialName(variable.Key);
+
+    // Only the option keys the profile's provider declares cross, as list_profiles reports them (AC-649); a stored
+    // key it does not declare may hold anything, a plugin's credential included.
+    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlySet<string> declared)
+    {
+        var options = profile.Defaults?.OptionDefaults?.Where(option => declared.Contains(option.Key)).ToDictionary(option => option.Key, option => option.Value);
+        return new(
+            profile.Label,
+            SessionsEndpoints.ProviderId(profile),
+            ProfileModel.Of(profile) ?? options?.GetValueOrDefault(WellKnownPluginSessionOptions.Model),
+            options?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode),
+            profile.EnabledMcpServerNames,
+            options is { Count: > 0 } ? options : null,
+            profile.DelegationPolicy,
+            [.. (profile.EnvironmentVariables ?? []).Select(variable => _IsHidden(variable)
+                ? new RemoteProfileVariable(variable.Key, null, true)
+                : new RemoteProfileVariable(variable.Key, variable.Value))],
+            profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
+            profile.ProviderConfig is PluginProviderConfig,
+            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn);
+    }
 
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.
-    private static (SessionProfile? Profile, IResult Refusal) _Apply(SessionProfile profile, RemoteProfilePatch patch)
+    private static (SessionProfile? Profile, IResult Refusal) _Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
     {
+        var local = profile.ProviderConfig is OllamaConfig or LmStudioConfig;
+        if ((patch.Model is not null && !local && !declared.Contains(WellKnownPluginSessionOptions.Model))
+            || (patch.PermissionMode is not null && !declared.Contains(WellKnownPluginSessionOptions.PermissionMode)))
+        {
+            return (null, _Invalid("This profile's provider does not take that option."));
+        }
+
         var changed = profile;
         if (patch.Model is { } model)
         {
@@ -278,7 +313,7 @@ internal static class ProfileEndpoints
 
         if (patch.Environment is { } plain)
         {
-            var secrets = (profile.EnvironmentVariables ?? []).Where(variable => variable.IsSecret).ToList();
+            var secrets = (profile.EnvironmentVariables ?? []).Where(_IsHidden).ToList();
             if (plain.Any(variable => !ProfileEnvironmentVariable.IsValidKey(variable.Key)))
             {
                 return (null, _Invalid("An environment variable's name is letters, digits and underscores, not starting with a digit."));
@@ -318,9 +353,6 @@ internal static class ProfileEndpoints
 
         return profile with { Defaults = defaults with { OptionDefaults = options.Count > 0 ? options : null } };
     }
-
-    private static string? _Option(SessionProfile profile, string key) =>
-        profile.Defaults?.OptionDefaults?.GetValueOrDefault(key);
 
     // As the spawn path compares labels (AC-1386), so "Foo" and "foo" are one profile here too.
     private static int _IndexOf(IReadOnlyList<SessionProfile> profiles, string label) =>
