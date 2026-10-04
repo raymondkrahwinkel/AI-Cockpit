@@ -65,7 +65,7 @@ internal sealed class RemoteAssistantHost(SessionViewModel pane) : IAssistantSes
 internal sealed class RemoteAssistantSettingsStore : IAssistantSettingsStore
 {
     public Task<AssistantSettings> LoadAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(new AssistantSettings { IsEnabled = true, SpeakReplies = false, AlwaysOnTop = false });
+        Task.FromResult(new AssistantSettings { IsEnabled = true, SpeakReplies = false, AlwaysOnTop = false, ConsentBypassAll = false });
 
     public Task SaveAsync(AssistantSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
