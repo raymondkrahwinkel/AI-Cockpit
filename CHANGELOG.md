@@ -35,6 +35,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: the server image now has `curl`, so a flow's agent can call an HTTP API from its prompt.
 - added: a Workflows step's Working directory can name a variable of the server's environment (`$NAME` or `${NAME}`),
   so one flow runs on the desktop and on the headless server; an unset variable fails the step and names it.
+- added: `Cockpit --remote <server>` opens a separate window on one connected server, with its sessions, panes, Health
+  and Admin. It keeps no state of its own on this machine, starts no local backend, and leaves the global hotkeys to
+  the local cockpit.
 
 ### Fixed
 

@@ -21,6 +21,7 @@ public partial class CockpitViewModel
     private Func<ISessionHandle, string, Task<SessionViewModel>>? _remotePaneOver;
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
+    private Func<ServerAdminViewModel, Task>? _showServerAdmin;
 
     public ObservableCollection<ServerGroupViewModel> ServerGroups { get; } = [];
 
@@ -29,6 +30,14 @@ public partial class CockpitViewModel
     public ObservableCollection<SessionPanelViewModel> GridPanes { get; } = [];
 
     public bool HasServerGroups => ServerGroups.Count > 0;
+
+    // AC-1487: the server a `--remote` window shows; null in the cockpit itself. The window then hides what is local.
+    public string? RemoteWindowServer { get; private init; }
+
+    public bool IsRemoteWindow => RemoteWindowServer is not null;
+
+    // "Remote · huis-cockpit · 38 ms · key laptop-raymond (admin)" in the remote window's status bar (mockup v2 tab 5).
+    public string RemoteWindowStatus => ServerGroups.FirstOrDefault()?.RemoteWindowStatus ?? $"Remote · {RemoteWindowServer} · connecting";
 
     // The header lines above the grid: one per server whose group stands open.
     public IEnumerable<ServerGroupViewModel> OpenServerGroups => ServerGroups.Where(group => group.IsExpanded);
@@ -58,6 +67,23 @@ public partial class CockpitViewModel
         };
         _SyncServerGroups();
         _ = _ReloadServersAsync();
+    }
+
+    // AC-1487: the `--remote` window's view model: no local session, store or backend, and Admin shown by the window.
+    internal static CockpitViewModel ForRemoteWindow(
+        string server,
+        IRemoteServers servers,
+        INodeSessionsClient? serverChoices,
+        IServerSignIns? signIns,
+        Func<ServerAdminViewModel, Task> showServerAdmin)
+    {
+        var cockpit = new CockpitViewModel(dockPanelRegistry: null, sessionRegistry: null, withSamples: false)
+        {
+            RemoteWindowServer = server,
+            _showServerAdmin = showServerAdmin,
+        };
+        cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
+        return cockpit;
     }
 
     // The headless scenes' way in: the same wiring over a stand-in server, without the node tools behind the start card.
@@ -166,6 +192,7 @@ public partial class CockpitViewModel
                 _ReconcileServerGroup(group);
                 _ApplyServerLink(group);
                 OnPropertyChanged(nameof(ServerStatusLabels));
+                OnPropertyChanged(nameof(RemoteWindowStatus));
             });
             Follow();
             group.State = server.State;
@@ -175,6 +202,7 @@ public partial class CockpitViewModel
 
         OnPropertyChanged(nameof(HasServerGroups));
         OnPropertyChanged(nameof(ServerStatusLabels));
+        OnPropertyChanged(nameof(RemoteWindowStatus));
         _OnOpenServerGroupsChanged();
         foreach (var session in Sessions)
         {
@@ -347,7 +375,8 @@ public partial class CockpitViewModel
     [RelayCommand]
     private async Task OpenServerAdminAsync(ServerGroupViewModel group)
     {
-        if (_dialogService is null || group.State.Key is not { } key)
+        var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
+        if (show is null || group.State.Key is not { } key)
         {
             return;
         }
@@ -381,7 +410,7 @@ public partial class CockpitViewModel
             group.IsExpanded = true;
             group.Health.IsOpen = true;
         });
-        await _dialogService.ShowServerAdminDialogAsync(admin);
+        await show(admin);
     }
 
     [RelayCommand]

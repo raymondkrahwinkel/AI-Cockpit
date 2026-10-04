@@ -494,7 +494,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
     // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
     // or by the start screen — and whose "+ New session" opens the dialog this one offers.
-    public bool ShowSessionEmptyState => !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView;
+    public bool ShowSessionEmptyState => !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
@@ -2943,6 +2943,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
     public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null)
+        : this(dockPanelRegistry, sessionRegistry, withSamples: true)
+    {
+    }
+
+    // AC-1487: `withSamples: false` is the `--remote` window's, which shows the server's sessions and none of its own.
+    private CockpitViewModel(IDockPanelRegistry? dockPanelRegistry, ISessionRegistration? sessionRegistry, bool withSamples)
     {
         // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
         _sessionRegistry = sessionRegistry;
@@ -2959,15 +2965,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
 
-        var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
-        var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
-        var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
+        if (withSamples)
+        {
+            var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
+            var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
+            var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
-        _AttachSession(waiting);
-        _AttachSession(busy);
-        _AttachSession(tty);
-        _sessionCounter = Sessions.Count;
-        SelectedSession = waiting;
+            _AttachSession(waiting);
+            _AttachSession(busy);
+            _AttachSession(tty);
+            _sessionCounter = Sessions.Count;
+            SelectedSession = waiting;
+        }
+
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
         Worktrees = new WorktreesViewModel();

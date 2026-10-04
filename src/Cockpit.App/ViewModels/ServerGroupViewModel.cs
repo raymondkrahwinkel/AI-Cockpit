@@ -42,6 +42,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         nameof(StatusLabel),
         nameof(SidebarStatus),
         nameof(StatusBarLabel),
+        nameof(RemoteWindowStatus),
         nameof(HeaderDetail),
         nameof(IsOperateKey),
         nameof(IsAdminKey),
@@ -70,6 +71,15 @@ public sealed partial class ServerGroupViewModel : ObservableObject
     public string SidebarStatus => State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel;
 
     public string StatusBarLabel => $"{Name}: {StatusLabel.ToLowerInvariant()}";
+
+    // AC-1487: the `--remote` window's status bar names the key it works with; its label, never the key itself.
+    public string RemoteWindowStatus => string.Join(" · ", new[]
+    {
+        "Remote",
+        Name,
+        SidebarStatus,
+        State.Key is { } key ? $"key {key.Label} ({key.Capability})" : null,
+    }.OfType<string>());
 
     public string HeaderDetail => State.Key is { } key
         ? string.Join(" · ", new[] { key.Version is { Length: > 0 } version ? $"v{version}" : null, _Uptime(key.StartedAt) }.OfType<string>())

@@ -536,8 +536,9 @@
                          The caret adds a plain terminal (#AC-25) without pushing it into the common one-click path:
                          "new session" stays a single click, "new terminal" is one flyout down. One accent pill with
                          a hairline divider, so it reads as a single split-button rather than two loose buttons. -->
+                    <!-- AC-1487: a remote window starts on its server, from the group's own start line. -->
                     <Border CornerRadius="{StaticResource CockpitControlRadius}" ClipToBounds="True"
-                            Background="{DynamicResource CockpitAccentBrush}"
+                            Background="{DynamicResource CockpitAccentBrush}" IsVisible="{Binding !IsRemoteWindow}"
                             BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Classes="Subtle" Padding="11,6"
@@ -582,15 +583,17 @@
                      below in this file sits above it. It is also why it must not be the last child at all: the
                      panel fills with its last child, which ignores Dock and takes the middle. -->
                 <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
+                                          IsVisible="{Binding !$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRemoteWindow}"
                                           DataContext="{Binding AssistantIndicator}"/>
 
                 <!-- AC-1301: the stand switch, as low in the column as it can go — the second Dock="Bottom"
                      child, so it sits directly above the chip rather than under it. The chip's own place at the
                      very bottom is Raymond's ("linksonder", AC-543) and this does not take it. -->
-                <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
+                <views:ViewModeSwitch DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
-                <!-- Footer (Plugin store, Menu, Help): its own control, placed in both stands. -->
-                <views:SidebarFooter DockPanel.Dock="Bottom"/>
+                <!-- Footer (Plugin store, Menu, Help): its own control, placed in both stands. AC-1487: not in a
+                     remote window, whose Options would be this machine's and which keeps no state here. -->
+                <views:SidebarFooter DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
                 <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the
                      session list. Built in code-behind from CockpitViewModel.PluginSideSections; hidden
@@ -691,72 +694,75 @@
                              the other way round instead: picking one walks to its tab first (see SelectSession).
                              Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
                              one node and never carries a session across to another tab. -->
-                        <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
-                        <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
-                            <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
-                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        </Grid>
-                        <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:SessionWorkspaceGroupViewModel">
-                                    <StackPanel Spacing="2" Margin="0,0,0,6">
-                                        <!-- Two targets in one row (§D4b): the chevron folds, the rest walks. One
-                                             target for both would cost the operator a tab switch every time they
-                                             only wanted to tidy a node away. -->
-                                        <Border Classes="workspaceNode" Classes.active="{Binding IsActive}"
-                                                Padding="2,3" CornerRadius="{StaticResource CockpitControlRadius}"
-                                                Background="Transparent" Cursor="Hand"
-                                                PointerPressed="OnSessionWorkspaceNodePressed"
-                                                ToolTip.Tip="Switch to this workspace tab">
-                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
-                                                <Button Grid.Column="0" Classes="Subtle" Padding="2,0"
-                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                        Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Workspaces.ToggleSidebarCollapsedCommand}"
-                                                        CommandParameter="{Binding Id}"
-                                                        ToolTip.Tip="Fold this workspace tab away — it does not switch to it">
-                                                    <Panel>
-                                                        <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12"
-                                                                                    IsVisible="{Binding !IsExpanded}"/>
-                                                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                                                    IsVisible="{Binding IsExpanded}"/>
-                                                    </Panel>
-                                                </Button>
-                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
-                                                           FontWeight="SemiBold" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding CountLabel}" FontSize="11"
-                                                           VerticalAlignment="Center" Margin="0,0,4,0"
-                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                            </Grid>
-                                        </Border>
+                        <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
+                        <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
+                            <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
+                                <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            </Grid>
+                            <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:SessionWorkspaceGroupViewModel">
+                                        <StackPanel Spacing="2" Margin="0,0,0,6">
+                                            <!-- Two targets in one row (§D4b): the chevron folds, the rest walks. One
+                                                 target for both would cost the operator a tab switch every time they
+                                                 only wanted to tidy a node away. -->
+                                            <Border Classes="workspaceNode" Classes.active="{Binding IsActive}"
+                                                    Padding="2,3" CornerRadius="{StaticResource CockpitControlRadius}"
+                                                    Background="Transparent" Cursor="Hand"
+                                                    PointerPressed="OnSessionWorkspaceNodePressed"
+                                                    ToolTip.Tip="Switch to this workspace tab">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
+                                                    <Button Grid.Column="0" Classes="Subtle" Padding="2,0"
+                                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Workspaces.ToggleSidebarCollapsedCommand}"
+                                                            CommandParameter="{Binding Id}"
+                                                            ToolTip.Tip="Fold this workspace tab away — it does not switch to it">
+                                                        <Panel>
+                                                            <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12"
+                                                                                        IsVisible="{Binding !IsExpanded}"/>
+                                                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                                                        IsVisible="{Binding IsExpanded}"/>
+                                                        </Panel>
+                                                    </Button>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
+                                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding CountLabel}" FontSize="11"
+                                                               VerticalAlignment="Center" Margin="0,0,4,0"
+                                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                </Grid>
+                                            </Border>
 
-                                        <!-- 13 px, measured: at 21 the measure line inside a row wraps to two -->
-                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0"
-                                                      IsVisible="{Binding IsExpanded}"
-                                                      ItemTemplate="{StaticResource SidebarSessionRow}"
-                                                      PointerMoved="OnSessionItemPointerMoved"
-                                                      PointerReleased="OnSessionItemPointerReleased"/>
+                                            <!-- 13 px, measured: at 21 the measure line inside a row wraps to two -->
+                                            <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0"
+                                                          IsVisible="{Binding IsExpanded}"
+                                                          ItemTemplate="{StaticResource SidebarSessionRow}"
+                                                          PointerMoved="OnSessionItemPointerMoved"
+                                                          PointerReleased="OnSessionItemPointerReleased"/>
 
-                                        <!-- Criterion 4(b): the tab you are standing on keeps its node even with
-                                             nothing on it, and says so. -->
-                                        <TextBlock Margin="13,0,0,0" FontSize="11" TextWrapping="Wrap"
-                                                   IsVisible="{Binding ShowEmptyNote}"
-                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                   Text="No session on this workspace tab yet"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                            <!-- Criterion 4(b): the tab you are standing on keeps its node even with
+                                                 nothing on it, and says so. -->
+                                            <TextBlock Margin="13,0,0,0" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding ShowEmptyNote}"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                       Text="No session on this workspace tab yet"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
-                        <!-- Criterion 4(a): an empty tab is left out of the tree, but never left unmentioned —
-                             the strip above the grid is where it still is. -->
-                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="2,2,0,0"
-                                   IsVisible="{Binding HasOmittedEmptyWorkspaces}"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                   Text="{Binding OmittedEmptyWorkspacesLabel}"/>
+                            <!-- Criterion 4(a): an empty tab is left out of the tree, but never left unmentioned —
+                                 the strip above the grid is where it still is. -->
+                            <TextBlock FontSize="11" TextWrapping="Wrap" Margin="2,2,0,0"
+                                       IsVisible="{Binding HasOmittedEmptyWorkspaces}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                       Text="{Binding OmittedEmptyWorkspacesLabel}"/>
+                        </StackPanel>
 
                         <!-- AC-1456 (variant A): each connect server as a group beside this laptop. Only what the
                              key may see is listed, and nothing counts what it may not. -->
@@ -842,6 +848,7 @@
                      deliberately: a narrow sidebar is exactly when you still need to see that something is
                      listening, and to whom. -->
                 <views:AssistantIndicator DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                                          IsVisible="{Binding !$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRemoteWindow}"
                                           DataContext="{Binding AssistantIndicator}"/>
 
                 <!-- Fills the gap between the two so the chip stays at the bottom. -->
@@ -931,9 +938,15 @@
                  makes the second workspace that reveals the strip.
                  AC-1303: and it stands down in the Simple stand, which shows one conversation and offers no way
                  to switch desks — a strip there would be chrome you cannot act on. -->
+            <!-- AC-1487: nor in a remote window, whose desks would be this machine's. -->
             <Border Grid.Row="0" Margin="12,12,12,0" Padding="0,0,0,6"
-                    IsVisible="{Binding !SimpleView}"
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!SimpleView"/>
+                        <Binding Path="!IsRemoteWindow"/>
+                    </MultiBinding>
+                </Border.IsVisible>
                 <DockPanel>
                     <!-- Dock the + first so the tab list never pushes it off the edge when the strip fills up. -->
                     <Button DockPanel.Dock="Right" Classes="Subtle" Padding="8,3" Content="+"
@@ -2199,99 +2212,108 @@
                 Background="{DynamicResource CockpitSecondaryBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">
-            <DockPanel>
-                <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
-                     the point where the system starts killing things. A number that turns while you work is something
-                     you can act on without being interrupted. -->
-                <!-- The figures are a button, and the breakdown is a panel it opens (#78). It used to be a tooltip,
-                     which meant relying on the platform to hit-test a strip of text and to place a popup where it was
-                     asked to — and on this one it did neither. A button is hit like any other button, and a panel the
-                     operator opened is one that stays open while they read it. -->
-                <Button DockPanel.Dock="Right"
-                        Classes="statusMeter"
-                        Padding="8,2"
-                        Command="{Binding ToggleResourcePanelCommand}"
-                        ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
-                        <TextBlock Text="{Binding ResourceCpu}"
+            <Panel>
+                <!-- AC-1487 (mockup v2 tab 5): a remote window measures nothing here; it says where it is connected. -->
+                <StackPanel Orientation="Horizontal" Spacing="24" HorizontalAlignment="Right" Margin="0,2"
+                            IsVisible="{Binding IsRemoteWindow}">
+                    <TextBlock Text="{Binding RemoteWindowStatus}" FontSize="11" Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                    <TextBlock Text="Close this window: nothing on the server stops" FontSize="11"
+                               Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                </StackPanel>
+                <DockPanel IsVisible="{Binding !IsRemoteWindow}">
+                    <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
+                         the point where the system starts killing things. A number that turns while you work is something
+                         you can act on without being interrupted. -->
+                    <!-- The figures are a button, and the breakdown is a panel it opens (#78). It used to be a tooltip,
+                         which meant relying on the platform to hit-test a strip of text and to place a popup where it was
+                         asked to — and on this one it did neither. A button is hit like any other button, and a panel the
+                         operator opened is one that stays open while they read it. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Command="{Binding ToggleResourcePanelCommand}"
+                            ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+                            <TextBlock Text="{Binding ResourceCpu}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding ResourceMemory}"
+                                       FontSize="11"
+                                       Foreground="{Binding ResourceMemoryBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                       VerticalAlignment="Center"/>
+                            <!-- Points at the panel: up while it is closed (that is where it will come from), down while it
+                                 is open (that is where it will go). -->
+                            <materialIcons:MaterialIcon Kind="ChevronUp" Width="10" Height="10" Margin="0,2,0,0"
+                                       IsVisible="{Binding !IsResourcePanelOpen}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                       VerticalAlignment="Center"/>
+                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10" Margin="0,-2,0,0"
+                                       IsVisible="{Binding IsResourcePanelOpen}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
+                         visible at all: work is happening on your behalf that nothing else on screen would tell you
+                         about. Always there, including at nought: a meter that shows up only when it has something to
+                         report leaves you unable to tell "nothing is running" from "the meter is gone". The colour carries
+                         that — blue while something works, grey while nothing does. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowDelegatedTasksCommand}"
+                            ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
+                        <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
                                    FontSize="11"
-                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                   Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                    VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ResourceMemory}"
+                    </Button>
+
+                    <!-- AC-1456: each connect server's connection, as its group's header says it. -->
+                    <ItemsControl DockPanel.Dock="Right" Margin="0,0,8,0" VerticalAlignment="Center"
+                                  ItemsSource="{Binding ServerStatusLabels}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="12"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
+                         while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowWorktreesCommand}"
+                            IsVisible="{Binding Worktrees.HasWorktrees}"
+                            ToolTip.Tip="Git worktrees the cockpit created for isolated sessions — click to view them, reattach a gone one, or clean up">
+                        <TextBlock Text="{Binding Worktrees.Count, StringFormat='⑂ Managed worktrees: {0}'}"
                                    FontSize="11"
-                                   Foreground="{Binding ResourceMemoryBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                   Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                    VerticalAlignment="Center"/>
-                        <!-- Points at the panel: up while it is closed (that is where it will come from), down while it
-                             is open (that is where it will go). -->
-                        <materialIcons:MaterialIcon Kind="ChevronUp" Width="10" Height="10" Margin="0,2,0,0"
-                                   IsVisible="{Binding !IsResourcePanelOpen}"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                   VerticalAlignment="Center"/>
-                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10" Margin="0,-2,0,0"
-                                   IsVisible="{Binding IsResourcePanelOpen}"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                    </Button>
 
-                <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
-                     visible at all: work is happening on your behalf that nothing else on screen would tell you
-                     about. Always there, including at nought: a meter that shows up only when it has something to
-                     report leaves you unable to tell "nothing is running" from "the meter is gone". The colour carries
-                     that — blue while something works, grey while nothing does. -->
-                <Button DockPanel.Dock="Right"
-                        Classes="statusMeter"
-                        Padding="8,2"
-                        Margin="0,0,8,0"
-                        Command="{Binding ShowDelegatedTasksCommand}"
-                        ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
-                    <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
+                    <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
+                         shown only while it has activities, opening a panel with a Kill per item. -->
+                    <controls:PluginStatusBarHost DockPanel.Dock="Right"
+                                                  Margin="0,0,8,0"
+                                                  VerticalAlignment="Center"/>
+
+                    <TextBlock Text="{Binding ResourceSessions}"
                                FontSize="11"
-                               Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                VerticalAlignment="Center"/>
-                </Button>
-
-                <!-- AC-1456: each connect server's connection, as its group's header says it. -->
-                <ItemsControl DockPanel.Dock="Right" Margin="0,0,8,0" VerticalAlignment="Center"
-                              ItemsSource="{Binding ServerStatusLabels}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="12"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="x:String">
-                            <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"/>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
-                     while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
-                <Button DockPanel.Dock="Right"
-                        Classes="statusMeter"
-                        Padding="8,2"
-                        Margin="0,0,8,0"
-                        Command="{Binding ShowWorktreesCommand}"
-                        IsVisible="{Binding Worktrees.HasWorktrees}"
-                        ToolTip.Tip="Git worktrees the cockpit created for isolated sessions — click to view them, reattach a gone one, or clean up">
-                    <TextBlock Text="{Binding Worktrees.Count, StringFormat='⑂ Managed worktrees: {0}'}"
-                               FontSize="11"
-                               Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                               VerticalAlignment="Center"/>
-                </Button>
-
-                <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
-                     shown only while it has activities, opening a panel with a Kill per item. -->
-                <controls:PluginStatusBarHost DockPanel.Dock="Right"
-                                              Margin="0,0,8,0"
-                                              VerticalAlignment="Center"/>
-
-                <TextBlock Text="{Binding ResourceSessions}"
-                           FontSize="11"
-                           Foreground="{DynamicResource CockpitTextFaintBrush}"
-                           VerticalAlignment="Center"/>
-            </DockPanel>
+                </DockPanel>
+            </Panel>
         </Border>
 
         <!-- AC-962: where the assistant's floating chat docks if it is let go here. Declared last so it lies over

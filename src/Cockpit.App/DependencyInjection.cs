@@ -44,12 +44,7 @@ public static class DependencyInjection
         });
 
         // AC-1456: a pane over a session on a connect server. It reads the handle; its control, one per pane, can launch nothing.
-        services.AddTransient<Func<ISessionHandle, string, Task<SessionViewModel>>>(_ => async (handle, server) =>
-        {
-            var pane = new SessionViewModel(SessionControls.DesignTime);
-            await pane.FollowRemoteAsync(handle, server);
-            return pane;
-        });
+        services.AddTransient<Func<ISessionHandle, string, Task<SessionViewModel>>>(_ => SessionViewModel.OverRemoteAsync);
 
         // AC-1439: the desktop's half of the backend's one launcher. The cockpit is reached when first asked, and the
         // cockpit reaches the launcher the same way, since each starts through the other.

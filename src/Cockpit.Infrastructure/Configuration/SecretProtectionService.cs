@@ -295,7 +295,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     // Whether `protector` is built from the right password: decrypting the known verifier string
     // proves the key without touching — and risking mangling — the operator's actual credentials. A value that
     // will not decrypt (the wrong password) is a false, not a throw.
-    private static bool VerifierMatches(ISecretProtector protector, SecretProtectionEntry security)
+    internal static bool VerifierMatches(ISecretProtector protector, SecretProtectionEntry security)
     {
         try
         {

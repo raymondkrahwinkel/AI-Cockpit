@@ -41,10 +41,10 @@ internal static class CockpitWindowChrome
     private static readonly Lazy<Bitmap> AppMark = new(() =>
         new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
 
-    // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (app window carries its own
-    // name/mark, AC-430, and has no room for a subtitle); `onSettings`, when given, adds a settings gear
-    // to a plugin dialog. Details: dropped per-param elaboration on omitted behaviour.
-    public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
+    // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (its own name/mark, AC-430); `onSettings`
+    // adds a settings gear to a plugin dialog. AC-1487: `remoteServer` gives the app window the `--remote` look of
+    // mockup v2 tab 5: a blue rim, a blue bar, and the server with its "no state on this machine" chip.
+    public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null, string? remoteServer = null)
     {
         window.ExtendClientAreaToDecorationsHint = true;
         WindowResizeGrip.Apply(window);
@@ -79,20 +79,23 @@ internal static class CockpitWindowChrome
         // Detach the existing content before re-parenting it under the chrome, or Avalonia throws while the
         // control is briefly a child of two parents.
         window.Content = null;
-        window.Content = _ChromeRoot(window, title ?? window.Title ?? string.Empty, subtitle, titleBar, body, includeMinimize, includeMaximize, onSettings);
+        var root = _ChromeRoot(window, title ?? window.Title ?? string.Empty, subtitle, titleBar, body, includeMinimize, includeMaximize, onSettings, remoteServer);
+        window.Content = remoteServer is null
+            ? root
+            : new Border { BorderBrush = _Brush("CockpitAccentBrush"), BorderThickness = new Thickness(2), Child = root };
     }
 
-    private static Control _ChromeRoot(Window window, string title, string? subtitle, CockpitTitleBar shape, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings)
+    private static Control _ChromeRoot(Window window, string title, string? subtitle, CockpitTitleBar shape, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer)
     {
         var root = new DockPanel();
-        var titleBar = _TitleBar(window, title, subtitle, shape, includeMinimize, includeMaximize, onSettings);
+        var titleBar = _TitleBar(window, title, subtitle, shape, includeMinimize, includeMaximize, onSettings, remoteServer);
         DockPanel.SetDock(titleBar, Dock.Top);
         root.Children.Add(titleBar);
         root.Children.Add(body);
         return root;
     }
 
-    private static Control _TitleBar(Window window, string title, string? subtitle, CockpitTitleBar shape, bool includeMinimize, bool includeMaximize, Action? onSettings)
+    private static Control _TitleBar(Window window, string title, string? subtitle, CockpitTitleBar shape, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer)
     {
         var isDialog = shape == CockpitTitleBar.Dialog;
 
@@ -144,11 +147,11 @@ internal static class CockpitWindowChrome
         var bar = new DockPanel();
         DockPanel.SetDock(captionButtons, Dock.Right);
         bar.Children.Add(captionButtons);
-        bar.Children.Add(isDialog ? _DialogHeading(title, subtitle) : _WindowHeading());
+        bar.Children.Add(isDialog ? _DialogHeading(title, subtitle) : _WindowHeading(remoteServer));
 
         var wrapper = new Border
         {
-            Background = _Brush("CockpitChromeBgBrush"),
+            Background = _Brush(remoteServer is null ? "CockpitChromeBgBrush" : "CockpitCategoryTintBlueBrush"),
             BorderBrush = _Brush("CockpitHairlineSoftBrush"),
             BorderThickness = new Thickness(0, 0, 0, 1),
             Child = bar,
@@ -217,7 +220,7 @@ internal static class CockpitWindowChrome
 
     // The app window's line: the brand mark, then the product's name — so the window reads as the cockpit itself
     // rather than as one more dialog. The mark stood here as a plain accent dot until the product got one.
-    private static Control _WindowHeading()
+    private static Control _WindowHeading(string? remoteServer)
     {
         var mark = new Image
         {
@@ -242,10 +245,40 @@ internal static class CockpitWindowChrome
         };
 
         heading.Children.Add(mark);
-        heading.Children.Add(_BrandLine());
+        heading.Children.Add(remoteServer is null ? _BrandLine() : _RemoteLine(remoteServer));
+        if (remoteServer is not null)
+        {
+            heading.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(8, 1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = _Brush("CockpitCategoryTintBlueBrush"),
+                BorderBrush = _Brush("CockpitAccentRingTintBrush"),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock { Text = "no state on this machine", FontSize = 11, Foreground = _Brush("CockpitAccentBrush") },
+            });
+        }
 
         return heading;
     }
+
+    // AC-1487: "huis-cockpit — Cockpit (remote)", the server first, so the window says whose sessions it holds.
+    private static Control _RemoteLine(string server)
+    {
+        var line = _Line(WindowTitleFontSize);
+        line.Inlines =
+        [
+            new Run(server),
+            new Run($" — {RemoteTitleSuffix}") { Foreground = _Brush("CockpitTextFaintBrush") },
+        ];
+        return line;
+    }
+
+    // The remote window's title, as the taskbar shows it too.
+    public static string RemoteTitle(string server) => $"{server} — {RemoteTitleSuffix}";
+
+    private const string RemoteTitleSuffix = "Cockpit (remote)";
 
     // The product's name in two strengths on one line — the mockup's `Wispslate <span>Cockpit</span>`. The second
     // word steps back so the bar states which app this is without shouting a brand at someone who came to look at

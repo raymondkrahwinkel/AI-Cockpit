@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Hosting;
@@ -47,6 +48,14 @@ sealed class Program
         if (HeadlessRoutes.TryRun(args, out var headlessExitCode))
         {
             Environment.Exit(headlessExitCode);
+
+            return;
+        }
+
+        // AC-1487: a window on one connect server, with a root of its own and no backend. It reaches none of the steps below.
+        if (RemoteInstance.ServerNameFrom(args) is { } remoteServer)
+        {
+            _RunRemoteWindow(args, remoteServer);
 
             return;
         }
@@ -215,10 +224,92 @@ sealed class Program
         !Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args)
         && !Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args)
         && !Screenshotter.IsRequested(args)
+        && RemoteInstance.ServerNameFrom(args) is null
         && !string.Equals(Environment.GetEnvironmentVariable("VELOPACK_RESTART"), "true", StringComparison.OrdinalIgnoreCase)
         && !SingleInstanceGuard.IsHeldByAnotherCockpit()
         && !InstallationInstanceGuard.IsAnotherInstanceRunning()
         && UpdateOnNextStart.TakeRequest();
+
+    // AC-1487: `--remote`. `RemoteStartup` is the whole route short of Avalonia's run: the roots, the claims, the read of
+    // the local registry. No `CockpitBackend`: no hosted service, plugin, hotkey or listener, and no port.
+    private static void _RunRemoteWindow(string[] args, string server)
+    {
+        using var startup = RemoteStartup.Begin(server, logPath =>
+            LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath))));
+        if (startup is null)
+        {
+            _ShowAlreadyRunningNotice(args);
+
+            return;
+        }
+
+        Cockpit.App.Logging.LifecycleLog.Use(startup.Loggers);
+        Cockpit.App.Logging.LifecycleLog.Write(
+            $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting as a remote window on {server}: pid {Environment.ProcessId}.");
+        _ShowUntilClosed(args, show =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
+            {
+                startup.Logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception in the remote window; it stays up.");
+                exceptionEvent.Handled = true;
+            };
+            if (!startup.NeedsUnlock || startup.Protection is not { } protection)
+            {
+                return _RemoteWindow(startup);
+            }
+
+            // The desktop's own unlock window, over the registry's read-only unlock: the key stays in this process's memory.
+            var unlock = new UnlockViewModel(protection) { OffersReset = false };
+            var window = new UnlockWindow { DataContext = unlock };
+            unlock.Unlocked += (_, _) =>
+            {
+                show(_RemoteWindow(startup));
+                window.Close();
+            };
+            return window;
+        });
+    }
+
+    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup)
+    {
+        var window = new MainWindow(windowBoundsStore: null, startup.Server);
+        var cockpit = startup.Open(admin =>
+        {
+            OptionsDialog.ForServer(admin).Show(window);
+            return Task.CompletedTask;
+        });
+        if (cockpit is null)
+        {
+            return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };
+        }
+
+        window.DataContext = cockpit;
+        return window;
+    }
+
+    // This process's windows without the app's lifetime (see `_ShowAlreadyRunningNotice`); it ends when the last one closes.
+    private static void _ShowUntilClosed(string[] args, Func<Action<Avalonia.Controls.Window>, Avalonia.Controls.Window> createWindow) =>
+        BuildAvaloniaApp().Start((_, _) =>
+        {
+            using var closed = new CancellationTokenSource();
+            var open = 0;
+            void Show(Avalonia.Controls.Window window)
+            {
+                open++;
+                window.Closed += (_, _) =>
+                {
+                    open--;
+                    if (open == 0)
+                    {
+                        closed.Cancel();
+                    }
+                };
+                window.Show();
+            }
+
+            Show(createWindow(Show));
+            Avalonia.Threading.Dispatcher.UIThread.MainLoop(closed.Token);
+        }, args);
 
     // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:
     // Start() leaves the ApplicationLifetime null, so App.OnFrameworkInitializationCompleted builds no cockpit —

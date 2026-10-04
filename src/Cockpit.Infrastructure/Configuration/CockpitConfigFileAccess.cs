@@ -124,6 +124,40 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     internal static Task<string> ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken) =>
         WhenNotBeingReplacedAsync(() => File.ReadAllTextAsync(path, cancellationToken), cancellationToken);
 
+    // AC-1487: for a process that must never write here (`--remote`): the bytes once, shared with every writer so a save
+    // can still swap the file, and no recovery. Null without a file; a document that does not parse throws instead.
+    internal static async Task<JsonNode?> ReadOnceAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        var bytes = await WhenNotBeingReplacedAsync(ReadAllAsync, cancellationToken).ConfigureAwait(false);
+        return JsonNode.Parse(bytes);
+
+        async Task<byte[]> ReadAllAsync()
+        {
+            using var copy = new MemoryStream();
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            await stream.CopyToAsync(copy, cancellationToken).ConfigureAwait(false);
+            return copy.ToArray();
+        }
+    }
+
+    // The typed file from a `ReadOnceAsync` document; credentials are decrypted in memory only once `keyHolder` is unlocked.
+    internal static CockpitConfigFile? Decode(JsonNode document, ISecretKeyHolder keyHolder)
+    {
+        var copy = document.DeepClone();
+        if (keyHolder.Protector is { } protector)
+        {
+            SecretJsonWalker.Transform(copy, keyHolder.Fields, (path, value) =>
+                SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
+        }
+
+        return copy.Deserialize<CockpitConfigFile>(SerializerOptions);
+    }
+
     // AC-1152: hands `read` the file itself rather than a string of the whole document. Above 85 kB that string
     // is a large object of its own, on every read — and `AllocLarge` was the measured reason for most gen2 collections.
     private static Task<T> ReadFileWhenNotBeingReplacedAsync<T>(

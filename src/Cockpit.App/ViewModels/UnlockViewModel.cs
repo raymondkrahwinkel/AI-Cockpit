@@ -22,6 +22,9 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
     [ObservableProperty]
     private bool _isBusy;
 
+    // AC-1487: a `--remote` window unlocks the local registry but never resets it; that stays with the local Cockpit.
+    public bool OffersReset { get; init; } = true;
+
     // Raised once the password was right and the settings can be read. The app starts from here.
     public event EventHandler? Unlocked;
 
