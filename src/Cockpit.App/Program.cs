@@ -68,8 +68,6 @@ sealed class Program
             return;
         }
 
-        using var installationInstance = InstallationInstanceGuard.Acquire();
-
         // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, then restrict
         // leftover credential files before any state access. Set before anything can spawn a session.
         CockpitBackend.MarkProcess();
@@ -83,6 +81,8 @@ sealed class Program
             builder.AddConsole();
             builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
         });
+        using var installationInstance = InstallationInstanceGuard.Acquire(
+            loggerFactory.CreateLogger<InstallationInstanceGuard>());
 
         // First line of every run, so the kept previous log says which process it was and how it was started —
         // a restart handoff and a hand launch leave the same trail otherwise.

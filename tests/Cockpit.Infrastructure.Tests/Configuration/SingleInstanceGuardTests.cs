@@ -72,21 +72,25 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
-    public void IsAnotherInstanceRunning_WithAStaleLock_CleansItAndAllowsTheUpdate()
+    public void IsAnotherInstanceRunning_WithAStaleLockOrUnavailableInstallation_CleansItOrAllowsStartup()
     {
         var installationDirectory = Directory.CreateTempSubdirectory("ac1486-");
         var instancesDirectory = Directory.CreateDirectory(Path.Combine(installationDirectory.FullName, ".instances"));
         var claimPath = Path.Combine(instancesDirectory.FullName, "stale.lock");
+        var unavailableInstallationPath = Path.GetTempFileName();
 
         try
         {
             File.WriteAllText(claimPath, string.Empty);
+            using var noOp = InstallationInstanceGuard.Acquire(unavailableInstallationPath);
 
+            Assert.NotNull(noOp);
             Assert.False(InstallationInstanceGuard.IsAnotherInstanceRunning(installationDirectory.FullName));
             Assert.False(File.Exists(claimPath));
         }
         finally
         {
+            File.Delete(unavailableInstallationPath);
             Directory.Delete(installationDirectory.FullName, recursive: true);
         }
     }

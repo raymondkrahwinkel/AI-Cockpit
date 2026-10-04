@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Configuration;
 
@@ -11,29 +12,38 @@ public sealed class InstallationInstanceGuard : IDisposable
     private static readonly NamedWaitHandleOptions UpdateCheckOptions = new() { CurrentUserOnly = true, CurrentSessionOnly = false };
     private static string? _currentClaimPath;
 
-    private readonly FileStream _claim;
-    private readonly string _claimPath;
+    private readonly FileStream? _claim;
+    private readonly string? _claimPath;
 
-    private InstallationInstanceGuard(FileStream claim, string claimPath)
+    private InstallationInstanceGuard(FileStream? claim, string? claimPath)
     {
         _claim = claim;
         _claimPath = claimPath;
     }
 
-    public static InstallationInstanceGuard Acquire() => Acquire(AppContext.BaseDirectory);
+    public static InstallationInstanceGuard Acquire(ILogger logger) => Acquire(AppContext.BaseDirectory, logger);
 
     public static bool IsAnotherInstanceRunning() => IsAnotherInstanceRunning(AppContext.BaseDirectory, _currentClaimPath);
 
-    internal static InstallationInstanceGuard Acquire(string installationDirectory)
+    internal static InstallationInstanceGuard Acquire(string installationDirectory, ILogger? logger = null)
     {
-        var instancesDirectory = InstancesDirectory(installationDirectory);
-        Directory.CreateDirectory(instancesDirectory);
+        try
+        {
+            var instancesDirectory = InstancesDirectory(installationDirectory);
+            Directory.CreateDirectory(instancesDirectory);
 
-        var claimPath = Path.Combine(instancesDirectory, $"{Environment.ProcessId}-{DateTime.UtcNow.Ticks}.lock");
-        var claim = new FileStream(claimPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
-        Interlocked.Exchange(ref _currentClaimPath, claimPath);
+            var claimPath = Path.Combine(instancesDirectory, $"{Environment.ProcessId}-{DateTime.UtcNow.Ticks}.lock");
+            var claim = new FileStream(claimPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+            Interlocked.Exchange(ref _currentClaimPath, claimPath);
 
-        return new InstallationInstanceGuard(claim, claimPath);
+            return new InstallationInstanceGuard(claim, claimPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(exception, "Could not create an installation update claim in {InstallationDirectory}; self-updates are disabled for this process.", installationDirectory);
+
+            return new InstallationInstanceGuard(claim: null, claimPath: null);
+        }
     }
 
     internal static bool IsAnotherInstanceRunning(string installationDirectory, string? ownClaimPath = null)
@@ -102,8 +112,11 @@ public sealed class InstallationInstanceGuard : IDisposable
 
     public void Dispose()
     {
-        _claim.Dispose();
-        Interlocked.CompareExchange(ref _currentClaimPath, null, _claimPath);
+        _claim?.Dispose();
+        if (_claimPath is not null)
+        {
+            Interlocked.CompareExchange(ref _currentClaimPath, null, _claimPath);
+        }
     }
 
     private static string InstancesDirectory(string installationDirectory) =>
