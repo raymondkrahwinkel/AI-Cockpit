@@ -207,7 +207,6 @@ brain_obscured=$(docker run --rm "$brain_image" obscure "$brain_pass")
 rm -f "$COCKPIT_BRAIN_RCLONE_PATH"
 printf '[nc]\ntype = webdav\nurl = http://nextcloud:8080\nvendor = owncloud\nuser = smoke\npass = %s\n' "$brain_obscured" > "$COCKPIT_BRAIN_RCLONE_PATH"
 docker run --rm --user 0 -v "$work/secrets:/s" --entrypoint sh "$image" -c 'chown 1700:1700 /s/brain-rclone.conf && chmod 0400 /s/brain-rclone.conf'
-export COCKPIT_BRAIN_PASS=$brain_obscured
 dc up -d --force-recreate brain-sync >/dev/null
 brain_redact() { sed -e "s/$brain_pass/<brain>/g" -e "s/$brain_obscured/<brain>/g"; }
 # Two more completed runs than now, so at least one began after whatever the caller just changed. Bounded at 60 s.
