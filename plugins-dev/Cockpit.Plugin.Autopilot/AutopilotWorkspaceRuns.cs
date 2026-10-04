@@ -23,6 +23,7 @@ internal sealed class AutopilotWorkspaceRuns
     private int _completedRuns;
     private IEmbeddedSession? _planningCeo;
     private CeoBusyIndicatorModel? _planningCeoBusy;
+    private bool _closed;
 
     public AutopilotWorkspaceRuns(
         ICockpitHost host,
@@ -40,9 +41,6 @@ internal sealed class AutopilotWorkspaceRuns
         _manager = manager;
         _queue = queue;
         _history = history;
-
-        // Being the manager's runner starts any runs already queued; Close clears it, so no run starts with no surface.
-        _manager.Runner = _StartRun;
     }
 
     // Raised when a run starts, moves or settles, or the planning CEO turns busy or idle.
@@ -58,6 +56,9 @@ internal sealed class AutopilotWorkspaceRuns
 
     // The runs in flight, in start order.
     public IReadOnlyList<AutopilotRunContext> Active => _active;
+
+    // Being the manager's runner starts any runs already queued; Close clears it, so no run starts with no surface.
+    public void Start() => _manager.Runner = _StartRun;
 
     public AutopilotRunContext? Find(string runId) => Active.FirstOrDefault(context => context.RunId == runId);
 
@@ -86,7 +87,14 @@ internal sealed class AutopilotWorkspaceRuns
     public void Close()
     {
         _manager.Runner = null;
-        foreach (var context in Active)
+        IReadOnlyList<AutopilotRunContext> active;
+        lock (_gate)
+        {
+            _closed = true;
+            active = _active;
+        }
+
+        foreach (var context in active)
         {
             context.Cancel();
         }
@@ -187,12 +195,29 @@ internal sealed class AutopilotWorkspaceRuns
 
     // The manager's runner (AC-174): start a run for a dequeued plan in its own context, track it for the surface, and
     // hand the manager the coordinator and completion task.
-    private AutopilotRunHandle _StartRun(AutopilotPlan plan)
+    // Null when the workspace closed before the run could start: the manager puts the plan back. A close that lands
+    // while the run is being built cancels it, as Close cancels every run it finds.
+    private AutopilotRunHandle? _StartRun(AutopilotPlan plan)
     {
-        var context = new AutopilotRunContext(_host, _workspaceId, _settings, plan);
         lock (_gate)
         {
+            if (_closed)
+            {
+                return null;
+            }
+        }
+
+        var context = new AutopilotRunContext(_host, _workspaceId, _settings, plan);
+        bool closedMeanwhile;
+        lock (_gate)
+        {
+            closedMeanwhile = _closed;
             _active = [.. _active, context];
+        }
+
+        if (closedMeanwhile)
+        {
+            context.Cancel();
         }
 
         context.Changed += _OnRunChanged;

@@ -48,7 +48,7 @@ internal sealed class AutopilotChannel : IDisposable
             return ToJson(_Runs(request.WorkspaceId) is { } runs ? await runs.EmbedPlanningCeoAsync(request.ActiveDirectory, request.KickoffMessage) : null);
         });
         _Do<WorkspaceRef>(ClosePlanningCeo, request => _Runs(request.WorkspaceId)?.ClosePlanningCeo());
-        _Do<SubmitRequest>(Submit, _Submit);
+        _On(Submit, payload => ToJson(_Submit(Read<SubmitRequest>(payload))));
 
         // Set the Stopped phase first, then cancel (order matters — see AutopilotPlanController.Stop): the driver settles
         // only when every step finished, never on a mid-run cancel, so the snapshot after teardown stays Stopped.
@@ -65,9 +65,9 @@ internal sealed class AutopilotChannel : IDisposable
         _Do<MergeGoRequest>(MergeGo, request => _Run(request.WorkspaceId, request.RunId)?.Coordinator.ReportMergeGo(request.Issue, request.Go, request.Reason, "the operator"));
         _Do<MergeGoRequest>(EpicGo, request => _manager.ReportMergeGo(request.Issue, request.Go, request.Reason, "the operator"));
 
-        _Do<QueueRequest>(QueueMoveUp, request => _queue.MoveUp(request.Index));
-        _Do<QueueRequest>(QueueMoveDown, request => _queue.MoveDown(request.Index));
-        _Do<QueueRequest>(QueueRemove, request => _queue.RemoveAt(request.Index));
+        _Do<QueueRequest>(QueueMoveUp, request => _queue.MoveUp(request.Index, plan => SameOnTheWire(plan, request.Expected)));
+        _Do<QueueRequest>(QueueMoveDown, request => _queue.MoveDown(request.Index, plan => SameOnTheWire(plan, request.Expected)));
+        _Do<QueueRequest>(QueueRemove, request => _queue.RemoveAt(request.Index, plan => SameOnTheWire(plan, request.Expected)));
         _Do(HistoryClear, _history.Clear);
         _Do<CorrectionRequest>(HistoryCorrect, _Correct);
 
@@ -80,8 +80,22 @@ internal sealed class AutopilotChannel : IDisposable
         _OnAsync(RememberedPaths, async _ => ToJson(await _host.GetRememberedWorkingPathsAsync()));
     }
 
+    // The plugin is disabled or reloaded: every workspace's runs stop as they would on the workspace's own close.
     public void Dispose()
     {
+        List<AutopilotWorkspaceRuns> workspaces;
+        lock (_gate)
+        {
+            workspaces = [.. _workspaces.Values];
+            _workspaces.Clear();
+        }
+
+        foreach (var runs in workspaces)
+        {
+            runs.Changed -= _PublishAll;
+            runs.Close();
+        }
+
         _plan.Changed -= _OnPlanChanged;
         _manager.Changed -= _PublishAll;
         _queue.Changed -= _PublishAll;
@@ -96,16 +110,22 @@ internal sealed class AutopilotChannel : IDisposable
     // A workspace opened: while it is open its runs are the manager's runner, so attaching starts any queued run.
     private void _Attach(string workspaceId)
     {
-        if (_Runs(workspaceId) is null)
+        // Checked and added under the gate, so two attaches build one; started outside it, since becoming the runner
+        // pumps the queue under the manager's own lock.
+        AutopilotWorkspaceRuns? added = null;
+        lock (_gate)
         {
-            // Built outside the gate: becoming the runner pumps the queue under the manager's own lock.
-            var runs = new AutopilotWorkspaceRuns(_host, workspaceId, _settings, _plan, _manager, _queue, _history);
-            lock (_gate)
+            if (!_workspaces.ContainsKey(workspaceId))
             {
-                _workspaces[workspaceId] = runs;
+                added = new AutopilotWorkspaceRuns(_host, workspaceId, _settings, _plan, _manager, _queue, _history);
+                _workspaces[workspaceId] = added;
             }
+        }
 
-            runs.Changed += _PublishAll;
+        if (added is not null)
+        {
+            added.Changed += _PublishAll;
+            added.Start();
         }
 
         _PublishAll();
@@ -136,12 +156,13 @@ internal sealed class AutopilotChannel : IDisposable
     }
 
     // Approve submits the round's draft to the run manager, which runs it now or queues it — not the planning
-    // controller. A round without steps has nothing to run.
-    private void _Submit(SubmitRequest request)
+    // controller. A round without steps has nothing to run, and a draft the CEO changed since the operator saw it
+    // is refused, so nothing is approved unseen.
+    private bool _Submit(SubmitRequest request)
     {
-        if (_plan.Plan is not { Steps.Count: > 0 } plan)
+        if (_plan.Plan is not { Steps.Count: > 0 } plan || !SameOnTheWire(plan, request.Shown))
         {
-            return;
+            return false;
         }
 
         var name = request.Name.Trim();
@@ -150,6 +171,7 @@ internal sealed class AutopilotChannel : IDisposable
             .WithWorkingDirectory(request.WorkingDirectory.Trim())
             .WithDeliversPullRequest(request.DeliversPullRequest)
             .WithMergeMode(request.MergeMode));
+        return true;
     }
 
     // The reclassify menu (AC-347): sets CorrectionSource to Operator so a manual override stays visible as one. Found

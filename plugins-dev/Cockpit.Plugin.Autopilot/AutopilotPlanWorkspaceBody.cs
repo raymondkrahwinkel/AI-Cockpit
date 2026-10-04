@@ -39,6 +39,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     private bool _popoutOpen;
 
+    // Set when the workspace is really closed: a callback already posted then neither renders nor opens anything.
+    private bool _closed;
+
     // The chosen template's PR-delivery signal (AC-216), remembered from the template picker until Approve stamps it on
     // the submitted plan. A code template ("Bug fix", "Feature") sets it true; free planning or an admin template leaves
     // it false. One planning round is open at a time (a single pop-out), so one field suffices; reset on each pick.
@@ -98,12 +101,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // stops every running run so none runs on headless, and stops being the manager's runner.
     private void _OnWorkspaceClosed(object? sender, EventArgs e)
     {
+        _closed = true;
         _following.Dispose();
         _client.Send(Detach, new WorkspaceRef(_context.WorkspaceId));
     }
 
     private void _Apply(AutopilotWorkspaceState state)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         _state = state;
         _Render();
         _StateApplied?.Invoke();
@@ -652,9 +661,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, [DockPanel.DockProperty] = Dock.Right };
-        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowUp, () => _client.Send(QueueMoveUp, new QueueRequest(index))));
-        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowDown, () => _client.Send(QueueMoveDown, new QueueRequest(index))));
-        buttons.Children.Add(_QueueButton(MaterialIconKind.Close, () => _client.Send(QueueRemove, new QueueRequest(index))));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowUp, () => _client.Send(QueueMoveUp, new QueueRequest(index, plan))));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowDown, () => _client.Send(QueueMoveDown, new QueueRequest(index, plan))));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.Close, () => _client.Send(QueueRemove, new QueueRequest(index, plan))));
 
         return new Border
         {
@@ -716,11 +725,22 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // through the workspace context (AC-122) and shown in the dialog; it is closed when the pop-out closes.
     private async Task _ShowPlanningPopoutAsync()
     {
+        if (_closed)
+        {
+            return;
+        }
+
         try
         {
             // The template choice (AC-189, slice 3): the CEO's kickoff is fixed at embed, so let the operator pick
             // a template or plan free first. Cancelling the picker backs out of the whole round.
             var pick = await _PickTemplateAsync(_state.PlanningPlan?.Source);
+            if (_closed)
+            {
+                // The workspace went while the picker was up: nothing to embed into; its round stays for the next one.
+                return;
+            }
+
             if (pick.Cancelled)
             {
                 _client.Send(CancelPlanning);
@@ -1338,11 +1358,21 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             HorizontalAlignment = HorizontalAlignment.Right,
             [DockPanel.DockProperty] = Dock.Right,
         };
-        button.Click += (sender, _) =>
+        button.Click += async (sender, _) =>
         {
-            // Approve submits the draft to the run manager, which runs it now or queues it — not the planning
-            // controller. The button is only enabled once the plan has steps, a name and a directory.
-            _client.Send(Submit, new SubmitRequest(nameProvider(), workingDirectoryProvider(), _deliversPullRequest, mergeModeProvider()));
+            // Approve submits the draft shown here to the run manager, which runs it now or queues it. The button is
+            // only enabled once the plan has steps, a name and a directory.
+            if (_state.PlanningPlan is not { } shown)
+            {
+                return;
+            }
+
+            if (!await _client.SubmitAsync(new SubmitRequest(shown, nameProvider(), workingDirectoryProvider(), _deliversPullRequest, mergeModeProvider())))
+            {
+                // The CEO changed the draft since this render; the next snapshot shows it, so nothing is approved unseen.
+                _uiHost.ShowToast("The CEO changed the plan just now — review it and approve again.", PluginToastSeverity.Warning);
+                return;
+            }
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
         };

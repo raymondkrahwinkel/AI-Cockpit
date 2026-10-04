@@ -125,14 +125,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             SelectedItem = settings.AutonomyMode(),
         };
 
-        foreach (var trackerId in client.TrackerIds()
-                     .Concat(AutopilotSettings.TrackersWithADefaultStage)
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
-        {
-            _executableStages[trackerId] = _Text(settings.ExecutableStage(trackerId));
-        }
-
         var ceo = _Section("CEO (planning)");
         ceo.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
         ceo.Children.Add(_Row("CEO profile", _ceoProfile));
@@ -156,10 +148,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
         var executableStageHeading = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Header("Executable stage per tracker"), uiHost.CreateHelpHint("settings", "executable-stage") } };
         safety.Children.Add(executableStageHeading);
-        foreach (var (trackerId, box) in _executableStages)
-        {
-            safety.Children.Add(_Row($"{trackerId} starts from", box));
-        }
+        var executableStagesAt = safety.Children.Count;
 
         safety.Children.Add(_Hint("Which stage — or, on a tracker without stages, which label — means someone has judged an item ready to be worked on. Autopilot refuses anything else and says so on the issue, so the tracker's own gate decides what is executable rather than the ticket text claiming it about itself. Leave a field empty to start from any stage on that tracker."));
 
@@ -190,6 +179,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         var templatesChanged = client.OnTemplatesChanged(() => _ = _RenderTemplatesAsync());
         DetachedFromVisualTree += (_, _) => templatesChanged.Dispose();
         _ = _RenderTemplatesAsync();
+        _ = _LoadExecutableStagesAsync(safety, executableStagesAt);
 
         ShowSection(0);
     }
@@ -200,6 +190,22 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
     // Rebuilds the template rows from the combined list — the plugin/builtin registrations with any override applied,
     // then the operator's own — each with its name, an origin badge, and the actions its origin allows.
+    // One box per tracker the operator could start from — the loaded ones, asked of the backend, plus the two Autopilot
+    // ships a default for — placed under the section's heading once the backend answered.
+    private async Task _LoadExecutableStagesAsync(Panel section, int at)
+    {
+        var trackerIds = await _client.TrackerIdsAsync();
+        foreach (var trackerId in trackerIds
+                     .Concat(AutopilotSettings.TrackersWithADefaultStage)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+        {
+            var box = _Text(_settings.ExecutableStage(trackerId));
+            _executableStages[trackerId] = box;
+            section.Children.Insert(at++, _Row($"{trackerId} starts from", box));
+        }
+    }
+
     private async Task _RenderTemplatesAsync()
     {
         var templates = (await _client.TemplatesAsync())?.Templates ?? [];

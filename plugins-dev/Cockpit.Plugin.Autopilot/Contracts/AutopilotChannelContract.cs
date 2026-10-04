@@ -30,7 +30,7 @@ internal static class AutopilotChannelContract
     public const string EmbedPlanningCeo = "plan.embed-ceo";
     public const string ClosePlanningCeo = "plan.close-ceo";
 
-    // SubmitRequest: approves the round's draft as a run.
+    // SubmitRequest -> bool: approves the round's draft as a run; false when the draft is no longer the one Shown.
     public const string Submit = "plan.submit";
 
     // RunRequest / MergeGoRequest / AnswerRequest: what the operator does to one active run.
@@ -42,7 +42,7 @@ internal static class AutopilotChannelContract
     // MergeGoRequest with the epic as Issue: the epic's end gate.
     public const string EpicGo = "epic.go";
 
-    // QueueRequest: reorder or drop a queued run.
+    // QueueRequest: reorder or drop a queued run; refused when the entry at Index is no longer Expected.
     public const string QueueMoveUp = "queue.up";
     public const string QueueMoveDown = "queue.down";
     public const string QueueRemove = "queue.remove";
@@ -68,6 +68,9 @@ internal static class AutopilotChannelContract
 
     public static JsonElement ToJson<T>(T value) => JsonSerializer.SerializeToElement(value, Json);
 
+    // Whether two values say the same on the wire: how the backend tells the item the operator saw from what is there now.
+    public static bool SameOnTheWire<T>(T left, T right) => ToJson(left).GetRawText() == ToJson(right).GetRawText();
+
     public static T Read<T>(JsonElement payload) =>
         payload.Deserialize<T>(Json) ?? throw new JsonException($"Channel payload is null where a {typeof(T).Name} is required.");
 }
@@ -76,7 +79,7 @@ internal sealed record WorkspaceRef(string WorkspaceId);
 
 internal sealed record PlanningCeoRequest(string WorkspaceId, string? ActiveDirectory, string? KickoffMessage);
 
-internal sealed record SubmitRequest(string Name, string WorkingDirectory, bool DeliversPullRequest, AutopilotMergeMode MergeMode);
+internal sealed record SubmitRequest(AutopilotPlan Shown, string Name, string WorkingDirectory, bool DeliversPullRequest, AutopilotMergeMode MergeMode);
 
 internal sealed record RunRequest(string WorkspaceId, string RunId);
 
@@ -84,7 +87,7 @@ internal sealed record AnswerRequest(string WorkspaceId, string RunId, string Te
 
 internal sealed record MergeGoRequest(string WorkspaceId, string RunId, string Issue, bool Go, string? Reason);
 
-internal sealed record QueueRequest(int Index);
+internal sealed record QueueRequest(int Index, AutopilotPlan Expected);
 
 internal sealed record CorrectionRequest(string RunId, string FinishedAt, int StepIndex, AutopilotCorrectionKind Kind);
 

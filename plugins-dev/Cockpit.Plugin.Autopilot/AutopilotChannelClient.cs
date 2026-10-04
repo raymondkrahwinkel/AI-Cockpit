@@ -16,7 +16,8 @@ internal sealed class AutopilotChannelClient(IPluginUiChannel channel)
     public IDisposable FollowState(string workspaceId, Action<AutopilotWorkspaceState> apply)
     {
         long last = 0;
-        return channel.Subscribe(State, channelEvent =>
+        var following = new Following();
+        following.Subscription = channel.Subscribe(State, channelEvent =>
         {
             var state = Read<AutopilotWorkspaceState>(channelEvent.Payload);
             if (state.WorkspaceId != workspaceId)
@@ -26,7 +27,7 @@ internal sealed class AutopilotChannelClient(IPluginUiChannel channel)
 
             Dispatcher.UIThread.Post(() =>
             {
-                if (channelEvent.Seq <= last)
+                if (following.Disposed || channelEvent.Seq <= last)
                 {
                     return;
                 }
@@ -35,26 +36,51 @@ internal sealed class AutopilotChannelClient(IPluginUiChannel channel)
                 apply(state);
             });
         });
+        return following;
     }
 
     // A nudge that the template list changed; the reader asks for it again with TemplatesAsync.
-    public IDisposable OnTemplatesChanged(Action changed) =>
-        channel.Subscribe(TemplatesChanged, _ => Dispatcher.UIThread.Post(changed));
+    public IDisposable OnTemplatesChanged(Action changed)
+    {
+        var following = new Following();
+        following.Subscription = channel.Subscribe(TemplatesChanged, _ => Dispatcher.UIThread.Post(() =>
+        {
+            if (!following.Disposed)
+            {
+                changed();
+            }
+        }));
+        return following;
+    }
 
     public Task<AutopilotTemplateCatalog?> TemplatesAsync() => _AskAsync<AutopilotTemplateCatalog>(Templates, true);
 
     public Task<PluginRememberedWorkingPaths?> RememberedPathsAsync() => _AskAsync<PluginRememberedWorkingPaths>(RememberedPaths, true);
 
-    // ponytail: waits for the answer, which in-process is already there; a remote backend (F5/F6) needs the settings
-    // view to build its tracker rows after an await first.
-    public IReadOnlyList<string> TrackerIds() => _AskAsync<List<string>>(Trackers, true).GetAwaiter().GetResult() ?? [];
+    public async Task<IReadOnlyList<string>> TrackerIdsAsync() => await _AskAsync<List<string>>(Trackers, true) ?? [];
 
     public async Task<bool> BeginPlanningAsync() => await _AskAsync<bool?>(BeginPlanning, true) ?? false;
+
+    public async Task<bool> SubmitAsync(SubmitRequest request) => await _AskAsync<bool?>(Submit, request) ?? false;
 
     public Task<string?> EmbedPlanningCeoAsync(PlanningCeoRequest request) => _AskAsync<string>(EmbedPlanningCeo, request);
 
     // Fire-and-forget: what the operator did; the State that follows shows its effect.
     public void Send(string action, object? payload = null) => _ = _AskAsync<JsonElement>(action, payload ?? true);
+
+    // A subscription whose callbacks, already posted to the UI thread, do nothing once it is disposed (AC-1418).
+    private sealed class Following : IDisposable
+    {
+        public IDisposable? Subscription { get; set; }
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose()
+        {
+            Disposed = true;
+            Subscription?.Dispose();
+        }
+    }
 
     private async Task<T?> _AskAsync<T>(string action, object payload)
     {

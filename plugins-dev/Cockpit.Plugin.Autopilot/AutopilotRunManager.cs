@@ -7,7 +7,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
 {
     private readonly Lock _lock = new();
     private readonly List<AutopilotRunCoordinator> _active = [];
-    private Func<AutopilotPlan, AutopilotRunHandle>? _runner;
+    private Func<AutopilotPlan, AutopilotRunHandle?>? _runner;
 
     // The go an epic's end gate waits on for its pull request to main (AC-1341), guarded by _lock: set while the gate
     // stands, null otherwise. Held here rather than on a coordinator because the run that completed the epic has
@@ -20,13 +20,24 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
 
     // Starts a run for a dequeued plan and hands back its coordinator and completion task. Set by the workspace body
     // while it is open (a run embeds sessions in the workspace's context) and cleared when it closes; setting it starts
-    // any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue.
-    public Func<AutopilotPlan, AutopilotRunHandle>? Runner
+    // any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue. A runner
+    // that answers null refused the plan (its workspace closed meanwhile); the plan goes back to the front.
+    public Func<AutopilotPlan, AutopilotRunHandle?>? Runner
     {
-        get => _runner;
+        get
+        {
+            lock (_lock)
+            {
+                return _runner;
+            }
+        }
         set
         {
-            _runner = value;
+            lock (_lock)
+            {
+                _runner = value;
+            }
+
             if (value is not null)
             {
                 _Pump();
@@ -187,20 +198,20 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     {
         while (true)
         {
-            var runner = _runner;
-            if (runner is null)
-            {
-                return;
-            }
-
+            // The runner is read with the dequeue, under the lock, so a runner cleared before it is never handed a plan.
+            Func<AutopilotPlan, AutopilotRunHandle?> runner;
             AutopilotPlan? next;
             lock (_lock)
             {
-                if (_active.Count + _starting >= settings.MaxConcurrentRuns() || !queue.TryDequeue(out next))
+                if (_runner is not { } current
+                    || _active.Count + _starting >= settings.MaxConcurrentRuns()
+                    || !queue.TryDequeue(out next)
+                    || next is null)
                 {
                     return;
                 }
 
+                runner = current;
                 _starting++;
             }
 
@@ -210,7 +221,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
             AutopilotRunHandle? handle = null;
             try
             {
-                handle = runner(next!);
+                handle = runner(next);
             }
             finally
             {
@@ -224,9 +235,15 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
                 }
             }
 
-            // Reached only when the runner returned a handle (a throw is rethrown out of the finally above).
+            // A throw is rethrown out of the finally above; a refusal puts the plan back and stops pumping.
+            if (handle is null)
+            {
+                queue.Requeue(next);
+                return;
+            }
+
             Changed?.Invoke();
-            _ = _ReleaseWhenDoneAsync(handle!);
+            _ = _ReleaseWhenDoneAsync(handle);
         }
     }
 

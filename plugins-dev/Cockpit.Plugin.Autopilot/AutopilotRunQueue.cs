@@ -58,6 +58,18 @@ internal sealed class AutopilotRunQueue
         Changed?.Invoke();
     }
 
+    // Puts a dequeued plan back at the front — its runner refused it (AC-1418), so it keeps its place.
+    public void Requeue(AutopilotPlan plan)
+    {
+        lock (_lock)
+        {
+            _plans.Insert(0, plan);
+            _Save();
+        }
+
+        Changed?.Invoke();
+    }
+
     // Takes the front plan to run, or false when the queue is empty.
     public bool TryDequeue(out AutopilotPlan? plan)
     {
@@ -78,12 +90,13 @@ internal sealed class AutopilotRunQueue
         return true;
     }
 
-    // Drops the queued entry at `index` — the operator removed a run before it started.
-    public void RemoveAt(int index)
+    // Drops the queued entry at `index` — the operator removed a run before it started. `isExpected` (AC-1418) refuses
+    // the edit when the entry there is no longer the one the operator saw, say the pump took the front one meanwhile.
+    public void RemoveAt(int index, Func<AutopilotPlan, bool>? isExpected = null)
     {
         lock (_lock)
         {
-            if (index < 0 || index >= _plans.Count)
+            if (index < 0 || index >= _plans.Count || isExpected?.Invoke(_plans[index]) == false)
             {
                 return;
             }
@@ -96,16 +109,16 @@ internal sealed class AutopilotRunQueue
     }
 
     // Moves the entry at `index` one place earlier so it runs sooner; a no-op at the front.
-    public void MoveUp(int index) => _Swap(index, index - 1);
+    public void MoveUp(int index, Func<AutopilotPlan, bool>? isExpected = null) => _Swap(index, index - 1, isExpected);
 
     // Moves the entry at `index` one place later so it runs afterwards; a no-op at the back.
-    public void MoveDown(int index) => _Swap(index, index + 1);
+    public void MoveDown(int index, Func<AutopilotPlan, bool>? isExpected = null) => _Swap(index, index + 1, isExpected);
 
-    private void _Swap(int a, int b)
+    private void _Swap(int a, int b, Func<AutopilotPlan, bool>? isExpected)
     {
         lock (_lock)
         {
-            if (a < 0 || a >= _plans.Count || b < 0 || b >= _plans.Count || a == b)
+            if (a < 0 || a >= _plans.Count || b < 0 || b >= _plans.Count || a == b || isExpected?.Invoke(_plans[a]) == false)
             {
                 return;
             }
