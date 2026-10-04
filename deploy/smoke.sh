@@ -242,11 +242,17 @@ echo "after a conflict the remote holds: $(remote 'ls Memory' | paste -sd ' ')"
 # Lost bisync state on a volume with files: a resync would let the remote overwrite an unsynced edit, so it stops.
 dc stop brain-sync >/dev/null
 dc exec -T -u agent cockpit sh -c "rm -rf /home/agent/Nextcloud/.bisync && echo unsynced > $brain/Memory/b.md"
+synced=$(log_of brain-sync | grep -c 'nc in sync' || true)
 dc start brain-sync >/dev/null
-for _ in $(seq 30); do log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' && break; sleep 1; done
-log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' || fail "brain-sync did not stop on files without bisync state"
+# Until it stops, or a run completes as it would without the guard.
+for _ in $(seq 30); do
+  log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' && break
+  [ "$(log_of brain-sync | grep -c 'nc in sync' || true)" -gt "$synced" ] && break
+  sleep 1
+done
 [ "$(dc exec -T -u agent cockpit cat $brain/Memory/b.md)" = unsynced ] || fail "an unsynced edit was overwritten after the bisync state was lost"
 [ "$(remote 'cat Memory/b.md')" = note ] || fail "the remote changed after the bisync state was lost"
+log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' || fail "brain-sync did not stop on files without bisync state"
 # The app password is brain-sync's alone: not in the cockpit's environment, files, image or log.
 for service in cockpit brain-sync; do
   if docker inspect -f '{{json .Config.Env}}' "$(dc ps -q $service)" | grep -qF -e "$brain_pass" -e "$brain_obscured"; then
