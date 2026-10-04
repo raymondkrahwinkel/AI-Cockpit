@@ -43,11 +43,6 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
 
     public async Task<bool> ProbeAsync(string baseUrl, string? apiKey, TimeSpan timeout)
     {
-        if (!_HasHttpBaseUrl(baseUrl))
-        {
-            return false;
-        }
-
         try
         {
             using var cancellation = new CancellationTokenSource(timeout);
