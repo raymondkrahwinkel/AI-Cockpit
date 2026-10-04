@@ -333,7 +333,7 @@ public sealed class ServerJourney
         return discord;
     }
 
-    internal static ServerRun _RunServer(string serverDirectory, string stateRoot, string unlockFile, string keyFile)
+    internal static ServerRun _RunServer(string serverDirectory, string stateRoot, string unlockFile, string keyFile, IReadOnlyDictionary<string, string>? environment = null)
     {
         var start = new ProcessStartInfo(Path.Combine(serverDirectory, OperatingSystem.IsWindows() ? "Cockpit.Server.exe" : "Cockpit.Server"))
         {
@@ -344,6 +344,10 @@ public sealed class ServerJourney
         start.Environment[CockpitBuild.StateRootVariable] = stateRoot;
         start.Environment[UnlockFromFile.Variable] = unlockFile;
         start.Environment[ConnectKeyVerifier.BootstrapFileVariable] = keyFile;
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        {
+            start.Environment[name] = value;
+        }
         var run = new ServerRun(new Process { StartInfo = start, EnableRaisingEvents = true });
         run.Process.Start();
         run.Process.BeginOutputReadLine();

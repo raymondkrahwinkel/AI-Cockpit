@@ -4,8 +4,10 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Projects;
 
 namespace Cockpit.App;
 
@@ -47,15 +49,80 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-1472: Projects after a clone, the form still holding what was cloned and the result under it.
+    public static OptionsDialog Projects(int width, int height)
+    {
+        var admin = _Admin(new SceneProjects());
+        admin.LoadCommand.Execute(null);
+        admin.CloneUrl = "https://github.com/raymondkrahwinkel/cockpit.git";
+        admin.CloneName = "cockpit";
+        admin.CloneCommand.Execute(null);
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        return dialog;
+    }
+
     public static IConnectKeyAdministration StandIn() => new SceneKeys();
 
-    private static ServerAdminViewModel _Admin() => new(
+    public static IServerProjects ProjectsStandIn() => new SceneProjects();
+
+    private static ServerAdminViewModel _Admin(IServerProjects? projects = null) => new(
         "huis-cockpit",
         "laptop-raymond",
         new SceneKeys(),
         ["server (Claude)", "server (Codex)"],
         [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")],
-        new ScenePlugins());
+        new ScenePlugins(),
+        projects);
+
+    // Two projects already cloned, and a clone of cockpit that lands where the image's clone root puts it.
+    private sealed class SceneProjects : IServerProjects
+    {
+        private readonly List<Project> _projects =
+        [
+            new("personal", "Personal") { SourceDirectories = [new ProjectRepository("/work/clones/github.com/raymondkrahwinkel/personal")] },
+            new("depot", "depot") { SourceDirectories = [new ProjectRepository("/work/clones/github.com/raymondkrahwinkel/depot")] },
+        ];
+
+        public ProjectCatalogSnapshot Current => ProjectCatalogSnapshot.Empty with { Settings = ProjectSettings.Empty with { Projects = [.. _projects] } };
+
+        public event Action? Changed
+        {
+            add
+            {
+            }
+
+            remove
+            {
+            }
+        }
+
+        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RefreshSharedProjectsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SyncNowAsync(string projectId) => Task.CompletedTask;
+
+        public Task<Project?> FindProjectAsync(string projectId) => Task.FromResult(_projects.FirstOrDefault(project => project.Id == projectId));
+
+        public Task<Project> AddNewProjectAsync(Project project) => throw new NotSupportedException();
+
+        public Task<Project> AddBoundProjectAsync(Project project) => throw new NotSupportedException();
+
+        public Task<Project?> UpdateStoredProjectAsync(Project project) => Task.FromResult<Project?>(project);
+
+        public Task<bool> MarkOpenedAsync(string projectId, DateTimeOffset openedAt) => Task.FromResult(false);
+
+        public Task RemoveProjectAsync(string projectId) => Task.CompletedTask;
+
+        public Task<ServerProjectClone> CloneAsync(string repoUrl, string branch, string name, CancellationToken cancellationToken = default)
+        {
+            const string path = "/work/clones/github.com/raymondkrahwinkel/cockpit";
+            _projects.Add(new Project("cockpit", name) { SourceDirectories = [new ProjectRepository(path)] });
+            return Task.FromResult(new ServerProjectClone("cockpit", name, path, 412L << 20, TimeSpan.FromSeconds(108), null));
+        }
+    }
 
     // The mockup's four keys, one lockout and seven audit lines, dated from now so the times read as today's.
     private sealed class SceneKeys : IConnectKeyAdministration

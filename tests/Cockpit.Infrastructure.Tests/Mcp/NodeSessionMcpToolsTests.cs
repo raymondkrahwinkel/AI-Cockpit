@@ -493,11 +493,13 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             return Task.FromResult<IReadOnlyList<AssistantSessionRow>>([.. Sessions]);
         }
 
+        // AC-1472: a test may add a project outside a key's scope.
+        public List<AssistantProjectRow> Projects { get; } = [new AssistantProjectRow(AllowedProject, "Allowed", null, null, null, new Dictionary<string, string>(), null, [])];
+
         public Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync()
         {
             Calls.Add("ListProjectsAsync()");
-            return Task.FromResult<IReadOnlyList<AssistantProjectRow>>(
-                [new AssistantProjectRow(AllowedProject, "Allowed", null, null, null, new Dictionary<string, string>(), null, [])]);
+            return Task.FromResult<IReadOnlyList<AssistantProjectRow>>([.. Projects]);
         }
 
         public Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count) => throw new NotSupportedException();

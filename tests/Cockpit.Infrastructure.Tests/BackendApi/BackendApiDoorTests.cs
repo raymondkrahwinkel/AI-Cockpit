@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
@@ -94,44 +95,65 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(expected, expectedBody), answer);
     }
 
-    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may
-    // narrow or revoke the bootstrap key; either way nothing changed. F5.6b2–b4 add their routes as rows here.
-    public static TheoryData<string, string, string?, string, HttpStatusCode, string> AdminRoutes => new()
+    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may narrow
+    // or revoke the bootstrap key. AC-1472 criteria 2 and 3: an operate key lists only its projects, without a count, and a
+    // URL carrying a credential is refused. No row changes anything, and no answer or audit line repeats a key.
+    public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string> AdminRoutes => new()
     {
-        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "" },
-        { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "" },
-        { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin" },
-        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request" },
-        { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
-        { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key" },
-        { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key" },
-        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request" },
-        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
-        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
-        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request" },
-        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key" },
+        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "" },
+        { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "" },
+        { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "" },
+        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key", "" },
+        { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key", "" },
+        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"main","name":"r"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "PATCH", "/api/v1/projects/project-allowed", """{"name":"renamed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "DELETE", "/api/v1/projects/project-allowed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "GET", "/api/v1/projects", null, "operate, one project", HttpStatusCode.OK, "", "project-allowed" },
+        { "GET", "/api/v1/projects/clones/0123", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://laptop:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git?private_token={secret}","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ssh://git:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ftps://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ext::sh -c touch% /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"fd::17","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"C:/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"file:///srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"--upload-pack=touch /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"--orphan=x","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
     };
 
     [Theory]
     [MemberData(nameof(AdminRoutes))]
-    public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string error)
+    public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string? error, string listed)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
+        door.ReadGateway.Projects.Add(new AssistantProjectRow("project-outside", "Outside", null, null, null, new Dictionary<string, string>(), null, []));
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
-        var bearer = credential == "admin" ? Bootstrap : operate.Secret;
+        var scoped = await verifier.IssueAsync("phone", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-allowed"] });
+        var bearers = new Dictionary<string, string> { ["admin"] = Bootstrap, ["operate"] = operate.Secret, ["operate, one project"] = scoped.Secret };
 
         var target = path.Replace("{issued}", operate.Key.Prefix, StringComparison.Ordinal).Replace("{secret}", operate.Secret, StringComparison.Ordinal);
-        var answer = await door.SendAsync(new HttpMethod(method), target, bearer, body);
+        var answer = await door.SendAsync(new HttpMethod(method), target, bearers[credential], body?.Replace("{secret}", operate.Secret, StringComparison.Ordinal));
         var keys = await verifier.ListAsync();
 
         Assert.Equal(expected, answer.Status);
@@ -142,8 +164,14 @@ public sealed class BackendApiDoorTests
         Assert.DoesNotContain("sha256", answer.Body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("C:\\\\server", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("private-hash", answer.Body, StringComparison.Ordinal);
-        Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
-        Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => !entry.Key.IsBootstrap).Key.EffectiveScope());
+        Assert.False((await File.ReadAllTextAsync(door.AuditPath)).Contains(operate.Secret, StringComparison.Ordinal), "The audit repeated a full key it was given.");
+        Assert.Contains(listed, answer.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("project-outside", answer.Body, StringComparison.Ordinal);
+        Assert.Empty(_Names(JsonNode.Parse(answer.Body), "count", "total", "path", "defaultProfile"));
+        Assert.DoesNotContain(door.ProjectEditor.ReceivedCalls(), call => call.GetMethodInfo().Name != nameof(IProjectEditor.FindProjectAsync));
+        Assert.DoesNotContain(door.Clones.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(IRepositoryCloneManager.CloneAsync));
+        Assert.Equal(3, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
+        Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => entry.Key.Label == "laptop").Key.EffectiveScope());
     }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
@@ -165,6 +193,8 @@ public sealed class BackendApiDoorTests
         var prefix = JsonNode.Parse(issue.Body)?["key"]?["prefix"]?.GetValue<string>() ?? "";
         await door.GetAsync(door.NodeBase, "/api/v1/whoami", secret);
         await door.SendAsync(HttpMethod.Delete, $"/api/v1/keys/{prefix}", Bootstrap);
+        // AC-1472: a clone whose URL carries the key is refused, so every read below also shows no line repeats it.
+        var clone = await door.SendAsync(HttpMethod.Post, "/api/v1/projects", Bootstrap, $$"""{"repoUrl":"https://phone:{{secret}}@example.invalid/o/r.git","name":"r"}""");
         // Two lines with one timestamp: paged a line at a time, a page boundary falls between them.
         var tie = DateTimeOffset.UtcNow;
         var trail = new NodeAccessAuditLog(door.AuditPath, NullLogger<NodeAccessAuditLog>.Instance);
@@ -180,6 +210,8 @@ public sealed class BackendApiDoorTests
         var whole = (await door.GetAsync(door.NodeBase, "/api/v1/audit?count=500", Bootstrap)).Body;
 
         Assert.Equal(HttpStatusCode.Created, issue.Status);
+        Assert.Equal(HttpStatusCode.BadRequest, clone.Status);
+        Assert.False(clone.Body.Contains(secret, StringComparison.Ordinal), "The clone's refusal repeated the key in its URL.");
         Assert.True(secret.StartsWith("ck_", StringComparison.Ordinal) && _Occurrences(issue.Body, secret) == 1, "The issue answer did not carry the new key exactly once.");
         Assert.False(issue.Body.Contains(hash, StringComparison.OrdinalIgnoreCase), "The issue answer carried the key's hash.");
         Assert.Contains(prefix, text, StringComparison.Ordinal);
@@ -410,13 +442,15 @@ public sealed class BackendApiDoorTests
     }
 
     // Every property name in a response that names a credential: an admin answer has no field for one to travel in.
-    private static IEnumerable<string> _CredentialNames(JsonNode? node) => node switch
+    private static IEnumerable<string> _CredentialNames(JsonNode? node) => _Names(node, "token", "password", "secret", "hash", "apikey", "credential");
+
+    private static IEnumerable<string> _Names(JsonNode? node, params string[] words) => node switch
     {
         JsonObject properties => properties.SelectMany(property =>
-            new[] { "token", "password", "secret", "hash", "apikey", "credential" }.Any(word => property.Key.Contains(word, StringComparison.OrdinalIgnoreCase))
+            words.Any(word => property.Key.Contains(word, StringComparison.OrdinalIgnoreCase))
                 ? new[] { property.Key }
-                : _CredentialNames(property.Value)),
-        JsonArray items => items.SelectMany(_CredentialNames),
+                : _Names(property.Value, words)),
+        JsonArray items => items.SelectMany(item => _Names(item, words)),
         _ => [],
     };
 
@@ -515,6 +549,10 @@ public sealed class BackendApiDoorTests
 
         public NodeSessionMcpToolsTests.RecordingAgentGateway AgentGateway { get; } = new();
 
+        public IProjectEditor ProjectEditor { get; } = Substitute.For<IProjectEditor>();
+
+        public IRepositoryCloneManager Clones { get; } = Substitute.For<IRepositoryCloneManager>();
+
         public SessionRegistry Sessions { get; } = new();
 
         public IPluginProviderRegistry Providers { get; } = new PluginProviderRegistry();
@@ -555,12 +593,13 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(PluginStores);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
-            var editor = Substitute.For<IProjectEditor>();
+            var editor = ProjectEditor;
             editor.FindProjectAsync("project-a").Returns(new Project("project-a", "Project A")
             {
                 SourceDirectories = [new ProjectRepository(ProjectDirectory)],
             });
             services.AddSingleton(editor);
+            services.AddSingleton(Clones);
             services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());

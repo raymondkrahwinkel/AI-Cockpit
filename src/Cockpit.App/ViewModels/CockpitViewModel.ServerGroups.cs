@@ -365,7 +365,7 @@ public partial class CockpitViewModel
             }
         }
 
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins);
+        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects);
         await _dialogService.ShowServerAdminDialogAsync(admin);
     }
 
@@ -391,9 +391,11 @@ public partial class CockpitViewModel
                 return;
             }
 
+            // AC-1472: the projects from the backend API, the same list and scope Admin's Projects page writes to.
+            await group.Server.Projects.LoadAsync();
             group.Start.Fill(
                 snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
-                snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
+                group.Server.Projects.Current.Settings.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
         }
         catch (Exception exception)
         {

@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Options on a server now opens on Projects: the server's projects with their folder there, and "clone onto
+  the server" from a repository URL, a branch and a name. The server clones with its own git credentials, so none are
+  sent from here, and a URL that carries a user name, password or token is refused; once done the page says where the
+  clone landed, how large it is and how long it took. Remove takes a project off the server's list and leaves its
+  folder. "+ Start on <server>" offers these projects, and a session started on one runs in its clone. On the backend
+  API: `GET`, `POST`, `PATCH` and `DELETE /api/v1/projects`, all audited; an operate key may only list the projects in
+  its scope, by id and name. Cockpit 0.75.0.
 - added: a connect server's header line has a Health button that opens the server's health: an alarm when a provider
   login on the server has expired (with the runs that did not run since and the Discord message sent to you), the
   sign-in per profile, the server's version, uptime, assistant, Discord and connected keys, and the scheduled runs with

@@ -32,7 +32,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         _resolveRoot = _ => Task.FromResult(clonesRoot);
     }
 
-    public async Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, CancellationToken cancellationToken = default)
+    public async Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, IReadOnlyCollection<string>? allowedProtocols = null, CancellationToken cancellationToken = default)
     {
         var parsed = GitCloneUrl.Parse(url);
 
@@ -72,7 +72,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         {
             await GitCli.RunCheckedAsync(
                 parent,
-                ["clone", "--", parsed.RemoteUrl, resolvedTarget],
+                [.. _ProtocolPolicy(allowedProtocols), "clone", "--", parsed.RemoteUrl, resolvedTarget],
                 cancellationToken,
                 GitEnvironment.NonInteractive).ConfigureAwait(false);
         }
@@ -87,6 +87,13 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
 
         return record;
     }
+
+    // AC-1472: as `-c` arguments rather than GIT_ALLOW_PROTOCOL, so the policy survives the image's sudo to `agent`, and
+    // git hands it on to the transports and submodules it starts.
+    private static IEnumerable<string> _ProtocolPolicy(IReadOnlyCollection<string>? allowedProtocols) =>
+        allowedProtocols is null
+            ? []
+            : ["-c", "protocol.allow=never", .. allowedProtocols.SelectMany(protocol => new[] { "-c", $"protocol.{protocol}.allow=always" })];
 
     public Task<string> GetEffectiveClonesRootAsync(CancellationToken cancellationToken = default) =>
         _resolveRoot(cancellationToken);
