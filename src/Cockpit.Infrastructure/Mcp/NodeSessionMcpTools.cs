@@ -28,7 +28,8 @@ internal sealed class NodeSessionMcpTools(
     IAssistantMemory memory,
     // AC-1351: null where nothing verifies connect keys (a test's own host), and then the key tools refuse.
     // AC-1446: the same contract the backend API's admin routes call, so both write one audit.
-    IConnectKeyAdministration? connectKeys = null)
+    IConnectKeyAdministration? connectKeys = null,
+    INodeControllerPresence? presence = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -176,7 +177,7 @@ internal sealed class NodeSessionMcpTools(
     {
         try
         {
-            if (_RefuseIfNotTheController() is { } refusal)
+            if ((_RefuseIfNotTheController() ?? _RefuseIfNotTheHolder()) is { } refusal)
             {
                 return Task.FromResult(refusal);
             }
@@ -762,6 +763,13 @@ internal sealed class NodeSessionMcpTools(
 
     private static string? _RefuseIfNotTheController() =>
         string.Equals(McpRequestContext.CurrentPaneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal)
+            ? null
+            : JsonSerializer.Serialize(new { ok = false, error = NotTheController }, SerializerOptions);
+
+    // AC-1405: the controller inbox is the holder's mail, so another key on this node may neither read nor acknowledge
+    // it; it is told what a local session is told. The pairing holds with no key prefix, as a pairing caller has none.
+    private string? _RefuseIfNotTheHolder() =>
+        presence?.Current is { } holder && string.Equals(holder.KeyPrefix, McpRequestContext.CurrentNodeCaller?.KeyPrefix, StringComparison.Ordinal)
             ? null
             : JsonSerializer.Serialize(new { ok = false, error = NotTheController }, SerializerOptions);
 

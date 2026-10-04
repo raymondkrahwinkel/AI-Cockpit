@@ -53,12 +53,13 @@ public sealed class NodeNotifyRoutingTests : IDisposable
     }
 
     // AC-1405: a controller holding the line by connect key gets the mail of a session its key's scope reaches, under
-    // a profile no pairing covers, and not of one in a project outside that scope.
+    // a profile no pairing covers, and not of one in a project outside that scope; another key on the node reads none.
     [Theory]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0)]
-    [InlineData(false, "project-a", "project-b", null, 1)]
-    [InlineData(true, "project-a", null, "DESKTOP", 0)]
-    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(bool keyOnEveryProject, string keyProject, string? sessionProject, string? controller, int keptLocally)
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", 1)]
+    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", 0)]
+    [InlineData(true, "project-a", null, "DESKTOP", 0, "ck_test", 1)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", null)]
+    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(bool keyOnEveryProject, string keyProject, string? sessionProject, string? controller, int keptLocally, string readerKey, int? collected)
     {
         _presence.Current = new ActiveController("DESKTOP", DateTimeOffset.UtcNow, "ck_test", new ConnectKeyScope
         {
@@ -75,8 +76,8 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.True(reply["ok"]!.GetValue<bool>());
         Assert.Equal(controller, reply["controller"]?.GetValue<string>());
         Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, new NodeCaller(readerKey, readerKey, ConnectKeyCapability.Operate, "", CancellationToken.None, true));
+        Assert.Equal(collected, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
     }
 
     private AgentsMcpTools _Agents(bool profileShared = true, bool withLocalAssistant = false, ISessionRegistry? sessions = null)
@@ -109,7 +110,8 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Substitute.For<ISessionProfileStore>(),
         new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")),
         _inbox,
-        Substitute.For<IAssistantMemory>());
+        Substitute.For<IAssistantMemory>(),
+        presence: _presence);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
