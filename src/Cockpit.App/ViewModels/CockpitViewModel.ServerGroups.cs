@@ -365,7 +365,10 @@ public partial class CockpitViewModel
             }
         }
 
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects);
+        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects)
+        {
+            Profiles = new ServerProfilesViewModel(group.Server.Profiles),
+        };
         await _dialogService.ShowServerAdminDialogAsync(admin);
     }
 

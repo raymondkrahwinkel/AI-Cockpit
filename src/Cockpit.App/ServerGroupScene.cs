@@ -131,6 +131,8 @@ internal static class ServerGroupScene
 
         public IServerProjects Projects { get; } = ServerAdminScene.ProjectsStandIn();
 
+        public IServerProfiles Profiles { get; } = ServerAdminScene.ProfilesStandIn();
+
         public RemoteServerState State { get; } = state;
 
         public IReadOnlyList<ISessionHandle> All { get; } = sessions;

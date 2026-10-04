@@ -116,6 +116,12 @@ public partial class OptionsDialog : Window
             dialog._AddServerPage("server-projects", "Projects", MaterialIconKind.FolderMultipleOutline, new ServerProjectsPage { DataContext = admin });
         }
 
+        if (admin.Profiles is { } profiles)
+        {
+            dialog._AddServerPage("server-profiles", "Profiles", MaterialIconKind.AccountMultiple, new ServerProfilesPage { DataContext = profiles });
+            dialog.Opened += (_, _) => profiles.LoadCommand.Execute(null);
+        }
+
         dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });

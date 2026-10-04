@@ -46,6 +46,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     public string Chip => $"administering the server · key {KeyLabel} (admin)";
 
+    // AC-1473: the Profiles page, when this dialog was given the server's profiles.
+    public ServerProfilesViewModel? Profiles { get; init; }
+
     public ObservableCollection<ConnectKeyRowViewModel> Keys { get; } = [];
 
     public ObservableCollection<LockoutRowViewModel> Lockouts { get; } = [];

@@ -5,8 +5,10 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.App;
@@ -35,6 +37,19 @@ internal static class ServerAdminScene
         dialog.Width = width;
         dialog.Height = height;
         dialog.SelectCategory("server-audit");
+        return dialog;
+    }
+
+    // AC-1473: Profiles with the mockup's four sign-ins and the editor open on the one whose key is a secret.
+    public static OptionsDialog Profiles(int width, int height)
+    {
+        var admin = _Admin(profiles: new ServerProfilesViewModel(new SceneProfiles()));
+        var profiles = admin.Profiles ?? throw new InvalidOperationException("The scene's admin has no Profiles page.");
+        profiles.LoadCommand.Execute(null);
+        profiles.StartEditCommand.Execute(profiles.Rows.First(row => row.Label == "server (OpenRouter)"));
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
         return dialog;
     }
 
@@ -67,14 +82,19 @@ internal static class ServerAdminScene
 
     public static IServerProjects ProjectsStandIn() => new SceneProjects();
 
-    private static ServerAdminViewModel _Admin(IServerProjects? projects = null) => new(
+    public static IServerProfiles ProfilesStandIn() => new SceneProfiles();
+
+    private static ServerAdminViewModel _Admin(IServerProjects? projects = null, ServerProfilesViewModel? profiles = null) => new(
         "huis-cockpit",
         "laptop-raymond",
         new SceneKeys(),
         ["server (Claude)", "server (Codex)"],
         [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")],
         new ScenePlugins(),
-        projects);
+        projects)
+    {
+        Profiles = profiles,
+    };
 
     // Two projects already cloned, and a clone of cockpit that lands where the image's clone root puts it.
     private sealed class SceneProjects : IServerProjects
@@ -122,6 +142,33 @@ internal static class ServerAdminScene
             _projects.Add(new Project("cockpit", name) { SourceDirectories = [new ProjectRepository(path)] });
             return Task.FromResult(new ServerProjectClone("cockpit", name, path, 412L << 20, TimeSpan.FromSeconds(108), null));
         }
+    }
+
+    // The mockup's four profiles; the OpenRouter key is a secret variable, so no value of it exists on this side.
+    private sealed class SceneProfiles : IServerProfiles
+    {
+        private static readonly RemoteProfile[] Listed =
+        [
+            _Profile("server (Claude)", "claude", "opus", ProfileSignInKind.SignedIn, ["depot", "youtrack"], []),
+            _Profile("server (Codex)", "codex", "gpt-5.6-terra", ProfileSignInKind.Expired, null, []),
+            _Profile("server (OpenRouter)", "openrouter", "deepseek/deepseek-chat", ProfileSignInKind.Unchecked, ["depot"],
+                [new RemoteProfileVariable("OPENROUTER_API_KEY", null, true), new RemoteProfileVariable("OPENROUTER_REGION", "eu")]),
+            _Profile("local-qwen", "ollama", "qwen2.5-coder:14b", null, null, []) with { ConfiguredOnServer = false },
+        ];
+
+        public Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RemoteProfile>>(Listed);
+
+        public Task<RemoteProfile> CreateAsync(RemoteNewProfile profile, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_Profile(profile.Label, profile.Provider, profile.Settings?.Model, null, null, []));
+
+        public Task<RemoteProfile?> UpdateAsync(string label, RemoteProfilePatch patch, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Listed.FirstOrDefault(profile => profile.Label == label));
+
+        public Task<bool> DeleteAsync(string label, CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        private static RemoteProfile _Profile(string label, string provider, string? model, ProfileSignInKind? signIn, IReadOnlyList<string>? mcp, IReadOnlyList<RemoteProfileVariable> environment) =>
+            new(label, provider, model, null, mcp, null, DelegationPolicy.None, environment, false, true, signIn);
     }
 
     // The mockup's four keys, one lockout and seven audit lines, dated from now so the times read as today's.
