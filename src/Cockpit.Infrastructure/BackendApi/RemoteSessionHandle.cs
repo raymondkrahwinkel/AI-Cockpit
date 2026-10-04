@@ -337,8 +337,11 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         await RespondToPermissionByIdAsync(toolUseId, allow).ConfigureAwait(false);
     }
 
+    // AC-1476: the server keeps the rule for the session, on the exact input; there is no wildcard over the API.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope) =>
-        _Unsupported("The API does not expose persistent permission rules.");
+        scope == PermissionRuleScope.Exact
+            ? RespondToPermissionByIdAsync(toolUseId, allow: true, forSession: true)
+            : _Unsupported("The API only allows an exact call for the rest of a session.");
 
     public void ClearNeedsAttention() =>
         throw new NotSupportedException("The backend owns a remote session's attention state.");
@@ -515,14 +518,14 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
     public Task SetWorktreeBranchAsync(string? branch) =>
         throw new NotSupportedException("A remote session's worktree is its backend's own.");
 
-    public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow)
+    public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
     {
         if (_isAssistant)
         {
             return false;
         }
 
-        var answer = await _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/permissions/{Uri.EscapeDataString(toolUseId)}", new { allow }).ConfigureAwait(false);
+        var answer = await _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/permissions/{Uri.EscapeDataString(toolUseId)}", forSession ? (object)new { allow, scope = "session" } : new { allow }).ConfigureAwait(false);
         return answer.TryGetProperty("answered", out var answered) && answered.ValueKind == JsonValueKind.True;
     }
 

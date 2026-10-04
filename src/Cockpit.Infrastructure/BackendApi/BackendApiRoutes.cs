@@ -55,6 +55,7 @@ internal static class BackendApiRoutes
                 expiresAt = caller.ExpiresAt,
                 holdsAssistant = caller.HoldsAssistant,
                 mayAnswerPermissions = caller.MayAnswerPermissions,
+                allowsForSession = true,
                 version = HostVersion(),
                 startedAt = StartedAt,
                 assistantHeldBy = holder,

@@ -616,6 +616,10 @@
                                                             <Button Content="{Binding Session.AllowLabel}" Classes="Accent Compact" Margin="0,4,6,0"
                                                                     Command="{Binding Session.AllowToolCommand}"
                                                                     CommandParameter="{Binding}"/>
+                                                            <Button Content="Allow for this session" Classes="Compact" Margin="0,4,6,0"
+                                                                    IsVisible="{Binding Session.CanAllowForSession}"
+                                                                    Command="{Binding Session.AllowForSessionToolCommand}"
+                                                                    CommandParameter="{Binding}"/>
                                                             <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
                                                                     Command="{Binding Session.DenyToolCommand}"
                                                                     CommandParameter="{Binding}"/>
@@ -696,6 +700,10 @@
                                        IsEnabled="{Binding Session.IsLinkUp}">
                                 <Button Content="{Binding Session.AllowLabel}" Classes="Accent Compact" Margin="0,4,6,0"
                                         Command="{Binding Session.AllowToolCommand}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Content="Allow for this session" Classes="Compact" Margin="0,4,6,0"
+                                        IsVisible="{Binding Session.CanAllowForSession}"
+                                        Command="{Binding Session.AllowForSessionToolCommand}"
                                         CommandParameter="{Binding}"/>
                                 <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
                                         Command="{Binding Session.DenyToolCommand}"

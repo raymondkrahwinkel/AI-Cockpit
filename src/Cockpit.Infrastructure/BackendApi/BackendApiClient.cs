@@ -259,8 +259,8 @@ public sealed class BackendApiClient : IDisposable
     }
 }
 
-// AC-1458: the last four are additive, as are AC-1456's holder and AC-1469's grant; a server that predates them leaves
-// them at their defaults, so a key it says nothing of is shown without answer buttons.
+// AC-1458: the last four are additive, as are AC-1456's holder, AC-1469's grant and AC-1476's scope; a server that
+// predates them leaves them at their defaults, so a key it says nothing of is shown without answer buttons.
 public sealed record BackendWhoAmI(
     string KeyPrefix,
     string Label,
@@ -272,4 +272,5 @@ public sealed record BackendWhoAmI(
     string? Version = null,
     DateTimeOffset? StartedAt = null,
     string? AssistantHeldBy = null,
-    bool MayAnswerPermissions = false);
+    bool MayAnswerPermissions = false,
+    bool AllowsForSession = false);

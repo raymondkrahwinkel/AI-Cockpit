@@ -517,13 +517,33 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
-    // D4: always-allow is session-scoped on the narrow plugin surface — forwarded so Codex's acceptForSession
-    // can persist it, falling back to a one-time allow otherwise. Claude's cross-restart rule args have no
-    // equivalent here. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
-    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        _hostToolset?.Gate.AllowAlways(toolUseId, toolName) == true
+    // D4: always-allow is session-scoped on the narrow plugin surface. AC-1476: the rule is kept here, so every
+    // provider honours it and it ends with this adapter; the answer is still forwarded, so Codex's acceptForSession
+    // can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
+    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
+    {
+        var rule = scope == PermissionRuleScope.Wildcard
+            ? PermissionRule.ForWildcard(toolName)
+            : PermissionRule.ForExact(toolName, proposedInputJson);
+        lock (_sessionRules)
+        {
+            _sessionRules.Add(rule);
+        }
+
+        return _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
             ? Task.CompletedTask
             : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+    }
+
+    private readonly List<PermissionRule> _sessionRules = [];
+
+    private bool _AllowedForSession(PluginPermissionRequested permission)
+    {
+        lock (_sessionRules)
+        {
+            return _sessionRules.Exists(rule => rule.Matches(permission.ToolName, permission.InputJson));
+        }
+    }
 
     // Fase 4 D4: no narrow-interface live-control channel, so these Claude-CLI-only ops wire the host's
     // permission-mode/model dropdowns to the plugin's generic live-option surface under well-known keys —
@@ -593,6 +613,13 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             if (pluginEvent is PluginPermissionRequested permission && _delegatedCeiling is { } ceiling)
             {
                 await _DecideDelegatedPermissionAsync(ceiling, permission, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            // AC-1476: a call the operator already allowed for this session is answered here, with no prompt row.
+            if (pluginEvent is PluginPermissionRequested repeated && _AllowedForSession(repeated))
+            {
+                await RespondToPermissionAsync(repeated.ToolUseId, allow: true, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 

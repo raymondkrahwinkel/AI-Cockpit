@@ -382,7 +382,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         var started = Stopwatch.GetTimestamp();
         var who = await _client.WhoAmIAsync(_stop.Token).ConfigureAwait(false);
         var latency = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        var key = new RemoteServerKey(who.Label, who.Capability, who.HoldsAssistant, who.AssistantHeldBy, who.Version, who.StartedAt, who.MayAnswerPermissions);
+        var key = new RemoteServerKey(who.Label, who.Capability, who.HoldsAssistant, who.AssistantHeldBy, who.Version, who.StartedAt, who.MayAnswerPermissions, who.AllowsForSession);
         _Set(state => state with { LatencyMs = latency, Key = key });
     }
 

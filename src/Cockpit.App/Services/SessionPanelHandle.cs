@@ -172,8 +172,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => _pane is { } pane ? pane.WorktreeBranch = branch : null);
 
     // Only an SDK session holds permission prompts by tool-use id; a TTY session's are the CLI's own.
-    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow) => _pane is SessionViewModel sdk
-        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow))
+    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) => _pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow, forSession))
         : Task.FromResult(false);
 
     // Always dispatched, as `SessionVerifyGateway` does (AC-577): every caller arrives off the UI thread.
