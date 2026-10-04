@@ -81,6 +81,8 @@ sealed class Program
             builder.AddConsole();
             builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
         });
+        using var installationInstance = InstallationInstanceGuard.Acquire(
+            loggerFactory.CreateLogger<InstallationInstanceGuard>());
 
         // First line of every run, so the kept previous log says which process it was and how it was started —
         // a restart handoff and a hand launch leave the same trail otherwise.
@@ -215,6 +217,7 @@ sealed class Program
         && !Screenshotter.IsRequested(args)
         && !string.Equals(Environment.GetEnvironmentVariable("VELOPACK_RESTART"), "true", StringComparison.OrdinalIgnoreCase)
         && !SingleInstanceGuard.IsHeldByAnotherCockpit()
+        && !InstallationInstanceGuard.IsAnotherInstanceRunning()
         && UpdateOnNextStart.TakeRequest();
 
     // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:

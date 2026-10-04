@@ -48,6 +48,53 @@ public sealed class SingleInstanceGuardTests
             SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-b")));
     }
 
+    [Fact]
+    public void IsAnotherInstanceRunning_WhileAnotherInstanceHoldsItsLock_RefusesTheUpdate()
+    {
+        var installationDirectory = Directory.CreateTempSubdirectory("ac1486-");
+        var instancesDirectory = Directory.CreateDirectory(Path.Combine(installationDirectory.FullName, ".instances"));
+        var claimPath = Path.Combine(instancesDirectory.FullName, "other.lock");
+
+        try
+        {
+            bool anotherInstanceRunning;
+            using (var other = new FileStream(claimPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            {
+                anotherInstanceRunning = InstallationInstanceGuard.IsAnotherInstanceRunning(installationDirectory.FullName);
+            }
+
+            Assert.True(anotherInstanceRunning);
+        }
+        finally
+        {
+            Directory.Delete(installationDirectory.FullName, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void IsAnotherInstanceRunning_WithAStaleLockOrUnavailableInstallation_CleansItOrAllowsStartup()
+    {
+        var installationDirectory = Directory.CreateTempSubdirectory("ac1486-");
+        var instancesDirectory = Directory.CreateDirectory(Path.Combine(installationDirectory.FullName, ".instances"));
+        var claimPath = Path.Combine(instancesDirectory.FullName, "stale.lock");
+        var unavailableInstallationPath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(claimPath, string.Empty);
+            using var noOp = InstallationInstanceGuard.Acquire(unavailableInstallationPath);
+
+            Assert.NotNull(noOp);
+            Assert.False(InstallationInstanceGuard.IsAnotherInstanceRunning(installationDirectory.FullName));
+            Assert.False(File.Exists(claimPath));
+        }
+        finally
+        {
+            File.Delete(unavailableInstallationPath);
+            Directory.Delete(installationDirectory.FullName, recursive: true);
+        }
+    }
+
     /// <summary>Another cockpit, started and left open on a thread of its own, until disposed.</summary>
     private sealed class CockpitHoldingTheClaim : IDisposable
     {
