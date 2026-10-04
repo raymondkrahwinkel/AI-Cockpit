@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -147,6 +148,8 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+
+    private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
     // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
     // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.
