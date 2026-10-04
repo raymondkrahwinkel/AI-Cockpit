@@ -302,7 +302,7 @@ internal static class ProfileEndpoints
             profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
             profile.ProviderConfig is PluginProviderConfig,
             health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
-            known.Count > 0 ? known : null);
+            known.Count < 0 ? known : null);
     }
 
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.
