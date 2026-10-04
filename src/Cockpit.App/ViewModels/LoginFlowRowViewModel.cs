@@ -119,11 +119,15 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
                     LinkToOpen = step.LinkToOpen;
                 }
                 AwaitsInput = step.AwaitsInput;
-                if (step.ExpiresAt is { } expiresAt && _expiresAt != expiresAt)
+                if (step.ExpiresAt is { } expiresAt)
                 {
+                    var counting = _expiresAt is not null;
                     _expiresAt = expiresAt;
                     _ShowCodeValidFor();
-                    _ = _CountDownAsync();
+                    if (!counting)
+                    {
+                        _ = _CountDownAsync(_cts.Token);
+                    }
                 }
             }
 
@@ -154,12 +158,12 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
             : "The code has expired. Start the sign-in again.";
     }
 
-    private async Task _CountDownAsync()
+    private async Task _CountDownAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), _time);
         try
         {
-            while (!IsCompleted && _expiresAt > _time.GetUtcNow() && await timer.WaitForNextTickAsync(_cts.Token))
+            while (!IsCompleted && _expiresAt > _time.GetUtcNow() && await timer.WaitForNextTickAsync(cancellationToken))
             {
                 _ShowCodeValidFor();
             }
