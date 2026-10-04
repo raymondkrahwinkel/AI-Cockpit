@@ -49,7 +49,6 @@ internal static class AssistantSettingsEndpoints
                 Gate.Release();
             }
 
-            await host().ApplySettingsAsync(CancellationToken.None).ConfigureAwait(false);
             return await _AuditAsync(services, "api:assistant_enabled", enabled ? "assistant turned on" : "assistant turned off", null, await _AnswerAsync(services).ConfigureAwait(false)).ConfigureAwait(false);
         }).RequireAdmin();
 
