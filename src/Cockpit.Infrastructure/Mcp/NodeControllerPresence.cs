@@ -58,8 +58,6 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
 
     // ponytail: one controller at a time is assumed, not enforced (epic point 6 is open) — two machines calling
     // within the window take turns owning the name here. Key on the caller if Raymond decides otherwise.
-    // AC-1405: every call refreshes the holder's key and scope, so a scope changed on the key applies from the
-    // controller's next call; `SinceUtc` stays that of the unbroken stretch.
     public void Seen(string controllerName, NodeCaller? holder = null)
     {
         bool appeared;
@@ -67,6 +65,8 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         {
             appeared = _current is null;
             _lastSeenUtc = _time.GetUtcNow();
+
+            // AC-1405: refreshed on every call, so a scope changed on the key applies from the controller's next one.
             _current = holder is { ByConnectKey: true }
                 ? new ActiveController(controllerName, _current?.SinceUtc ?? _lastSeenUtc, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default)
                 : new ActiveController(controllerName, _current?.SinceUtc ?? _lastSeenUtc);

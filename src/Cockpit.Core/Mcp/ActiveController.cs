@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// AC-1321: the controller currently holding the line to this node. `SinceUtc` is the first call of this unbroken
-// stretch, not the pairing date — it is what the assistant screen shows as "since".
-// AC-1405: `KeyPrefix` and `KeyScope` are the holding connect key's, both null for the pairing — the mail routed
-// to this controller answers to that scope, as every other node tool does.
+// AC-1321: the controller currently holding the line; `SinceUtc` is this unbroken stretch's first call, the screen's
+// "since". AC-1405: `KeyPrefix` and `KeyScope` are the holding connect key's, null for the pairing — its mail answers
+// to that scope, as every other node tool does.
 public sealed record ActiveController(string Name, DateTimeOffset SinceUtc, string? KeyPrefix = null, ConnectKeyScope? KeyScope = null)
 {
     // What the screen says while this controller holds the line. Local clock, short — it is read by someone sitting at
