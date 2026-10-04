@@ -118,13 +118,13 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             previous.TryGetValue(profile.Label, out var before);
             if (profile.ProviderConfig is OllamaConfig ollama)
             {
-                next.Add(await _LocalHealthAsync(profile.Label, ollama.BaseUrl, null, "Ollama").ConfigureAwait(false));
+                next.Add(await _LocalHealthAsync(profile.Label, ollama.BaseUrl, null, "Ollama", before).ConfigureAwait(false));
                 continue;
             }
 
             if (profile.ProviderConfig is LmStudioConfig lmStudio)
             {
-                next.Add(await _LocalHealthAsync(profile.Label, lmStudio.BaseUrl, lmStudio.ApiKey, "LM Studio").ConfigureAwait(false));
+                next.Add(await _LocalHealthAsync(profile.Label, lmStudio.BaseUrl, lmStudio.ApiKey, "LM Studio", before).ConfigureAwait(false));
                 continue;
             }
 
@@ -204,9 +204,14 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         }
     }
 
-    private async Task<ProfileLoginHealth> _LocalHealthAsync(string label, string baseUrl, string? apiKey, string provider)
+    private async Task<ProfileLoginHealth> _LocalHealthAsync(string label, string baseUrl, string? apiKey, string provider, ProfileLoginHealth? before)
     {
         var reachable = await _modelCatalog.ProbeAsync(baseUrl, apiKey, ProbeTimeout).ConfigureAwait(false);
+        if (!reachable && before?.SignIn == ProfileSignInKind.Reachable)
+        {
+            _logger.LogWarning("The local model server for profile {Profile} is no longer reachable.", label);
+        }
+
         return new ProfileLoginHealth(label, reachable, DateTimeOffset.UtcNow, null)
         {
             Provider = provider,

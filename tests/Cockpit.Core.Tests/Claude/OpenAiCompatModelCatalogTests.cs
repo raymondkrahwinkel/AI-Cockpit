@@ -27,6 +27,7 @@ public class OpenAiCompatModelCatalogTests
         { () => new HttpClient(new StubHandler("", HttpStatusCode.OK)), "http://localhost:11434", true },
         { () => new HttpClient(), "http://127.0.0.1:1", false },
         { () => new HttpClient(new StubHandler("", HttpStatusCode.InternalServerError)), "http://localhost:11434", false },
+        { () => new HttpClient(), "localhost:11434", false },
     };
 
     [Theory]

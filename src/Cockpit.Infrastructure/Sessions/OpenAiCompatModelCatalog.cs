@@ -16,7 +16,7 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
 {
     public async Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        if (!_HasHttpBaseUrl(baseUrl))
         {
             return [];
         }
@@ -36,14 +36,14 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            logger.LogWarning(ex, "Could not list models from {BaseUrl}", baseUrl);
+            logger.LogWarning(ex, "Could not list models.");
             return [];
         }
     }
 
     public async Task<bool> ProbeAsync(string baseUrl, string? apiKey, TimeSpan timeout)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        if (!_HasHttpBaseUrl(baseUrl))
         {
             return false;
         }
@@ -57,9 +57,15 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
-            logger.LogWarning(ex, "Could not probe models from {BaseUrl}", baseUrl);
+            logger.LogDebug(ex, "Could not probe models.");
             return false;
         }
+    }
+
+    private static bool _HasHttpBaseUrl(string baseUrl)
+    {
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
     private static HttpRequestMessage _Request(string baseUrl, string? apiKey)
