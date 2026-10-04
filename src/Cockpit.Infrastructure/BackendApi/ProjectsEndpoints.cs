@@ -27,7 +27,7 @@ internal static partial class ProjectsEndpoints
 {
     public const string EventKind = "project";
 
-    public const string CredentialsRefused = "A repository URL cannot carry a user name, password or token. Use the server's own git credentials.";
+    public const string CredentialsRefused = "A repository URL cannot carry a user name, secret or token. Use the server's own git credentials.";
 
     // AC-1472: off unless set to 1. A file:// clone would copy any folder `agent` can read into /work; a journey sets it.
     public const string AllowFileClonesVariable = "COCKPIT_ALLOW_FILE_CLONES";
