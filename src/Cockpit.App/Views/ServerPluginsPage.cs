@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Cockpit.App.ViewModels;
+using System.Collections.Specialized;
 
 namespace Cockpit.App.Views;
 
@@ -9,6 +10,7 @@ namespace Cockpit.App.Views;
 public sealed class ServerPluginsPage : UserControl
 {
     private readonly StackPanel _rows = new() { Spacing = 8 };
+    private ServerAdminViewModel? _admin;
 
     public ServerPluginsPage()
     {
@@ -20,8 +22,26 @@ public sealed class ServerPluginsPage : UserControl
         var status = new TextBlock();
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
         Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, _rows, restart, status } };
-        DataContextChanged += (_, _) => _ShowRows();
+        DataContextChanged += (_, _) => _SetAdmin();
     }
+
+    private void _SetAdmin()
+    {
+        if (_admin is not null)
+        {
+            _admin.Plugins.CollectionChanged -= _PluginsChanged;
+        }
+
+        _admin = DataContext as ServerAdminViewModel;
+        if (_admin is not null)
+        {
+            _admin.Plugins.CollectionChanged += _PluginsChanged;
+        }
+
+        _ShowRows();
+    }
+
+    private void _PluginsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _ShowRows();
 
     private void _ShowRows()
     {
