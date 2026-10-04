@@ -15,6 +15,8 @@ Go to [github.com/settings/tokens](https://github.com/settings/tokens) and creat
 token scoped to `models:read` is enough, a classic token works too. Paste it into this plugin's **API key**
 field.
 
+On a Cockpit server you can leave the field empty and set `GITHUB_MODELS_TOKEN` in `session.env` instead: the key then comes from the container secret, and the profile reports "API key from secret". The variable is only used while the base URL is this provider's own; a profile that points elsewhere needs its own key in the config.
+
 This is a GitHub PAT, not a vendor API key: the endpoint (`models.github.ai/inference`) authenticates the
 same way GitHub's other APIs do. A token without `models:read` is rejected by the endpoint on the first
 request — the profile saves fine, but every session with it fails immediately, and **Fetch** on the Model

@@ -14,6 +14,8 @@ the base URL field most profiles never need to touch.
 Go to [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) and create a key there. Paste it
 into this plugin's **API key** field.
 
+On a Cockpit server you can leave the field empty and set `OPENROUTER_API_KEY` in `session.env` instead: the key then comes from the container secret, and the profile reports "API key from secret". The variable is only used while the base URL is this provider's own; a profile that points elsewhere needs its own key in the config.
+
 A missing or rejected key fails at request time, not at save time: the profile stores whatever you typed,
 and the session only errors out once it actually calls `openrouter.ai/api/v1`. **Fetch** on the Model field
 surfaces a rejected key sooner, as "the key was rejected."

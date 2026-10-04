@@ -19,7 +19,9 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDri
         // AC-806: OpenRouter's optional attribution headers (HTTP-Referer/X-Title) only feed its public
         // leaderboard ranking, so they are left out — no effect on the request itself.
         var options = new OpenAIClientOptions { Endpoint = new Uri(config.BaseUrl) };
-        var credential = new ApiKeyCredential(config.ApiKey);
+        var credential = new ApiKeyCredential(
+            OpenAiCompatConfig.ResolveApiKey(config, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter)
+            ?? throw new InvalidOperationException("No API key: set one on the profile or OPENROUTER_API_KEY in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
         return new OpenAiCompatPluginSessionDriver(chatClient, config.Model);
     }

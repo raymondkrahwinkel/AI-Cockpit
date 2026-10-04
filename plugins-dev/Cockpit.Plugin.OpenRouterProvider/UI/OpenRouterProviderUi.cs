@@ -8,6 +8,6 @@ public sealed class OpenRouterProviderUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddProviderConfigView("openrouter-provider.openrouter", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.OpenRouter, host));
+        host.AddProviderConfigView("openrouter-provider.openrouter", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.OpenRouter, OpenAiCompatConfig.ApiKeyEnvVar, host));
     }
 }

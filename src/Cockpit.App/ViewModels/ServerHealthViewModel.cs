@@ -393,6 +393,7 @@ public sealed class ProfileHealthRowViewModel
             {
                 "renewingLogin" => "✓ Signed in · renews itself",
                 "apiKey" => "✓ API key",
+                "apiKeyFromSecret" => "✓ API key from secret",
                 _ => "✓ Signed in",
             },
             "expired" => $"✕ Expired {HealthTime.Clock(profile.ExpiredSince, now)}",

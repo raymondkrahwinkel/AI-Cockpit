@@ -462,13 +462,28 @@ public sealed class BackendApiDoorTests
         door.LoginHealth.Current.Returns([
             new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.RenewingLogin },
             new ProfileLoginHealth("local", true, DateTimeOffset.UnixEpoch, null) { Provider = "Ollama", SignIn = ProfileSignInKind.Reachable },
+            new ProfileLoginHealth("secret", true, DateTimeOffset.UnixEpoch, null) { Provider = "openrouter-provider.openrouter", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.ApiKeyFromSecret },
         ]);
         var label = "a\nb\u0007\u202E\u2028\U000E0001\uD800" + new string('x', 491);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 
-        var answer = await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret);
-        var action = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run", key.Secret);
+        // AC-1484: a key from the process environment is a secret; only the kind of credential may cross, never the value.
+        const string envSecret = "env-secret-value-for-the-health-test";
+        var before = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
+        Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", envSecret);
+        _Answer answer;
+        _Answer action;
+        try
+        {
+            answer = await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret);
+            action = await door.SendAsync(HttpMethod.Post, "/api/v1/health/workflows/actions/run", key.Secret);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", before);
+        }
+
         var health = JsonNode.Parse(answer.Body);
         var keys = await verifier.ListAsync();
         var shown = health?["sections"]?[0]?["rows"]?[0];
@@ -485,6 +500,7 @@ public sealed class BackendApiDoorTests
             Assert.All(keys, entry => Assert.DoesNotContain($"\"{entry.Key.Prefix}\"", body, StringComparison.Ordinal));
             Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("prefix", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(envSecret, body, StringComparison.Ordinal);
         }
 
         Assert.All(health?["server"]?["keys"]?.AsArray() ?? [], shownKey => Assert.Equal(["label", "capability", "lastUsedAt"], shownKey?.AsObject().Select(property => property.Key) ?? []));
@@ -493,6 +509,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal("ab" + new string('x', HealthEndpoints.MaxLabelLength - 2), shown?["label"]?.GetValue<string>());
         Assert.Equal(sectionHasActions ? "run" : null, shown?["actionId"]?.GetValue<string>());
         Assert.Equal("renewingLogin", health?["profiles"]?[0]?["credential"]?.GetValue<string>());
+        Assert.Equal("apiKeyFromSecret", health?["profiles"]?[2]?["credential"]?.GetValue<string>());
         Assert.DoesNotContain("@", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", answer.Body, StringComparison.Ordinal);
     }
