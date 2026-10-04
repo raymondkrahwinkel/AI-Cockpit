@@ -282,7 +282,6 @@ sealed class Program
             return null;
         }
 
-        CockpitBackend.Build(loggers).Start();
         var cockpit = CockpitViewModel.ForRemoteWindow(
             server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
         return (connection, cockpit);
