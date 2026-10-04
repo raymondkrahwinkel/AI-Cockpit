@@ -45,7 +45,7 @@ internal static class SessionsEndpoints
             foreach (var session in visible)
             {
                 profiles.TryGetValue(session.Profile, out var profile);
-                var providerId = profile is null ? null : _ProviderId(profile);
+                var providerId = profile is null ? null : ProviderId(profile);
                 var registration = providerId is null ? null : providers?.Resolve(providerId);
                 RemoteUsageStatus? usageStatus = null;
                 IReadOnlyList<RemoteQueueItem> queue = [];
@@ -342,7 +342,7 @@ internal static class SessionsEndpoints
     }
 
     // Every mutating route into the node access audit as `api:<name>`, as the node tools are (AC-1351).
-    private static RouteHandlerBuilder Audited(this RouteHandlerBuilder route, string name, IServiceProvider services) =>
+    internal static RouteHandlerBuilder Audited(this RouteHandlerBuilder route, string name, IServiceProvider services) =>
         route.AddEndpointFilter(async (context, next) =>
         {
             var result = await next(context).ConfigureAwait(false);
@@ -363,7 +363,7 @@ internal static class SessionsEndpoints
     private static int _Count(int? count) =>
         Math.Clamp(count ?? AssistantReadMcpTools.DefaultEntryCount, 1, AssistantReadMcpTools.MaxEntryCount);
 
-    private static string _ProviderId(SessionProfile profile) =>
+    internal static string ProviderId(SessionProfile profile) =>
         profile.ProviderConfig is PluginProviderConfig plugin
             ? plugin.ProviderId
             : profile.Provider == SessionProvider.ClaudeCli

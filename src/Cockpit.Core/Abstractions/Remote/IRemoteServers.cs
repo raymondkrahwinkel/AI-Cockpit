@@ -68,6 +68,11 @@ public interface IRemoteServer
     IConnectKeyAdministration Administration { get; }
 
     /// <summary>
+    /// The server's profiles, which only an admin key may change (AC-1473).
+    /// </summary>
+    IServerProfiles Profiles { get; }
+
+    /// <summary>
     /// The server's health as its health route answers it (AC-1457).
     /// </summary>
     IRemoteServerHealth Health { get; }
