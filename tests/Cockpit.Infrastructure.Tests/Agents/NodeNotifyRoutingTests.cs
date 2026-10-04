@@ -95,6 +95,7 @@ public sealed class NodeNotifyRoutingTests : IDisposable
     [Fact]
     public void ReadFor_ChecksTheReaderUnderTheLockDeliveryTakes()
     {
+        _presence.Seen("DESKTOP");
         var read = _inbox.ReadFor(AssistantIdentity.ControllerInboxPaneId, null, _DeliveringMeanwhile, _ => true, 25);
 
         Assert.Equal(0, read?.Messages.Count);
