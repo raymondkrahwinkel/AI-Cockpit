@@ -38,7 +38,9 @@ internal static class ServerAdminScene
 
     public static OptionsDialog Plugins(int width, int height)
     {
-        var dialog = OptionsDialog.ForServer(_Admin());
+        var admin = _Admin();
+        admin.LoadCommand.Execute(null);
+        var dialog = OptionsDialog.ForServer(admin);
         dialog.Width = width;
         dialog.Height = height;
         dialog.SelectCategory("server-plugins");
