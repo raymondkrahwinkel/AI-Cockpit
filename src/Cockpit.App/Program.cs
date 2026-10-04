@@ -250,42 +250,48 @@ sealed class Program
         Cockpit.App.Logging.LifecycleLog.Write(
             $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting as a remote window on {server}: pid {Environment.ProcessId}.");
 
-        MainWindow? window = null;
-        var remote = ComposeRemoteWindowAsync(localRoot, server, loggerFactory, admin =>
+        // Read before Avalonia starts, and off its thread: nothing here may touch the dispatcher before `Start` owns it.
+        var logger = loggerFactory.CreateLogger("Cockpit.App.RemoteWindow");
+        var connection = default(RemoteInstanceConnection);
+        var refusal = $"This cockpit holds no connect key for \"{server}\", or holds it encrypted, which a remote window cannot unlock yet. Connect to it first, under Options → Security → Connect to a server.";
+        try
         {
-            if (window is not null)
-            {
-                OptionsDialog.ForServer(admin).Show(window);
-            }
-
-            return Task.CompletedTask;
-        }).GetAwaiter().GetResult();
-        _ShowUntilClosed(args, () => remote is { } composed
-            ? window = new MainWindow(windowBoundsStore: null, server) { DataContext = composed.Cockpit }
-            : new ConfirmationDialog
-            {
-                DataContext = new ConfirmationDialogViewModel(
-                    "No such server",
-                    $"This cockpit holds no connect key for \"{server}\", or holds it encrypted, which a remote window cannot unlock yet. Connect to it first, under Options → Security → Connect to a server.",
-                    "Close"),
-            });
-        remote?.Connection.DisposeAsync().AsTask().Wait(TeardownBudget);
-    }
-
-    // AC-1487: the remote window's one server and its view model, shared with the journey that proves the window opens no
-    // port and leaves `localRoot` byte-equal. Null when that root holds no connect key for `server`.
-    internal static async Task<(RemoteInstanceConnection Connection, CockpitViewModel Cockpit)?> ComposeRemoteWindowAsync(
-        string localRoot, string server, ILoggerFactory loggers, Func<ServerAdminViewModel, Task> showServerAdmin)
-    {
-        if (await RemoteInstance.ConnectAsync(localRoot, server, loggers) is not { } connection)
+            connection = RemoteInstance.ConnectAsync(localRoot, server, loggerFactory).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
         {
-            return null;
+            logger.LogError(exception, "Could not read the connect key for {Server} from the local registry.", server);
+            refusal = $"The local cockpit's configuration could not be read: {exception.Message}";
         }
 
-        var cockpit = CockpitViewModel.ForRemoteWindow(
-            server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
-        return (connection, cockpit);
+        _ShowUntilClosed(args, () =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
+            {
+                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception in the remote window; it stays up.");
+                exceptionEvent.Handled = true;
+            };
+            if (connection is null)
+            {
+                return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("No such server", refusal, "Close") };
+            }
+
+            var window = new MainWindow(windowBoundsStore: null, server);
+            window.DataContext = ComposeRemoteWindow(server, connection, admin =>
+            {
+                OptionsDialog.ForServer(admin).Show(window);
+                return Task.CompletedTask;
+            });
+            return window;
+        });
+        connection?.DisposeAsync().AsTask().Wait(TeardownBudget);
     }
+
+    // AC-1487: the remote window's view model over its one server, shared with the journey that proves the window opens
+    // no port and leaves the local root byte-equal. On the UI thread, like every view model the window binds.
+    internal static CockpitViewModel ComposeRemoteWindow(string server, RemoteInstanceConnection connection, Func<ServerAdminViewModel, Task> showServerAdmin) =>
+        CockpitViewModel.ForRemoteWindow(
+            server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
 
     // One window as the whole of this process's UI, without the app's lifetime: see `_ShowAlreadyRunningNotice`.
     private static void _ShowUntilClosed(string[] args, Func<Avalonia.Controls.Window> createWindow) =>

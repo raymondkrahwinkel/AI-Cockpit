@@ -59,10 +59,9 @@ public sealed class RemoteWindowJourney
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, RemoteInstance.StateRootFor(localRoot, Server));
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var remote = await Program.ComposeRemoteWindowAsync(localRoot, Server, NullLoggerFactory.Instance, _ => Task.CompletedTask)
-                    ?? throw new InvalidOperationException("The local registry's row composed no remote window.");
-                await using var connection = remote.Connection;
-                var view = remote.Cockpit;
+                await using var connection = await RemoteInstance.ConnectAsync(localRoot, Server, NullLoggerFactory.Instance)
+                    ?? throw new InvalidOperationException("The local registry's row connected no remote window.");
+                var view = Program.ComposeRemoteWindow(Server, connection, _ => Task.CompletedTask);
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
                 var group = view.ServerGroups[0];
                 await Until.Holds(group, () => group.IsConnected);
