@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia.Controls;
 
 namespace Cockpit.Journeys;
 
@@ -16,6 +17,14 @@ public static class Until
             PropertyChangedEventHandler handler = (_, _) => changed();
             subject.PropertyChanged += handler;
             return () => subject.PropertyChanged -= handler;
+        });
+
+    public static Task LayoutHolds(Control subject, Func<bool> condition) =>
+        _Holds(condition, changed =>
+        {
+            EventHandler handler = (_, _) => changed();
+            subject.LayoutUpdated += handler;
+            return () => subject.LayoutUpdated -= handler;
         });
 
     public static Task CollectionHolds(INotifyCollectionChanged subject, Func<bool> condition) =>

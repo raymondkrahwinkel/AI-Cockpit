@@ -90,12 +90,11 @@ public sealed class RemoteAdminJourney
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
 
-            await HeadlessAvalonia.RunAsync(() =>
+            await HeadlessAvalonia.RunAsync(async () =>
             {
                 dialog.SelectCategory("server-plugins");
-                return Task.CompletedTask;
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ServerPluginsPage>().Count() == 1);
             });
-            Assert.Single(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
             await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
             await HeadlessAvalonia.RunAsync(() => admin.InstallPluginCommand.ExecuteAsync(null));
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
@@ -194,7 +193,11 @@ public sealed class RemoteAdminJourney
                         await admin.LoadCommand.ExecuteAsync(null);
                         audit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
                     });
-                    if (audit.Any(row => row == (Phone, "connected")))
+                    if (audit.Contains((Laptop, $"issued · {Phone} (operate)"))
+                        && audit.Contains((Phone, "connected"))
+                        && audit.Contains((Laptop, $"revoked · {Phone}"))
+                        && audit.Contains((Phone, "refused: revoked key"))
+                        && audit.Contains((Laptop, $"lockout lifted · {lockedOut}")))
                     {
                         break;
                     }
