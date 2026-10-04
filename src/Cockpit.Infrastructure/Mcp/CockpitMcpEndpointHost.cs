@@ -394,7 +394,7 @@ internal sealed class CockpitMcpEndpointHost
         }
 
         var outcome = result.IsError == true ? "tool error" : "called";
-        await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, tool, outcome)).ConfigureAwait(false);
+        await audit.RecordAsync(NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, tool, outcome)).ConfigureAwait(false);
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference

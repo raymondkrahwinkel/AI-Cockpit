@@ -187,7 +187,7 @@ internal static partial class HealthEndpoints
     {
         if (services.GetService<NodeAccessAuditLog>() is { } audit)
         {
-            await audit.RecordAsync(new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, tool, outcome, subject), cancellationToken).ConfigureAwait(false);
+            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, tool, outcome, subject), cancellationToken).ConfigureAwait(false);
         }
     }
 

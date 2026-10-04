@@ -37,10 +37,17 @@ internal static class EventsEndpoint
         var sessions = services.GetRequiredService<ISessionRegistry>();
         var pairing = services.GetRequiredService<INodePairingBroker>();
         var time = services.GetService<TimeProvider>() ?? TimeProvider.System;
+
         context.Response.ContentType = "text/event-stream";
         context.Response.Headers.CacheControl = "no-cache";
         await context.Response.StartAsync(context.RequestAborted).ConfigureAwait(false);
         await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+
+        // AC-1446: the audit's "connected", once the stream is open for the client: a start that failed opened nothing.
+        if (services.GetService<NodeAccessAuditLog>() is { } audit)
+        {
+            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
+        }
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         using var heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(15), time);

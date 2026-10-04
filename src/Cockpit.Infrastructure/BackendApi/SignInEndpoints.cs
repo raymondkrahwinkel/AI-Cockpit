@@ -101,7 +101,7 @@ internal static class SignInEndpoints
         if (services.GetService<NodeAccessAuditLog>() is { } audit)
         {
             await audit.RecordAsync(
-                new NodeAccessAuditEntry(DateTimeOffset.UtcNow, caller.Credential, caller.KeyPrefix, caller.RemoteAddress, "api:sign_in", outcome, profile),
+                NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:sign_in", outcome, profile),
                 cancellationToken).ConfigureAwait(false);
         }
     }

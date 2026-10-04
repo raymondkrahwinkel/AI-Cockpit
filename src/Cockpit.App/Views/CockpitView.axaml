@@ -1527,8 +1527,8 @@
                         ToolTip.Tip="Put the assistant back in this column"/>
 
                 <!-- AC-1456: an open server group's header line, the assistant line and, when asked for, the start
-                     card. Health, "scheduled · Discord" (S18, AC-1457) and Admin (F5.6b, AC-1446) stay out until they
-                     are filled; an operate key sees Admin locked, so it knows the page exists. -->
+                     card. Health and "scheduled · Discord" (S18, AC-1457) stay out until they are filled; Admin opens
+                     Options on the server for an admin key (AC-1446), and an operate key sees it locked. -->
                 <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding OpenServerGroups}" IsVisible="{Binding !SimpleView}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ServerGroupViewModel">
@@ -1546,6 +1546,10 @@
                                                                                 Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                                 </StackPanel>
                                             </Border>
+                                            <Button Classes="Subtle Compact" Content="Admin" IsVisible="{Binding IsAdminKey}"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Options on this server: its connect keys and audit log"/>
                                             <Button Classes="Subtle Compact" Content="Disconnect"
                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).DisconnectServerCommand}"
                                                     CommandParameter="{Binding}"

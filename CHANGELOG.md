@@ -37,6 +37,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   key may not answer permission prompts." and no buttons. While the group says Reconnecting the composer and the
   buttons are off and come back by themselves; nothing is queued on this laptop. `/api/v1/whoami` now also says
   `mayAnswerPermissions`.
+- added: an admin key opens Options on the server it connects to, through Admin in the server's header line: the
+  server's own connect keys and its access audit, with "Provider credentials never cross this connection." above every
+  page. Issue a key with a capability and a scope, rotate one (a second key with the same scope, after which you revoke
+  the old one), change the scope of an operate key, revoke a key, and lift a locked-out address. A new key is shown in
+  full once, masked until you choose Show, and Done forgets it; the server keeps only its hash. The audit log lists
+  the latest first and names the key that acted by its label. The same actions are on the backend API
+  (`POST /api/v1/keys`, `DELETE /api/v1/keys/{prefix}`, `PUT /api/v1/keys/{prefix}/scope`, `GET /api/v1/audit`), for an
+  admin key only. An operate key still sees Admin locked. Cockpit 0.72.0.
 - added: a server you connected with a key now stands in the session list as a group of its own, beside "This laptop":
   its sessions as far as the key may see them (never a count of the rest), a header line with its connection,
   latency, version and uptime and a Disconnect, who holds the assistant, and "+ Start on <server>" with the server's
@@ -687,6 +695,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the bootstrap connect key can no longer be revoked, from the API or the node tools: it stays the emergency
+  key, and you rotate it by replacing its secret and restarting the server.
 - changed: the cockpit without a window (the server) now counts as "away", so the notifications it raises itself —
   a failing CI check or a pull request ready to merge on a session's branch, and an expired or restored sign-in —
   go to Discord when Discord notifications are on. They used to go nowhere but its log.

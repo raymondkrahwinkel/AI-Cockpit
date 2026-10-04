@@ -1,0 +1,169 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.ServerConnectKeysPage"
+             x:DataType="vm:ServerAdminViewModel">
+
+    <!-- AC-1446: Options › Connect keys on a server (mockup v2, tab 4). A key shows as its prefix and label only; the
+         full key appears once, in "Key issued", and Done forgets it. -->
+    <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="Accent" Content="Issue a key" Command="{Binding StartIssueCommand}"/>
+            <TextBlock Text="Connect keys" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+        </DockPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
+        <Border Padding="4" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel>
+                <Grid ColumnDefinitions="1.7*,70,1.5*,1.1*,1.5*,196" Margin="8,6">
+                    <TextBlock Grid.Column="0" Classes="optionsSectionHeader" Text="KEY"/>
+                    <TextBlock Grid.Column="1" Classes="optionsSectionHeader" Text="CAN"/>
+                    <TextBlock Grid.Column="2" Classes="optionsSectionHeader" Text="SCOPE"/>
+                    <TextBlock Grid.Column="3" Classes="optionsSectionHeader" Text="EXPIRES"/>
+                    <TextBlock Grid.Column="4" Classes="optionsSectionHeader" Text="LAST USED"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Keys}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ConnectKeyRowViewModel">
+                            <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" Padding="8,7"
+                                    Opacity="{Binding RowOpacity}">
+                                <Grid ColumnDefinitions="1.7*,70,1.5*,1.1*,1.5*,196">
+                                    <StackPanel Grid.Column="0" Spacing="1">
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                   TextWrapping="Wrap" Margin="0,0,8,0"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="1" Classes="tag" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Capability}" FontSize="11"/>
+                                    </Border>
+                                    <TextBlock Grid.Column="2" Text="{Binding ScopeText}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12" Margin="0,0,8,0"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding ExpiresText}" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" Margin="0,0,8,0"/>
+                                    <Panel Grid.Column="4" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding LastUsedText}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !WasUsedJustNow}"/>
+                                        <TextBlock Text="{Binding LastUsedText}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding WasUsedJustNow}"
+                                                   Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                    </Panel>
+                                    <StackPanel Grid.Column="5" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="Rotate in the secret" FontSize="11.5" IsVisible="{Binding IsBootstrap}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Button Classes="Subtle Compact" Content="Scope" IsVisible="{Binding CanScope}"
+                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).StartScopeCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Classes="Subtle Compact" Content="Rotate" IsVisible="{Binding CanRotate}"
+                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).RotateCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Classes="Subtle Compact" Content="Revoke" IsVisible="{Binding CanRevoke}"
+                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).RevokeCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,14,*" Margin="0,4,0,0">
+            <!-- Issue a key, or the scope of the key whose Scope was clicked: one editor, as the mockup's scope box. -->
+            <Border Grid.Column="0" IsVisible="{Binding IsEditorOpen}" Padding="14,12" VerticalAlignment="Top"
+                    CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding EditorTitle}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsIssuing}">
+                        <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding EditorLabel}" PlaceholderText="which machine or controller this key is for"/>
+                    </StackPanel>
+                    <TextBlock Text="Capability" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                    <RadioButton GroupName="capability" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding !EditorIsAdmin}">
+                        <TextBlock TextWrapping="Wrap" Text="operate — start, prompt and stop sessions, answer permissions"/>
+                    </RadioButton>
+                    <RadioButton GroupName="capability" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding EditorIsAdmin}">
+                        <TextBlock TextWrapping="Wrap" Text="admin — also projects, profiles, plugins and keys"/>
+                    </RadioButton>
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                        <CheckBox Content="Holds the assistant" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding EditorHoldsAssistant}"/>
+                        <TextBlock Text="{Binding AssistantHolderHint}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Projects" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,6,0,0"/>
+                    <CheckBox Content="All projects, including ones made later" IsChecked="{Binding EditorAllProjects}"/>
+                    <ItemsControl ItemsSource="{Binding EditorProjects}" IsEnabled="{Binding !EditorAllProjects}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ScopeChoiceViewModel">
+                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Profiles" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,6,0,0"/>
+                    <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding EditorAllProfiles}"/>
+                    <ItemsControl ItemsSource="{Binding EditorProfiles}" IsEnabled="{Binding !EditorAllProfiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ScopeChoiceViewModel">
+                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <CheckBox Content="May start profiles that bypass permissions" IsChecked="{Binding EditorMayBypass}" Margin="0,6,0,0"/>
+                    <CheckBox Content="May answer permission prompts" IsChecked="{Binding EditorMayAnswerPermissions}"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                        <Button Content="Cancel" Command="{Binding CancelEditorCommand}"/>
+                        <Button Classes="Accent" Content="{Binding EditorSaveLabel}" Command="{Binding SaveEditorCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Column="2" Spacing="14">
+                <Border IsVisible="{Binding HasIssued}" Padding="14,12" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                        BorderBrush="{DynamicResource CockpitAccentBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Key issued" FontWeight="SemiBold"/>
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                   Text="Copy it now. The server keeps only a hash; this is the only time the full key is shown."/>
+                        <TextBox x:Name="IssuedKey" Text="{Binding IssuedSecret}" IsReadOnly="True" PasswordChar="•"
+                                 RevealPassword="{Binding IsIssuedSecretShown}" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                        <TextBlock Text="{Binding IssuedSummary}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Content="Show" Command="{Binding ToggleIssuedSecretCommand}"/>
+                            <Button Content="Copy" Click="OnCopyIssuedKey"/>
+                            <Button Classes="Accent" Content="Done" Command="{Binding DismissIssuedCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="14,12" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Lockout" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding LockoutPolicy}" FontSize="11.5" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                        <TextBlock Text="No address is locked out." FontSize="12" IsVisible="{Binding !HasLockouts}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ItemsControl ItemsSource="{Binding Lockouts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LockoutRowViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Address}" FontFamily="Consolas,monospace" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Detail}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                        <Button Grid.Column="2" Classes="Subtle Compact" Content="Lift"
+                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).LiftCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</UserControl>

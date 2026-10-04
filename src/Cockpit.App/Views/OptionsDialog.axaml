@@ -20,13 +20,13 @@
         <vm:CockpitViewModel/>
     </Design.DataContext>
 
-  <Panel>
-    <DockPanel>
+  <Panel x:Name="Root">
+    <DockPanel x:Name="Body">
 
         <!-- Footer (AC-999): the dialog is a transaction now. Restore Defaults fills the buffer, Cancel throws it
              away, and only Apply writes — with or without closing (AC-1287). The old "Saved" label is gone with the
              old Save button — under a staged model it could only ever appear on the click that closes the window. -->
-        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+        <Border x:Name="Footer" DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <!-- AC-1082 gave the refusal its own column here, apart from "Unsaved changes", because the two used to
                  render on top of each other. AC-1084 took the label out again: joining every section's reason into
@@ -59,7 +59,7 @@
 
             <Border Grid.Column="0" Classes="subnavRail" Width="240">
                 <DockPanel>
-                    <TextBox DockPanel.Dock="Top" Text="{Binding OptionsSearchText}"
+                    <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Text="{Binding OptionsSearchText}"
                              PlaceholderText="Search settings…" Margin="0,0,0,10">
                         <TextBox.InnerLeftContent>
                             <materialIcons:MaterialIcon Kind="Magnify" Width="14" Height="14"
@@ -231,7 +231,26 @@
                 </DockPanel>
             </Border>
 
-            <Panel Grid.Column="1" x:Name="CategoryContent">
+            <!-- AC-1446: the credentials notice, above every page of the dialog opened on a server. -->
+            <DockPanel Grid.Column="1">
+            <Border x:Name="ServerBanner" DockPanel.Dock="Top" IsVisible="False" Padding="24,14,24,0">
+                <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+                    <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}"
+                            Background="{DynamicResource CockpitCategoryTintBlueBrush}">
+                        <DockPanel>
+                            <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="InformationOutline" Width="16" Height="16"
+                                                        VerticalAlignment="Top" Margin="0,1,10,0"
+                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Provider credentials never cross this connection." FontWeight="SemiBold"/>
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                           Text="Sign a profile in on the server itself (Server health › Sign in without a browser), or mount the credentials as a container secret. Nothing you type here can carry a password or token to a provider."/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+            <Panel x:Name="CategoryContent">
 
                 <!-- ================= SESSIONS ================= -->
                 <ScrollViewer Tag="sessions"
@@ -2526,6 +2545,7 @@
                 </ScrollViewer>
 
             </Panel>
+            </DockPanel>
         </Grid>
     </DockPanel>
 

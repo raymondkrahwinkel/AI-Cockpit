@@ -311,7 +311,8 @@ public sealed class BackendApiClientRealNetworkTests
                 .AddSingleton<IBackendEventLog>(log)
                 .AddSingleton<ISessionRegistry>(new SessionRegistry())
                 .AddSingleton(Substitute.For<INodePairingBroker>())
-                .AddSingleton(verifier);
+                .AddSingleton(verifier)
+                .AddSingleton<IConnectKeyAdministration>(verifier);
             if (serverTime is not null)
             {
                 collection.AddSingleton(serverTime);

@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.ServerAuditLogPage"
+             x:DataType="vm:ServerAdminViewModel">
+
+    <!-- AC-1446: Options › Audit log on a server, latest first, in the mockup's words (mockup v2, tab 4). -->
+    <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Audit log" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Text="latest first" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+        </StackPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
+        <Border Padding="4,4,4,8" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <ItemsControl ItemsSource="{Binding Audit}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AuditRowViewModel">
+                        <Grid ColumnDefinitions="110,140,150,*" Margin="8,4">
+                            <TextBlock Grid.Column="0" Text="{Binding Time}" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Address}" FontSize="12" FontFamily="Consolas,monospace"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Key}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                            <Panel Grid.Column="3">
+                                <TextBlock Text="{Binding What}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding IsPlain}"/>
+                                <TextBlock Text="{Binding What}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding IsRefusal}"
+                                           Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                                <TextBlock Text="{Binding What}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding IsLockout}"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            </Panel>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+        <Button Content="Show older" HorizontalAlignment="Left" Command="{Binding LoadOlderAuditCommand}" IsVisible="{Binding Audit.Count}"/>
+    </StackPanel>
+</UserControl>

@@ -46,6 +46,10 @@ public sealed class BackendApiClient : IDisposable
     public Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken) =>
         _SendAsync<T>(method, path, body, cancellationToken);
 
+    // AC-1446: for a route that writes its enums as words, as the connect-key routes do.
+    public Task<T> SendAsync<T>(HttpMethod method, string path, object? body, JsonSerializerOptions options, CancellationToken cancellationToken) =>
+        _SendAsync<T>(method, path, body, cancellationToken, options);
+
     // AC-1456: `connected` hears true when a connection's headers came back and false each time one ended or failed.
     public async IAsyncEnumerable<BackendEvent> StreamEventsAsync(
         long? afterSeq,
@@ -100,12 +104,13 @@ public sealed class BackendApiClient : IDisposable
         HttpMethod method,
         string path,
         object? body,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        JsonSerializerOptions? options = null)
     {
         using var request = new HttpRequestMessage(method, path);
         if (body is not null)
         {
-            request.Content = JsonContent.Create(body, options: Json);
+            request.Content = JsonContent.Create(body, options: options ?? Json);
         }
 
         using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -114,7 +119,7 @@ public sealed class BackendApiClient : IDisposable
             throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
         }
 
-        var value = await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken).ConfigureAwait(false);
+        var value = await response.Content.ReadFromJsonAsync<T>(options ?? Json, cancellationToken).ConfigureAwait(false);
         return value is null ? throw new JsonException("The backend API returned an empty JSON response.") : value;
     }
 

@@ -39,6 +39,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         nameof(StatusBarLabel),
         nameof(HeaderDetail),
         nameof(IsOperateKey),
+        nameof(IsAdminKey),
         nameof(HoldsAssistant),
         nameof(HasAssistantLine),
         nameof(AssistantTitle),
@@ -69,8 +70,10 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         ? string.Join(" · ", new[] { key.Version is { Length: > 0 } version ? $"v{version}" : null, _Uptime(key.StartedAt) }.OfType<string>())
         : "";
 
-    // Admin stays out of sight for a key that may use it until F5.6b (AC-1446); an operate key sees the lock (tab 6).
+    // An operate key sees Admin locked (tab 6), so it knows the page exists; an admin key opens it (AC-1446).
     public bool IsOperateKey => string.Equals(State.Key?.Capability, "operate", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsAdminKey => string.Equals(State.Key?.Capability, "admin", StringComparison.OrdinalIgnoreCase);
 
     public bool HoldsAssistant => State.Key?.HoldsAssistant == true;
 

@@ -207,6 +207,7 @@ public sealed class EventsEndpointTests
                 .AddSingleton<ISessionRegistry>(new SessionRegistry())
                 .AddSingleton(Substitute.For<INodePairingBroker>())
                 .AddSingleton(verifier)
+                .AddSingleton<IConnectKeyAdministration>(verifier)
                 .BuildServiceProvider();
             _certificate = new NodeSelfSignedCertificate(Path.Combine(_directory, "cert.pfx"));
             var builder = WebApplication.CreateBuilder();

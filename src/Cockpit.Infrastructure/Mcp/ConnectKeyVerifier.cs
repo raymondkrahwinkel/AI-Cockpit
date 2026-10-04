@@ -14,8 +14,8 @@ namespace Cockpit.Infrastructure.Mcp;
 
 // AC-1351: the node endpoint's door for everyone who is not a local session — connect keys (DEP-208's model) and
 // the pairing secret, behind one per-address lockout and one audit trail. A caller that fails learns nothing about
-// why: unknown, wrong, expired, revoked and locked out are all a null here, and the reason goes to the audit only.
-internal sealed class ConnectKeyVerifier : ISingletonService
+// why: unknown, wrong, expired, revoked and locked out are a null, the reason only in the audit. AC-1446: and its admin.
+internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdministration
 {
     public const string KeyPrefix = "ck_";
 
@@ -26,6 +26,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     // AC-1459: runtime state an attacker brings about, so beside cockpit.json rather than in the operator's config.
     public const string LockoutsFileName = "node-lockouts.json";
 
+    public const string BootstrapRevokeRefusal = "The bootstrap key is the emergency key and cannot be revoked. Rotate it by replacing its secret (" + BootstrapFileVariable + ") and restarting the server.";
+
     // Characters after `ck_` kept as the key's public handle: enough to tell keys apart in a list, far too few to
     // matter for guessing the rest (48 of 256 bits).
     private const int PrefixLength = 8;
@@ -35,6 +37,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private const int MinimumBootstrapLength = 43;
 
     private const int MinimumBootstrapDistinctCharacters = 16;
+
+    private const int MaxAuditPage = 500;
 
     private readonly CockpitConfigFileAccess _configFile;
     private readonly Func<string, string?> _environment;
@@ -58,7 +62,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
     private readonly Dictionary<string, CancellationTokenSource> _revocations = new(StringComparer.Ordinal);
 
     // Not persisted: the controller polls every 20 s, and that would be a cockpit.json write every 20 s.
-    private readonly Dictionary<string, DateTimeOffset> _lastUsed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DateTimeOffset At, string From)> _lastUsed = new(StringComparer.Ordinal);
 
     private List<ConnectKey> _persisted = [];
     private ConnectKey? _bootstrap;
@@ -145,7 +149,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             if (found is { } key && key.IsUsableAt(now))
             {
                 caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope(), key.ExpiresAt);
-                _lastUsed[key.Prefix] = now;
+                _lastUsed[key.Prefix] = (now, remoteAddress);
             }
             else if (state is not null && state.LockedUntil > now)
             {
@@ -173,7 +177,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                         { } => "refused: expired key",
                         null => "refused: unknown credential",
                     };
-                    audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, refusal));
+                    audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, refusal, Actor: found?.Label));
 
                     // A success leaves the failures standing: a controller polling from behind the same NAT must not
                     // wipe an attacker's count every 20 s.
@@ -237,12 +241,12 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         catch (Exception exception)
         {
             _logger.LogError(exception, "Lifted the lockout of {RemoteAddress} for this run only: it could not be saved.", bucket);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", $"{outcome}; WARNING for this run only: not saved, the lockout returns after a restart until it runs out", bucket), CancellationToken.None).ConfigureAwait(false);
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(liftedBy, now, "lift_connect_lockout", $"{outcome}; WARNING for this run only: not saved, the lockout returns after a restart until it runs out", bucket), CancellationToken.None).ConfigureAwait(false);
             throw new InvalidOperationException("The lockout is lifted, but that could not be saved, so it returns after a restart until it runs out.", exception);
         }
 
         _logger.LogInformation("Lifted the lockout of {RemoteAddress}.", bucket);
-        await _audit.RecordAsync(new NodeAccessAuditEntry(now, liftedBy.Credential, liftedBy.KeyPrefix, liftedBy.RemoteAddress, "lift_connect_lockout", outcome, bucket), CancellationToken.None).ConfigureAwait(false);
+        await _audit.RecordAsync(NodeAccessAuditEntry.By(liftedBy, now, "lift_connect_lockout", outcome, bucket), CancellationToken.None).ConfigureAwait(false);
         return true;
     }
 
@@ -296,7 +300,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             }
 
             _logger.LogInformation("Issued connect key {Prefix} ({Capability}), expiring {ExpiresAt}.", key.Prefix, key.Capability, key.ExpiresAt);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, issuedBy.Credential, issuedBy.KeyPrefix, issuedBy.RemoteAddress, "issue_connect_key", "issued", key.Prefix), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(issuedBy, now, "issue_connect_key", "issued", key.Prefix), cancellationToken).ConfigureAwait(false);
             return (key, secret);
         }
         finally
@@ -307,6 +311,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
     // False when no live key carries this prefix. The key stops working in memory before the save; a failed save
     // is never silent — logged, audited and thrown — and the next save that does succeed carries the revocation.
+    // AC-1446: the bootstrap key is the emergency key and is refused; it is rotated by replacing its secret.
     public async Task<bool> RevokeAsync(string prefix, NodeCaller revokedBy, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
@@ -315,8 +320,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         try
         {
             var now = _time.GetUtcNow();
-            List<ConnectKey> next;
-            CancellationTokenSource? inFlight;
+            List<ConnectKey>? next = null;
+            CancellationTokenSource? inFlight = null;
             lock (_gate)
             {
                 if (_AllKeys().FirstOrDefault(key => key.RevokedAt is null && string.Equals(key.Prefix, prefix, StringComparison.Ordinal)) is not { } target)
@@ -324,15 +329,19 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                     return false;
                 }
 
-                var revoked = target with { RevokedAt = now };
-                next = target.IsBootstrap ? [.. _persisted, revoked] : [.. _persisted.Select(key => ReferenceEquals(key, target) ? revoked : key)];
-                _persisted = next;
-                if (target.IsBootstrap)
+                if (!target.IsBootstrap)
                 {
-                    _bootstrap = null;
+                    var revoked = target with { RevokedAt = now };
+                    next = [.. _persisted.Select(key => ReferenceEquals(key, target) ? revoked : key)];
+                    _persisted = next;
+                    _revocations.Remove(prefix, out inFlight);
                 }
+            }
 
-                _revocations.Remove(prefix, out inFlight);
+            if (next is null)
+            {
+                await _audit.RecordAsync(NodeAccessAuditEntry.By(revokedBy, now, "revoke_connect_key", "refused: bootstrap key", prefix), cancellationToken).ConfigureAwait(false);
+                throw new ConnectKeyBootstrapException(BootstrapRevokeRefusal);
             }
 
             // Not disposed: a request that authenticated just before this still registers on its token.
@@ -345,14 +354,14 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             catch (Exception exception)
             {
                 _logger.LogError(exception, "Revoked connect key {Prefix} for this run only: the revocation could not be saved.", prefix);
-                await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "WARNING revoked for this run only: not saved, the key returns after a restart unless revoked again", prefix), CancellationToken.None).ConfigureAwait(false);
+                await _audit.RecordAsync(NodeAccessAuditEntry.By(revokedBy, now, "revoke_connect_key", "WARNING revoked for this run only: not saved, the key returns after a restart unless revoked again", prefix), CancellationToken.None).ConfigureAwait(false);
                 throw new InvalidOperationException(
                     "The key is refused from now on, but the revocation could not be saved to cockpit.json, so it would work again after a restart. Revoke it again once the configuration can be written.",
                     exception);
             }
 
             _logger.LogInformation("Revoked connect key {Prefix}.", prefix);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(now, revokedBy.Credential, revokedBy.KeyPrefix, revokedBy.RemoteAddress, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(revokedBy, now, "revoke_connect_key", "revoked", prefix), cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally
@@ -370,7 +379,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            List<ConnectKey> next;
+            List<ConnectKey>? next = null;
             lock (_gate)
             {
                 if (_AllKeys().FirstOrDefault(key => key.RevokedAt is null && string.Equals(key.Prefix, prefix, StringComparison.Ordinal)) is not { } target)
@@ -378,12 +387,16 @@ internal sealed class ConnectKeyVerifier : ISingletonService
                     return false;
                 }
 
-                if (target.IsBootstrap)
+                if (!target.IsBootstrap)
                 {
-                    throw new InvalidOperationException("The bootstrap key keeps its full scope: it is for first setup only. Issue your own key with the scope you want and revoke the bootstrap key.");
+                    next = [.. _persisted.Select(key => ReferenceEquals(key, target) ? key with { Scope = scope } : key)];
                 }
+            }
 
-                next = [.. _persisted.Select(key => ReferenceEquals(key, target) ? key with { Scope = scope } : key)];
+            if (next is null)
+            {
+                await _audit.RecordAsync(NodeAccessAuditEntry.By(updatedBy, _time.GetUtcNow(), "set_connect_key_scope", "refused: bootstrap key", prefix), cancellationToken).ConfigureAwait(false);
+                throw new ConnectKeyBootstrapException("The bootstrap key keeps its full scope. Issue your own key with the scope you want; the bootstrap key stays as the emergency key.");
             }
 
             await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
@@ -393,7 +406,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService
             }
 
             _logger.LogInformation("Changed the scope of connect key {Prefix}.", prefix);
-            await _audit.RecordAsync(new NodeAccessAuditEntry(_time.GetUtcNow(), updatedBy.Credential, updatedBy.KeyPrefix, updatedBy.RemoteAddress, "set_connect_key_scope", "scope changed", prefix), cancellationToken).ConfigureAwait(false);
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(updatedBy, _time.GetUtcNow(), "set_connect_key_scope", "scope changed", prefix), cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally
@@ -408,9 +421,68 @@ internal sealed class ConnectKeyVerifier : ISingletonService
 
         lock (_gate)
         {
-            return [.. _AllKeys().Select(key => (key, _lastUsed.TryGetValue(key.Prefix, out var at) ? at : (DateTimeOffset?)null))];
+            return [.. _AllKeys().Select(key => (key, _lastUsed.TryGetValue(key.Prefix, out var used) ? used.At : (DateTimeOffset?)null))];
         }
     }
+
+    Task<ConnectKeyOverview> IConnectKeyAdministration.ListAsync(CancellationToken cancellationToken) => _OverviewAsync(cancellationToken);
+
+    async Task<IssuedConnectKey> IConnectKeyAdministration.IssueAsync(ConnectKeyRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Label))
+        {
+            throw new ArgumentException("A label is required, so the operator can tell this key from the others.", nameof(request));
+        }
+
+        // JSON lets a number through as an enum; a capability outside the two would be a key no door understands.
+        if (!Enum.IsDefined(request.Capability))
+        {
+            throw new ArgumentException("capability must be \"operate\" or \"admin\".", nameof(request));
+        }
+
+        var (key, secret) = await IssueAsync(request.Label, request.Capability, request.ExpiresInDays, _Admin(), request.HoldsAssistant, request.Scope, cancellationToken).ConfigureAwait(false);
+        return new IssuedConnectKey(_Info(key, null), secret);
+    }
+
+    Task<bool> IConnectKeyAdministration.RevokeAsync(string prefix, CancellationToken cancellationToken) =>
+        RevokeAsync(prefix, _Admin(), cancellationToken);
+
+    Task<bool> IConnectKeyAdministration.SetScopeAsync(string prefix, ConnectKeyScope scope, CancellationToken cancellationToken) =>
+        UpdateScopeAsync(prefix, scope, _Admin(), cancellationToken);
+
+    Task<bool> IConnectKeyAdministration.LiftLockoutAsync(string address, CancellationToken cancellationToken) =>
+        LiftLockoutAsync(address, _Admin(), cancellationToken);
+
+    // The id is the line's offset in the trail, so the next page starts exactly where this one ended.
+    async Task<IReadOnlyList<ConnectKeyAuditEntry>> IConnectKeyAdministration.ReadAuditAsync(long? before, int count, CancellationToken cancellationToken)
+    {
+        _Admin();
+        var lines = await _audit.ReadPageAsync(Math.Clamp(count, 1, MaxAuditPage), before, cancellationToken).ConfigureAwait(false);
+        return [.. lines.Select(line => new ConnectKeyAuditEntry(line.Offset, line.Entry.At, line.Entry.RemoteAddress, line.Entry.Actor, line.Entry.KeyPrefix, line.Entry.Tool, line.Entry.Outcome, line.Entry.SubjectPrefix))];
+    }
+
+    private async Task<ConnectKeyOverview> _OverviewAsync(CancellationToken cancellationToken)
+    {
+        _Admin();
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+        var lockouts = await ListLockoutsAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            return new ConnectKeyOverview(
+                [.. _AllKeys().Select(key => _Info(key, _lastUsed.TryGetValue(key.Prefix, out var used) ? used : null))],
+                [.. lockouts.Select(lockout => new ConnectKeyLockout(lockout.Bucket, lockout.LockedUntil, lockout.RefusedWhileLockedOut))],
+                _policy);
+        }
+    }
+
+    // The caller the request came in with, which is who the audit names; the doors have already held it to admin.
+    private static NodeCaller _Admin() =>
+        McpRequestContext.CurrentNodeCaller is { ByConnectKey: true, Capability: ConnectKeyCapability.Admin } caller
+            ? caller
+            : throw new InvalidOperationException("Connect keys are managed only by an admin key calling over the node door.");
+
+    private static ConnectKeyInfo _Info(ConnectKey key, (DateTimeOffset At, string From)? used) =>
+        new(key.Prefix, key.Label, key.Capability, key.IsBootstrap, key.HoldsAssistant, key.EffectiveScope(), key.CreatedAt, key.ExpiresAt, key.RevokedAt, used?.At, used?.From);
 
     // Every stored hash is compared, match or not: an early exit would time where in the list a key sits.
     private ConnectKey? _Find(string token)
@@ -670,3 +742,6 @@ internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCap
     public static NodeCaller ForPairing(string remoteAddress) =>
         new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None, HoldsAssistant: true);
 }
+
+// AC-1446: what the contract refuses to do to the bootstrap key, the emergency key; the API answers it with a 409.
+internal sealed class ConnectKeyBootstrapException(string message) : InvalidOperationException(message);
