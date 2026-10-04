@@ -186,7 +186,7 @@ internal static partial class HealthEndpoints
         _ => "unchecked",
     };
 
-    // Omitted from the line when unknown: an older client reads nothing it does not know, and no claim is made.
+    // Null when unknown: an older client ignores the field, and no claim is made.
     private static string? _Credential(ProfileCredentialKind kind) => kind switch
     {
         ProfileCredentialKind.RenewingLogin => "renewingLogin",
