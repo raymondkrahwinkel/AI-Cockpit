@@ -3,6 +3,8 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
@@ -11,12 +13,13 @@ namespace Cockpit.App.ViewModels;
 // neither listed nor counted. Built and reconciled on the UI thread only.
 public sealed partial class ServerGroupViewModel : ObservableObject
 {
-    public ServerGroupViewModel(IRemoteServer server)
+    public ServerGroupViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null, ILogger? logger = null)
     {
         Server = server;
         Name = server.Name;
         _state = server.State;
         Start = new ServerStartViewModel(server.Name);
+        Health = new ServerHealthViewModel(server, startSignIn, logger);
     }
 
     public IRemoteServer Server { get; }
@@ -26,6 +29,8 @@ public sealed partial class ServerGroupViewModel : ObservableObject
     public ObservableCollection<ServerSessionRowViewModel> Sessions { get; } = [];
 
     public ServerStartViewModel Start { get; }
+
+    public ServerHealthViewModel Health { get; }
 
     // While open, the server's header line stands above the grid (variant A, decided 2026-10-01).
     [ObservableProperty]

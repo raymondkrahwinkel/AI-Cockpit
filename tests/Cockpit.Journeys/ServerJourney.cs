@@ -41,7 +41,7 @@ public sealed class ServerJourney
     private const string RunningLine = "Cockpit.Server running; UI assemblies loaded: ";
 
     // While this file exists the EchoSignIn profile reads as signed in.
-    private const string SignedInFile = "echo-signed-in";
+    internal const string SignedInFile = "echo-signed-in";
 
     // The Discord lines for that profile. Other profiles may alarm too: the Claude plugin's cached check reads a
     // profile without credentials as expired a poll after it first guessed it signed in.
@@ -196,7 +196,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -212,7 +212,7 @@ public sealed class ServerJourney
             await services.GetRequiredService<ISessionProfileStore>().SaveAsync(
             [
                 new SessionProfile("Echo", new PluginProviderConfig("echo-provider.echo", "{}")) { DefaultKind = ProfileSessionKind.Sdk },
-                new SessionProfile("Terminal", new ClaudeConfig(Path.Combine(stateRoot, ".claude"))) { DefaultKind = ProfileSessionKind.Tty },
+                .. withTerminalProfile ? [new SessionProfile("Terminal", new ClaudeConfig(Path.Combine(stateRoot, ".claude"))) { DefaultKind = ProfileSessionKind.Tty }] : Array.Empty<SessionProfile>(),
                 new SessionProfile("EchoSignIn", new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, SignedInFile) }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
             ]);
             File.WriteAllText(Path.Combine(root, SignedInFile), "");

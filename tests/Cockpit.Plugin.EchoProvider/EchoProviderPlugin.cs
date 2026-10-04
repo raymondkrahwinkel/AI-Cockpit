@@ -31,16 +31,53 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false))
         {
             IsLoggedIn = _IsSignedIn,
+            StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),
         });
     }
 
     // AC-1357: a sign-in a journey can take away and give back — signed in while the file the config names exists.
     // A config without `signedInFile` is always signed in.
     private static bool _IsSignedIn(string configJson) =>
-        JsonNode.Parse(configJson)?["signedInFile"]?.GetValue<string>() is not { } file || File.Exists(file);
+        _SignedInFile(configJson) is not { } file || File.Exists(file);
+
+    private static string? _SignedInFile(string configJson) => JsonNode.Parse(configJson)?["signedInFile"]?.GetValue<string>();
 
     public void Dispose()
     {
+    }
+}
+
+// AC-1457: a sign-in with one step that waits for any text and then gives the sign-in back, so a journey can play a
+// whole sign-in without a provider CLI.
+internal sealed class EchoLoginFlow(string? signedInFile) : ILoginFlow
+{
+    private readonly TaskCompletionSource<LoginFlowResult> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public IAsyncEnumerable<LoginFlowStep> Steps => _Steps();
+
+    public Task<LoginFlowResult> Completion => _completion.Task;
+
+    public Task SubmitAsync(string value, CancellationToken cancellationToken)
+    {
+        if (signedInFile is not null)
+        {
+            File.WriteAllText(signedInFile, "");
+        }
+
+        _completion.TrySetResult(new LoginFlowResult(true, null));
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _completion.TrySetCanceled();
+        return ValueTask.CompletedTask;
+    }
+
+    private async IAsyncEnumerable<LoginFlowStep> _Steps()
+    {
+        yield return new LoginFlowStep("Echo sign-in: send any text to sign in.", null, true);
+        await _completion.Task.ConfigureAwait(false);
     }
 }
 

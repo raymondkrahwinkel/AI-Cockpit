@@ -12,22 +12,22 @@ using Cockpit.Infrastructure.BackendApi;
 namespace Cockpit.Journeys;
 
 // J9 (AC-1456), a server in the session list: the desktop connects to Cockpit.Server with a key, as the connect form leaves
-// it, through a relay that can drop the line. S17b (AC-1469) works in the pane; S18 adds its steps here.
+// it, through a relay that can drop the line. S17b (AC-1469) works in the pane; S18 (AC-1457) ends with the Health tab.
 [Collection(JourneyCollection.Alone)]
 public sealed class RemoteSessionJourney
 {
     private const string Server = "journey-server";
 
-    // The group shows the server's sessions; a start with a first message answers in its pane; a lost line shows
-    // Reconnecting and keeps the pane, which after the return holds every row once; a second message and a permission
-    // answered there reach the server; stop asks once, and only remote.
+    // The group shows the server's sessions; a start answers in its pane; a lost line keeps it, and the composer and a
+    // permission answer reach the server; stop asks once. Then Health: an expired login is badge and alarm until Sign
+    // in again clears both, and Run now starts the scheduled flow there.
     [Fact]
     public async Task AServerGroup_StartsASessionThere_KeepsItsPaneThroughAReconnect_AndStopsItAfterOneConfirmation()
     {
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", key));
         try
@@ -67,6 +67,12 @@ public sealed class RemoteSessionJourney
             var unsentKept = false;
             var mayAnswer = false;
             var answerRows = 0;
+            var badgeWhenExpired = "";
+            var alarmWhenExpired = false;
+            var signInAwaitedInput = false;
+            var clearedAfterSignIn = false;
+            var runBefore = "";
+            var runAfter = "";
             var view = cockpit.Cockpit;
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -145,6 +151,44 @@ public sealed class RemoteSessionJourney
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
                 await view.ConfirmCloseSessionCommand.ExecuteAsync(pane);
                 await Until.CollectionHolds(group.Sessions, () => group.Sessions.Count == 0);
+
+                // The profile's sign-in is taken away on the server; once the server reads it expired, the desktop reads
+                // the health again (what its own poll does) and the header shows one open alarm before the tab is open.
+                File.Delete(Path.Combine(root, ServerJourney.SignedInFile));
+                await _WaitUntilServerReadsExpiredAsync(admin);
+
+                await group.Server.Health.RefreshAsync();
+                await Until.Holds(group.Health, () => group.Health.HasBadge);
+                badgeWhenExpired = group.Health.BadgeText;
+                view.ToggleServerHealthCommand.Execute(group);
+                await Until.Holds(group.Health, () => group.Health.ShowsAlarm);
+                alarmWhenExpired = group.Health.AlarmTitle.Contains("journey-server", StringComparison.Ordinal) && group.Health.CanSignInAgain;
+
+                // Sign in again plays the provider's own step; the code goes to the server, and alarm and badge go.
+                await group.Health.StartSignInCommand.ExecuteAsync(null);
+                var flow = group.Health.SignIn ?? throw new InvalidOperationException("Sign in again opened no sign-in.");
+                try
+                {
+                    await Until.Holds(flow, () => flow.AwaitsInput);
+                }
+                catch (TimeoutException)
+                {
+                    // What the flow showed and what both ends logged, so a red run names its own cause.
+                    throw new TimeoutException($"The sign-in never asked for input. Message: {flow.Message}; error: {flow.ErrorMessage}; completed: {flow.IsCompleted}.{Environment.NewLine}Desktop log:{Environment.NewLine}{cockpit.LogText}{Environment.NewLine}Server:{Environment.NewLine}{run.Output}");
+                }
+
+                signInAwaitedInput = flow.Message.Contains("paste the code", StringComparison.Ordinal);
+                flow.CodeInput = "echo-code";
+                await flow.SubmitCommand.ExecuteAsync(null);
+                await Until.Holds(group.Health, () => !group.Health.ShowsAlarm && !group.Health.HasBadge);
+                clearedAfterSignIn = group.Health.Profiles.Any(profile => profile.IsSignedIn && profile.Label == "EchoSignIn");
+
+                // Run now on the scheduled flow: the row says what the server's run came to.
+                var scheduled = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled");
+                runBefore = scheduled.Outcome;
+                await group.Health.RunNowCommand.ExecuteAsync(scheduled);
+                await Until.Holds(group.Health, () => group.Health.Runs.Single(run => run.Workflow == "Journey scheduled").Outcome.StartsWith("Done", StringComparison.Ordinal));
+                runAfter = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled").Outcome;
             });
 
             Assert.True(localClosedAtOnce, "A local pane that is not busy asked before it closed.");
@@ -161,6 +205,13 @@ public sealed class RemoteSessionJourney
             Assert.True(keptRunning, "Keep running did not leave the session running on the server.");
             Assert.False(await _ListsAsync(admin, paneId), "Stop on server left the session running there.");
             Assert.DoesNotContain(pane, HeadlessAvalonia.Run(() => view.GridPanes.ToList()));
+            Assert.Equal("1", badgeWhenExpired);
+            Assert.True(alarmWhenExpired, "The tab did not show the expired login as the alarm with Sign in again.");
+            Assert.True(signInAwaitedInput, "Sign in again did not show the provider's step.");
+            Assert.True(clearedAfterSignIn, "The alarm or the badge outlived the sign-in.");
+            Assert.Equal("Not run · Never", runBefore);
+            Assert.StartsWith("Done", runAfter, StringComparison.Ordinal);
+            Assert.StartsWith("Journey scheduled · Done", await _ServerRunLabelAsync(admin), StringComparison.Ordinal);
         }
         finally
         {
@@ -172,6 +223,30 @@ public sealed class RemoteSessionJourney
             run.Process.Dispose();
             JourneyHost.RemoveStateRoot(root);
         }
+    }
+
+    private static async Task _WaitUntilServerReadsExpiredAsync(BackendApiClient admin)
+    {
+        using var ceiling = new CancellationTokenSource(Until.Ceiling);
+        while (true)
+        {
+            var health = await admin.GetAsync<JsonObject>("api/v1/health", ceiling.Token);
+            if (health["profiles"]?.AsArray().Any(profile => profile?["signIn"]?.GetValue<string>() == "expired") == true)
+            {
+                return;
+            }
+
+            await Task.Delay(100, ceiling.Token);
+        }
+    }
+
+    // What the server itself says the scheduled flow's last run came to, read through its own health route.
+    private static async Task<string> _ServerRunLabelAsync(BackendApiClient admin)
+    {
+        var health = await admin.GetAsync<JsonObject>("api/v1/health");
+        return health["sections"]?.AsArray().FirstOrDefault(section => section?["name"]?.GetValue<string>() == "workflows-runs")?["rows"]?.AsArray()
+            .Select(row => row?["label"]?.GetValue<string>() ?? "")
+            .FirstOrDefault(label => label.StartsWith("Journey scheduled · ", StringComparison.Ordinal) && !label.EndsWith("Next run", StringComparison.Ordinal)) ?? "";
     }
 
     private static int _Count(SessionViewModel pane, string text) =>

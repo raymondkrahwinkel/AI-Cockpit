@@ -17,6 +17,7 @@ namespace Cockpit.App.ViewModels;
 public partial class CockpitViewModel
 {
     private IRemoteServers? _remoteServers;
+    private IServerSignIns? _serverSignIns;
     private Func<ISessionHandle, string, Task<SessionViewModel>>? _remotePaneOver;
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
@@ -35,7 +36,8 @@ public partial class CockpitViewModel
     private void _WireServerGroups(
         IRemoteServers? remoteServers,
         Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver,
-        INodeSessionsClient? serverChoices)
+        INodeSessionsClient? serverChoices,
+        IServerSignIns? signIns = null)
     {
         if (remoteServers is null || remotePaneOver is null)
         {
@@ -43,6 +45,7 @@ public partial class CockpitViewModel
         }
 
         _remoteServers = remoteServers;
+        _serverSignIns = signIns;
         _remotePaneOver = remotePaneOver;
         _serverChoices = serverChoices;
         remoteServers.Changed += (_, _) => _OnUiThread(_SyncServerGroups);
@@ -58,8 +61,8 @@ public partial class CockpitViewModel
     }
 
     // The headless scenes' way in: the same wiring over a stand-in server, without the node tools behind the start card.
-    internal void ShowServers(IRemoteServers servers, Func<ISessionHandle, string, Task<SessionViewModel>> paneOver) =>
-        _WireServerGroups(servers, paneOver, serverChoices: null);
+    internal void ShowServers(IRemoteServers servers, Func<ISessionHandle, string, Task<SessionViewModel>> paneOver, IServerSignIns? signIns = null) =>
+        _WireServerGroups(servers, paneOver, serverChoices: null, signIns);
 
     private void _MirrorSessionsIntoGrid()
     {
@@ -135,7 +138,7 @@ public partial class CockpitViewModel
 
         foreach (var server in servers.Where(server => ServerGroups.All(group => !ReferenceEquals(group.Server, server))))
         {
-            var group = new ServerGroupViewModel(server);
+            var group = new ServerGroupViewModel(server, profile => _serverSignIns?.Start(server.Name, profile, CancellationToken.None), _logger);
 
             // Subscribed before the state is read again below, so a change raised in between is not lost.
             group.PropertyChanged += (_, args) =>
@@ -145,6 +148,7 @@ public partial class CockpitViewModel
                     _OnOpenServerGroupsChanged();
                 }
             };
+            group.Health.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
             ISessionRegistry? followed = null;
             void Follow()
             {
@@ -206,6 +210,21 @@ public partial class CockpitViewModel
         foreach (var row in group.Reconcile())
         {
             _ = _CloseRemotePaneAsync(row);
+        }
+    }
+
+    [RelayCommand]
+    private static void ToggleServerHealth(ServerGroupViewModel group) => group.Health.IsOpen = !group.Health.IsOpen;
+
+    // A run waiting for a permission is a session of the same name on that server; without one, the first session
+    // that needs attention stands in.
+    private void _OpenWorkflowSession(ServerGroupViewModel group, string workflow)
+    {
+        var row = group.Sessions.FirstOrDefault(candidate => string.Equals(candidate.Title, workflow, StringComparison.OrdinalIgnoreCase))
+            ?? group.Sessions.FirstOrDefault(candidate => candidate.Status == SessionStatus.NeedsAttention);
+        if (row is not null)
+        {
+            OpenServerSessionCommand.Execute(row);
         }
     }
 

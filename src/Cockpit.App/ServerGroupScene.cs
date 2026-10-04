@@ -1,4 +1,5 @@
 using Cockpit.App.Composition;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
@@ -6,6 +7,7 @@ using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
@@ -22,10 +24,16 @@ internal static class ServerGroupScene
     // An operate key with a scope: "Admin" locked, the assistant held elsewhere, and the start card with one profile.
     public static MainWindow Operate(int width, int height) => _Render(width, height, admin: false);
 
+    // AC-1457 (mockup v2 tab 3): the Health tab of an admin key, with the expired login, the alarm and a device code.
+    public static MainWindow Health(int width, int height) => _Render(width, height, admin: true, health: true);
+
+    // AC-1457 (mockup v2 tab 6): the same tab for an operate key; Run now stays, Sign in again gives way to a pointer.
+    public static MainWindow HealthOperate(int width, int height) => _Render(width, height, admin: false, health: true);
+
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
-    private static MainWindow _Render(int width, int height, bool admin, bool asking = false)
+    private static MainWindow _Render(int width, int height, bool admin, bool asking = false, bool health = false)
     {
         var cockpit = new CockpitViewModel();
         var started = DateTimeOffset.UtcNow.AddDays(-6).AddHours(-4);
@@ -48,9 +56,20 @@ internal static class ServerGroupScene
             var pane = new SessionViewModel(SessionControls.DesignTime);
             await pane.FollowRemoteAsync(handle, name);
             return pane;
-        });
+        }, new SceneSignIns());
 
         var group = cockpit.ServerGroups[0];
+        if (health)
+        {
+            group.Health.IsOpen = true;
+            if (admin)
+            {
+                group.Health.StartSignInCommand.Execute(null);
+            }
+
+            return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+        }
+
         cockpit.OpenServerSessionCommand.Execute(group.Sessions[0]);
         if (group.Sessions[0].Pane is { } pane && admin && !asking)
         {
@@ -98,6 +117,8 @@ internal static class ServerGroupScene
     {
         public string Name { get; } = name;
 
+        public IRemoteServerHealth Health { get; } = new SceneHealth(state.Key?.Capability == "admin");
+
         public ISessionRegistry? Sessions => this;
 
         public ISessionLauncher? Launcher => null;
@@ -133,6 +154,93 @@ internal static class ServerGroupScene
         }
 
         public ISessionHandle? Find(string paneId) => All.FirstOrDefault(handle => handle.PaneId == paneId);
+    }
+
+    // The stand-in's health: the mockup's own rows, as the server's route would send them.
+    private sealed class SceneHealth(bool admin) : IRemoteServerHealth
+    {
+        public RemoteServerHealth? Current { get; } = _Mockup(admin);
+
+        public bool IsWatched { get; set; }
+
+        public event EventHandler? Changed
+        {
+            add
+            {
+            }
+
+            remove
+            {
+            }
+        }
+
+        public Task RefreshAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<bool> RunActionAsync(string section, string actionId, CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        // A key with a narrowed scope learns only about itself, as the server answers it.
+        private static RemoteServerHealth _Mockup(bool admin)
+        {
+            var now = DateTimeOffset.Now;
+            List<RemoteHealthRow> runs = [new("15 scheduled · next: daily-checkin", false, now.AddHours(8), null)];
+            foreach (var (name, outcome, failed, last, next, action) in new (string, string, bool, DateTimeOffset, DateTimeOffset, string?)[]
+            {
+                ("maintenance", "Done · 4 m", false, now.AddHours(-9), now.AddHours(15), "run:a"),
+                ("morning-briefing", "Waiting for your permission", false, now.AddHours(-6), now.AddHours(18), null),
+                ("investor-data-fetch-ochtend", "Not run · Codex sign-in expired", true, now.AddHours(-5), now.AddHours(19), "run:c"),
+                ("investor-rapport", "Sent to Discord", false, now.AddHours(-5), now.AddHours(19), "run:d"),
+                ("skill-registration-audit", "Missed, caught up", false, now.AddDays(-5), now.AddDays(2), "run:e"),
+                ("daily-checkin", "Done", false, now.AddDays(-1), now.AddHours(8), "run:f"),
+            })
+            {
+                runs.Add(new($"{name} · {outcome}", failed, last, action));
+                runs.Add(new($"{name} · Next run", false, next, null));
+            }
+
+            return new RemoteServerHealth(
+                [
+                    new("server (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null),
+                    new("server (Codex)", "Codex CLI", "expired", now.AddMinutes(-5), now.AddHours(-3), now.AddHours(-3).AddMinutes(1)),
+                    new("local-qwen", "Ollama (Hetzner)", "unchecked", now.AddMinutes(-5), null, null),
+                ],
+                new RemoteServerFacts(
+                    "0.51.0",
+                    "cockpit-server:0.51.0",
+                    now.AddDays(-6).AddHours(-4),
+                    "huis-cockpit.tailnet-ts.net:20383",
+                    "laptop-raymond",
+                    admin ? [new("laptop-raymond", "admin"), new("telefoon-raymond", "operate")] : [new("telefoon-raymond", "operate")]),
+                [
+                    new RemoteHealthSection("workflows-runs", true, runs),
+                    new RemoteHealthSection("discord", true, [new("Online as Zyra · DM delivery ok", false, now.AddHours(-1), null)]),
+                ]);
+        }
+    }
+
+    private sealed class SceneSignIns : IServerSignIns
+    {
+        public ILoginFlow? Start(string server, string profile, CancellationToken cancellationToken) => new SceneSignIn();
+    }
+
+    // A device-code sign-in as Codex asks for one: a link and a code, and nothing to type.
+    private sealed class SceneSignIn : ILoginFlow
+    {
+        public IAsyncEnumerable<LoginFlowStep> Steps => _Steps();
+
+        public Task<LoginFlowResult> Completion { get; } = new TaskCompletionSource<LoginFlowResult>().Task;
+
+        public Task SubmitAsync(string value, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private static async IAsyncEnumerable<LoginFlowStep> _Steps()
+        {
+            yield return new LoginFlowStep(
+                $"Open the link and enter the code there.{Environment.NewLine}Code: QX7K-2M9P",
+                new Uri("https://auth.openai.com/device"),
+                false);
+            await Task.CompletedTask;
+        }
     }
 
     // A session on the stand-in server: two rows for its pane, and nothing it can be asked to do.
