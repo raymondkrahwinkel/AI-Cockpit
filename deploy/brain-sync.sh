@@ -24,7 +24,7 @@ sync_pair() {
     --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num
   # A resync lets Nextcloud's version win wherever the two differ, so it runs only on a fresh volume: no state, no files.
   if [ -z "$(ls -A "$workdir")" ]; then
-    if false; then
+    if [ -n "$(ls -A "/data/$local")" ]; then
       say "$name stopped: files but no bisync state, so it needs a manual --resync (deploy/README.md)"
       return 2
     fi
