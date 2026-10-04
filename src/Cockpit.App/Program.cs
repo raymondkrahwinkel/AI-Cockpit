@@ -250,33 +250,41 @@ sealed class Program
         Cockpit.App.Logging.LifecycleLog.Write(
             $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting as a remote window on {server}: pid {Environment.ProcessId}.");
 
-        var connection = RemoteInstance.ConnectAsync(localRoot, server, loggerFactory).GetAwaiter().GetResult();
-        _ShowUntilClosed(args, () => connection is null
-            ? new ConfirmationDialog
+        MainWindow? window = null;
+        var remote = ComposeRemoteWindowAsync(localRoot, server, loggerFactory, admin =>
+        {
+            if (window is not null)
+            {
+                OptionsDialog.ForServer(admin).Show(window);
+            }
+
+            return Task.CompletedTask;
+        }).GetAwaiter().GetResult();
+        _ShowUntilClosed(args, () => remote is { } composed
+            ? window = new MainWindow(windowBoundsStore: null, server) { DataContext = composed.Cockpit }
+            : new ConfirmationDialog
             {
                 DataContext = new ConfirmationDialogViewModel(
                     "No such server",
                     $"This cockpit holds no connect key for \"{server}\", or holds it encrypted, which a remote window cannot unlock yet. Connect to it first, under Options → Security → Connect to a server.",
                     "Close"),
-            }
-            : _RemoteWindow(server, connection));
-        connection?.DisposeAsync().AsTask().Wait(TeardownBudget);
+            });
+        remote?.Connection.DisposeAsync().AsTask().Wait(TeardownBudget);
     }
 
-    private static MainWindow _RemoteWindow(string server, RemoteInstanceConnection connection)
+    // AC-1487: the remote window's one server and its view model, shared with the journey that proves the window opens no
+    // port and leaves `localRoot` byte-equal. Null when that root holds no connect key for `server`.
+    internal static async Task<(RemoteInstanceConnection Connection, CockpitViewModel Cockpit)?> ComposeRemoteWindowAsync(
+        string localRoot, string server, ILoggerFactory loggers, Func<ServerAdminViewModel, Task> showServerAdmin)
     {
-        var window = new MainWindow(windowBoundsStore: null, server);
-        window.DataContext = CockpitViewModel.ForRemoteWindow(
-            server,
-            connection.Servers,
-            connection.Nodes,
-            new RemoteServerSignIns(connection.Servers),
-            admin =>
-            {
-                OptionsDialog.ForServer(admin).Show(window);
-                return Task.CompletedTask;
-            });
-        return window;
+        if (await RemoteInstance.ConnectAsync(localRoot, server, loggers) is not { } connection)
+        {
+            return null;
+        }
+
+        var cockpit = CockpitViewModel.ForRemoteWindow(
+            server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
+        return (connection, cockpit);
     }
 
     // One window as the whole of this process's UI, without the app's lifetime: see `_ShowAlreadyRunningNotice`.
