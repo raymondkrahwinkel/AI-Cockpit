@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the assistant line of a server in the session list has an "Open assistant" button for the key that holds the
+  assistant. It opens the same assistant window as this laptop's, on the conversation the server's assistant has, and
+  what you type there is answered by the server. The button stays off until the server's assistant is running; the
+  first prompt of the holding key starts it. A key that does not hold the assistant gets no button, and the server
+  now refuses it on the assistant's transcript and prompt too (it used to answer any operate key). Cockpit 0.79.0.
 - added: the server's Health tab shows a Schedule column for each scheduled run, with the time zone in the heading
   (or after the schedule when the runs differ), and the sign-in without a browser counts down how long its code stays
   valid. The Workflows plugin (0.34.0) fills in the schedule, only when it could read it. Plugin SDK 3.3.0:
