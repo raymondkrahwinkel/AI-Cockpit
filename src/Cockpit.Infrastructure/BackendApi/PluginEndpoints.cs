@@ -28,10 +28,19 @@ internal static class PluginEndpoints
 
         api.MapGet("/plugins/store", async (CancellationToken cancellationToken) =>
         {
-            var catalog = (await stores().LoadAsync(cancellationToken).ConfigureAwait(false))
-                .Select(store => new PluginStoreReference(_Id(store), _LocationWithoutCredentials(store.Location)))
-                .DistinctBy(store => store.Id, StringComparer.Ordinal)
-                .ToList();
+            var catalog = new List<PluginStoreReference>();
+            foreach (var store in await stores().LoadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var id = _Id(store);
+                // A collision uses the first configured store, matching POST's first-match lookup.
+                if (catalog.Any(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                var index = await plugins().FetchStoreIndexAsync(store, cancellationToken).ConfigureAwait(false);
+                catalog.Add(new PluginStoreReference(id, _LocationWithoutCredentials(store.Location), index.Index));
+            }
             await _AuditAsync(services, "api:list_plugin_stores", cancellationToken).ConfigureAwait(false);
             return Results.Json(catalog, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
@@ -162,5 +171,5 @@ internal static class PluginEndpoints
 
     private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version);
 
-    private sealed record PluginStoreReference(string Id, string Location);
+    private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
 }

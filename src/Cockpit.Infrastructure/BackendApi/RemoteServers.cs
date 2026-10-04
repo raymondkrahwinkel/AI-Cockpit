@@ -3,6 +3,7 @@ using System.Net;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
@@ -199,6 +200,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
             TimeProvider.System);
         Administration = new RemoteConnectKeyAdministration(_client);
         _health = new RemoteServerHealthReader(_client, name, logger);
+        Plugins = new RemotePluginAdministration(_client);
     }
 
     public string Name { get; }
@@ -222,6 +224,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     public ISessionLauncher? Launcher => (ISessionLauncher?)Sessions;
 
     public IConnectKeyAdministration Administration { get; }
+
+    public IPluginAdministration Plugins { get; }
 
     public RemoteServerState State
     {
