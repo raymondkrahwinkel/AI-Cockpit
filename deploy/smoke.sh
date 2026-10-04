@@ -19,7 +19,7 @@ printf '%s' "$unlock" > "$COCKPIT_UNLOCK_PASSWORD_PATH"
 printf '%s' "$key" > "$COCKPIT_CONNECT_KEY_PATH"
 # What the sessions inherit; it must reach the server and stay out of the container's environment (AC-1464).
 export COCKPIT_SESSION_ENV_FILE=$work/session.env
-printf '# smoke\nSMOKE_SESSION_VAR=reached\n' > "$COCKPIT_SESSION_ENV_FILE"
+printf '# smoke\nSMOKE_SESSION_VAR=reached\nAI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS\n' > "$COCKPIT_SESSION_ENV_FILE"
 # Owner-only on the host: the entrypoint reads them as root and hands the server its own copies (AC-1464).
 chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH" "$COCKPIT_SESSION_ENV_FILE"
 # AC-1364: brain-sync starts on an empty placeholder config, as a host without the app password would, and idles.
