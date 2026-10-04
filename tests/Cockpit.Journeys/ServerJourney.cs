@@ -23,6 +23,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
@@ -196,7 +197,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -218,6 +219,10 @@ public sealed class ServerJourney
             File.WriteAllText(Path.Combine(root, SignedInFile), "");
             await services.GetRequiredService<INotificationSettingsStore>().SaveAsync(new NotificationSettings { DiscordEnabled = true, WebhookUrl = webhookUrl, LoginCheckInterval = LoginCheckInterval });
             await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = port });
+            if (pluginStore is not null)
+            {
+                await services.GetRequiredService<IPluginStoreConfigStore>().AddAsync(pluginStore);
+            }
 
             var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
             await services.GetRequiredService<ISecretProtectionService>().EnableAsync(password);

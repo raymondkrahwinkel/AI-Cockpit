@@ -98,6 +98,7 @@ public sealed class BackendApiDoorTests
     // narrow or revoke the bootstrap key; either way nothing changed. F5.6b2–b4 add their routes as rows here.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string> AdminRoutes => new()
     {
+        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "" },
         { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
         { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "" },
         { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden" },
@@ -137,6 +138,10 @@ public sealed class BackendApiDoorTests
         Assert.Equal(error, JsonNode.Parse(answer.Body) is JsonObject response ? response["error"]?.GetValue<string>() ?? "" : "");
         Assert.False(answer.Body.Contains(operate.Secret, StringComparison.Ordinal), "The answer repeated a full key it was given.");
         Assert.False(answer.Body.Contains("password", StringComparison.Ordinal) || answer.Body.Contains("query-token", StringComparison.Ordinal) || answer.Body.Contains("\"token\"", StringComparison.Ordinal), "The answer repeated a store credential it was given.");
+        Assert.DoesNotContain("folderPath", answer.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("sha256", answer.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("C:\\\\server", answer.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-hash", answer.Body, StringComparison.Ordinal);
         Assert.Equal(2, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => !entry.Key.IsBootstrap).Key.EffectiveScope());
     }
@@ -476,7 +481,15 @@ public sealed class BackendApiDoorTests
             };
             PluginStores.LoadAsync().Returns(Task.FromResult<IReadOnlyList<PluginStoreConfig>>(
                 [PluginStoreConfig.Remote("https://user:password@store.example/index.json?access_token=query-token", "store-token")]));
-            Plugins.GetInstalledAsync().Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>([]));
+            Plugins.GetInstalledAsync().Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>(
+            [
+                new InstalledPlugin(
+                    new DiscoveredPlugin("C:\\server\\plugins\\private", "private", new PluginManifest("private", "Private", "1.0.0", null, 0, null, null, null, null), "private-hash", PluginLoadDecision.Load),
+                    new PluginRegistration(true, "private-hash"),
+                    null,
+                    null,
+                    null),
+            ]));
             Plugins.FetchStoreIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(new PluginStoreFetchResult(true, null, new PluginStoreIndex("Store", []), null)));
         }
 

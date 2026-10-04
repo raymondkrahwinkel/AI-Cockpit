@@ -18,6 +18,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     private readonly IConnectKeyAdministration _admin;
     private readonly IPluginAdministration? _plugins;
+    private IReadOnlyList<PluginStoreCatalogEntry> _stores = [];
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
@@ -248,6 +249,28 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     });
 
     [RelayCommand]
+    private Task InstallPluginAsync() => _RunAsync(async () =>
+    {
+        if (_plugins is null || _stores.FirstOrDefault(store => store.Index?.Plugins.FirstOrDefault(entry => !Plugins.Any(installed => installed.Id == entry.Id)) is not null) is not { Index: { } index } store)
+        {
+            Status = "No new plugin is available from the server's stores.";
+            return;
+        }
+
+        var entry = index.Plugins.First(candidate => !Plugins.Any(installed => installed.Id == candidate.Id));
+        var version = entry.Versions.FirstOrDefault();
+        if (version is null)
+        {
+            Status = "The server store has no installable version.";
+            return;
+        }
+
+        var result = await _plugins.InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, PluginStoreConfig.Remote(store.Id), version));
+        Status = result.IsSuccess ? "This change takes effect after the server restarts." : "The server could not install the plugin.";
+        await _LoadPluginsAsync();
+    });
+
+    [RelayCommand]
     private Task RemovePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
     {
         if (_plugins is null)
@@ -312,6 +335,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(PluginsCount));
+        if (_plugins is IPluginStoreCatalog catalog)
+        {
+            _stores = await catalog.GetStoresAsync();
+        }
     }
 
     private async Task _RunAsync(Func<Task> action)
@@ -419,6 +446,8 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
     public string FolderId { get; } = plugin.Discovered.FolderId;
 
     public string Name { get; } = plugin.Discovered.Manifest.Name;
+
+    public string Id { get; } = plugin.Discovered.Manifest.Id;
 
     public string Version { get; } = plugin.Discovered.Manifest.Version;
 

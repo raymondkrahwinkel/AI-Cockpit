@@ -16,7 +16,8 @@ public sealed class ServerPluginsPage : UserControl
     {
         var heading = new TextBlock { FontSize = 20, FontWeight = Avalonia.Media.FontWeight.Bold };
         heading.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("PluginsCount") { StringFormat = "Plugins on the server · {0}" });
-        var install = new Button { Content = "Install from store", IsEnabled = false, HorizontalAlignment = HorizontalAlignment.Left };
+        var install = new Button { Content = "Install from store", HorizontalAlignment = HorizontalAlignment.Left };
+        install.Bind(Button.CommandProperty, new Avalonia.Data.Binding("InstallPluginCommand"));
         var update = new Button { Content = "Update 1", IsEnabled = false, HorizontalAlignment = HorizontalAlignment.Left };
         var restart = new TextBlock { Text = "Plugin changes take effect after the server restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var status = new TextBlock();

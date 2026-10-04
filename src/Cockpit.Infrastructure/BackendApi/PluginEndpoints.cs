@@ -23,7 +23,7 @@ internal static class PluginEndpoints
         {
             var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:list_plugins", cancellationToken).ConfigureAwait(false);
-            return Results.Json(installed, ConnectKeyEndpoints.Json);
+            return Results.Json(installed.Select(PluginListEntry.From), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
         api.MapGet("/plugins/store", async (CancellationToken cancellationToken) =>
@@ -187,6 +187,18 @@ internal static class PluginEndpoints
     {
         public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
             new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : "The server could not install the plugin.");
+    }
+
+    private sealed record PluginListEntry(string FolderId, string Id, string Name, string Version, bool Enabled, string? AvailableUpdate, bool TakesEffectAfterServerRestarts)
+    {
+        public static PluginListEntry From(InstalledPlugin plugin) => new(
+            plugin.Discovered.FolderId,
+            plugin.Discovered.Manifest.Id,
+            plugin.Discovered.Manifest.Name,
+            plugin.Discovered.Manifest.Version,
+            plugin.Registration?.Enabled ?? false,
+            null,
+            false);
     }
 
     private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
