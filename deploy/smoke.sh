@@ -37,7 +37,7 @@ cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
   docker rm -fv "$project-holder" "$project-control-root" "$project-webdav" "$project-plain1" "$project-plain2"     "$project-plain3" "$project-bind" "$project-badbind" >/dev/null 2>&1 || true
   # The bind-mounts hold files of the container's users: hand them back, or the rm below fails.
-  [ -d "$work/bind" ] && docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" -R "$(id -u):$(id -g)" /b >/dev/null 2>&1
+  [ ! -d "$work/bind" ] || docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" -R "$(id -u):$(id -g)" /b >/dev/null 2>&1 || true
   docker rmi -f "$project-control-leak" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -352,25 +352,39 @@ echo "== bind-mounts with the documented owners (AC-1480)"
 # What deploy/README.md says to create. app is 1654:1654 and agent 1700:1700 in the image; read here, not assumed.
 app_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u app):$(id -g app)')
 [ "$app_ids" = 1654:1654 ] || fail "the README documents app as 1654:1654, the image has $app_ids"
+agent_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u agent):$(id -g agent)')
+[ "$agent_ids" = 1700:1700 ] || fail "the README documents agent as 1700:1700, the image has $agent_ids"
 mkdir -p "$work/bind"/{state,work,claude,codex,ssh,agent-ssh}
 bind_mounts=(-v "$work/bind/state:/state" -v "$work/bind/work:/work" -v "$work/bind/claude:/home/agent/.claude" -v "$work/bind/claude:/home/app/.claude"
   -v "$work/bind/codex:/home/agent/.codex" -v "$work/bind/codex:/home/app/.codex" -v "$work/bind/ssh:/home/app/.ssh" -v "$work/bind/agent-ssh:/home/agent/.ssh")
-docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c '
-  cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work   && chown 1700:1700 claude codex agent-ssh && chmod 2770 claude codex && chmod 0700 agent-ssh'
+bind_owners() {
+  docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c '
+    cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work     && chown 1700:1700 claude codex agent-ssh && chmod 2770 claude codex && chmod 0700 agent-ssh'
+}
+bind_owners
 plain_run "$project-bind" "${bind_mounts[@]}"
 docker exec -u app "$project-bind" sh -c 'touch /state/w /work/app-file' || fail "the server cannot write a documented bind-mount"
 docker exec -u agent "$project-bind" sh -c 'touch /work/agent-file /home/agent/.claude/w && rm /work/agent-file /home/agent/.claude/w' || fail "an agent session cannot write a documented bind-mount"
-docker exec -u app "$project-bind" sh -c 'rm /work/agent-file 2>/dev/null; test -e /home/app/.claude' || fail "the server cannot reach its side of the claude bind-mount"
+# The two claude mounts are one host path: what the server writes on its side, the agent reads on its own.
+docker exec -u app "$project-bind" sh -c 'touch /home/app/.claude/shared' || fail "the server cannot write its side of the claude bind-mount"
+docker exec -u agent "$project-bind" sh -c 'test -e /home/agent/.claude/shared && rm /home/agent/.claude/shared' || fail "the agent does not see the server's side of the claude bind-mount"
 docker rm -fv "$project-bind" >/dev/null
-# A wrong owner (root's) is refused with the documented message and exit 1, not a server that starts and fails later.
-docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" root:root /b/state
-docker run -d --name "$project-badbind" "${bind_mounts[@]}" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key   -v "$work/secrets:/run/in:ro" "$image" >/dev/null
-code=$(docker wait "$project-badbind")
-bad=$(docker logs "$project-badbind" 2>&1)
-[ "$code" = 1 ] || fail "a bind-mount with the wrong owner ended with exit $code, not 1"
-grep -qF 'entrypoint: /state is not writable by app (uid 1654)' <<< "$bad" || fail "the wrong-owner refusal names no reason: $bad"
-if grep -qF 'Cockpit.Server running' <<< "$bad"; then fail "the server started on a bind-mount it cannot write"; fi
-docker rm -fv "$project-badbind" >/dev/null
+# A wrong owner is refused with the documented message and exit 1, not a server that starts and fails later. Two cases:
+# /state owned by root (the server cannot write) and /work owned by app alone (the agent cannot).
+bad_bind() {
+  local dir=$1 owner=$2 mode=$3 message=$4 code bad
+  docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c "chown $owner /b/$dir && chmod $mode /b/$dir"
+  docker run -d --name "$project-badbind" "${bind_mounts[@]}" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key     -v "$work/secrets:/run/in:ro" "$image" >/dev/null
+  code=$(timeout 60 docker wait "$project-badbind") || fail "the server kept running on a bind-mount with the wrong owner ($dir)"
+  bad=$(docker logs "$project-badbind" 2>&1)
+  [ "$code" = 1 ] || fail "a wrong-owner bind-mount ($dir) ended with exit $code, not 1"
+  grep -qF "$message" <<< "$bad" || fail "the wrong-owner refusal for $dir names no reason: $bad"
+  if grep -qF 'Cockpit.Server running' <<< "$bad"; then fail "the server started on a bind-mount it cannot write ($dir)"; fi
+  docker rm -fv "$project-badbind" >/dev/null
+  bind_owners
+}
+bad_bind state root:root 0755 'entrypoint: /state is not writable by app (uid 1654)'
+bad_bind work 1654:1654 0755 'entrypoint: /work is not writable by agent (uid 1700)'
 
 echo "== a held node port stops the server"
 dc down -v >/dev/null

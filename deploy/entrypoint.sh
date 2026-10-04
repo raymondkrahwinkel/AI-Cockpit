@@ -47,13 +47,15 @@ done
 unwritable=0
 need_writable() {
   /usr/bin/setpriv --reuid="$1" --regid="$1" --init-groups -- test -w "$2" && return 0
-  echo "entrypoint: $2 is not writable by $1 (uid $(id -u "$1")): chown the host path to $(id -u app):$(id -g app) for /state and /home/app, $(id -u agent):$(id -g agent) for /home/agent, app:agent mode 2770 for /work (README.md, Persistent data)" >&2
+  echo "entrypoint: $2 is not writable by $1 (uid $(id -u "$1")): not mounted read-only? Else chown the host path to $(id -u app):$(id -g app) (/state, /home/app), $(id -u agent):$(id -g agent) (/home/agent) or $(id -u app):$(id -g agent) mode 2770 (/work); README.md, Persistent data" >&2
   unwritable=1
 }
 need_writable app /state
 need_writable app /work
 need_writable agent /work
 need_writable app /home/app/.ssh
+need_writable app /home/app/.claude
+need_writable app /home/app/.codex
 for path in /home/agent/.claude /home/agent/.codex /home/agent/.ssh; do need_writable agent "$path"; done
 [ "$unwritable" = 0 ] || exit 1
 

@@ -60,12 +60,12 @@ and `up` keeps the certificate, and with it the fingerprint.
 ### Backup and restore
 
 Stop the server first (`docker compose -f deploy/compose.yaml stop`), so no file is half-written. Back up the volumes
-with a throwaway container; the tar keeps owners and modes (`-p`), which the S6b split between `app` and `agent` needs:
+with a throwaway container; the tar keeps owners and modes (`-p`), which the split between `app` (the server) and `agent` (the sessions) needs:
 
     docker run --rm -v cockpit_state:/v:ro -v "$PWD":/backup alpine tar -czpf /backup/state.tgz -C /v .
 
 Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `claude`, `codex`, `ssh`, `agent-ssh`
-and `brain`. Restore into a new, empty volume, as root so the owners come back:
+`brain` and, if you use brain-sync, `brain-state`. Restore into a new, empty volume, as root so the owners come back:
 
     docker volume create cockpit_state
     docker run --rm -v cockpit_state:/v -v "$PWD":/backup alpine tar -xzpf /backup/state.tgz -C /v
@@ -80,7 +80,7 @@ on its first use; **a bind-mount keeps the host's**, so create the directories w
 
 | Mount | Owner | Mode |
 | --- | --- | --- |
-| `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
+| `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` (the server sets `/state` to it) |
 | `/work` | `1654:1700` (`app:agent`) | `2770` |
 | `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |
 | `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` |
