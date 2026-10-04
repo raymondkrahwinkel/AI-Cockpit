@@ -220,6 +220,16 @@ public sealed record TtyProviderRegistration(
     public Func<string, bool>? IsLoggedIn { get; init; }
 
     /// <summary>
+    /// Says what kind of credential a profile under this provider signs in with, from its opaque <c>ConfigJson</c>.
+    /// Never reads a credential's contents (Iron Law #8).
+    /// </summary>
+    /// <remarks>
+    /// Answers from the same cache as <see cref="IsLoggedIn"/> and never blocks. <see langword="null"/> (the default)
+    /// when the provider cannot tell.
+    /// </remarks>
+    public Func<string, PluginCredentialKind>? CredentialKind { get; init; }
+
+    /// <summary>
     /// Starts an in-app login attempt for a profile under this provider, from its opaque <c>ConfigJson</c>.
     /// <see langword="null"/> (the default) when the provider offers no in-app login.
     /// </summary>

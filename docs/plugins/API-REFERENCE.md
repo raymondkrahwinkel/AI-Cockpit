@@ -340,6 +340,13 @@ implements `IPluginHealthActions`: `POST /api/v1/health/{section}/actions/{actio
 the label (SDK 3.3.0, host 0.77.0); set them only when the plugin could read the schedule itself. `LoginFlowStep.ExpiresAt` (a login flow's code expiry) is new in
 the same SDK 3.3.0: a plugin that sets it also sets `minHostVersion` 0.77.0.
 
+A provider registration (`SessionProviderRegistration` and `TtyProviderRegistration`) may set `CredentialKind`, a
+`Func<string, PluginCredentialKind>` next to `IsLoggedIn` (AC-1483, host 0.83.0, SDK 3.4.0). It says whether the sign-in
+renews itself (`RenewingLogin`), is a plain `Login`, an `ApiKey` or an `ApiKeyFromSecret`, so the Health tab can say so.
+Answer from what the provider's own CLI reports about its login, never from a credential's contents, from the same cache
+as `IsLoggedIn`, and say `Unknown` for anything not measured: the host then claims nothing. A plugin that sets it also
+sets `minHostVersion` 0.83.0.
+
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:
 `host.Services.GetRequiredService<MyService>()`. Prefer resolving your own registered services over

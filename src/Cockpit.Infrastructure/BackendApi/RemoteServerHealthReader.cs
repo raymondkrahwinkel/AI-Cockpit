@@ -88,7 +88,7 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
     }
 
     private static RemoteServerHealth _Map(HealthDto dto) => new(
-        [.. (dto.Profiles ?? []).Select(profile => new RemoteProfileHealth(profile.Label, profile.Provider, profile.SignIn, profile.LastCheck, profile.ExpiredSince, profile.AnnouncedAt))],
+        [.. (dto.Profiles ?? []).Select(profile => new RemoteProfileHealth(profile.Label, profile.Provider, profile.SignIn, profile.LastCheck, profile.ExpiredSince, profile.AnnouncedAt, profile.Credential))],
         new RemoteServerFacts(
             dto.Server?.Version,
             dto.Server?.Image,
@@ -103,7 +103,7 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
 
     private sealed record HealthDto(List<ProfileDto>? Profiles, ServerDto? Server, List<SectionDto>? Sections);
 
-    private sealed record ProfileDto(string Label, string Provider, string SignIn, DateTimeOffset? LastCheck, DateTimeOffset? ExpiredSince, DateTimeOffset? AnnouncedAt);
+    private sealed record ProfileDto(string Label, string Provider, string SignIn, DateTimeOffset? LastCheck, DateTimeOffset? ExpiredSince, DateTimeOffset? AnnouncedAt, string? Credential = null);
 
     private sealed record ServerDto(string? Version, string? Image, DateTimeOffset? StartedAt, string? Address, AssistantDto? Assistant, List<KeyDto>? Keys);
 

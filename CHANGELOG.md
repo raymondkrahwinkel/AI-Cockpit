@@ -41,6 +41,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Health tab says how a profile is signed in, from what the CLI itself reports: "✓ Signed in · renews itself"
+  for a Claude or Codex subscription login and "✓ API key" for a key, and plain "✓ Signed in" when the CLI says
+  something Cockpit does not recognise. No credential is read, only the CLI's own status. The server's `/api/v1/health`
+  carries it as an extra `credential` field per profile. Plugin SDK 3.4.0 (`CredentialKind`); Claude 0.26.0 and
+  Codex 0.10.0 need Cockpit 0.83.0.
 - added: a permission prompt in a pane on a server offers "Allow for this session" next to Allow once and Deny. The
   server then stops asking for that tool with that exact input until the session ends, and a key without the
   permission grant is refused as before. The button only shows when the server says it supports it (`/whoami`

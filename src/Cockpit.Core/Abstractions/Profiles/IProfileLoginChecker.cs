@@ -18,4 +18,9 @@ public interface IProfileLoginChecker
     /// True when the profile's provider declares a sign-in check, so <see cref="IsLoggedIn"/> asked something.
     /// </summary>
     bool HasLoginCheck(SessionProfile profile) => false;
+
+    /// <summary>
+    /// What the profile's provider says its sign-in rests on; <see cref="ProfileCredentialKind.Unknown"/> when it cannot say.
+    /// </summary>
+    ProfileCredentialKind CredentialKind(SessionProfile profile) => ProfileCredentialKind.Unknown;
 }

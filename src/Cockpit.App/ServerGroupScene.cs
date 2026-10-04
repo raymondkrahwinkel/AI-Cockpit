@@ -207,7 +207,8 @@ internal static class ServerGroupScene
 
             return new RemoteServerHealth(
                 [
-                    new("server (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null),
+                    new("server (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null, "renewingLogin"),
+                    new("ci-runner (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null, "apiKey"),
                     new("server (Codex)", "Codex CLI", "expired", now.AddMinutes(-5), now.AddHours(-3), now.AddHours(-3).AddMinutes(1)),
                     new("local-qwen", "Ollama (Hetzner)", "unchecked", now.AddMinutes(-5), null, null),
                 ],

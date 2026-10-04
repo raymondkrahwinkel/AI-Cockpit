@@ -387,7 +387,12 @@ public sealed class ProfileHealthRowViewModel
         IsSignedIn = profile.SignIn == "signedIn";
         SignIn = profile.SignIn switch
         {
-            "signedIn" => "✓ Signed in",
+            "signedIn" => profile.Credential switch
+            {
+                "renewingLogin" => "✓ Signed in · renews itself",
+                "apiKey" => "✓ API key",
+                _ => "✓ Signed in",
+            },
             "expired" => $"✕ Expired {HealthTime.Clock(profile.ExpiredSince, now)}",
             _ => "– Not checked",
         };

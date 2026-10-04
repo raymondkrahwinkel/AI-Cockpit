@@ -35,6 +35,7 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             })
         {
             IsLoggedIn = _IsSignedIn,
+            CredentialKind = _ => PluginCredentialKind.RenewingLogin,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),
         });
     }
