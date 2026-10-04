@@ -385,6 +385,8 @@ public sealed class ProfileHealthRowViewModel
         LastCheck = HealthTime.Clock(profile.LastCheck, now);
         IsExpired = profile.SignIn == "expired";
         IsSignedIn = profile.SignIn == "signedIn";
+        IsReachable = profile.SignIn == "reachable";
+        IsUnreachable = profile.SignIn == "unreachable";
         SignIn = profile.SignIn switch
         {
             "signedIn" => profile.Credential switch
@@ -395,6 +397,8 @@ public sealed class ProfileHealthRowViewModel
                 _ => "✓ Signed in",
             },
             "expired" => $"✕ Expired {HealthTime.Clock(profile.ExpiredSince, now)}",
+            "reachable" => "✓ Reachable",
+            "unreachable" => "✕ Not reachable",
             _ => "– Not checked",
         };
     }
@@ -411,7 +415,11 @@ public sealed class ProfileHealthRowViewModel
 
     public bool IsSignedIn { get; }
 
-    public bool IsUnchecked => !IsExpired && !IsSignedIn;
+    public bool IsReachable { get; }
+
+    public bool IsUnreachable { get; }
+
+    public bool IsUnchecked => !IsExpired && !IsSignedIn && !IsReachable && !IsUnreachable;
 }
 
 public sealed partial class ScheduledRunRowViewModel : ObservableObject

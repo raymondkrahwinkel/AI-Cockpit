@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
@@ -19,9 +20,11 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 {
     // Who the message is from. Not a pane: the cockpit itself noticed this.
     private const string SenderPaneId = "cockpit-login-health";
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ISessionProfileStore _profiles;
     private readonly IProfileLoginChecker _checker;
+    private readonly IModelCatalog _modelCatalog;
     private readonly IAttentionNotifier _notifier;
     private readonly IAgentMessageInbox _inbox;
     private readonly INotificationSettingsStore _settingsStore;
@@ -36,6 +39,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     public ProfileLoginHealthMonitor(
         ISessionProfileStore profiles,
         IProfileLoginChecker checker,
+        IModelCatalog modelCatalog,
         IAttentionNotifier notifier,
         IAgentMessageInbox inbox,
         INotificationSettingsStore settingsStore,
@@ -44,6 +48,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     {
         _profiles = profiles;
         _checker = checker;
+        _modelCatalog = modelCatalog;
         _notifier = notifier;
         _inbox = inbox;
         _settingsStore = settingsStore;
@@ -108,9 +113,26 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
         var previous = Current.ToDictionary(row => row.Profile, StringComparer.Ordinal);
         var next = new List<ProfileLoginHealth>();
-        foreach (var profile in profiles.Where(profile => profile.ProviderConfig is PluginProviderConfig))
+        foreach (var profile in profiles)
         {
             previous.TryGetValue(profile.Label, out var before);
+            if (profile.ProviderConfig is OllamaConfig ollama)
+            {
+                next.Add(await _LocalHealthAsync(profile.Label, ollama.BaseUrl, null, "Ollama", before).ConfigureAwait(false));
+                continue;
+            }
+
+            if (profile.ProviderConfig is LmStudioConfig lmStudio)
+            {
+                next.Add(await _LocalHealthAsync(profile.Label, lmStudio.BaseUrl, lmStudio.ApiKey, "LM Studio", before).ConfigureAwait(false));
+                continue;
+            }
+
+            if (profile.ProviderConfig is not PluginProviderConfig plugin)
+            {
+                continue;
+            }
+
             bool signedIn;
             bool hasCheck;
             try
@@ -133,7 +155,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             var expires = _alarms && before is { SignedIn: true } && !signedIn;
             next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now)
             {
-                Provider = ((PluginProviderConfig)profile.ProviderConfig).ProviderId,
+                Provider = plugin.ProviderId,
                 Credential = signedIn && hasCheck ? _Credential(profile) : ProfileCredentialKind.Unknown,
                 SignIn = !hasCheck ? ProfileSignInKind.Unchecked : signedIn ? ProfileSignInKind.SignedIn : ProfileSignInKind.Expired,
                 AnnouncedAt = signedIn ? null : expires ? now : before?.AnnouncedAt,
@@ -180,6 +202,21 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             _logger.LogWarning("The credential kind for profile {Profile} could not be read ({Error}).", profile.Label, exception.GetType().Name);
             return ProfileCredentialKind.Unknown;
         }
+    }
+
+    private async Task<ProfileLoginHealth> _LocalHealthAsync(string label, string baseUrl, string? apiKey, string provider, ProfileLoginHealth? before)
+    {
+        var reachable = await _modelCatalog.ProbeAsync(baseUrl, apiKey, ProbeTimeout).ConfigureAwait(false);
+        if (!reachable && before?.SignIn == ProfileSignInKind.Reachable)
+        {
+            _logger.LogWarning("The local model server for profile {Profile} is no longer reachable.", label);
+        }
+
+        return new ProfileLoginHealth(label, reachable, DateTimeOffset.UtcNow, null)
+        {
+            Provider = provider,
+            SignIn = reachable ? ProfileSignInKind.Reachable : ProfileSignInKind.Unreachable,
+        };
     }
 
     // Each channel on its own: a webhook that fails must not keep the message from the controller's inbox.

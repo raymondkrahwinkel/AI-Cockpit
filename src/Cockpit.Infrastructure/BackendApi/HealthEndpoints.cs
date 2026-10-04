@@ -183,6 +183,8 @@ internal static partial class HealthEndpoints
     {
         ProfileSignInKind.SignedIn => "signedIn",
         ProfileSignInKind.Expired => "expired",
+        ProfileSignInKind.Reachable => "reachable",
+        ProfileSignInKind.Unreachable => "unreachable",
         _ => "unchecked",
     };
 

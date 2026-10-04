@@ -23,6 +23,8 @@ public enum ProfileSignInKind
     SignedIn,
     Expired,
     Unchecked,
+    Reachable,
+    Unreachable,
 }
 
 // AC-1483: the host's mirror of the plugin contract's PluginCredentialKind; ApiKeyFromSecret is a key from the process environment (AC-1484).
