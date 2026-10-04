@@ -3,12 +3,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
+using static Cockpit.Plugin.Autopilot.AutopilotChannelContract;
 
 namespace Cockpit.Plugin.Autopilot;
 
 // Autopilot (AC-94/AC-174): "issue → merge-ready PR" — the CEO plans, the operator approves once, a run drives each step.
 // AC-1398: the backend part — the runs, the plan and the MCP tools. It names no UI type, so a backend without a window
-// loads it; AutopilotUi, the UI entry type in this same assembly, registers the workspace.
+// loads it; AutopilotUi registers the workspace, which reaches all of this over the channel only (AC-1418).
 public sealed class AutopilotPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -16,10 +17,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         DisplayName: "Autopilot",
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
-
-    // ponytail: the in-process handoff to AutopilotUi while both parts share this assembly; AC-1418 replaces it with
-    // the channel. One plugin instance per load context, so one value.
-    internal static AutopilotParts? Parts { get; private set; }
 
     private readonly List<IDisposable> _handlers = [];
 
@@ -33,7 +30,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
         // The directory of the session the window has selected, as its UI part last reported it.
         string? activeDirectory = null;
-        _handlers.Add(host.Channel.Handle(AutopilotChannel.ActiveDirectory, (payload, _) =>
+        _handlers.Add(host.Channel.Handle(ActiveDirectory, (payload, _) =>
         {
             activeDirectory = payload.ValueKind is JsonValueKind.String ? payload.GetString() : null;
             return Task.FromResult(JsonSerializer.SerializeToElement(true));
@@ -57,6 +54,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // persisted like the queue and history above. List() merges the in-memory plugin registrations with the
         // persisted user/override templates into the one list the settings UI and the plan-flow picker read from.
         var templates = new AutopilotTemplateStore(host.Storage);
+
+        // AC-1418: the workspace and the settings follow all of the above over the plugin's own channel.
+        _handlers.Add(new AutopilotChannel(host, settings, planController, manager, queue, history, templates));
 
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, pane-scoped so
         // only the bound CEO session may set the plan. Internal-only (AC-204): the run's own agents scope to it
@@ -156,16 +156,13 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             // the caller is told it is busy rather than a new run silently replacing the running one.
             if (!planController.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
             {
-                _Publish(host, AutopilotChannel.OpenPlan);
+                _Publish(host, OpenPlan);
                 return new Dictionary<string, string> { ["status"] = "busy", ["issue"] = run.IssueId };
             }
 
-            _Publish(host, AutopilotChannel.OpenPlan);
+            _Publish(host, OpenPlan);
             return new Dictionary<string, string> { ["status"] = "planning", ["issue"] = run.IssueId };
         });
-
-        Parts = new AutopilotParts(host, settings, planController, manager, queue, history, templates);
-
     }
 
     public void Dispose()
@@ -183,7 +180,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     // A planning round needs a CEO profile: without one the host falls back to whatever the first configured
     // profile is, which may be a local/plugin model that cannot plan. Tell the operator and offer settings
     // instead of starting a round that quietly misbehaves. Returns whether a profile is set.
-    private static bool _RequireCeoProfile(ICockpitHost host, AutopilotSettings settings)
+    internal static bool _RequireCeoProfile(ICockpitHost host, AutopilotSettings settings)
     {
         if (!string.IsNullOrWhiteSpace(settings.CeoProfileLabel()))
         {
@@ -194,7 +191,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             "Set a CEO profile in the Autopilot settings before planning.",
             PluginToastSeverity.Warning,
             "Open settings",
-            () => _Publish(host, AutopilotChannel.OpenSettings));
+            () => _Publish(host, OpenSettings));
         return false;
     }
 
@@ -203,7 +200,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     // host stamps the caller, so a mismatch gets the toast only. Writing is once per issue and best-effort.
     private static async Task _RefuseAsync(ICockpitHost host, PluginIntent intent, AutopilotRun run, string reason, HashSet<string> commented)
     {
-        host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _Publish(host, AutopilotChannel.OpenSettings));
+        host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _Publish(host, OpenSettings));
 
         if (string.IsNullOrWhiteSpace(run.IssueId) || !string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase))
         {

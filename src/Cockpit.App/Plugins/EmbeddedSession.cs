@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -44,9 +45,19 @@ internal sealed class EmbeddedSession : IEmbeddedSession
 
     public event Action? Activity;
 
-    public void SetInputEnabled(bool enabled) => _setInput(enabled);
+    // AC-1418: a backend part calls these from its own threads; the session behind them lives on the UI thread.
+    public void SetInputEnabled(bool enabled)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            _setInput(enabled);
+            return;
+        }
 
-    public Task CloseAsync() => _close();
+        Dispatcher.UIThread.Post(() => _setInput(enabled));
+    }
+
+    public Task CloseAsync() => Dispatcher.UIThread.CheckAccess() ? _close() : Dispatcher.UIThread.InvokeAsync(_close);
 
     // The session raises PropertyChanged on the UI thread, so the forwarded BusyChanged is already marshalled for an
     // embedder that touches its controls. Guard on the actual transition so a turn that touches IsBusy without

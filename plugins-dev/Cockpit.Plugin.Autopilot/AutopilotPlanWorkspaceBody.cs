@@ -8,52 +8,34 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Material.Icons;
 using Material.Icons.Avalonia;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using static Cockpit.Plugin.Autopilot.AutopilotChannelContract;
 
 namespace Cockpit.Plugin.Autopilot;
 
 // The CEO plan-flow workspace body (AC-174/AC-175): pipeline blocks on the left, the running step's live session
-// on the right, rendered from the shared `AutopilotPlanController`. Grows up alongside the shipped gate-based
-// `AutopilotWorkspaceBody` rather than replacing it in one move.
+// on the right. AC-1418: drawn from the backend's snapshot of this workspace on the plugin's channel, and every
+// click goes back as an action — the backend's objects never reach this part.
 internal sealed class AutopilotPlanWorkspaceBody : UserControl
 {
-    private readonly ICockpitHost _host;
     private readonly ICockpitUiHost _uiHost;
     private readonly IWorkspaceContext _context;
     private readonly AutopilotSettings _settings;
-    private readonly AutopilotPlanController _plan;
-    private readonly AutopilotRunManager _manager;
-    private readonly AutopilotRunQueue _queue;
-    private readonly AutopilotRunHistory _history;
-    private readonly AutopilotTemplateStore _templates;
-    private readonly AutopilotWorkspaceRuns _runs;
+    private readonly AutopilotChannelClient _client;
+    private readonly IDisposable _following;
 
     private readonly AutopilotSessionViews _sessionViews;
     private readonly ContentControl _bodyHost = new();
 
+    // The newest snapshot of this workspace; empty until the backend's first State after attaching.
+    private AutopilotWorkspaceState _state;
+
     // Which active run's pipeline the right pane shows, when picked explicitly via the "Needs you" badge (AC-440)
-    // rather than the phase-based default. Never cleared explicitly — _DisplayedContext ignores it once the run
+    // rather than the phase-based default. Never cleared explicitly — _DisplayedRun ignores it once the run
     // settles or leaves AwaitingOperator, falling back to the default either way.
-    private AutopilotRunContext? _focusedContext;
-
-    // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint, plus a source-triggered
-    // run's tracker READ-only MCP servers — left default, the CEO would inherit the host's entire selection (161
-    // tools observed). Read tools only, never write — moving stage/posting notes before approval would be premature.
-    internal static IReadOnlyList<string> PlanningCeoMcpServers(IReadOnlyList<string>? trackerReadServers) =>
-        trackerReadServers is { Count: > 0 } servers
-            ? [AutopilotPlanTools.EndpointName, .. servers]
-            : [AutopilotPlanTools.EndpointName];
-
-    // Read-only tracker MCP servers for a source-triggered round (AC-212). Empty for a CEO-first run, an unknown
-    // tracker, or one that reads via a CLI rather than an MCP server. Provider-neutral — never names a tracker.
-    private IReadOnlyList<string> _TrackerReadServers(AutopilotPlanSource? source) =>
-        source is { } item
-            && _host.TrackerProviders.FirstOrDefault(provider => string.Equals(provider.TrackerId, item.Tracker, StringComparison.OrdinalIgnoreCase)) is { } tracker
-            ? tracker.ReadToolMcpServerNames
-            : [];
+    private string? _focusedRunId;
 
     private bool _popoutOpen;
 
@@ -62,27 +44,20 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // it false. One planning round is open at a time (a single pop-out), so one field suffices; reset on each pick.
     private bool _deliversPullRequest;
 
-    public AutopilotPlanWorkspaceBody(ICockpitHost host, ICockpitUiHost uiHost, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history, AutopilotTemplateStore templates)
+    public AutopilotPlanWorkspaceBody(ICockpitUiHost uiHost, IWorkspaceContext context, AutopilotSettings settings, AutopilotChannelClient client)
     {
-        _host = host;
         _uiHost = uiHost;
         _sessionViews = new AutopilotSessionViews(uiHost, message => Trace.TraceWarning(message));
         _context = context;
         _settings = settings;
-        _plan = plan;
-        _manager = manager;
-        _queue = queue;
-        _history = history;
-        _templates = templates;
+        _client = client;
+        _state = new AutopilotWorkspaceState(context.WorkspaceId, AutopilotPlanPhase.Planning, null, null, false, [], [], [], null);
 
         // While this workspace is open its runs are the manager's runner — a run embeds its sessions in this workspace
-        // by id — so attaching starts any runs already queued, and closing stops runs from starting with no surface. The
-        // runs, manager, queue and history raise Changed as runs start/end/queue/settle, which re-renders the surface.
-        _runs = new AutopilotWorkspaceRuns(host, context.WorkspaceId, settings, plan, manager, queue, history, _RunOnUiAsync, _StartPlanningForSubAsync);
-        _runs.Changed += _OnStateChanged;
-        _manager.Changed += _OnStateChanged;
-        _queue.Changed += _OnStateChanged;
-        _history.Changed += _OnStateChanged;
+        // by id — so attaching starts any runs already queued, and closing stops runs from starting with no surface.
+        // Every change the backend makes arrives as a State, which re-renders the surface.
+        _following = client.FollowState(context.WorkspaceId, _Apply);
+        client.Send(Attach, new WorkspaceRef(context.WorkspaceId));
 
         // Stop every running run when this workspace is really closed (its tab dismissed, not a mere tab-switch) so none
         // keeps going headless with no surface to stop it (AC-174).
@@ -116,58 +91,41 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _Render();
     }
 
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        _plan.Changed += _OnChanged;
-        _Render();
-    }
+    // Raised on the UI thread after a new snapshot is applied, so the planning pop-out follows the CEO's draft.
+    private event Action? _StateApplied;
 
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        _plan.Changed -= _OnChanged;
-        base.OnDetachedFromVisualTree(e);
-    }
-
-    // The workspace was really closed (WorkspacesViewModel raised it on tab-dismiss, on the UI thread): stop every
-    // running run so none runs on headless, and stop being the manager's runner so a queued run does not start with no
-    // surface. Cancelling a run unwinds its driver loop and coordinator awaits, closing its step sessions and CEO.
+    // The workspace was really closed (WorkspacesViewModel raised it on tab-dismiss, on the UI thread): the backend
+    // stops every running run so none runs on headless, and stops being the manager's runner.
     private void _OnWorkspaceClosed(object? sender, EventArgs e)
     {
-        _runs.Changed -= _OnStateChanged;
-        _manager.Changed -= _OnStateChanged;
-        _queue.Changed -= _OnStateChanged;
-        _history.Changed -= _OnStateChanged;
-        _runs.Close();
+        _following.Dispose();
+        _client.Send(Detach, new WorkspaceRef(_context.WorkspaceId));
     }
 
-    // The manager or queue changed (a run started/ended/queued) — re-render on the UI thread.
-    private void _OnStateChanged() => _OnUi(_Render);
-
-    private void _OnChanged(object? sender, EventArgs e)
+    private void _Apply(AutopilotWorkspaceState state)
     {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            _Render();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(_Render);
-        }
+        _state = state;
+        _Render();
+        _StateApplied?.Invoke();
     }
 
     private void _Render()
     {
         // Open the planning pop-out once per round, not per plan edit: the CEO re-emitting the plan makes a new
         // AutopilotPlan instance, so keying on the instance reopened the pop-out — embedding a fresh, empty CEO session
-        // and wiping the planning chat — on every emit. A flag, cleared when the pop-out closes, opens it exactly once.
-        if (_plan.Phase == AutopilotPlanPhase.Planning && _plan.Plan is not null && !_popoutOpen)
+        // and wiping the planning chat — on every emit. A flag opens it exactly once; it is cleared by the first snapshot
+        // without a round, not when the pop-out closes, so a snapshot taken before the close cannot reopen it.
+        if (_state.PlanningPhase != AutopilotPlanPhase.Planning || _state.PlanningPlan is null)
+        {
+            _popoutOpen = false;
+        }
+        else if (!_popoutOpen)
         {
             _popoutOpen = true;
             Dispatcher.UIThread.Post(() => _ = _ShowPlanningPopoutAsync());
         }
 
-        _sessionViews.Retain(_runs.Active.SelectMany(context => new[] { context.StepPaneId, context.CeoPaneId }));
+        _sessionViews.Retain(_state.Runs.SelectMany(run => new[] { run.StepPaneId, run.CeoPaneId }));
         _bodyHost.Content = _BuildSurface();
     }
 
@@ -183,16 +141,16 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         // History docks at the bottom, under the running run, so a settled run that left the live
         // surface is still visible — what it was and how it ended — rather than vanishing. Only shown once there is any.
-        if (_history.Count > 0)
+        if (_state.History.Count > 0)
         {
             var historyPanel = _BuildHistorySection();
             DockPanel.SetDock(historyPanel, Dock.Bottom);
             surface.Children.Add(historyPanel);
         }
 
-        surface.Children.Add(_DisplayedContext() is { } displayed
+        surface.Children.Add(_DisplayedRun() is { } displayed
             ? _BuildPipeline(displayed)
-            : _manager.AwaitingEpicGo is { } epicAtGate
+            : _state.AwaitingEpicGo is { } epicAtGate
                 ? _BuildEpicGatePanel(epicAtGate)
                 : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
 
@@ -202,19 +160,19 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // Which of the active runs the right pane shows (AC-440). An explicit pick wins only while that run is still
     // active AND still awaiting the operator — otherwise it's stale and must not stick. Absent a live pick, a run
     // in AwaitingOperator wins over one merely Running, so a second run's blockade is never hidden behind the first.
-    private AutopilotRunContext? _DisplayedContext()
+    private AutopilotRunState? _DisplayedRun()
     {
-        if (_focusedContext is { } focused && _runs.Active.Contains(focused) && focused.Controller.Phase == AutopilotPlanPhase.AwaitingOperator)
+        if (_state.Runs.FirstOrDefault(run => run.RunId == _focusedRunId) is { Phase: AutopilotPlanPhase.AwaitingOperator } focused)
         {
             return focused;
         }
 
-        if (_runs.Active.Count == 0)
+        if (_state.Runs.Count == 0)
         {
             return null;
         }
 
-        return _runs.Active[PreferredContextIndex(_runs.Active.Select(context => context.Controller.Phase).ToList())];
+        return _state.Runs[PreferredContextIndex(_state.Runs.Select(run => run.Phase).ToList())];
     }
 
     // Pure so the default-pick rule is unit-testable without a host or a UI thread, the same way NeedsOperatorAttention
@@ -233,19 +191,19 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     }
 
     // The badge was clicked (AC-440): step to the next run awaiting the operator, past the one shown right now.
-    // Using _DisplayedContext() (not _focusedContext) makes a click on a single awaiting run a no-op instead of a
+    // Using _DisplayedRun() (not _focusedRunId) makes a click on a single awaiting run a no-op instead of a
     // same-run re-pick — re-picking would re-render and drop whatever the operator had already typed.
     private void _FocusNextAwaitingRun()
     {
-        var awaiting = _runs.Active.Where(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator).ToList();
-        var current = _DisplayedContext();
+        var awaiting = _state.Runs.Where(run => run.Phase == AutopilotPlanPhase.AwaitingOperator).Select(run => run.RunId).ToList();
+        var current = _DisplayedRun()?.RunId;
         var nextIndex = NextAwaitingIndex(awaiting.Count, current is null ? -1 : awaiting.IndexOf(current));
-        if (nextIndex is not { } index || ReferenceEquals(awaiting[index], current))
+        if (nextIndex is not { } index || awaiting[index] == current)
         {
             return;
         }
 
-        _focusedContext = awaiting[index];
+        _focusedRunId = awaiting[index];
         _Render();
     }
 
@@ -268,7 +226,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,
         };
-        clear.Click += (_, _) => _history.Clear();
+        clear.Click += (_, _) => _client.Send(HistoryClear);
 
         var titleRow = new DockPanel
         {
@@ -278,7 +236,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 clear,
                 new TextBlock
                 {
-                    Text = $"History · {_history.Count}",
+                    Text = $"History · {_state.History.Count}",
                     FontWeight = FontWeight.SemiBold,
                     FontSize = 11.5,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -292,7 +250,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // readable rather than overflowing when the header is narrow.
         var reliability = new TextBlock
         {
-            Text = AutopilotRunReliability.Summarize(_history.Items).Describe(),
+            Text = AutopilotRunReliability.Summarize(_state.History).Describe(),
             FontSize = 10.5,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextFaintBrush"),
@@ -310,7 +268,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var list = new StackPanel { Spacing = 0 };
-        foreach (var record in _history.Items)
+        foreach (var record in _state.History)
         {
             list.Children.Add(_BuildHistoryRow(record));
         }
@@ -524,8 +482,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return new Border { Child = lines, ContextMenu = _CorrectionMenu(record, stepIndex) };
     }
 
-    // The reclassify menu (AC-347): sets CorrectionSource to Operator so a manual override stays visible as one.
-    // Closes over the record instance rather than its position, so an edit lands on the run it opened on
+    // The reclassify menu (AC-347): the backend sets CorrectionSource to Operator so a manual override stays visible
+    // as one. Names the run and its finish time rather than its position, so an edit lands on the run it opened on
     // even if another run settles in the meantime.
     private ContextMenu _CorrectionMenu(AutopilotRunRecord record, int stepIndex)
     {
@@ -548,12 +506,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    private void _SetStepCorrection(AutopilotRunRecord record, int stepIndex, AutopilotCorrectionKind kind)
-    {
-        var steps = record.Steps.ToList();
-        steps[stepIndex] = steps[stepIndex] with { Correction = kind, CorrectionSource = AutopilotCorrectionSource.Operator };
-        _history.Replace(record, record with { Steps = steps });
-    }
+    private void _SetStepCorrection(AutopilotRunRecord record, int stepIndex, AutopilotCorrectionKind kind) =>
+        _client.Send(HistoryCorrect, new CorrectionRequest(record.RunId, record.FinishedAt, stepIndex, kind));
 
     // The finish time as a short, local, human string — parsed from the stored ISO stamp; the raw stamp is the fallback
     // if it somehow does not parse, so a row never shows blank.
@@ -575,13 +529,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         newRun.Click += (_, _) => _StartPlanningRound();
 
-        var running = _runs.Active.Count;
+        var running = _state.Runs.Count;
         var summary = new TextBlock
         {
             Text = running switch
             {
-                0 when _queue.Count == 0 => "No runs queued.",
-                _ => $"{running} running · {_queue.Count} queued",
+                0 when _state.Queue.Count == 0 => "No runs queued.",
+                _ => $"{running} running · {_state.Queue.Count} queued",
             },
             FontSize = 11,
             Margin = new Thickness(12, 0, 0, 0),
@@ -595,8 +549,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // The persistent "needs you" marker (AC-203): while any active run sits in AwaitingOperator it stands here on the
         // queue bar, so it appears whichever run or the history the operator is looking at. Added docked Right on the same
         // row as New run / the summary — see _BuildNeedsYouBadge for why it persists and why a consult never trips it.
-        var awaiting = _runs.Active.Count(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator);
-        if (NeedsOperatorAttention(_runs.Active.Select(context => context.Controller.Phase)))
+        var awaiting = _state.Runs.Count(run => run.Phase == AutopilotPlanPhase.AwaitingOperator);
+        if (NeedsOperatorAttention(_state.Runs.Select(run => run.Phase)))
         {
             headRow.Children.Add(_BuildNeedsYouBadge(awaiting));
         }
@@ -610,15 +564,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Child = headRow,
         };
 
-        if (_queue.Count == 0)
+        if (_state.Queue.Count == 0)
         {
             return head;
         }
 
         var list = new StackPanel { Spacing = 0 };
-        for (var index = 0; index < _queue.Items.Count; index++)
+        for (var index = 0; index < _state.Queue.Count; index++)
         {
-            list.Children.Add(_BuildQueueRow(index, _queue.Items[index]));
+            list.Children.Add(_BuildQueueRow(index, _state.Queue[index]));
         }
 
         return new DockPanel { LastChildFill = false, Children = { head, new Border { [DockPanel.DockProperty] = Dock.Top, Child = list } } };
@@ -699,9 +653,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, [DockPanel.DockProperty] = Dock.Right };
-        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowUp, () => _queue.MoveUp(index)));
-        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowDown, () => _queue.MoveDown(index)));
-        buttons.Children.Add(_QueueButton(MaterialIconKind.Close, () => _queue.RemoveAt(index)));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowUp, () => _client.Send(QueueMoveUp, new QueueRequest(index))));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.ArrowDown, () => _client.Send(QueueMoveDown, new QueueRequest(index))));
+        buttons.Children.Add(_QueueButton(MaterialIconKind.Close, () => _client.Send(QueueRemove, new QueueRequest(index))));
 
         return new Border
         {
@@ -737,7 +691,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             return;
         }
 
-        _plan.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
+        _ = _client.BeginPlanningAsync();
     }
 
     // A planning round needs a CEO profile: without one the host falls back to whatever the first configured profile is,
@@ -750,49 +704,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             return true;
         }
 
-        _host.ShowToast(
+        _uiHost.ShowToast(
             "Set a CEO profile in the Autopilot settings before planning.",
             PluginToastSeverity.Warning,
             "Open settings",
             () => _ = _uiHost.ShowSettingsAsync());
         return false;
-    }
-
-    // The "plan" intent's start, minus the click (AC-1340): the sub the epic-runner picked opens its planning round
-    // on the shared controller, and the render below pops the CEO out — AC-1339 then submits a groomed sub itself.
-    // Returns why it could not start, or null when it did; `_popoutOpen` is the one planning round at a time (D4).
-    private async Task<string?> _StartPlanningForSubAsync(AutopilotRun run)
-    {
-        string? refused = null;
-        await _RunOnUiAsync(() =>
-        {
-            if (_popoutOpen)
-            {
-                refused = "a planning round is already open";
-                return;
-            }
-
-            if (AutopilotPlugin._HasRunInFlight(_plan, _queue, _manager, run.Tracker, run.IssueId))
-            {
-                refused = $"a run on {run.IssueId} is already in flight";
-                return;
-            }
-
-            if (!_RequireCeoProfile())
-            {
-                refused = "no CEO profile is set in the Autopilot settings";
-                return;
-            }
-
-            if (_plan.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
-            {
-                _Render();
-                return;
-            }
-
-            refused = "the shared plan controller is busy with another run";
-        });
-        return refused;
     }
 
     // The planning pop-out (AC-174/AC-175): the draft plan on the left updating live as the CEO revises it, the CEO's
@@ -804,15 +721,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         {
             // The template choice (AC-189, slice 3): the CEO's kickoff is fixed at embed, so let the operator pick
             // a template or plan free first. Cancelling the picker backs out of the whole round.
-            var pick = await _PickTemplateAsync(_plan.Plan?.Source);
+            var pick = await _PickTemplateAsync(_state.PlanningPlan?.Source);
             if (pick.Cancelled)
             {
-                _popoutOpen = false;
-                if (_plan.Phase == AutopilotPlanPhase.Planning)
-                {
-                    _plan.CancelPlanning();
-                }
-
+                _client.Send(CancelPlanning);
                 return;
             }
 
@@ -820,37 +732,19 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             // a code template ends the run with a merge-ready PR, free planning or an admin template does not.
             _deliversPullRequest = pick.Template?.DeliversPullRequest ?? false;
 
-            var kickoff = AutopilotTemplateKickoff.Build(pick.Template, _plan.Plan?.Source);
+            var kickoff = AutopilotTemplateKickoff.Build(pick.Template, _state.PlanningPlan?.Source);
             if (pick.Template is not null && kickoff.MissingPlaceholders.Count > 0)
             {
                 // The resolver never fails on an unfilled placeholder — it leaves the gap blank and reports it — so tell
                 // the operator which ones were empty rather than letting a silent hole ride into the CEO's brief.
-                _host.ShowToast(
+                _uiHost.ShowToast(
                     $"Template “{pick.Template.Name}”: no value for {string.Join(", ", kickoff.MissingPlaceholders)} — left blank.",
                     PluginToastSeverity.Information);
             }
 
-            // The CEO gets its briefing as a hidden system prompt given at start (AC-180) — not a visible turn, so
-            // it can't race the session's runtime coming up the way a post-start message did.
-            var profiles = await _host.GetProfilesAsync();
-            var ceoLabel = _settings.CeoProfileLabel();
-            // A blank setting means the app default, which the host resolves to the first configured profile —
-            // resolve the same one here so the CEO still knows who it is.
-            var ceoIdentity = string.IsNullOrWhiteSpace(ceoLabel) ? profiles.FirstOrDefault()?.Label : ceoLabel;
-
-            var ceo = _runs.EmbedPlanningCeo(new EmbeddedSessionRequest
-            {
-                ProfileId = ceoLabel,
-                Model = _settings.CeoModel(),
-                McpServers = PlanningCeoMcpServers(_TrackerReadServers(_plan.Plan?.Source)),
-                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_uiHost.ActiveSessionWorkingDirectory, _plan.Plan?.WorkingDirectory),
-                AppendSystemPrompt = _plan.Plan is { } plan
-                    ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty))
-                    : null,
-                // The kickoff (AC-189): a chosen template's body, else the tracker kickoff or null for a CEO-first
-                // run. Built above from the picker choice; the host submits it after the runtime is up.
-                InitialUserMessage = kickoff.Message,
-            }) ?? throw new InvalidOperationException("This host cannot embed sessions.");
+            // The backend briefs and embeds the CEO; the selected session's folder is the fallback for where it works.
+            var ceo = await _client.EmbedPlanningCeoAsync(new PlanningCeoRequest(_context.WorkspaceId, _uiHost.ActiveSessionWorkingDirectory, kickoff.Message))
+                ?? throw new InvalidOperationException("This host cannot embed sessions.");
             // One planning pop-out per plugin: reopening while it's up should refocus it, not stack a second one.
             await _uiHost.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), "plan", width: 980, height: 660);
         }
@@ -861,14 +755,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         // The dialog closed — approved or cancelled. Either way close the planning CEO and reset the controller so
         // the next New run starts fresh. The run itself executes on its own context with its own CEO validator.
-        _popoutOpen = false;
-
-        _runs.ClosePlanningCeo();
-
-        if (_plan.Phase == AutopilotPlanPhase.Planning)
-        {
-            _plan.CancelPlanning();
-        }
+        _client.Send(ClosePlanningCeo, new WorkspaceRef(_context.WorkspaceId));
+        _client.Send(CancelPlanning);
     }
 
     // The template picker (AC-189, slice 3): a small modal before the CEO pop-out to pick a template or plan free.
@@ -876,17 +764,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // straight to free planning, so an empty catalogue never puts a needless dialog in the way.
     private async Task<(bool Cancelled, AutopilotTemplate? Template)> _PickTemplateAsync(AutopilotPlanSource? source)
     {
-        IReadOnlyList<AutopilotTemplate> templates;
-        try
+        // A template store that cannot list must not block a run — fall back to free planning.
+        if (await _client.TemplatesAsync() is not { } catalog)
         {
-            templates = _templates.List(_host.RegisteredAutopilotTemplates);
-        }
-        catch (Exception)
-        {
-            // A template store that cannot list must not block a run — fall back to free planning.
             return (false, null);
         }
 
+        var templates = catalog.Templates;
+        string? PluginName(string pluginId) => catalog.PluginNames.GetValueOrDefault(pluginId);
         if (templates.Count == 0)
         {
             return (false, null);
@@ -920,7 +805,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
             var template = templates[selectedIndex - 1];
             var preview = AutopilotTemplateResolver.Resolve(template.Body, AutopilotTemplateKickoff.SourceData(source));
-            var origin = AutopilotTemplateOptionLabel.OriginLabel(template, _PluginName);
+            var origin = AutopilotTemplateOptionLabel.OriginLabel(template, PluginName);
             detail.Text = preview.MissingPlaceholders.Count > 0
                 ? $"{origin} · placeholders left blank: {string.Join(", ", preview.MissingPlaceholders)}\n\n{preview.Text}"
                 : $"{origin}\n\n{preview.Text}";
@@ -993,7 +878,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             : "Selected by default. Leave it as-is to plan without a template: the CEO asks what the run should achieve, then plans it with you.");
         for (var i = 0; i < templates.Count; i++)
         {
-            AddOption(i + 1, AutopilotTemplateOptionLabel.For(templates[i], _PluginName), string.Empty);
+            AddOption(i + 1, AutopilotTemplateOptionLabel.For(templates[i], PluginName), string.Empty);
         }
 
         Select(0);
@@ -1068,39 +953,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return (cancelled, chosen);
     }
 
-    // A plugin's readable name for its host-stamped id, or null when no installed plugin matches — the
-    // origin-label helper then falls back to the bare id.
-    private string? _PluginName(string pluginId) =>
-        _host.InstalledPlugins.FirstOrDefault(plugin => string.Equals(plugin.Id, pluginId, StringComparison.Ordinal))?.DisplayName;
-
-    // Runs a UI action for the coordinator (session embedding and teardown touch Avalonia controls; the driver loop does
-    // not run on the UI thread). Inline when already on it, marshalled otherwise.
-    private static async Task _RunOnUiAsync(Action action)
+    private Control _BuildPlanningContent(string ceoPaneId)
     {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        await Dispatcher.UIThread.InvokeAsync(action);
-    }
-
-    private static void _OnUi(Action action)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            action();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(action);
-        }
-    }
-
-    private Control _BuildPlanningContent(IEmbeddedSession ceo)
-    {
-        var planHost = new ContentControl { Content = _BuildBlocks(_plan.Plan) };
+        var planHost = new ContentControl { Content = _BuildBlocks(_state.PlanningPlan) };
 
         // The run name field: the CEO proposes a name and it pre-fills here, but the operator can override it,
         // and it must be non-empty before Approve. A "mirroring" guard tells the CEO's proposal apart from the
@@ -1113,7 +968,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         var nameEdited = false;
         var lastMirrored = string.Empty;
-        string Proposed() => _plan.Plan?.SuggestedName ?? string.Empty;
+        string Proposed() => _state.PlanningPlan?.SuggestedName ?? string.Empty;
         void SetName(string text)
         {
             lastMirrored = text;
@@ -1128,7 +983,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var activeWorkingDirectory = _uiHost.ActiveSessionWorkingDirectory ?? string.Empty;
         var dirEdited = false;
         var lastMirroredDir = string.Empty;
-        string ProposedDir() => _plan.Plan?.WorkingDirectory is { Length: > 0 } proposed ? proposed : activeWorkingDirectory;
+        string ProposedDir() => _state.PlanningPlan?.WorkingDirectory is { Length: > 0 } proposed ? proposed : activeWorkingDirectory;
         void SetDir(string text)
         {
             lastMirroredDir = text;
@@ -1181,9 +1036,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         SetName(Proposed());
         SetDir(ProposedDir());
         Recheck();
-        void OnPlanChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+        void OnPlanChanged()
         {
-            planHost.Content = _BuildBlocks(_plan.Plan);
+            planHost.Content = _BuildBlocks(_state.PlanningPlan);
             if (!nameEdited)
             {
                 SetName(Proposed());
@@ -1195,9 +1050,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             }
 
             Recheck();
-        });
-        _plan.Changed += OnPlanChanged;
-        planHost.DetachedFromVisualTree += (_, _) => _plan.Changed -= OnPlanChanged;
+        }
+
+        _StateApplied += OnPlanChanged;
+        planHost.DetachedFromVisualTree += (_, _) => _StateApplied -= OnPlanChanged;
 
         // A one-line hint above the plan: steps and their models are added, removed or re-targeted by asking the
         // CEO in the chat (AC-174 — clickable per-step model pills were dropped in favour of this).
@@ -1278,18 +1134,20 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for
         // minutes and the shared session view's own indicator stays deaf during streaming, so without this the
         // pop-out reads as hung. Same accent bar the run shows on validation (_BuildValidatingSurface), not a floating pill.
+        // The backend reads the CEO's busy flag off its session and carries it in the snapshot.
         var working = _BuildCeoWorkingCue();
-        var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
-            Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
+        void ShowBusy() => working.IsVisible = _state.PlanningCeoBusy;
+        ShowBusy();
+        _StateApplied += ShowBusy;
         var right = new Border
         {
             Child = new DockPanel
             {
                 LastChildFill = true,
-                Children = { working, new Border { Child = _sessionViews.For(ceo.PaneId) } },
+                Children = { working, new Border { Child = _sessionViews.For(ceoPaneId) } },
             },
         };
-        right.DetachedFromVisualTree += (_, _) => busy.Dispose();
+        right.DetachedFromVisualTree += (_, _) => _StateApplied -= ShowBusy;
 
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
@@ -1333,7 +1191,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     // The plan is approvable only when the CEO has planned at least one step — an empty plan would start a run with
     // nothing to do.
-    private bool _HasApprovableSteps() => _plan.Plan is { Steps.Count: > 0 };
+    private bool _HasApprovableSteps() => _state.PlanningPlan is { Steps.Count: > 0 };
 
     // The working-directory field (AC-174): a run planned from a tracker issue has no session, so the operator
     // names the folder here — the same folders the New-session dialog offers, plus Browse. A non-git folder is
@@ -1365,7 +1223,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             try
             {
                 // Loaded on click, not at build, so the flyout is always current and there is no async race at build time.
-                var remembered = await _host.GetRememberedWorkingPathsAsync();
+                var remembered = await _client.RememberedPathsAsync() ?? new PluginRememberedWorkingPaths([], []);
                 var menu = new MenuFlyout();
                 foreach (var favorite in remembered.Favorites)
                 {
@@ -1486,15 +1344,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         {
             // Approve submits the draft to the run manager, which runs it now or queues it — not the planning
             // controller. The button is only enabled once the plan has steps, a name and a directory.
-            if (_plan.Plan is { Steps.Count: > 0 } plan)
-            {
-                var name = nameProvider().Trim();
-                var approved = string.IsNullOrEmpty(name) ? plan : plan.WithName(name);
-                _manager.Submit(approved
-                    .WithWorkingDirectory(workingDirectoryProvider().Trim())
-                    .WithDeliversPullRequest(_deliversPullRequest)
-                    .WithMergeMode(mergeModeProvider()));
-            }
+            _client.Send(Submit, new SubmitRequest(nameProvider(), workingDirectoryProvider(), _deliversPullRequest, mergeModeProvider()));
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
         };
@@ -1604,10 +1454,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     }
 
     // One running run's pipeline: its goal and step blocks on the left, its active step's session (or a hint) on the right.
-    private Control _BuildPipeline(AutopilotRunContext context)
+    private Control _BuildPipeline(AutopilotRunState run)
     {
-        var controller = context.Controller;
-        var plan = controller.Plan;
+        var plan = run.Plan;
 
         var goalText = new TextBlock
         {
@@ -1621,7 +1470,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // While the run is live the operator can stop it (AC-196): settles it Stopped and records it in history,
         // rather than vanishing silently. Only shown while running or waiting.
         // TODO(AC-196): a confirmation ("Stop run? unmerged work is discarded") is UX-wanted but out of scope here.
-        var live = controller.Phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator;
+        var live = run.Phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator;
         var stop = new Button
         {
             Content = "Stop run",
@@ -1631,14 +1480,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Margin = new Thickness(8, 0, 0, 0),
             [DockPanel.DockProperty] = Dock.Right,
         };
-        stop.Click += (_, _) =>
-        {
-            // Set the Stopped phase first, then cancel (order matters — see AutopilotPlanController.Stop): the driver
-            // settles only when every step finished, never on a mid-run cancel, so the phase the surface snapshots after
-            // the run tears down stays Stopped rather than being overwritten.
-            context.Controller.Stop("Stopped by operator");
-            context.Cancel();
-        };
+        stop.Click += (_, _) => _client.Send(Stop, new RunRequest(_context.WorkspaceId, run.RunId));
 
         var goal = new DockPanel
         {
@@ -1661,21 +1503,21 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // The right pane, in priority: a blockade the operator must answer (AC-155); the CEO's validation of a finished
         // step, shown as the CEO session under a clear banner so it is obvious the CEO is reviewing;
         // the live step session under an intervene bar; or a hint between steps.
-        var ceoView = _sessionViews.For(context.CeoPaneId);
-        var stepView = _sessionViews.For(context.StepPaneId);
-        var validating = context.IsValidating && ceoView is not null;
+        var ceoView = _sessionViews.For(run.CeoPaneId);
+        var stepView = _sessionViews.For(run.StepPaneId);
+        var validating = run.IsValidating && ceoView is not null;
         var right = new Border
         {
-            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || context.Coordinator.AwaitingMergeGo || (!validating && stepView is null) ? new Thickness(16) : new Thickness(0),
-            Child = controller.Phase == AutopilotPlanPhase.AwaitingOperator
-                ? _BuildBlockadePanel(context)
-                : context.Coordinator.AwaitingMergeGo
-                ? _BuildMergeGatePanel(context)
+            Padding = run.Phase == AutopilotPlanPhase.AwaitingOperator || run.AwaitingMergeGo || (!validating && stepView is null) ? new Thickness(16) : new Thickness(0),
+            Child = run.Phase == AutopilotPlanPhase.AwaitingOperator
+                ? _BuildBlockadePanel(run)
+                : run.AwaitingMergeGo
+                ? _BuildMergeGatePanel(run)
                 : validating && ceoView is not null
                     ? _BuildValidatingSurface(ceoView)
                     : stepView is not null
-                        ? _BuildStepSurface(context, stepView)
-                        : controller.ActiveStep is { } active
+                        ? _BuildStepSurface(run, stepView)
+                        : plan?.Active is { } active
                             ? _CentredHint(MaterialIconKind.PlayCircleOutline, active.Title, active.Description)
                             : _CentredHint(MaterialIconKind.RobotOutline, "Waiting for the next step", "The running step's live session shows here."),
         };
@@ -1686,7 +1528,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // The running step's session under an intervene bar (AC-174): the step runs autonomously with its composer off, so a
     // bar over it says so and offers one button that hands the operator the keyboard (EnableCurrentStepInput). Kept a
     // thin affordance — the operator stays out of the loop unless they choose to step in.
-    private Control _BuildStepSurface(AutopilotRunContext context, Control stepView)
+    private Control _BuildStepSurface(AutopilotRunState run, Control stepView)
     {
         // The step view is a persistent control reused across renders and still sits in the previous render's
         // container — Avalonia throws when a control with a parent is placed into a new one. Detach first.
@@ -1701,7 +1543,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,
         };
-        intervene.Click += (_, _) => context.Coordinator.EnableCurrentStepInput();
+        intervene.Click += (_, _) => _client.Send(Intervene, new RunRequest(_context.WorkspaceId, run.RunId));
 
         var bar = new Border
         {
@@ -1816,10 +1658,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var go = new Button { Classes = { "Accent" }, Content = "Open the pull request to main" };
-        go.Click += (_, _) => _manager.ReportMergeGo(epicId, go: true, _Trimmed(reason.Text), "the operator");
+        go.Click += (_, _) => _client.Send(EpicGo, new MergeGoRequest(_context.WorkspaceId, string.Empty, epicId, Go: true, _Trimmed(reason.Text)));
 
         var refuse = new Button { Classes = { "Ghost" }, Content = "Refuse" };
-        refuse.Click += (_, _) => _manager.ReportMergeGo(epicId, go: false, _Trimmed(reason.Text) ?? "refused on the Autopilot surface", "the operator");
+        refuse.Click += (_, _) => _client.Send(EpicGo, new MergeGoRequest(_context.WorkspaceId, string.Empty, epicId, Go: false, _Trimmed(reason.Text) ?? "refused on the Autopilot surface"));
 
         return new ScrollViewer
         {
@@ -1847,9 +1689,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // The merge gate (AC-1338, explicit mode): both review gates passed and the evidence went to the assistant; the
     // operator can give the go or refuse it here — the same answer autopilot_merge_go gives from a session. The reason
     // box is optional on a go and the record of why on a refusal.
-    private Control _BuildMergeGatePanel(AutopilotRunContext context)
+    private Control _BuildMergeGatePanel(AutopilotRunState run)
     {
-        var issue = context.Controller.Plan?.Source?.IssueId is { Length: > 0 } id ? id : context.Controller.Plan?.Label ?? string.Empty;
+        var issue = run.Plan?.Source?.IssueId is { Length: > 0 } id ? id : run.Plan?.Label ?? string.Empty;
         var reason = new TextBox
         {
             AcceptsReturn = true,
@@ -1859,12 +1701,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         var go = new Button { Classes = { "Accent" }, Content = "Merge go" };
-        go.Click += (_, _) => context.Coordinator.ReportMergeGo(issue, go: true, _Trimmed(reason.Text), "the operator");
+        go.Click += (_, _) => _client.Send(MergeGo, new MergeGoRequest(_context.WorkspaceId, run.RunId, issue, Go: true, _Trimmed(reason.Text)));
 
         var refuse = new Button { Classes = { "Ghost" }, Content = "Refuse" };
-        refuse.Click += (_, _) => context.Coordinator.ReportMergeGo(issue, go: false, _Trimmed(reason.Text) ?? "refused on the run", "the operator");
+        refuse.Click += (_, _) => _client.Send(MergeGo, new MergeGoRequest(_context.WorkspaceId, run.RunId, issue, Go: false, _Trimmed(reason.Text) ?? "refused on the run"));
 
-        var note = context.Controller.Plan?.Steps.LastOrDefault()?.Note;
+        var note = run.Plan?.Steps.LastOrDefault()?.Note;
         return new ScrollViewer
         {
             Content = new StackPanel
@@ -1894,7 +1736,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // The blockade panel (AC-155): the step's question, an answer box, and a Send that relays the reply and resumes
     // the run. Wrapped in its own ScrollViewer since AC-440 — an escalation's question and advice routinely runs
     // longer than the pane, and without scrolling it used to push the answer box and Send out of reach.
-    private Control _BuildBlockadePanel(AutopilotRunContext context)
+    private Control _BuildBlockadePanel(AutopilotRunState run)
     {
         var answer = new TextBox
         {
@@ -1915,7 +1757,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             var text = answer.Text;
             if (!string.IsNullOrWhiteSpace(text))
             {
-                _ = context.Coordinator.AnswerBlockadeAsync(text);
+                _client.Send(Answer, new AnswerRequest(_context.WorkspaceId, run.RunId, text));
             }
         };
 
@@ -1936,7 +1778,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                             new TextBlock { Text = "Waiting for you", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
                             new TextBlock
                             {
-                                Text = context.Controller.PendingQuestion ?? "The run is blocked and needs your answer.",
+                                Text = run.PendingQuestion ?? "The run is blocked and needs your answer.",
                                 FontSize = 14,
                                 TextWrapping = TextWrapping.Wrap,
                                 Foreground = _Brush("CockpitTextPrimaryBrush"),

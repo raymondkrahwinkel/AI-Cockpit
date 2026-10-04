@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
@@ -49,9 +50,18 @@ internal sealed class DesktopBackendHost(
     }
 
     // AC-1398: the route WorkspaceContext.EmbedSession takes, reachable by workspace id so a backend part can embed
-    // what its UI part's workspace shows. Unmarshalled like that route: the caller is on the UI thread already.
-    public IEmbeddedSession? EmbedSession(string workspaceId, EmbeddedSessionRequest request) =>
-        Services.GetService<IEmbeddedSessionHost>()?.Embed(workspaceId, request);
+    // what its UI part's workspace shows. AC-1418: marshals itself, since a backend part has no UI thread to be on.
+    public IEmbeddedSession? EmbedSession(string workspaceId, EmbeddedSessionRequest request)
+    {
+        if (Services.GetService<IEmbeddedSessionHost>() is not { } host)
+        {
+            return null;
+        }
+
+        return Dispatcher.UIThread.CheckAccess()
+            ? host.Embed(workspaceId, request)
+            : Dispatcher.UIThread.Invoke(() => host.Embed(workspaceId, request));
+    }
 
     // Maps by name, not ordinal.
     private static ToastSeverity _ToToastSeverity(PluginToastSeverity severity) => severity switch

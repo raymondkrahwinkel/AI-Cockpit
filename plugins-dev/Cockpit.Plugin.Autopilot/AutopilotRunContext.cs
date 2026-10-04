@@ -12,7 +12,6 @@ internal sealed class AutopilotRunContext
     private readonly ICockpitHost _host;
     private readonly string _workspaceId;
     private readonly AutopilotSettings _settings;
-    private readonly Func<Action, Task> _runOnUi;
     private readonly CancellationTokenSource _cts = new();
     private readonly Lock _phaseLock = new();
     private AutopilotPlanPhase _lastPhase = AutopilotPlanPhase.Planning;
@@ -70,12 +69,11 @@ internal sealed class AutopilotRunContext
                 : $"{AutopilotValidatorBrief.For(plan)}\n\n{carryOver}",
         };
 
-    public AutopilotRunContext(ICockpitHost host, string workspaceId, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
+    public AutopilotRunContext(ICockpitHost host, string workspaceId, AutopilotSettings settings, AutopilotPlan plan)
     {
         _host = host;
         _workspaceId = workspaceId;
         _settings = settings;
-        _runOnUi = runOnUi;
 
         Plan = plan;
         Controller = new AutopilotPlanController();
@@ -195,7 +193,7 @@ internal sealed class AutopilotRunContext
             // step's summary — when validating; the main checkout when there is no run worktree.
             _ceoDirectory = runWorktree?.Path ?? repositoryDirectory;
             IEmbeddedSession? ceo = null;
-            await _runOnUi(() =>
+            await _Now(() =>
             {
                 ceo = _EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, plan, RunId));
             });
@@ -210,7 +208,7 @@ internal sealed class AutopilotRunContext
             Controller.Approve();
 
             var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch, RunId, plan.Label, collectionBranch);
-            await Coordinator.RunAsync(_EmbedSession, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
+            await Coordinator.RunAsync(_EmbedSession, ceo, _settings, _ShowStepView, _SetValidating, environment, _Now, _cts.Token);
         }
         catch (Exception)
         {
@@ -219,7 +217,7 @@ internal sealed class AutopilotRunContext
         finally
         {
             Controller.Changed -= OnControllerChanged;
-            await _runOnUi(() =>
+            await _Now(() =>
             {
                 StepPaneId = null;
                 if (_ceo is { } settled)
@@ -236,7 +234,7 @@ internal sealed class AutopilotRunContext
 
     // A run entered the AwaitingOperator wait (AC-155/AC-194): tell the operator once, since they may be working
     // elsewhere while the run sits blocked. OnControllerChanged fires on every re-render, so the previous-phase edge
-    // guard keeps it to one toast per wait; marshalled to the UI thread since Changed fires from other threads too.
+    // guard keeps it to one toast per wait.
     private void _MaybeNotifyAwaiting()
     {
         var current = Controller.Phase;
@@ -257,7 +255,7 @@ internal sealed class AutopilotRunContext
         var message = string.IsNullOrWhiteSpace(question)
             ? $"Run “{label}” needs you."
             : $"Run “{label}” needs you — {question}";
-        _ = _runOnUi(() => _host.ShowToast(message, PluginToastSeverity.Warning));
+        _ = _Now(() => _host.ShowToast(message, PluginToastSeverity.Warning));
     }
 
     // The phase edge that warrants a "needs you" toast: only the transition INTO AwaitingOperator, never a re-render
@@ -271,7 +269,7 @@ internal sealed class AutopilotRunContext
     private async Task<IEmbeddedSession?> _CheckpointCeoAsync(string carryOver)
     {
         IEmbeddedSession? fresh = null;
-        await _runOnUi(() =>
+        await _Now(() =>
         {
             fresh = _EmbedSession(ValidatorCeoRequest(_settings, _ceoDirectory, Plan, RunId, carryOver));
             if (fresh is null)
@@ -286,6 +284,13 @@ internal sealed class AutopilotRunContext
         });
 
         return fresh;
+    }
+
+    // AC-1418: the coordinator's hook for session work, run in place — the host marshals embedding and teardown itself.
+    private static Task _Now(Action action)
+    {
+        action();
+        return Task.CompletedTask;
     }
 
     // AC-1398: the run's sessions are embedded in its workspace by id, so the run holds no workspace object of the UI's.
