@@ -41,10 +41,9 @@ internal static class CockpitWindowChrome
     private static readonly Lazy<Bitmap> AppMark = new(() =>
         new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
 
-    // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (app window carries its own
-    // name/mark, AC-430, and has no room for a subtitle); `onSettings`, when given, adds a settings gear
-    // to a plugin dialog. Details: dropped per-param elaboration on omitted behaviour. AC-1487: `remoteServer`
-    // gives the app window the `--remote` look of mockup v2 tab 5: a blue rim, a blue bar, the server and its chip.
+    // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (its own name/mark, AC-430); `onSettings`
+    // adds a settings gear to a plugin dialog. AC-1487: `remoteServer` gives the app window the `--remote` look of
+    // mockup v2 tab 5: a blue rim, a blue bar, and the server with its "no state on this machine" chip.
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null, string? remoteServer = null)
     {
         window.ExtendClientAreaToDecorationsHint = true;
