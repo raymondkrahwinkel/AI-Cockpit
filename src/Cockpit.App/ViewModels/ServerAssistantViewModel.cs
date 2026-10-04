@@ -314,11 +314,15 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     private static string _SavedText(IReadOnlyList<string> sent, IReadOnlyList<string> kept)
     {
-        var mine = $"The {_List(sent)} you set {(sent.Count == 1 ? "is" : "are")} now on the server";
+        var mine = $"The {_List(sent)} you set {(_IsPlural(sent) ? "are" : "is")} now on the server";
+        var many = _IsPlural(kept);
         return kept.Count == 0
             ? $"{mine}."
-            : $"{mine}; the {_List(kept)} {(kept.Count == 1 ? "was" : "were")} changed on the server meanwhile and {(kept.Count == 1 ? "was" : "were")} kept, because you did not touch {(kept.Count == 1 ? "it" : "them")}.";
+            : $"{mine}; the {_List(kept)} {(many ? "were" : "was")} changed on the server meanwhile and {(many ? "were" : "was")} kept, because you did not touch {(many ? "them" : "it")}.";
     }
+
+    // "instructions", "MCP sets" and "variables" are plural on their own.
+    private static bool _IsPlural(IReadOnlyList<string> names) => names.Count > 1 || names.Any(name => name.EndsWith('s'));
 
     private static string _List(IReadOnlyList<string> names) =>
         names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";

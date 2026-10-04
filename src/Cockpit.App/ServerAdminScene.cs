@@ -85,10 +85,16 @@ internal static class ServerAdminScene
     {
         var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("saved"), new SceneProfiles());
         assistant.LoadCommand.Execute(null);
-        assistant.EditCommand.Execute(null);
-        assistant.Editor.Model = "opus";
-        assistant.SaveCommand.Execute(null);
-        return _AssistantDialog(assistant, width, height);
+        var dialog = _AssistantDialog(assistant, width, height);
+
+        // After the dialog's own load on opening, which would otherwise read the page back over the save.
+        dialog.Opened += (_, _) =>
+        {
+            assistant.EditCommand.Execute(null);
+            assistant.Editor.Model = "opus";
+            assistant.SaveCommand.Execute(null);
+        };
+        return dialog;
     }
 
     public static IAssistantAdministration AssistantStandIn() => new SceneAssistant("fresh");
