@@ -327,7 +327,7 @@ echo "== persistent data without compose (AC-1480)"
 # --volumes-from keeps the state, and the certificate's fingerprint with it. Secrets are files, as in compose.
 plain_run() {
   local name=$1; shift
-  docker run -d --name "$name" -v "$work/secrets:/run/in:ro" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key     -e COCKPIT_UNLOCK_PASSWORD_FILE=/run/in/unlock-password "$@" "$image" >/dev/null
+  docker run -d --name "$name" -v "$work/secrets:/run/in:ro" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key "$@" "$image" >/dev/null
   for _ in $(seq 60); do
     plain_log=$(docker logs "$name" 2>&1)
     grep -qF 'Cockpit.Server running' <<< "$plain_log" && return 0

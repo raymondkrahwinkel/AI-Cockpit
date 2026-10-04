@@ -40,8 +40,7 @@ The image declares a `VOLUME` for every path below, so the host needs no setup a
 you start it with `--volumes-from <old container>`. **That is a safety net, not the way to run it:** an anonymous volume
 has no name, is easy to lose with `docker rm -v` or `docker volume prune`, and `docker run` leaves `claude` and `codex`
 as two unconnected volumes each (the server then cannot see the agent's login). Use the named volumes of `compose.yaml`,
-or bind-mounts (below). All of it is **unencrypted** on disk, logins and keys included: protect the volumes and the
-backups on the host (permissions on the Docker host, an encrypted backup target).
+or bind-mounts (below). All of it is unencrypted on disk, logins and keys included: see [Credentials on the volume](#credentials-on-the-volume).
 
 | Volume | Mount | Holds | Without it | Secret |
 | --- | --- | --- | --- | --- |
