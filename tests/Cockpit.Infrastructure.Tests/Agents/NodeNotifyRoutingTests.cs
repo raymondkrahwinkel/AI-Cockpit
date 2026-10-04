@@ -115,23 +115,25 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         using var seen = new ManualResetEventSlim();
         var finishedDuringRead = true;
 
+        // One after the other: a blocked delivery holds the gate itself, which would hold the takeover off on its own.
         var read = _inbox.ReadFor(AssistantIdentity.ControllerInboxPaneId, null, holder =>
         {
-            _ = Task.Run(() =>
-            {
-                delivering.Set();
-                _inbox.Deliver(AgentOnTheNode, AssistantIdentity.ControllerInboxPaneId, "done", "Late.");
-                delivered.Set();
-            });
             _ = Task.Run(() =>
             {
                 seeing.Set();
                 _presence.Seen("LAPTOP", _Key("ck_late", true, "project-a"));
                 seen.Set();
             });
-            delivering.Wait();
             seeing.Wait();
-            finishedDuringRead = delivered.Wait(200) | seen.Wait(200);
+            var seenDuringRead = seen.Wait(200);
+            _ = Task.Run(() =>
+            {
+                delivering.Set();
+                _inbox.Deliver(AgentOnTheNode, AssistantIdentity.ControllerInboxPaneId, "done", "Late.");
+                delivered.Set();
+            });
+            delivering.Wait();
+            finishedDuringRead = seenDuringRead | delivered.Wait(200);
             return holder is not null;
         }, _ => true, 25);
 
