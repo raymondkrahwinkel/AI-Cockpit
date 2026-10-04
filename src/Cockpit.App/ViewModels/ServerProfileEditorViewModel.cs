@@ -50,20 +50,20 @@ public sealed partial class ServerProfileEditorViewModel : ObservableObject
 
     public bool IsMcpServersChanged => _original is not null && McpServers.Trim() != _McpText(_original.McpServers);
 
-    // A dropdown whose list is refilled sends a null selection back first; the field reads that as the default.
-    partial void OnModelChanged(string value)
+    // A dropdown with no list, or one being refilled, sends a null selection back; that never clears what the field held.
+    partial void OnModelChanged(string? oldValue, string newValue)
     {
-        if (value is null)
+        if (newValue is null)
         {
-            Model = "";
+            Model = oldValue ?? "";
         }
     }
 
-    partial void OnPermissionModeChanged(string value)
+    partial void OnPermissionModeChanged(string? oldValue, string newValue)
     {
-        if (value is null)
+        if (newValue is null)
         {
-            PermissionMode = "";
+            PermissionMode = oldValue ?? "";
         }
     }
 
