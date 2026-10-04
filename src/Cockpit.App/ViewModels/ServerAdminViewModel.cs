@@ -3,7 +3,9 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
@@ -15,12 +17,14 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private const int AuditPage = 200;
 
     private readonly IConnectKeyAdministration _admin;
+    private readonly IPluginAdministration? _plugins;
+    private IReadOnlyList<PluginStoreCatalogEntry> _stores = [];
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, TimeProvider? time = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, TimeProvider? time = null)
     {
         Server = server;
         KeyLabel = keyLabel;
@@ -28,6 +32,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         _time = time ?? TimeProvider.System;
         _profiles = profiles;
         _projects = [.. projects.Where(project => project.Id is not null)];
+        _plugins = plugins;
     }
 
     public string Server { get; }
@@ -43,6 +48,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     public ObservableCollection<LockoutRowViewModel> Lockouts { get; } = [];
 
     public ObservableCollection<AuditRowViewModel> Audit { get; } = [];
+
+    public ObservableCollection<ServerPluginRowViewModel> Plugins { get; } = [];
+
+    public string PluginsCount => Plugins.Count.ToString(CultureInfo.InvariantCulture);
 
     public ObservableCollection<ScopeChoiceViewModel> EditorProfiles { get; } = [];
 
@@ -126,6 +135,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             LockoutPolicy = _PolicyText(overview.Policy);
             OnPropertyChanged(nameof(HasLockouts));
             await _LoadAuditAsync(null);
+            await _LoadPluginsAsync();
         });
     }
 
@@ -224,6 +234,56 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private void ToggleIssuedSecret() => IsIssuedSecretShown = !IsIssuedSecretShown;
 
+    [RelayCommand]
+    private Task TogglePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
+    {
+        if (_plugins is null || row.PinnedSha256 is null)
+        {
+            return;
+        }
+
+        await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.PinnedSha256);
+        row.Enabled = !row.Enabled;
+        row.Refresh();
+        Status = "This change takes effect after the server restarts.";
+    });
+
+    [RelayCommand]
+    private Task InstallPluginAsync() => _RunAsync(async () =>
+    {
+        if (_plugins is null || _stores.FirstOrDefault(store => store.Index?.Plugins.FirstOrDefault(entry => !Plugins.Any(installed => installed.Id == entry.Id)) is not null) is not { Index: { } index } store)
+        {
+            Status = "No new plugin is available from the server's stores.";
+            return;
+        }
+
+        var entry = index.Plugins.First(candidate => !Plugins.Any(installed => installed.Id == candidate.Id));
+        var version = entry.Versions.FirstOrDefault();
+        if (version is null)
+        {
+            Status = "The server store has no installable version.";
+            return;
+        }
+
+        var result = await _plugins.InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, PluginStoreConfig.Remote(store.Id), version));
+        Status = result.IsSuccess ? "This change takes effect after the server restarts." : "The server could not install the plugin.";
+        await _LoadPluginsAsync();
+    });
+
+    [RelayCommand]
+    private Task RemovePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
+    {
+        if (_plugins is null)
+        {
+            return;
+        }
+
+        await _plugins.RemoveAsync(row.FolderId);
+        Plugins.Remove(row);
+        OnPropertyChanged(nameof(PluginsCount));
+        Status = "This change takes effect after the server restarts.";
+    });
+
     // Done forgets the key: after this nothing in the cockpit holds it.
     [RelayCommand]
     private void DismissIssued()
@@ -258,6 +318,26 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         foreach (var entry in entries)
         {
             Audit.Add(new AuditRowViewModel(entry, labels, _time));
+        }
+    }
+
+    private async Task _LoadPluginsAsync()
+    {
+        if (_plugins is null)
+        {
+            return;
+        }
+
+        Plugins.Clear();
+        foreach (var plugin in await _plugins.GetInstalledAsync())
+        {
+            Plugins.Add(new ServerPluginRowViewModel(plugin));
+        }
+
+        OnPropertyChanged(nameof(PluginsCount));
+        if (_plugins is IPluginStoreCatalog catalog)
+        {
+            _stores = await catalog.GetStoresAsync();
         }
     }
 
@@ -359,6 +439,26 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         $"admin only · {policy.FailuresBeforeLockout} refusals in {policy.FailureWindow.TotalMinutes:0} min → {policy.FirstLockout.TotalMinutes:0} min, doubling up to {policy.MaxLockout.TotalMinutes:0} min";
 
     internal static string CapabilityName(ConnectKeyCapability capability) => capability == ConnectKeyCapability.Admin ? "admin" : "operate";
+}
+
+public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : ObservableObject
+{
+    public string FolderId { get; } = plugin.Discovered.FolderId;
+
+    public string Name { get; } = plugin.Discovered.Manifest.Name;
+
+    public string Id { get; } = plugin.Discovered.Manifest.Id;
+
+    public string Version { get; } = plugin.Discovered.Manifest.Version;
+
+    public string? PinnedSha256 { get; } = plugin.Registration?.PinnedSha256;
+
+    [ObservableProperty]
+    private bool _enabled = plugin.Registration?.Enabled ?? false;
+
+    public string State => Enabled ? "Enabled" : "Disabled";
+
+    public void Refresh() => OnPropertyChanged(nameof(State));
 }
 
 // AC-1446: one row of the Connect keys table: a prefix and a label, never more of the key.

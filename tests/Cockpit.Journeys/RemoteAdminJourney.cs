@@ -1,12 +1,15 @@
 using System.Net;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewTests;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Journeys;
@@ -29,8 +32,9 @@ public sealed class RemoteAdminJourney
     {
         var root = Directory.CreateTempSubdirectory("journey-admin-").FullName;
         var stateRoot = Path.Combine(root, "state");
+        var store = _CreateFixtureStore(root);
         var bootstrap = _NewKey();
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", pluginStore: store);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", bootstrap));
         try
@@ -72,6 +76,19 @@ public sealed class RemoteAdminJourney
             });
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
+
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                dialog.SelectCategory("server-plugins");
+                return Task.CompletedTask;
+            });
+            Assert.Single(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
+            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
+            await HeadlessAvalonia.RunAsync(() => admin.InstallPluginCommand.ExecuteAsync(null));
+            Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
+            var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
+            Assert.Contains(installed, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
+            Assert.Contains("restarts", admin.Status, StringComparison.Ordinal);
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -161,4 +178,34 @@ public sealed class RemoteAdminJourney
     // A key no one issued, in the shape of one: "ck_" and 64 random characters.
     private static string _NewKey() =>
         "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+    private static PluginStoreConfig _CreateFixtureStore(string root)
+    {
+        var store = Directory.CreateDirectory(Path.Combine(root, "fixture-store")).FullName;
+        var zip = Path.Combine(store, "journey-store-plugin-1.0.0.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata("EchoProviderDirectory")))
+            {
+                if (Path.GetFileName(file) == "plugin.json")
+                {
+                    continue;
+                }
+
+                var entry = archive.CreateEntry(Path.GetFileName(file));
+                using var source = File.OpenRead(file);
+                using var destination = entry.Open();
+                source.CopyTo(destination);
+            }
+
+            var manifest = archive.CreateEntry("plugin.json");
+            using var writer = new StreamWriter(manifest.Open());
+            writer.Write("""{"id":"journey-store-plugin","name":"Journey store plugin","version":"1.0.0","entryAssembly":"Cockpit.Plugin.EchoProvider.dll","abstractionsVersion":3}""");
+        }
+
+        var hash = PluginHash.Compute(File.ReadAllBytes(zip));
+        File.WriteAllText(Path.Combine(store, "index.json"), $$"""{"name":"Journey store","plugins":[{"id":"journey-store-plugin","name":"Journey store plugin","description":null,"author":null,"latestVersion":"1.0.0","versions":[{"version":"1.0.0","path":"journey-store-plugin-1.0.0.zip","abstractionsVersion":3,"minHostVersion":null,"sha256":"{{hash}}","notes":null}]}]}""");
+        return PluginStoreConfig.Local(store);
+    }
+
 }

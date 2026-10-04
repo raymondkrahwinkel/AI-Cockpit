@@ -3,6 +3,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -125,6 +126,8 @@ internal static class ServerGroupScene
 
         public IConnectKeyAdministration Administration { get; } = ServerAdminScene.StandIn();
 
+        public IPluginAdministration Plugins { get; } = new ScenePlugins();
+
         public RemoteServerState State { get; } = state;
 
         public IReadOnlyList<ISessionHandle> All { get; } = sessions;
@@ -241,6 +244,21 @@ internal static class ServerGroupScene
                 false);
             await Task.CompletedTask;
         }
+    }
+
+    private sealed class ScenePlugins : IPluginAdministration
+    {
+        public Task<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>>([]);
+
+        public Task<Cockpit.Core.Plugins.PluginStoreFetchResult> FetchStoreIndexAsync(Cockpit.Core.Plugins.PluginStoreConfig store, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginStoreFetchResult(false, null, null, null));
+
+        public Task<Cockpit.Core.Plugins.PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
+
+        public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
+
+        public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // A session on the stand-in server: two rows for its pane, and nothing it can be asked to do.
