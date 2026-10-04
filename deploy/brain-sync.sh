@@ -18,7 +18,7 @@ sync_pair() {
   [ -f "$filter" ] || { say "no include list $filter for $name, so it is not synced"; return 1; }
   mkdir -p "/data/$local" "$workdir"
   set -- bisync "$remote" "/data/$local" --filter-from "$filter" --workdir "$workdir" \
-    --resilient --recover --max-lock 2m --conflict-resolve newer --conflict-loser delete
+    --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num
   # Only a pair without any listing gets a resync: a union copy that deletes nothing. After a failure, never.
   if [ -z "$(ls -A "$workdir")" ]; then
     say "$name has no bisync state yet: first run with --resync"
