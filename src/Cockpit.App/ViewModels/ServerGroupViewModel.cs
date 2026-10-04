@@ -46,6 +46,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         nameof(IsOperateKey),
         nameof(IsAdminKey),
         nameof(HoldsAssistant),
+        nameof(CanOpenAssistant),
         nameof(HasAssistantLine),
         nameof(AssistantTitle),
         nameof(AssistantDetail))]
@@ -82,6 +83,9 @@ public sealed partial class ServerGroupViewModel : ObservableObject
 
     public bool HoldsAssistant => State.Key?.HoldsAssistant == true;
 
+    // AC-1479: the window opens on the server's assistant while it has one running; before that there is nothing to follow.
+    public bool CanOpenAssistant => HoldsAssistant && Server.Sessions?.Assistant is not null;
+
     public bool HasAssistantLine => State.Key is not null;
 
     public string AssistantTitle => State.Key switch
@@ -102,6 +106,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
     public IReadOnlyList<ServerSessionRowViewModel> Reconcile()
     {
         AssistantName = Server.Sessions?.Assistant?.Title is { Length: > 0 } title ? title : "The assistant";
+        OnPropertyChanged(nameof(CanOpenAssistant));
         var handles = Server.Sessions?.All.Where(handle => !handle.IsEmbedded).ToList() ?? [];
         var gone = Sessions.Where(row => !handles.Contains(row.Handle)).ToList();
         foreach (var row in gone)

@@ -1356,7 +1356,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SendToServerAsync()
     {
-        if (_remoteControl is null || !IsLinkUp || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
+        if ((_remoteControl is null && _remoteHandle is null) || !IsLinkUp || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
         {
             return;
         }
@@ -1374,7 +1374,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         PendingReplyTo = null;
         try
         {
-            await _remoteControl.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
+            // The server's assistant has no control (nothing but its prompt route is for a client), so its handle sends.
+            if (_remoteControl is { } control)
+            {
+                await control.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
+            }
+            else if (_remoteHandle is { } assistant && !await assistant.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true))
+            {
+                throw new InvalidOperationException("the assistant is still starting.");
+            }
         }
         catch (Exception exception)
         {

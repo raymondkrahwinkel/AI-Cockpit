@@ -320,7 +320,7 @@ internal static class SessionsEndpoints
                 rows = snapshot?.Rows,
                 seq = snapshot?.Seq,
             });
-        }).RequireOperate();
+        }).RequireOperate().ForAssistantHolderOnly();
 
         // Held until the assistant can take it, as a node prompt is; the door has already kept this from holding it.
         api.MapPost("/assistant/prompt", async (PromptBody body) =>
@@ -338,8 +338,16 @@ internal static class SessionsEndpoints
             return await assistant.SubmitPromptWhenReadyAsync(body.Text).ConfigureAwait(false) is { } delivered
                 ? Results.Json(new { paneId = assistant.PaneId, delivered })
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant is still starting and already has a turn waiting; this one was not accepted.");
-        }).RequireOperate().Audited("assistant_prompt", services);
+        }).RequireOperate().Audited("assistant_prompt", services).ForAssistantHolderOnly();
     }
+
+    // AC-1479: the assistant's conversation is for the key that holds it (AC-1366); another key, whatever its capability,
+    // gets the door's 403. After `Audited`, so the refusal is in the audit.
+    private static RouteHandlerBuilder ForAssistantHolderOnly(this RouteHandlerBuilder route) =>
+        route.AddEndpointFilter(async (context, next) =>
+            McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true }
+                ? await next(context).ConfigureAwait(false)
+                : BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", "This key does not hold the assistant."));
 
     // Every mutating route into the node access audit as `api:<name>`, as the node tools are (AC-1351).
     internal static RouteHandlerBuilder Audited(this RouteHandlerBuilder route, string name, IServiceProvider services) =>

@@ -546,6 +546,19 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await _ShowSurfaceAsync((typeof(ServerAdminViewModel), viewModel.Server), owner, () => OptionsDialog.ForServer(viewModel));
     }
 
+    public async Task ShowServerAssistantAsync(AssistantChatViewModel viewModel, string server)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return;
+        }
+
+        await _ShowSurfaceAsync(
+            (typeof(AssistantChatViewModel), server),
+            owner,
+            () => new AssistantChatWindow($"assistant:{server}") { DataContext = viewModel, Title = $"Assistant · {server}" });
+    }
+
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
