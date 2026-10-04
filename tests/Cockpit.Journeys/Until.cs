@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia.Controls;
 
 namespace Cockpit.Journeys;
 
@@ -16,6 +17,14 @@ public static class Until
             PropertyChangedEventHandler handler = (_, _) => changed();
             subject.PropertyChanged += handler;
             return () => subject.PropertyChanged -= handler;
+        });
+
+    public static Task LayoutHolds(Control subject, Func<bool> condition) =>
+        _Holds(condition, changed =>
+        {
+            EventHandler handler = (_, _) => changed();
+            subject.LayoutUpdated += handler;
+            return () => subject.LayoutUpdated -= handler;
         });
 
     public static Task CollectionHolds(INotifyCollectionChanged subject, Func<bool> condition) =>
@@ -59,6 +68,28 @@ public static class Until
                 }
             };
         });
+
+    public static async Task ReloadHolds(Func<Task> reload, Func<bool> condition)
+    {
+        using var ceiling = new CancellationTokenSource(Ceiling);
+        try
+        {
+            while (true)
+            {
+                await reload().WaitAsync(ceiling.Token);
+                if (condition())
+                {
+                    return;
+                }
+
+                await Task.Delay(100, ceiling.Token);
+            }
+        }
+        catch (OperationCanceledException) when (ceiling.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Condition did not hold within {Ceiling}.");
+        }
+    }
 
     private static Task _Holds(Func<bool> condition, Func<Action, Action> subscribe)
     {

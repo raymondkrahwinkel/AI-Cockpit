@@ -90,12 +90,11 @@ public sealed class RemoteAdminJourney
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
 
-            await HeadlessAvalonia.RunAsync(() =>
+            await HeadlessAvalonia.RunAsync(async () =>
             {
                 dialog.SelectCategory("server-plugins");
-                return Task.CompletedTask;
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ServerPluginsPage>().Count() == 1);
             });
-            Assert.Single(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
             await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
             await HeadlessAvalonia.RunAsync(() => admin.InstallPluginCommand.ExecuteAsync(null));
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
@@ -184,7 +183,18 @@ public sealed class RemoteAdminJourney
             var sessionFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
                 .Select(line => JsonNode.Parse(line))
                 .Last(record => record?["PaneId"]?.GetValue<string>() == paneId)?["WorkingDirectory"]?.GetValue<string>();
-            var audit = HeadlessAvalonia.Run(() => admin.Audit.Select(row => (row.Key, row.What)).ToList());
+            List<(string Key, string What)> audit = [];
+            await Until.ReloadHolds(
+                () => HeadlessAvalonia.RunAsync(async () =>
+                {
+                    await admin.LoadCommand.ExecuteAsync(null);
+                    audit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
+                }),
+                () => audit.Contains((Laptop, $"issued · {Phone} (operate)"))
+                    && audit.Contains((Phone, "connected"))
+                    && audit.Contains((Laptop, $"revoked · {Phone}"))
+                    && audit.Contains((Phone, "refused: revoked key"))
+                    && audit.Contains((Laptop, $"lockout lifted · {lockedOut}")));
             var lockoutsAfter = HeadlessAvalonia.Run(() => admin.Lockouts.Count);
 
             // AC-1473: Profiles → Echo gets another model; a new session on Echo starts on the server with that model.
