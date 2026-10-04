@@ -32,15 +32,21 @@ RUN groupadd --gid 1700 agent \
     && useradd --uid 1700 --gid agent --home-dir /home/agent --create-home --shell /usr/sbin/nologin agent \
     && usermod --append --groups agent app \
     && mkdir -p /state /home/app/.ssh /home/agent/.ssh /work/clones /work/worktrees \
-        /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex \
+        /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex /home/agent/Nextcloud \
     && chown -R app:app /state /home/app \
     && chown -R agent:agent /home/agent /home/app/.claude /home/app/.codex \
+    && chmod 700 /home/agent/Nextcloud \
     && chmod 2770 /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex \
     && chmod 700 /home/app/.ssh /home/agent/.ssh \
     && chmod 750 /home/app /home/agent \
     && chown -R app:agent /work \
     && chmod 2770 /work /work/clones /work/worktrees \
     && git config --system --add safe.directory '*'
+# AC-1480: everything above that must outlive a container is a volume, declared after the owners and modes are set (a
+# VOLUME takes them from this layer; changes to these paths later in the Dockerfile are lost). Without -v, Docker makes
+# anonymous volumes of them; see deploy/README.md, "Persistent data". No secret is ever baked into this image.
+VOLUME ["/state", "/work", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
+        "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud"]
 # Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
 # the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
 RUN groupadd --gid 1701 agent-run \

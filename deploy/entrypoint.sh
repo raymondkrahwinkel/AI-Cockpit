@@ -42,6 +42,21 @@ for home in /home/agent/.claude /home/agent/.codex; do
   chmod 2770 "$home"
 done
 
+# AC-1480: a bind mount keeps its host owner. One that the user cannot write stops the start with the fix, instead of a
+# server that starts and then fails on its first write (README.md, "Persistent data").
+unwritable=0
+need_writable() {
+  /usr/bin/setpriv --reuid="$1" --regid="$1" --init-groups -- test -w "$2" && return 0
+  echo "entrypoint: $2 is not writable by $1 (uid $(id -u "$1")): chown the host path to $(id -u app):$(id -g app) for /state and /home/app, $(id -u agent):$(id -g agent) for /home/agent, app:agent mode 2770 for /work (README.md, Persistent data)" >&2
+  unwritable=1
+}
+need_writable app /state
+need_writable app /work
+need_writable agent /work
+need_writable app /home/app/.ssh
+for path in /home/agent/.claude /home/agent/.codex /home/agent/.ssh; do need_writable agent "$path"; done
+[ "$unwritable" = 0 ] || exit 1
+
 # The group the Claude provider opens its mcp-config and prompt file to (AC-1468); `app` is in it, `agent` owns it.
 COCKPIT_AGENT_GROUP=$(id -g agent)
 export COCKPIT_AGENT_GROUP

@@ -11,9 +11,9 @@ Docker host and carries no environment-specific settings.
   the live agent sessions, and the stop budget is only 8 seconds.
 - `:sha-<commit>-dev` adds the .NET SDK so agents can build and test. Same tags with a `-dev` suffix.
 
-The package is **private**, so the host logs in once with a token that has `read:packages`:
-
-    docker login ghcr.io -u <github-user>
+The package is **public**: no login is needed to pull. That is why **no secret is ever baked into the image**: not in a
+layer, a build arg or an `ENV`. Secrets reach the container at run time, as files (see First start); the smoke checks
+the image history for them.
 
 ## First start
 
@@ -33,20 +33,65 @@ The clone and worktree roots start out at `/work/clones` and `/work/worktrees` (
 `COCKPIT_WORKTREE_ROOT`): the defaults lie under `/state`, which an agent session cannot enter. A root set in the app's
 settings stays; point it somewhere under `/work`.
 
-## What it keeps
+## Persistent data
 
-| Volume | Mount | Holds |
+The image declares a `VOLUME` for every path below, so the host needs no setup and makes no choices: a start without
+`-v` (`docker run`, Portainer, another compose) still gets anonymous volumes, and a new container keeps the data when
+you start it with `--volumes-from <old container>`. **That is a safety net, not the way to run it:** an anonymous volume
+has no name, is easy to lose with `docker rm -v` or `docker volume prune`, and `docker run` leaves `claude` and `codex`
+as two unconnected volumes each (the server then cannot see the agent's login). Use the named volumes of `compose.yaml`,
+or bind-mounts (below). All of it is **unencrypted** on disk, logins and keys included: protect the volumes and the
+backups on the host (permissions on the Docker host, an encrypted backup target).
+
+| Volume | Mount | Holds | Without it | Secret |
+| --- | --- | --- | --- | --- |
+| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs | a new certificate, so a new fingerprint every client must pin again, and the server's settings | yes: the certificate's private key |
+| `work` | `/work` | clones and worktrees, writable for the server and the agent sessions | the clones and any unpushed work in them | no, but unpushed work |
+| `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts | a new sign-in | yes: the login |
+| `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts | a new sign-in | yes: the login |
+| `ssh` | `/home/app/.ssh` | the server's own SSH keys | new keys to register | yes: private keys |
+| `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) | new keys to register | yes: private keys |
+| `brain` | `/home/agent/Nextcloud` (in `brain-sync`: `/data/Nextcloud`) | the assistant's brain, kept in sync with Nextcloud | a fresh sync; notes a session wrote since the last run are lost | no, but unsynced notes |
+| `brain-state` | `/bisync`, in `brain-sync` only | the bisync listings | brain-sync stops until a manual `--resync` (see The brain) | no |
+
+`brain-state` belongs to the compose's `brain-sync` service, not to the image. The same `state` volume across a `down`
+and `up` keeps the certificate, and with it the fingerprint.
+
+### Backup and restore
+
+Stop the server first (`docker compose -f deploy/compose.yaml stop`), so no file is half-written. Back up the volumes
+with a throwaway container; the tar keeps owners and modes (`-p`), which the S6b split between `app` and `agent` needs:
+
+    docker run --rm -v cockpit_state:/v:ro -v "$PWD":/backup alpine tar -czpf /backup/state.tgz -C /v .
+
+Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `claude`, `codex`, `ssh`, `agent-ssh`
+and `brain`. Restore into a new, empty volume, as root so the owners come back:
+
+    docker volume create cockpit_state
+    docker run --rm -v cockpit_state:/v -v "$PWD":/backup alpine tar -xzpf /backup/state.tgz -C /v
+
+then `docker compose -f deploy/compose.yaml up -d`. Anything not in a backup restores to a fresh state; the tar files
+hold the secrets above in the clear.
+
+### Bind-mounts instead of named volumes
+
+A bind-mount to a host path replaces a volume (`- /srv/cockpit/state:/state`). A named volume copies the image's owners
+on its first use; **a bind-mount keeps the host's**, so create the directories with these owners first:
+
+| Mount | Owner | Mode |
 | --- | --- | --- |
-| `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs |
-| `work` | `/work` | clones and worktrees, writable for the server and the agent sessions |
-| `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts |
-| `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts |
-| `ssh` | `/home/app/.ssh` | the server's own SSH keys |
-| `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) |
-| `brain` | `/home/agent/Nextcloud` (in `brain-sync`: `/data/Nextcloud`) | the assistant's brain, kept in sync with Nextcloud |
-| `brain-state` | `/bisync`, in `brain-sync` only | the bisync listings |
+| `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
+| `/work` | `1654:1700` (`app:agent`) | `2770` |
+| `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |
+| `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` |
+| `/home/app/.claude`, `/home/app/.codex` | `agent` (1700:1700) | `2770`, the same host path as the agent's |
 
-The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
+    sudo install -d -o 1654 -g 1654 -m 0700 /srv/cockpit/state
+    sudo install -d -o 1654 -g 1700 -m 2770 /srv/cockpit/work
+
+When one the server or `agent` cannot write, the container does not start quietly broken: its entrypoint stops with
+`entrypoint: /state is not writable by app (uid 1654): chown the host path ...` and exit 1. Read it with
+`docker logs`, fix the owner, and start it again.
 
 ## Reaching it
 

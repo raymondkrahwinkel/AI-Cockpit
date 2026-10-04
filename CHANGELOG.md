@@ -46,6 +46,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   permission grant is refused as before. The button only shows when the server says it supports it (`/whoami`
   `allowsForSession`); an older server never sees it. On this machine "Always" now also holds for the rest of the
   session on Claude, where it used to act as a single allow. Cockpit 0.82.0.
+- added: the headless server image keeps its own data. It declares a volume for the state, the clones and worktrees, the
+  Claude and Codex logins, the SSH keys and the brain, so `docker run` without `-v`, Portainer or another compose no
+  longer loses the certificate and its fingerprint on a new container. A bind-mount the server or the agent cannot
+  write now stops the start with the owner to set, instead of failing later. `deploy/README.md` has a "Persistent data"
+  section: what each volume holds, backup and restore, and bind-mounts. The image never contains a secret.
 - added: the headless server's compose file brings the assistant's brain along. A `brain-sync` service keeps an
   include list of the AI-OS tree (`Me.md`, `Me-Reference.md`, `Memory/`, `AGENTS/`) in sync with Nextcloud, so an agent
   session reads `~/Nextcloud/Notes/AI-OS/Me.md` as on the desktop and its notes reach the desktop again. A change on

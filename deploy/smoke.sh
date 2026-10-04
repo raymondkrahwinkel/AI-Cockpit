@@ -4,7 +4,8 @@
 # not; an encrypted state is refused; the server runs non-root with no docker and no Avalonia; an
 # agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
 # brain-sync brings only its include list, writes back as agent, keeps both sides of a conflict and keeps the app
-# password to itself (AC-1364); no secret is in a layer or a log. Each check that could pass vacuously has a control.
+# password to itself (AC-1364); a plain `docker run` keeps its state over --volumes-from, and a bind-mount with the
+# documented owners works while a wrong one stops the start (AC-1480); no secret is in a layer or a log. Each check that could pass vacuously has a control.
 set -euo pipefail
 
 image=${1:?usage: deploy/smoke.sh <image:tag>}
@@ -34,7 +35,9 @@ dc() { docker compose -p "$project" -f deploy/compose.yaml "$@"; }
 fail() { echo "::error::smoke: $*"; exit 1; }
 cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
-  docker rm -f "$project-holder" "$project-control-root" "$project-webdav" >/dev/null 2>&1 || true
+  docker rm -fv "$project-holder" "$project-control-root" "$project-webdav" "$project-plain1" "$project-plain2"     "$project-plain3" "$project-bind" "$project-badbind" >/dev/null 2>&1 || true
+  # The bind-mounts hold files of the container's users: hand them back, or the rm below fails.
+  [ -d "$work/bind" ] && docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" -R "$(id -u):$(id -g)" /b >/dev/null 2>&1
   docker rmi -f "$project-control-leak" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -318,6 +321,56 @@ dc down -v >/dev/null
 start
 [ "$(fingerprint_of_log)" != "$first" ] || fail "control: a new volume kept the fingerprint"
 collect_logs
+
+echo "== persistent data without compose (AC-1480)"
+# A plain `docker run` with no -v: the image's VOLUME lines make anonymous volumes, so a new container started with
+# --volumes-from keeps the state, and the certificate's fingerprint with it. Secrets are files, as in compose.
+plain_run() {
+  local name=$1; shift
+  docker run -d --name "$name" -v "$work/secrets:/run/in:ro" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key     -e COCKPIT_UNLOCK_PASSWORD_FILE=/run/in/unlock-password "$@" "$image" >/dev/null
+  for _ in $(seq 60); do
+    docker logs "$name" 2>&1 | grep -qF 'Cockpit.Server running' && return 0
+    [ "$(docker inspect -f '{{.State.Running}}' "$name")" = true ] || break
+    sleep 1
+  done
+  docker logs "$name" 2>&1 | tail -n 15
+  fail "the plain container $name did not report running"
+}
+plain_fingerprint() { docker logs "$1" 2>&1 | sed -n 's/.*presents certificate fingerprint \([0-9A-Fa-f]*\)\..*/\1/p' | tail -n 1; }
+plain_run "$project-plain1"
+plain_first=$(plain_fingerprint "$project-plain1")
+[ -n "$plain_first" ] || fail "the plain container's log names no certificate fingerprint"
+docker stop "$project-plain1" >/dev/null
+plain_run "$project-plain2" --volumes-from "$project-plain1"
+[ "$(plain_fingerprint "$project-plain2")" = "$plain_first" ] || fail "the fingerprint changed over a new container with --volumes-from"
+# Control: without --volumes-from the same command gets new volumes, so a fingerprint that stays proves the VOLUME lines.
+plain_run "$project-plain3"
+[ "$(plain_fingerprint "$project-plain3")" != "$plain_first" ] || fail "control: a container without --volumes-from kept the fingerprint"
+docker rm -fv "$project-plain1" "$project-plain2" "$project-plain3" >/dev/null
+
+echo "== bind-mounts with the documented owners (AC-1480)"
+# What deploy/README.md says to create. app is 1654:1654 and agent 1700:1700 in the image; read here, not assumed.
+app_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u app):$(id -g app)')
+[ "$app_ids" = 1654:1654 ] || fail "the README documents app as 1654:1654, the image has $app_ids"
+mkdir -p "$work/bind"/{state,work,claude,codex,ssh,agent-ssh}
+bind_mounts=(-v "$work/bind/state:/state" -v "$work/bind/work:/work" -v "$work/bind/claude:/home/agent/.claude" -v "$work/bind/claude:/home/app/.claude"
+  -v "$work/bind/codex:/home/agent/.codex" -v "$work/bind/codex:/home/app/.codex" -v "$work/bind/ssh:/home/app/.ssh" -v "$work/bind/agent-ssh:/home/agent/.ssh")
+docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c '
+  cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work   && chown 1700:1700 claude codex agent-ssh && chmod 2770 claude codex && chmod 0700 agent-ssh'
+plain_run "$project-bind" "${bind_mounts[@]}"
+docker exec -u app "$project-bind" sh -c 'touch /state/w /work/app-file' || fail "the server cannot write a documented bind-mount"
+docker exec -u agent "$project-bind" sh -c 'touch /work/agent-file /home/agent/.claude/w && rm /work/agent-file /home/agent/.claude/w' || fail "an agent session cannot write a documented bind-mount"
+docker exec -u app "$project-bind" sh -c 'rm /work/agent-file 2>/dev/null; test -e /home/app/.claude' || fail "the server cannot reach its side of the claude bind-mount"
+docker rm -fv "$project-bind" >/dev/null
+# A wrong owner (root's) is refused with the documented message and exit 1, not a server that starts and fails later.
+docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" root:root /b/state
+docker run -d --name "$project-badbind" "${bind_mounts[@]}" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key   -v "$work/secrets:/run/in:ro" "$image" >/dev/null
+code=$(docker wait "$project-badbind")
+bad=$(docker logs "$project-badbind" 2>&1)
+[ "$code" = 1 ] || fail "a bind-mount with the wrong owner ended with exit $code, not 1"
+grep -qF 'entrypoint: /state is not writable by app (uid 1654)' <<< "$bad" || fail "the wrong-owner refusal names no reason: $bad"
+if grep -qF 'Cockpit.Server running' <<< "$bad"; then fail "the server started on a bind-mount it cannot write"; fi
+docker rm -fv "$project-badbind" >/dev/null
 
 echo "== a held node port stops the server"
 dc down -v >/dev/null
