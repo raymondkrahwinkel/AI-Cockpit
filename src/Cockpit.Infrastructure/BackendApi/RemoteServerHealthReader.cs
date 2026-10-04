@@ -37,8 +37,10 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
                 _current = null;
             }
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or System.Text.Json.JsonException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or System.Text.Json.JsonException or ObjectDisposedException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
+            // A request that timed out is a server that did not answer; only the caller's own token ends the loop.
             logger.LogInformation(exception, "Server {Server} did not answer its health route.", server);
             return;
         }
@@ -58,7 +60,7 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
                 cancellationToken).ConfigureAwait(false);
             succeeded = answer.Succeeded;
         }
-        catch (Exception exception) when (exception is BackendApiException or HttpRequestException or IOException)
+        catch (Exception exception) when (exception is BackendApiException or HttpRequestException or IOException or System.Text.Json.JsonException)
         {
             logger.LogInformation(exception, "Server {Server} did not run health action {Action}.", server, actionId);
         }

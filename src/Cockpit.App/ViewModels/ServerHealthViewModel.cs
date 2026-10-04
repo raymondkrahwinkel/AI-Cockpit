@@ -20,6 +20,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
     private readonly IRemoteServer _server;
     private readonly Func<string, ILoginFlow?>? _startSignIn;
     private string _dismissed = "";
+    private readonly HashSet<string> _running = [];
 
     public ServerHealthViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null)
     {
@@ -134,6 +135,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         }
 
         row.IsRunning = true;
+        _running.Add(actionId);
         var before = row.Outcome;
         try
         {
@@ -148,7 +150,12 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         }
         finally
         {
+            _running.Remove(actionId);
             row.IsRunning = false;
+            foreach (var current in Runs.Where(run => run.ActionId == actionId))
+            {
+                current.IsRunning = false;
+            }
         }
     }
 
@@ -256,6 +263,11 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         var expired = health.Profiles.Where(profile => profile.SignIn == "expired").ToList();
         AlarmCount = expired.Count + health.Sections.Count(section => !section.Healthy);
         AlarmProfile = expired.FirstOrDefault()?.Label;
+        if (expired.Count == 0)
+        {
+            _dismissed = "";
+        }
+
         if (expired.FirstOrDefault() is { } first)
         {
             AlarmTitle = $"{first.Provider} login on {Server} expired at {HealthTime.Clock(first.ExpiredSince, now)}";
@@ -301,7 +313,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         foreach (var outcome in rows.Where(entry => entry.Detail != NextRun))
         {
             var next = rows.FirstOrDefault(entry => entry.Title == outcome.Title && entry.Detail == NextRun).Row;
-            Runs.Add(new ScheduledRunRowViewModel(outcome.Title, outcome.Detail, outcome.Row, next?.At, now));
+            Runs.Add(new ScheduledRunRowViewModel(outcome.Title, outcome.Detail, outcome.Row, next?.At, now) { IsRunning = outcome.Row.ActionId is { } id && _running.Contains(id) });
         }
     }
 
