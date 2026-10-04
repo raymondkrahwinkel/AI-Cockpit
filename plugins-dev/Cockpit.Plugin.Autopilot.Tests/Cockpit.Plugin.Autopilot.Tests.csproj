@@ -34,6 +34,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj" />
+    <!-- AC-1418: the UI part links the backend's records as source, so its types are reached only via `extern alias ui;`. -->
+    <ProjectReference Include="..\Cockpit.Plugin.Autopilot\UI\Cockpit.Plugin.Autopilot.UI.csproj" Aliases="ui" />
     <!-- Test-only reference to the host app, purely so the render tests resolve the real Cockpit theme (its brushes
          and fonts live in avares://Cockpit.App). This does NOT reverse the plugin's isolation: the shipped app still
          does not reference the plugin's types (ReferenceOutputAssembly=false); only this test project reaches for the

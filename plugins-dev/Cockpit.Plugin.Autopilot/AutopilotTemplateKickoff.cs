@@ -15,7 +15,7 @@ internal static class AutopilotTemplateKickoff
         if (template is null)
         {
             // Free planning — exactly the current behaviour: a tracker run kicks off from its item, a CEO-first run idles.
-            var kickoff = source is { } item ? AutopilotCeoBrief.SourceKickoff(item) : null;
+            var kickoff = source is { } item ? SourceKickoff(item) : null;
             return new AutopilotKickoff(kickoff, []);
         }
 
@@ -25,6 +25,14 @@ internal static class AutopilotTemplateKickoff
         // empty turn; leave the CEO idle instead so it asks what the run should achieve, rather than sending a blank message.
         var message = string.IsNullOrWhiteSpace(resolution.Text) ? null : resolution.Text;
         return new AutopilotKickoff(message, resolution.MissingPlaceholders);
+    }
+
+    // The opening turn of a source-triggered round names the source issue (AC-174); a CEO-first run sends none.
+    public static string SourceKickoff(AutopilotPlanSource source)
+    {
+        var title = string.IsNullOrWhiteSpace(source.Title) ? string.Empty : $": \"{source.Title.Trim()}\"";
+        return $"Plan {source.Tracker} {source.IssueId}{title}. The issue's details are in your brief — draft the plan "
+            + "for it and emit it now with the plan tool, so I can review it. Ask me anything you need to resolve before I approve.";
     }
 
     // The intent-Data view of a plan source, keyed the way `AutopilotTemplateResolver` expects, so a

@@ -36,8 +36,7 @@ public sealed class PluginAssemblyBoundaryTests
 
         Assert.Equal(33, manifests.Count);
 
-        // AC-1418 (F2.10b) splits Autopilot into two assemblies; this row goes when it lands.
-        Assert.Equal(["autopilot: backend part references Avalonia"], crossings);
+        Assert.Empty(crossings);
     }
 
     private static List<string> _References(string assemblyPath)

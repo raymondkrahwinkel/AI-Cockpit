@@ -12,13 +12,6 @@ internal static class AutopilotCeoBrief
     // Builds the CEO's planning brief. `profiles` (with local/paid nature) let the CEO pick the cheapest-adequate
     // model per step; `ceoIdentity` is its own profile label. Both optional — omitted entirely when absent. The
     // opening turn names the source issue; a CEO-first run sends no kickoff and the CEO asks the operator instead.
-    public static string SourceKickoff(AutopilotPlanSource source)
-    {
-        var title = string.IsNullOrWhiteSpace(source.Title) ? string.Empty : $": \"{source.Title.Trim()}\"";
-        return $"Plan {source.Tracker} {source.IssueId}{title}. The issue's details are in your brief — draft the plan "
-            + "for it and emit it now with the plan tool, so I can review it. Ask me anything you need to resolve before I approve.";
-    }
-
     public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced, string? executableStage = null)
     {
         var goal = string.IsNullOrWhiteSpace(plan.Goal)

@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI part of Autopilot (AC-1418, F2.10b): the plan-flow workspace and the settings view, everything that needs
+       Avalonia. It builds into the backend project's bin/, so `dotnet build` of the backend project yields both
+       assemblies in the one folder the zip, the bundle and the dev installer take. It never references the backend
+       project: the channel's wire protocol and the records crossing it are linked in as source (below) instead. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The channel's names, Json options and messages (AutopilotChannel reads the same file from the backend project). -->
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+    <!-- The records the snapshots carry, the settings' loose keys and the template helpers the picker previews with:
+         plain data and pure functions, compiled into both parts rather than shared through a reference. -->
+    <Compile Include="..\AutopilotCorrection.cs;..\AutopilotCorrectionKind.cs;..\AutopilotCorrectionSource.cs;..\AutopilotCostStrategy.cs;..\AutopilotMergeMode.cs;..\AutopilotPlan.cs;..\AutopilotPlanPhase.cs;..\AutopilotPlanSource.cs;..\AutopilotReliabilitySummary.cs;..\AutopilotRun.cs;..\AutopilotRunRecord.cs;..\AutopilotRunReliability.cs;..\AutopilotRunStepRecord.cs;..\AutopilotSettings.cs;..\AutopilotStep.cs;..\AutopilotStepStatus.cs;..\AutopilotTemplate.cs;..\AutopilotTemplateKickoff.cs;..\AutopilotTemplateOptionLabel.cs;..\AutopilotTemplateOrigin.cs;..\AutopilotTemplateOverride.cs;..\AutopilotTemplateResolver.cs;..\GateMode.cs" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <!-- Measured on Diagram (AC-809): ExcludeAssets on Avalonia does not reach its own dependency, which then ships. -->
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Autopilot.Tests" />
+  </ItemGroup>
+
+</Project>
