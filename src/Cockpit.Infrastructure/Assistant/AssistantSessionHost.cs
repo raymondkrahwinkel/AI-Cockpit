@@ -280,7 +280,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             // running conversation is allowed to finish its turn but not to take another.
             if (_presence.Current is { } controller)
             {
-                _restartWhenReleased |= replaceALiveInstance && !startFresh;
+                _restartWhenReleased |= false;
                 _SetUnavailable(controller.TakeoverReason());
                 return null;
             }
