@@ -27,7 +27,7 @@ public sealed class RemoteSessionJourney
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", key));
         try
@@ -167,7 +167,16 @@ public sealed class RemoteSessionJourney
                 // Sign in again plays the provider's own step; the code goes to the server, and alarm and badge go.
                 await group.Health.StartSignInCommand.ExecuteAsync(null);
                 var flow = group.Health.SignIn ?? throw new InvalidOperationException("Sign in again opened no sign-in.");
-                await Until.Holds(flow, () => flow.AwaitsInput);
+                try
+                {
+                    await Until.Holds(flow, () => flow.AwaitsInput);
+                }
+                catch (TimeoutException)
+                {
+                    // What the flow showed and what both ends logged, so a red run names its own cause.
+                    throw new TimeoutException($"The sign-in never asked for input. Message: {flow.Message}; error: {flow.ErrorMessage}; completed: {flow.IsCompleted}.{Environment.NewLine}Desktop log:{Environment.NewLine}{cockpit.LogText}{Environment.NewLine}Server:{Environment.NewLine}{run.Output}");
+                }
+
                 signInAwaitedInput = flow.Message.Contains("paste the code", StringComparison.Ordinal);
                 flow.CodeInput = "echo-code";
                 await flow.SubmitCommand.ExecuteAsync(null);
