@@ -281,6 +281,8 @@ docker run --rm --user 0 -v "${project}_claude:/v" --entrypoint chown "$image" -
 dc up -d >/dev/null
 wait_running
 [ "$(dc exec -T cockpit stat -c %U /home/agent/.claude/.)" = agent ] || fail "an app-owned claude volume was not handed to agent"
+# A failed hand-over still heals on the restart that follows, so only a first start that held counts.
+[ "$(docker inspect -f '{{.RestartCount}}' "$(dc ps -q cockpit)")" = 0 ] || fail "the cockpit restarted while taking over an app-owned claude volume"
 [ "$(fingerprint_of_log)" = "$first" ] || fail "the fingerprint changed over a down and up with the same volume"
 collect_logs
 
