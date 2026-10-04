@@ -11,7 +11,6 @@ services:
     restart: unless-stopped
     environment:
       COCKPIT_STATE_ROOT: /state
-      COCKPIT_UNLOCK_PASSWORD_FILE: /run/secrets/cockpit_unlock_password
       COCKPIT_CONNECT_KEY_FILE: /run/secrets/cockpit_connect_key
       COCKPIT_STOP_BUDGET_SECONDS: ${COCKPIT_STOP_BUDGET_SECONDS:-8}
       # AC-1464: a blank clone or worktree root takes these, since agent sessions cannot enter /state.
@@ -20,7 +19,6 @@ services:
       # AC-1470: the image this container runs, which an operate key reads in GET /api/v1/health.
       COCKPIT_IMAGE_REF: ${COCKPIT_IMAGE:-ghcr.io/raymondkrahwinkel/cockpit-server}:${COCKPIT_TAG}
     secrets:
-      - cockpit_unlock_password
       - cockpit_connect_key
       # AC-1464: what the sessions inherit (GH_TOKEN, AIHUB_*, ...), KEY=VALUE per line; may be empty. A file rather than
       # an env_file, so it reaches only the server and its sessions, not the container's environment that `docker exec`
@@ -111,8 +109,6 @@ configs:
     file: ${COCKPIT_BRAIN_INSTRUCTIONS_PATH:-./brain-instructions.md}
 
 secrets:
-  cockpit_unlock_password:
-    file: ${COCKPIT_UNLOCK_PASSWORD_PATH:-./secrets/unlock-password}
   cockpit_connect_key:
     file: ${COCKPIT_CONNECT_KEY_PATH:-./secrets/connect-key}
   cockpit_session_env:

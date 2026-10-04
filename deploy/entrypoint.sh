@@ -11,7 +11,7 @@ mkdir -p "$copies"
 chown app:app "$copies"
 chmod 0700 "$copies"
 mountpoint -q "$copies" || echo "entrypoint: $copies is not a tmpfs; the secret copies live in the container's own layer" >&2
-for var in COCKPIT_UNLOCK_PASSWORD_FILE COCKPIT_CONNECT_KEY_FILE; do
+for var in COCKPIT_CONNECT_KEY_FILE; do
   eval "source=\${$var:-}"
   if [ -n "$source" ] && [ -f "$source" ]; then
     install -o app -g app -m 0400 "$source" "$copies/${source##*/}"
