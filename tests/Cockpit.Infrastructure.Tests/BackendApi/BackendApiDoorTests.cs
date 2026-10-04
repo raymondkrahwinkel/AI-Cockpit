@@ -480,6 +480,7 @@ public sealed class BackendApiDoorTests
             PluginStores.LoadAsync().Returns(Task.FromResult<IReadOnlyList<PluginStoreConfig>>(
                 [PluginStoreConfig.Remote("https://user:password@store.example/index.json?access_token=query-token", "store-token")]));
             Plugins.GetInstalledAsync().Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>([]));
+            Plugins.FetchStoreIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(new PluginStoreFetchResult(true, null, new PluginStoreIndex("Store", []), null)));
         }
 
         public string Directory { get; }
