@@ -75,6 +75,7 @@ services:
     environment:
       BRAIN_SYNCS: ${COCKPIT_BRAIN_SYNCS:-nc:Notes/AI-OS=Nextcloud/Notes/AI-OS}
       BRAIN_SYNC_INTERVAL: ${COCKPIT_BRAIN_SYNC_INTERVAL:-60}
+      RCLONE_CONFIG_NC_PASS: ${COCKPIT_BRAIN_PASS:-}
     configs:
       - source: brain_sync_script
         target: /etc/brain-sync/brain-sync.sh
