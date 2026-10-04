@@ -136,7 +136,7 @@ internal static class AssistantSettingsEndpoints
             host.UnavailableReason,
             profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Declared(services, profile)),
             profile is null ? slot.UnsetReason : null,
-            profile?.SystemPrompt,
+            (profile?.ProviderConfig as LmStudioConfig)?.ApiKey ?? profile?.SystemPrompt,
             slot.ReplacesStandingInstruction,
             profile?.ProviderConfig is not PluginProviderConfig plugin || registry is null || registry.Resolve(plugin.ProviderId) is not null,
             new RemoteConsentBypass(settings.ConsentBypassAll, [.. settings.ConsentBypassSources.Concat(settings.ConsentBypassDangerousSources).Distinct(StringComparer.Ordinal)]));
