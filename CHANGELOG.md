@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Options on a server now opens on Projects: the server's projects with their folder there, and "clone onto
+  the server" from a repository URL, a branch and a name. The server clones with its own git credentials, so none are
+  sent from here, and a URL that carries a user name, password or token is refused; once done the page says where the
+  clone landed, how large it is and how long it took. Remove takes a project off the server's list and leaves its
+  folder. "+ Start on <server>" offers these projects, and a session started on one runs in its clone. On the backend
+  API: `GET`, `POST`, `PATCH` and `DELETE /api/v1/projects`, all audited; an operate key may only list the projects in
+  its scope, by id and name. Cockpit 0.73.0.
 - added: you can work in a session pane on a connect server. The composer sends to the session there, and a permission
   prompt gets Allow once and Deny when the key may answer permissions; a key that may not sees the prompt with "This
   key may not answer permission prompts." and no buttons. While the group says Reconnecting the composer and the
