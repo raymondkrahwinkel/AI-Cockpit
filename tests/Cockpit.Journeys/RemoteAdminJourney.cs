@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewTests;
 using Cockpit.App.Views;
@@ -72,6 +73,13 @@ public sealed class RemoteAdminJourney
             });
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
+
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                dialog.SelectCategory("server-plugins");
+                return Task.CompletedTask;
+            });
+            Assert.Contains(dialog.GetVisualDescendants().OfType<ServerPluginsPage>());
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
