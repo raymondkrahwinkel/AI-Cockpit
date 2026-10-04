@@ -230,6 +230,7 @@ internal static class Screenshotter
         // and its Audit log.
         ["server-admin-keys"] = ServerAdminScene.Keys,
         ["server-admin-audit"] = ServerAdminScene.Audit,
+        ["server-admin-projects"] = ServerAdminScene.Projects,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.

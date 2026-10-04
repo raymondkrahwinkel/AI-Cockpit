@@ -96,7 +96,7 @@ public partial class OptionsDialog : Window
     }
 
     // AC-1446: this dialog opened on a server rather than a second admin window. Only the server's pages stay, each
-    // acting at once through `admin`, so there is no Apply to stage; F5.6b2–b4 add Projects, Profiles and Plugins here.
+    // acting at once through `admin`, so there is no Apply to stage; F5.6b2 added Projects, b3–b4 add Profiles and Plugins.
     public static OptionsDialog ForServer(ServerAdminViewModel admin)
     {
         var dialog = new OptionsDialog(admin.Title, admin.Chip) { Title = admin.Title, Server = admin };
@@ -111,6 +111,11 @@ public partial class OptionsDialog : Window
         dialog.ServerBanner.IsVisible = true;
         dialog.CategoryNav.Items.Clear();
         dialog.CategoryContent.Children.Clear();
+        if (admin.HasProjectsPage)
+        {
+            dialog._AddServerPage("server-projects", "Projects", MaterialIconKind.FolderMultipleOutline, new ServerProjectsPage { DataContext = admin });
+        }
+
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
         dialog.CategoryNav.SelectedIndex = 0;

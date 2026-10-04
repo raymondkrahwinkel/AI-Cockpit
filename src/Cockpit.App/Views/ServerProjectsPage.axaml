@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.ServerProjectsPage"
+             x:DataType="vm:ServerAdminViewModel">
+
+    <!-- AC-1472: Options › Projects on a server (mockup v2, tab 4): the server's projects, and "clone onto the server"
+         with the server's own git credentials. No path is typed here; the server reports where the clone landed. -->
+    <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Projects" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Text="clone onto the server" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+        </StackPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
+        <Border Padding="4" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel>
+                <Grid ColumnDefinitions="170,*,90" Margin="8,6">
+                    <TextBlock Grid.Column="0" Classes="optionsSectionHeader" Text="NAME"/>
+                    <TextBlock Grid.Column="1" Classes="optionsSectionHeader" Text="FOLDER ON THE SERVER"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Projects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ServerProjectRowViewModel">
+                            <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" Padding="8,7">
+                                <Grid ColumnDefinitions="170,*,90">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Path}" FontSize="12" FontFamily="Consolas,monospace" HorizontalAlignment="Left"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <Button Grid.Column="2" Classes="Subtle Compact" Content="Remove" HorizontalAlignment="Right"
+                                            ToolTip.Tip="Removes the project from the server's list. Its folder stays on the server."
+                                            Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).RemoveProjectCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="No projects on the server yet." FontSize="12" Margin="8,4,8,6"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding !Projects.Count}"/>
+            </StackPanel>
+        </Border>
+
+        <Border Padding="14,12" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1" Margin="0,4,0,0"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel Spacing="8">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Repository URL" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBox Text="{Binding CloneUrl}" FontFamily="Consolas,monospace" PlaceholderText="https://github.com/org/repo.git"/>
+                </StackPanel>
+                <Grid ColumnDefinitions="*,12,*">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Branch" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding CloneBranch}" FontFamily="Consolas,monospace"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="4">
+                        <TextBlock Text="Name" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding CloneName}" PlaceholderText="the repository's name"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="Cloned with the server's own git credentials (from its secret). None are sent from here." FontSize="12"
+                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <Button Classes="Accent" HorizontalAlignment="Left" Content="{Binding CloneLabel}" Command="{Binding CloneCommand}"
+                        IsEnabled="{Binding !IsBusy}"/>
+                <Border IsVisible="{Binding HasCloneResult}" Padding="10,8" CornerRadius="{StaticResource CockpitControlRadius}"
+                        Background="{DynamicResource CockpitStatusDoneChipTintBrush}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="✓" FontWeight="Bold" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                        <TextBlock Text="{Binding CloneResult}" FontSize="12.5" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

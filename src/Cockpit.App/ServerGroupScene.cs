@@ -2,6 +2,7 @@ using Cockpit.App.Composition;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -103,6 +104,8 @@ internal static class ServerGroupScene
         public ISessionLauncher? Launcher => null;
 
         public IConnectKeyAdministration Administration { get; } = ServerAdminScene.StandIn();
+
+        public IServerProjects Projects { get; } = ServerAdminScene.ProjectsStandIn();
 
         public RemoteServerState State { get; } = state;
 
