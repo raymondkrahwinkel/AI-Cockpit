@@ -2427,7 +2427,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         // AC-1476: a session-wide allow is the pane's own exact "Always".
-        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
+        await (forSession && allow && entry.ToolName is not null && entry.NodePermission is null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
         return true;
     }
 

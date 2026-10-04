@@ -518,8 +518,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     }
 
     // D4: always-allow is session-scoped on the narrow plugin surface. AC-1476: the rule is kept here, so every
-    // provider honours it and it ends with this adapter; the answer is still forwarded, so Codex's acceptForSession
-    // can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
+    // provider honours it and it ends with this adapter; a wildcard is also forwarded, so Codex's
+    // acceptForSession can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
     {
         var rule = scope == PermissionRuleScope.Wildcard
@@ -530,9 +530,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             _sessionRules.Add(rule);
         }
 
-        return _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
-            ? Task.CompletedTask
-            : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+        // An exact rule is this adapter's alone: a provider's own always-allow is wider (Kimi: the whole kind of call).
+        return scope == PermissionRuleScope.Exact
+            ? RespondToPermissionAsync(toolUseId, allow: true, cancellationToken)
+            : _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
+                ? Task.CompletedTask
+                : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
     }
 
     private readonly List<PermissionRule> _sessionRules = [];
