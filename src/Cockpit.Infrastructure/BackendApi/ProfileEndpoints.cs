@@ -103,7 +103,7 @@ internal static class ProfileEndpoints
                     return (null, _NoProfile());
                 }
 
-                var (changed, refusal) = _Apply(new SessionProfile(profiles[index].Label, profiles[index].ProviderConfig is LmStudioConfig lm ? lm with { ApiKey = null } : profiles[index].ProviderConfig) { EnvironmentVariables = [.. (profiles[index].EnvironmentVariables ?? []).Select(variable => variable with { Value = variable.IsSecret ? "" : variable.Value })] }, patch);
+                var (changed, refusal) = _Apply(profiles[index], patch);
                 if (changed is null)
                 {
                     return (null, refusal);
