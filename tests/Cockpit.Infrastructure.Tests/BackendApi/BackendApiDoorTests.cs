@@ -23,7 +23,9 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
@@ -162,6 +164,19 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"OPENAI_API_KEY","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"permissionMode":"bypassPermissions"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
+        // AC-1475 criteria 1 and 2: the server's own assistant is admin's alone, no answer of it holds a secret, also after a
+        // copy-in of a profile with one, and a credential, a program path or a loader variable in its patch is refused.
+        { "GET", "/api/v1/assistant/settings", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/assistant/settings/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
+        { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
+        { "POST", "/api/v1/assistant/settings/profile/copy-from/{secret}", null, "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other","apiKey":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "Provider credentials never cross this connection.", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"environment":[{"key":"OPENAI_API_KEY","value":"{secret}"}]}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"executablePath":"/tmp/{secret}"}}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"environment":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
     };
 
     // AC-1473: `listed` and `absent` are what the answer must and must not hold.
@@ -223,6 +238,45 @@ public sealed class BackendApiDoorTests
         Assert.Equal(
             [new ProfileEnvironmentVariable("PROVIDER_TOKEN", _Door.ProfileSecret, IsSecret: true), new("BACKUP_PASSWORD", _Door.ProfileSecret), new("REGION", "us")],
             keyed.EnvironmentVariables ?? []);
+    }
+
+    // AC-1475 criterion 3: a copy-in brings the server profile's secret variable and API key into the assistant's slot, and
+    // a model change over the API leaves both there, though the client never saw either.
+    [Fact]
+    public async Task TheAssistantsProfile_CopiedInThenChangedOverTheApi_KeepsTheSecretVariableAndTheApiKey()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+        await door.Slot.UnsetAsync("Not set up yet.");
+
+        var copied = await door.SendAsync(HttpMethod.Post, "/api/v1/assistant/settings/profile/copy-from/Keyed", Bootstrap);
+        var changed = await door.SendAsync(HttpMethod.Patch, "/api/v1/assistant/settings/profile", Bootstrap, """{"profile":{"model":"qwen-large"}}""");
+        var slot = (await door.Slot.LoadAsync()).Profile;
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK), (copied.Status, changed.Status));
+        Assert.Equal("qwen-large", slot is null ? null : ProfileModel.Of(slot));
+        Assert.Equal(_Door.ProfileSecret, (slot?.ProviderConfig as LmStudioConfig)?.ApiKey);
+        Assert.Equal(_Door.KeyedVariables, slot?.EnvironmentVariables ?? []);
+    }
+
+    // AC-1475 criterion 4: turning the assistant on over the API saves the switch alone, so the consent bypass the operator
+    // set stays, and has the host re-read its settings, so it is available without a restart.
+    [Fact]
+    public async Task TurningTheAssistantOnOverTheApi_ChangesOnlyTheSwitch_AndAppliesItWithoutARestart()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+        await door.Settings.SaveAsync(new AssistantSettings { ConsentBypassAll = false, ConsentBypassSources = ["discord-dm"], ConsentBypassDangerousSources = ["scheduler"], SpeakReplies = false });
+
+        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/assistant/settings/enabled", Bootstrap, """{"enabled":true}""");
+        var saved = await door.Settings.LoadAsync();
+
+        Assert.Equal(HttpStatusCode.OK, answer.Status);
+        Assert.Equal((true, false, false), (saved.IsEnabled, saved.ConsentBypassAll, saved.SpeakReplies));
+        Assert.Equal(["discord-dm"], saved.ConsentBypassSources);
+        Assert.Equal(["scheduler"], saved.ConsentBypassDangerousSources);
+        await door.Assistant.Received(1).ApplySettingsAsync(Arg.Any<CancellationToken>());
+        await door.Assistant.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
     }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
@@ -641,6 +695,12 @@ public sealed class BackendApiDoorTests
 
         public SessionProfileStore Profiles => new(ConfigPath);
 
+        public AssistantSettingsStore Settings => new(ConfigPath);
+
+        public AssistantProfileStore Slot => new(ConfigPath);
+
+        public IAssistantSessionHost Assistant { get; } = Substitute.For<IAssistantSessionHost>();
+
         public McpAuthKey AppKey { get; } = new();
 
         public SessionMcpKeyring Keyring { get; } = new();
@@ -718,6 +778,11 @@ public sealed class BackendApiDoorTests
                 },
             ]);
             services.AddSingleton<ISessionProfileStore>(Profiles);
+            // AC-1475: the assistant's slot already holds the keyed profile, secrets and all, as a copy-in leaves it.
+            await Slot.RepointAsync((await Profiles.LoadAsync()).Single(profile => profile.Label == KeyedProfile), false);
+            services.AddSingleton<IAssistantSettingsStore>(Settings);
+            services.AddSingleton<IAssistantProfileStore>(Slot);
+            services.AddSingleton(Assistant);
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
             services.AddSingleton<IAssistantMemory>(new NodeSessionMcpToolsTests.StubMemory());

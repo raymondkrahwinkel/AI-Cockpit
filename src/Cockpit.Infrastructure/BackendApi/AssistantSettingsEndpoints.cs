@@ -129,9 +129,11 @@ internal static class AssistantSettingsEndpoints
         var host = services.GetRequiredService<IAssistantSessionHost>();
         var registry = services.GetService<IPluginProviderRegistry>();
         var profile = slot.Profile;
+
+        // The server never applies its settings at start, so its host reads "ready" until something has: off or empty is not.
         return new RemoteAssistantSettings(
             settings.IsEnabled,
-            host.Activity != AssistantActivity.Unavailable,
+            settings.IsEnabled && profile is not null && host.Activity != AssistantActivity.Unavailable,
             host.UnavailableReason,
             profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Declared(services, profile)),
             profile is null ? slot.UnsetReason : null,
