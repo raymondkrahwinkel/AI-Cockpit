@@ -199,10 +199,12 @@ internal sealed class AgentsMcpTools(
             // AC-1322: while a controller holds the line, the assistant this machine has is the controller's, so its
             // mail is queued for that cockpit's next poll — but only from a session the controller may reach (AC-1405:
             // its key's scope, or the pairing grant); any other session's mail stays local.
+            var profile = _ProfileOf(snapshot, caller) ?? string.Empty;
+            var projectId = sessions?.Find(caller)?.ProjectId;
             var current = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal) ? presence?.Current : null;
             var controller = current is not null
                 && pairing is not null
-                && NodeCaller.Holding(current).AllowsSession(_ProfileOf(snapshot, caller) ?? string.Empty, sessions?.Find(caller)?.ProjectId, pairing)
+                && NodeCaller.Holding(current).AllowsSession(profile, projectId, pairing)
                 ? current
                 : null;
 
@@ -232,7 +234,7 @@ internal sealed class AgentsMcpTools(
                     _RateLimitReason(charged), urgent).ConfigureAwait(false);
             }
 
-            var delivery = inbox.Deliver(caller, controller is null ? addressee : AssistantIdentity.ControllerInboxPaneId, label, text);
+            var delivery = inbox.Deliver(caller, controller is null ? addressee : AssistantIdentity.ControllerInboxPaneId, label, text, profile, projectId);
             if (delivery is not { Message: { } message })
             {
                 return await _RefuseNotifyAsync(

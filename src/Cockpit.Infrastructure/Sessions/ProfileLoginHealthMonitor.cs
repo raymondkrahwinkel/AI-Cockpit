@@ -147,6 +147,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             {
                 _alarmed.Add(profile.Label);
                 await _AlarmAsync(
+                    profile.Label,
                     "login-expired",
                     "Cockpit sign-in expired",
                     $"The sign-in of profile '{profile.Label}' on {Environment.MachineName} has expired (noticed {now:HH:mm} UTC). Sessions with this profile cannot start until it is signed in again.",
@@ -155,6 +156,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             else if (signedIn && _alarmed.Remove(profile.Label))
             {
                 await _AlarmAsync(
+                    profile.Label,
                     "login-restored",
                     "Cockpit sign-in restored",
                     $"Profile '{profile.Label}' on {Environment.MachineName} is signed in again.",
@@ -166,7 +168,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     }
 
     // Each channel on its own: a webhook that fails must not keep the message from the controller's inbox.
-    private async Task _AlarmAsync(string kind, string title, string body, CancellationToken cancellationToken)
+    private async Task _AlarmAsync(string profileLabel, string kind, string title, string body, CancellationToken cancellationToken)
     {
         try
         {
@@ -179,7 +181,8 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
         try
         {
-            _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body);
+            // AC-1405: stamped with the profile it is about, so a controller reads it only within that profile's scope.
+            _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body, profileLabel);
         }
         catch (Exception exception)
         {

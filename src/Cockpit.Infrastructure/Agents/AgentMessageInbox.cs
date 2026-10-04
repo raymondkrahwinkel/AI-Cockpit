@@ -141,7 +141,7 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body)
+    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null)
     {
         lock (_lock)
         {
@@ -179,7 +179,9 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
                 toPaneId,
                 kind,
                 body,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                senderProfile,
+                senderProjectId);
             waiting.Add(delivered);
 
             // AC-1327 reviewbevinding 2: presence can expire between AgentsMcpTools reading it and this delivery
@@ -193,6 +195,31 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
             }
 
             return new AgentMessageDelivery(AgentMessageDeliveryOutcome.Delivered, delivered);
+        }
+    }
+
+    public AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<bool> isReader, Func<AgentMessage, bool> mayRead, int limit)
+    {
+        lock (_lock)
+        {
+            // AC-1405: under the lock delivery takes, so mail routed to a new holder cannot land between check and read.
+            if (!isReader())
+            {
+                return null;
+            }
+
+            _inboxes.TryGetValue(paneId, out var waiting);
+            var readable = (waiting ?? []).Where(mayRead).ToList();
+            var acknowledged = afterMessageId is null
+                ? -1
+                : readable.FindIndex(message => string.Equals(message.Id, afterMessageId, StringComparison.Ordinal));
+            foreach (var message in readable.Take(acknowledged + 1))
+            {
+                waiting?.Remove(message);
+            }
+
+            var unread = readable.Skip(acknowledged + 1).ToList();
+            return new AgentInboxBatch([.. unread.Take(limit)], Math.Max(0, unread.Count - limit));
         }
     }
 

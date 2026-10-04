@@ -177,27 +177,31 @@ internal sealed class NodeSessionMcpTools(
     {
         try
         {
-            if ((_RefuseIfNotTheController() ?? _RefuseIfNotTheHolder()) is { } refusal)
+            if (_RefuseIfNotTheController() is { } refusal)
             {
                 return Task.FromResult(refusal);
             }
 
-            // A look, not a take: what was already held stays until the cursor says it arrived. Taking it in flight
-            // and returning it is the peek the inbox interface does not offer directly.
-            var held = inbox.TakeForDelivery(AssistantIdentity.ControllerInboxPaneId, MaxMessagesPerRead);
-            var acknowledged = afterMessageId is null
-                ? -1
-                : held.Messages.ToList().FindIndex(message => string.Equals(message.Id, afterMessageId, StringComparison.Ordinal));
-            var ids = held.Messages.Select(message => message.Id).ToList();
-            inbox.ConfirmDelivered(AssistantIdentity.ControllerInboxPaneId, ids[..(acknowledged + 1)]);
-            inbox.ReturnUndelivered(AssistantIdentity.ControllerInboxPaneId, ids[(acknowledged + 1)..]);
+            // AC-1405: only the live holder reads, and only what its key's scope reaches now — checked together with the
+            // read, so another key, a narrowed scope or a takeover never gets mail outside its own reach.
+            var reader = McpRequestContext.CurrentNodeCaller ?? NodeCaller.ForPairing("");
+            var held = inbox.ReadFor(
+                AssistantIdentity.ControllerInboxPaneId,
+                afterMessageId,
+                () => presence?.Current is { } holder && string.Equals(holder.KeyPrefix, reader.KeyPrefix, StringComparison.Ordinal),
+                message => reader.AllowsSession(message.SenderProfile ?? string.Empty, message.SenderProjectId, pairing),
+                MaxMessagesPerRead);
+            if (held is null)
+            {
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = false, error = NotTheController }, SerializerOptions));
+            }
 
             return Task.FromResult(_Serialize(new
             {
                 ok = true,
                 node = Environment.MachineName,
                 discoveryId = discoveryId.Value,
-                messages = held.Messages.Skip(acknowledged + 1).Select(message => new
+                messages = held.Messages.Select(message => new
                 {
                     id = message.Id,
                     fromPaneId = message.FromPaneId,
@@ -763,13 +767,6 @@ internal sealed class NodeSessionMcpTools(
 
     private static string? _RefuseIfNotTheController() =>
         string.Equals(McpRequestContext.CurrentPaneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal)
-            ? null
-            : JsonSerializer.Serialize(new { ok = false, error = NotTheController }, SerializerOptions);
-
-    // AC-1405: the controller inbox is the holder's mail, so another key on this node may neither read nor acknowledge
-    // it; it is told what a local session is told. The pairing holds with no key prefix, as a pairing caller has none.
-    private string? _RefuseIfNotTheHolder() =>
-        presence?.Current is { } holder && string.Equals(holder.KeyPrefix, McpRequestContext.CurrentNodeCaller?.KeyPrefix, StringComparison.Ordinal)
             ? null
             : JsonSerializer.Serialize(new { ok = false, error = NotTheController }, SerializerOptions);
 

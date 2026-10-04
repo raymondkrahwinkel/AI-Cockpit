@@ -52,7 +52,7 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         {
             lock (_gate)
             {
-                return _current;
+                return _LiveUnlocked();
             }
         }
     }
@@ -64,7 +64,7 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         bool appeared;
         lock (_gate)
         {
-            appeared = _current is null || _holderRevoked.IsCancellationRequested;
+            appeared = _LiveUnlocked() is null;
 
             // AC-1405: only the holder's own call keeps it present and refreshes its scope, so a narrowed key applies
             // from its next call and a holder gone quiet expires even while another caller polls.
@@ -76,7 +76,7 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
             _lastSeenUtc = _time.GetUtcNow();
             var since = appeared ? _lastSeenUtc : _current?.SinceUtc ?? _lastSeenUtc;
             _current = holder is { ByConnectKey: true }
-                ? new ActiveController(controllerName, since, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default)
+                ? new ActiveController(controllerName, since, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default, holder.ExpiresAt)
                 : new ActiveController(controllerName, since);
             _holderRevoked = holder?.Revoked ?? CancellationToken.None;
             _expiry?.Dispose();
@@ -88,6 +88,10 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    // AC-1405: a holder whose key was revoked or ran out is gone at once, before its window would let it go.
+    private ActiveController? _LiveUnlocked() =>
+        _current is { } current && !_holderRevoked.IsCancellationRequested && !(current.ExpiresAt <= _time.GetUtcNow()) ? current : null;
 
     private void _Expire()
     {
