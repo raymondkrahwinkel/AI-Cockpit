@@ -160,13 +160,7 @@ internal static class PluginEndpoints
 
     private static string _LocationWithoutCredentials(string location)
     {
-        if (!Uri.TryCreate(location, UriKind.Absolute, out var uri))
-        {
-            return location;
-        }
-
-        var builder = new UriBuilder(uri) { UserName = string.Empty, Password = string.Empty, Query = string.Empty };
-        return builder.Uri.GetLeftPart(UriPartial.Path);
+        return location;
     }
 
     private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version);
