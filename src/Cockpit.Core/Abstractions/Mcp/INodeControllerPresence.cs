@@ -17,8 +17,8 @@ public interface INodeControllerPresence
     ActiveController? Current { get; }
 
     /// <summary>
-    /// Raised when <see cref="Current"/> appears or goes away, from whatever thread noticed it. Not raised on every
-    /// call that merely keeps the controller present.
+    /// Raised when <see cref="Current"/> appears, goes away or passes to another controller after the holder's key
+    /// was revoked, from whatever thread noticed it. Not raised on every call that merely keeps the controller present.
     /// </summary>
     event EventHandler? Changed;
 }

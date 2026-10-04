@@ -52,18 +52,18 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
     }
 
-    // AC-1405: a controller holding the line by connect key gets the mail of a session its key's scope reaches, with
-    // no pairing at all, and not of one in a project outside that scope. A null key project is a key on every project.
+    // AC-1405: a controller holding the line by connect key gets the mail of a session its key's scope reaches, under
+    // a profile no pairing covers, and not of one in a project outside that scope.
     [Theory]
-    [InlineData("project-a", "project-a", "DESKTOP", 0)]
-    [InlineData("project-a", "project-b", null, 1)]
-    [InlineData(null, null, "DESKTOP", 0)]
-    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(string? keyProject, string? sessionProject, string? controller, int keptLocally)
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0)]
+    [InlineData(false, "project-a", "project-b", null, 1)]
+    [InlineData(true, "project-a", null, "DESKTOP", 0)]
+    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(bool keyOnEveryProject, string keyProject, string? sessionProject, string? controller, int keptLocally)
     {
         _presence.Current = new ActiveController("DESKTOP", DateTimeOffset.UtcNow, "ck_test", new ConnectKeyScope
         {
-            AllowAllProjects = keyProject is null,
-            AllowedProjectIds = keyProject is null ? [] : [keyProject],
+            AllowAllProjects = keyOnEveryProject,
+            AllowedProjectIds = [keyProject],
         });
         var session = Substitute.For<ISessionHandle>();
         session.ProjectId.Returns(sessionProject);

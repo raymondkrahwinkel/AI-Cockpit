@@ -57,27 +57,28 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         }
     }
 
-    // ponytail: one controller at a time is assumed, not enforced (epic point 6 is open) — two machines calling
-    // within the window both keep the first one present here. Key on the caller if Raymond decides otherwise.
+    // ponytail: one controller at a time is assumed, not enforced (epic point 6 is open) — a second machine calling
+    // within the window waits until the first misses it. Key on the caller if Raymond decides otherwise.
     public void Seen(string controllerName, NodeCaller? holder = null)
     {
         bool appeared;
         lock (_gate)
         {
             appeared = _current is null || _holderRevoked.IsCancellationRequested;
-            _lastSeenUtc = _time.GetUtcNow();
 
-            // AC-1405: the holder's own call refreshes its scope, so a narrowed key applies from its next call. Another
-            // caller does not take its place, unless the holder's key was revoked since.
-            if (appeared || string.Equals(_current?.KeyPrefix, holder?.KeyPrefix, StringComparison.Ordinal))
+            // AC-1405: only the holder's own call keeps it present and refreshes its scope, so a narrowed key applies
+            // from its next call and a holder gone quiet expires even while another caller polls.
+            if (!appeared && !string.Equals(_current?.KeyPrefix, holder?.KeyPrefix, StringComparison.Ordinal))
             {
-                var since = appeared ? _lastSeenUtc : _current?.SinceUtc ?? _lastSeenUtc;
-                _current = holder is { ByConnectKey: true }
-                    ? new ActiveController(controllerName, since, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default)
-                    : new ActiveController(controllerName, since);
-                _holderRevoked = holder?.Revoked ?? CancellationToken.None;
+                return;
             }
 
+            _lastSeenUtc = _time.GetUtcNow();
+            var since = appeared ? _lastSeenUtc : _current?.SinceUtc ?? _lastSeenUtc;
+            _current = holder is { ByConnectKey: true }
+                ? new ActiveController(controllerName, since, holder.KeyPrefix, holder.Scope ?? ConnectKeyScope.Default)
+                : new ActiveController(controllerName, since);
+            _holderRevoked = holder?.Revoked ?? CancellationToken.None;
             _expiry?.Dispose();
             _expiry = _time.CreateTimer(_ => _Expire(), null, Window, Timeout.InfiniteTimeSpan);
         }
