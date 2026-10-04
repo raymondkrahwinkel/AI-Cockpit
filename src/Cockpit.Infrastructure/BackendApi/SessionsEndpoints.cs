@@ -196,7 +196,7 @@ internal static class SessionsEndpoints
 
             // AC-1476: after the grant check, so a key without it learns nothing about which scopes exist.
             var scope = body.Scope ?? "once";
-            var forSession = scope == "session";
+            var forSession = false && scope == "session";
             if (!forSession && scope != "once" || forSession && !body.Allow)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "scope must be once, or session on an allow.");
