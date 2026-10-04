@@ -45,7 +45,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   server then stops asking for that tool with that exact input until the session ends, and a key without the
   permission grant is refused as before. The button only shows when the server says it supports it (`/whoami`
   `allowsForSession`); an older server never sees it. On this machine "Always" now also holds for the rest of the
-  session on Claude, where it used to act as a single allow. Cockpit 0.81.0.
+  session on Claude, where it used to act as a single allow. Cockpit 0.82.0.
 - added: the headless server's compose file brings the assistant's brain along. A `brain-sync` service keeps an
   include list of the AI-OS tree (`Me.md`, `Me-Reference.md`, `Memory/`, `AGENTS/`) in sync with Nextcloud, so an agent
   session reads `~/Nextcloud/Notes/AI-OS/Me.md` as on the desktop and its notes reach the desktop again. A change on
