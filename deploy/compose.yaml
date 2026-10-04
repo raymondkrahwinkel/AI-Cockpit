@@ -57,12 +57,6 @@ services:
       - work:/work
       # AC-1364: the brain, kept by brain-sync, at the path Me.md has on the desktop.
       - brain:/home/agent/Nextcloud
-    # AC-1364: which brain file is which assistant, read-only for the CLIs (claude and codex alike).
-    configs:
-      - source: brain_instructions
-        target: /home/agent/.claude/CLAUDE.md
-      - source: brain_instructions
-        target: /home/agent/.codex/AGENTS.md
 
   # AC-1364: bisyncs the brain (an include list of the AI-OS tree in Nextcloud) into the `brain` volume. It runs as
   # agent's uid, so sessions write their notes back; the app password is this container's alone, never the cockpit's.
