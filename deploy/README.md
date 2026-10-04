@@ -114,7 +114,7 @@ rights, disk encryption, and encrypted backups. A state with encrypted credentia
 encryption off on the desktop before copying it to the server, or start from an empty `/state`.
 
 That makes `session.env` the container secret for provider API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`,
-`GITHUB_TOKEN`, `XAI_API_KEY`): a profile with an empty key then uses the variable and shows "API key from secret". A key
+`GITHUB_MODELS_TOKEN`, `XAI_API_KEY`): a profile with an empty key then uses the variable and shows "API key from secret", as long as its base URL is the provider's own host (`GITHUB_MODELS_TOKEN` is separate from the `GITHUB_TOKEN` that `gh` and `git` use). A key
 typed into a profile lives in its `ConfigJson` on this unencrypted volume, so there it is not a secret.
 
 ## Agent sessions run as `agent`

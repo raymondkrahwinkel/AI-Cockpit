@@ -42,8 +42,8 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.GitHubModels)
         {
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
-            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar) != PluginCredentialKind.Unknown,
-            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar),
+            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.GitHubModels) != PluginCredentialKind.Unknown,
+            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.GitHubModels),
         });
     }
 

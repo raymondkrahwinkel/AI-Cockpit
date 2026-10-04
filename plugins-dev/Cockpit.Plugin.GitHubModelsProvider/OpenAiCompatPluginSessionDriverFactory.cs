@@ -23,8 +23,8 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDri
 
         var options = new OpenAIClientOptions { Endpoint = new Uri(config.BaseUrl) };
         var credential = new ApiKeyCredential(
-            OpenAiCompatConfig.ResolveApiKey(config.ApiKey, OpenAiCompatConfig.ApiKeyEnvVar)
-            ?? throw new InvalidOperationException("No API key: set one on the profile or GITHUB_TOKEN in session.env."));
+            OpenAiCompatConfig.ResolveApiKey(config, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.GitHubModels)
+            ?? throw new InvalidOperationException("No API key: set one on the profile or GITHUB_MODELS_TOKEN in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
         return new OpenAiCompatPluginSessionDriver(chatClient, config.Model);
     }

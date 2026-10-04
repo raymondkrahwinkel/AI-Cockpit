@@ -42,8 +42,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - added: an OpenRouter, Gemini, GitHub Models or Grok profile on a server can leave its API key empty and take it from
-  the container secret instead: set `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN` or `XAI_API_KEY` in
-  `session.env`. The Health tab then says "✓ API key from secret", and the profile screen accepts the empty key. A key
+  the container secret instead: set `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `GITHUB_MODELS_TOKEN` or `XAI_API_KEY` in
+  `session.env`. The Health tab then says "✓ API key from secret", and the profile screen accepts the empty key.
+  The variable is only used for the provider's own host; a profile with another base URL needs its own key. A key
   typed into a profile still reads "✓ API key". Needs Cockpit 0.83.0; OpenRouter 0.4.0, Gemini 0.6.0, GitHub Models
   0.4.0 and Grok 0.3.0.
 - added: the Health tab says how a profile is signed in, from what the CLI itself reports: "✓ Signed in · renews itself"

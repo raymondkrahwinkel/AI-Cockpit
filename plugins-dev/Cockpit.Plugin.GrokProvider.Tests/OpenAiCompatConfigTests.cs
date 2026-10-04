@@ -32,23 +32,27 @@ public class OpenAiCompatConfigTests
     }
 
     // AC-1484: where the key comes from. A key on the profile wins; an empty one falls back to the process
-    // environment (a container secret); neither means no sign-in. The values are fakes.
+    // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]
-    [InlineData("sk-config", "sk-env", PluginCredentialKind.ApiKey, "sk-config")]
-    [InlineData("sk-config", null, PluginCredentialKind.ApiKey, "sk-config")]
-    [InlineData("", "sk-env", PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
-    [InlineData("  ", "sk-env", PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
-    [InlineData("", null, PluginCredentialKind.Unknown, null)]
-    [InlineData("", "  ", PluginCredentialKind.Unknown, null)]
-    public void ApiKeySource_TakesTheProfileKeyThenTheEnvironment(string apiKey, string? env, PluginCredentialKind expectedKind, string? expectedKey)
+    [InlineData("sk-config", "sk-env", OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.ApiKey, "sk-config")]
+    [InlineData("sk-config", null, OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.ApiKey, "sk-config")]
+    [InlineData("", "sk-env", OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
+    [InlineData("  ", "sk-env", OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
+    [InlineData("", null, OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.Unknown, null)]
+    [InlineData("", "  ", OpenAiCompatDefaultBaseUrls.Grok, PluginCredentialKind.Unknown, null)]
+    [InlineData("", "sk-env", "https://gateway.example.test/v1", PluginCredentialKind.Unknown, null)]
+    [InlineData("", "sk-env", "http://api.x.ai/v1", PluginCredentialKind.Unknown, null)]
+    [InlineData("sk-config", "sk-env", "https://gateway.example.test/v1", PluginCredentialKind.ApiKey, "sk-config")]
+    public void ApiKeySource_TakesTheProfileKeyThenTheEnvironmentOnTheOwnHostOnly(string apiKey, string? env, string baseUrl, PluginCredentialKind expectedKind, string? expectedKey)
     {
-        var configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(apiKey, "model", "https://example.test"));
+        var config = new OpenAiCompatConfig(apiKey, "model", baseUrl);
+        var configJson = JsonSerializer.Serialize(config);
         var before = Environment.GetEnvironmentVariable(OpenAiCompatConfig.ApiKeyEnvVar);
         Environment.SetEnvironmentVariable(OpenAiCompatConfig.ApiKeyEnvVar, env);
         try
         {
-            Assert.Equal(expectedKind, OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar));
-            Assert.Equal(expectedKey, OpenAiCompatConfig.ResolveApiKey(apiKey, OpenAiCompatConfig.ApiKeyEnvVar));
+            Assert.Equal(expectedKind, OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok));
+            Assert.Equal(expectedKey, OpenAiCompatConfig.ResolveApiKey(config, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok));
         }
         finally
         {

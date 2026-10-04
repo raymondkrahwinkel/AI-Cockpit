@@ -14,6 +14,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;
     private readonly string? _apiKeyEnvVar;
+    private readonly string _defaultBaseUrl;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
     private readonly TextBox _timeoutSeconds;
@@ -26,12 +27,13 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, string? apiKeyEnvVar, ICockpitUiHost host)
     {
         _apiKeyEnvVar = apiKeyEnvVar;
+        _defaultBaseUrl = defaultBaseUrl;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<OpenAiCompatConfig>(existingConfigJson, OpenAiCompatConfig.JsonOptions);
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
-        var apiKeyHint = _Hint($"Or leave it empty and set {apiKeyEnvVar} in session.env on the server.");
+        var apiKeyHint = _Hint($"Or leave it empty and set {apiKeyEnvVar} in session.env on the server. A different base URL needs its own key here.");
         apiKeyHint.IsVisible = apiKeyEnvVar is not null;
 
         // Free text with fetched suggestions, not a hard dropdown: a gateway may serve a model it does not
@@ -82,7 +84,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
         _timeoutStatus.IsVisible = false;
 
-        if ((_apiKeyEnvVar is null && string.IsNullOrWhiteSpace(_apiKey.Text)) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
+        if ((string.IsNullOrWhiteSpace(_apiKey.Text) && !(_apiKeyEnvVar is not null && OpenAiCompatConfig.UsesDefaultHost(_baseUrl.Text, _defaultBaseUrl))) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
             return false;

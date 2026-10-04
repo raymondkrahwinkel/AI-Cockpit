@@ -25,7 +25,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
         var logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.GeminiProvider");
         var options = BuildClientOptions(config, logger);
         var credential = new ApiKeyCredential(
-            OpenAiCompatConfig.ResolveApiKey(config.ApiKey, apiKeyEnvVar)
+            OpenAiCompatConfig.ResolveApiKey(config, apiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini)
             ?? throw new InvalidOperationException(apiKeyEnvVar is null ? "No API key on the profile." : $"No API key: set one on the profile or {apiKeyEnvVar} in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
         return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger);

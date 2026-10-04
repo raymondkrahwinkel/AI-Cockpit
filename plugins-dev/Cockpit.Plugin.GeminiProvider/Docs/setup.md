@@ -16,7 +16,7 @@ For **Gemini**, get a key from [Google AI Studio](https://aistudio.google.com/) 
 get one from [platform.openai.com](https://platform.openai.com/) — **API keys**. Paste it into this plugin's
 **API key** field for the matching profile; it is stored with the rest of the profile's config.
 
-On a Cockpit server you can leave the field empty and set `GEMINI_API_KEY` in `session.env` instead: the key then comes from the container secret, and the profile reports "API key from secret". This applies to the Gemini profile only, not the OpenAI one.
+On a Cockpit server you can leave the field empty and set `GEMINI_API_KEY` in `session.env` instead: the key then comes from the container secret, and the profile reports "API key from secret". The variable is only used while the base URL is this provider's own; a profile that points elsewhere needs its own key in the config. This applies to the Gemini profile only, not the OpenAI one.
 
 ## 2. Pick a model {#model}
 

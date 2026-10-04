@@ -38,8 +38,8 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini)
         {
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
-            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar) != PluginCredentialKind.Unknown,
-            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar),
+            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini) != PluginCredentialKind.Unknown,
+            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini),
         });
 
         host.AddSessionProvider(new SessionProviderRegistration(

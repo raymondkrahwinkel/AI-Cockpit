@@ -18,7 +18,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDri
 
         var options = new OpenAIClientOptions { Endpoint = new Uri(config.BaseUrl) };
         var credential = new ApiKeyCredential(
-            OpenAiCompatConfig.ResolveApiKey(config.ApiKey, OpenAiCompatConfig.ApiKeyEnvVar)
+            OpenAiCompatConfig.ResolveApiKey(config, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok)
             ?? throw new InvalidOperationException("No API key: set one on the profile or XAI_API_KEY in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
         return new OpenAiCompatPluginSessionDriver(chatClient, config.Model);
