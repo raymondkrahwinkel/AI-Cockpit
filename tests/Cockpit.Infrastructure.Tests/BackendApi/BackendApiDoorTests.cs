@@ -158,6 +158,7 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
     };
 
+    // AC-1473: `listed` and `absent` are what the answer must and must not hold.
     [Theory]
     [MemberData(nameof(AdminRoutes))]
     public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string? error, string listed, string absent)
