@@ -205,6 +205,13 @@ public interface IAssistantAgentGateway
     /// </remarks>
     Task<bool> RespondToPermissionAsync(string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         Task.FromResult(false);
+
+    /// <summary>
+    /// AC-1476: allows the open row and stops asking for the same tool with the same input for the rest of the
+    /// session. False when the row is not open, as above.
+    /// </summary>
+    Task<bool> RespondToPermissionForSessionAsync(string paneId, string toolUseId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
 }
 
 // AC-1261: what came of a clear_conversation request. AlreadyQueued distinguishes a fresh request from a second

@@ -492,11 +492,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1469: false while the line to this pane's server is down, so Send and the permission buttons are off with it.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanAllowForSession))]
     private bool _isLinkUp = true;
 
     // AC-1469: whether the server's key may answer permission prompts. The server decides again on every answer.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAllowForSession))]
     private bool _mayAnswerPermissions = true;
+
+    // AC-1476: whether the server takes a session-wide allow; an older one would read it as a single allow.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAllowForSession))]
+    private bool _allowsForSession;
+
+    public bool CanAllowForSession => IsRemote && MayAnswerPermissions && AllowsForSession && IsLinkUp;
 
     public string AllowLabel => IsRemote ? "Allow once" : "Allow";
 
@@ -1320,7 +1329,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ActiveProfileLabel = handle.ActiveProfileLabel;
         SessionStatus = handle.SessionStatus;
         Status = $"Runs on {server}.";
-        SetRemoteLink(isUp: false, mayAnswerPermissions: false);
+        SetRemoteLink(isUp: false, mayAnswerPermissions: false, allowsForSession: false);
 
         Action<TranscriptRowUpsert> row = upsert => UiPost(() => _DrawHostRow(upsert.Row));
         Action<SessionLiveState> live = state => UiPost(() => _OnLiveStateChanged(state));
@@ -1344,10 +1353,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-1469: what the server group last said about the line and the key; the pane follows it and keeps no queue of its own.
-    internal void SetRemoteLink(bool isUp, bool mayAnswerPermissions)
+    internal void SetRemoteLink(bool isUp, bool mayAnswerPermissions, bool allowsForSession)
     {
         IsLinkUp = isUp;
         MayAnswerPermissions = mayAnswerPermissions;
+        AllowsForSession = allowsForSession;
         IsInputEnabled = isUp;
         ComposerPlaceholder = isUp
             ? $"Send a message to the session on {RemoteServer}…"
@@ -1390,7 +1400,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Closed before the call like the node path; a refusal (the key may not answer, the line is down) reopens the row.
-    private async Task _AnswerOnServerAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson)
+    private async Task _AnswerOnServerAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson, bool forSession = false)
     {
         if (_remoteControl is null || !entry.IsPendingPermission || entry.ToolUseId is null || !IsLinkUp || !MayAnswerPermissions)
         {
@@ -1406,7 +1416,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var answered = true;
             if (answersJson is null && _remoteHandle is { } handle)
             {
-                answered = await handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow).ConfigureAwait(true);
+                answered = await handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow, forSession).ConfigureAwait(true);
             }
             else
             {
@@ -1414,7 +1424,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             entry.PermissionDecision = !answered ? $"Already answered on {RemoteServer}"
-                : answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied";
+                : answersJson is not null ? "Answered" : !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed";
         }
         catch (Exception exception)
         {
@@ -2325,6 +2335,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private static string _BuildBrokerAnswerText(AskUserQuestionViewModel prompt) =>
         $"\"{prompt.Question}\" → {prompt.Answer}";
 
+    // AC-1476: remote only, and only where the server said it keeps the rule; the button is drawn on that same test.
+    [RelayCommand]
+    private async Task AllowForSessionToolAsync(TranscriptEntryViewModel entry)
+    {
+        if (CanAllowForSession)
+        {
+            await _AnswerOnServerAsync(entry, allow: true, answersJson: null, forSession: true);
+        }
+    }
+
     [RelayCommand]
     private async Task DenyToolAsync(TranscriptEntryViewModel entry)
     {
@@ -2399,14 +2419,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
     // open here — answered already, or never asked — and then nothing is done.
-    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow)
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
     {
         if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
         {
             return false;
         }
 
-        await RespondToPermissionAsync(entry, allow);
+        // AC-1476: a session-wide allow is the pane's own exact "Always".
+        await (forSession && allow && entry.ToolName is not null && entry.NodePermission is null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
         return true;
     }
 
@@ -2446,6 +2467,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : $"Always allowed (exact: {entry.ToolName})");
 
         await _control.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
+
+        // AC-1476: a call already waiting on the same rule is answered with it.
+        var rule = scope == PermissionRuleScope.Wildcard
+            ? PermissionRule.ForWildcard(entry.ToolName)
+            : PermissionRule.ForExact(entry.ToolName, entry.InputJson ?? "{}");
+        foreach (var other in PendingToolPermissionRows().Where(other => other != entry && other.ToolName is not null
+            && other.NodePermission is null && rule.Matches(other.ToolName, other.InputJson ?? "{}")).ToList())
+        {
+            if (other.ToolUseId is { } otherId)
+            {
+                _MarkDecided(other, "Allowed for this session");
+                await _control.RespondToPermissionAsync(otherId, allow: true, answersJson: null);
+            }
+        }
     }
 
     // Called both when the turn finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a

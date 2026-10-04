@@ -105,6 +105,7 @@ public sealed record RemoteServerState(bool IsConnected, long? LatencyMs, Remote
 
 // AC-1456: what /whoami says about the key this cockpit connects with. `AssistantHeldBy` names the key holding it;
 // `MayAnswerPermissions` (AC-1469) only decides whether the buttons are drawn, the server decides whether an answer counts.
+// `AllowsForSession` (AC-1476) says the server takes a session-wide allow; one that does not would read it as a single allow.
 public sealed record RemoteServerKey(
     string Label,
     string Capability,
@@ -112,4 +113,5 @@ public sealed record RemoteServerKey(
     string? AssistantHeldBy,
     string? Version,
     DateTimeOffset? StartedAt,
-    bool MayAnswerPermissions = false);
+    bool MayAnswerPermissions = false,
+    bool AllowsForSession = false);

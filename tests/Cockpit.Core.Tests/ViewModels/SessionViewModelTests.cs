@@ -287,6 +287,22 @@ public class SessionViewModelTests
             "toolu_2", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard, Arg.Any<CancellationToken>());
     }
 
+    // AC-1476: "Allow for this session" is drawn only where the server announced it, the key may answer and the line is up.
+    [Theory]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    public async Task AllowForSession_IsOnlyOfferedWhereTheServerKnowsIt(bool mayAnswer, bool serverKnows, bool linkUp, bool offered)
+    {
+        var vm = NewVm();
+        await vm.FollowRemoteAsync(Substitute.For<ISessionHandle>(), "huis-cockpit");
+
+        vm.SetRemoteLink(linkUp, mayAnswer, serverKnows);
+
+        Assert.Equal(offered, vm.CanAllowForSession);
+    }
+
     private static SessionViewModel NewVm()
     {
         var session = Substitute.For<ISessionDriver>();

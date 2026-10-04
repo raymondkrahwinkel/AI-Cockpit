@@ -194,7 +194,17 @@ internal static class SessionsEndpoints
                 return Results.NotFound();
             }
 
-            var answered = await gateway().RespondToPermissionAsync(paneId, toolUseId, body.Allow).ConfigureAwait(false);
+            // AC-1476: after the grant check, so a key without it learns nothing about which scopes exist.
+            var scope = body.Scope ?? "once";
+            var forSession = scope == "session";
+            if (!forSession && scope != "once" || forSession && !body.Allow)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "scope must be once, or session on an allow.");
+            }
+
+            var answered = await (forSession
+                ? gateway().RespondToPermissionForSessionAsync(paneId, toolUseId)
+                : gateway().RespondToPermissionAsync(paneId, toolUseId, body.Allow)).ConfigureAwait(false);
             return Results.Json(new { paneId, toolUseId, answered });
         }).RequireOperate().Audited("answer_permission", services);
 
@@ -396,7 +406,7 @@ internal sealed record StartSessionBody(string Profile, string? ProjectId, strin
 
 internal sealed record PromptBody(string Text);
 
-internal sealed record PermissionBody(bool Allow);
+internal sealed record PermissionBody(bool Allow, string? Scope = null);
 
 internal sealed record ModelBody(string? Model);
 

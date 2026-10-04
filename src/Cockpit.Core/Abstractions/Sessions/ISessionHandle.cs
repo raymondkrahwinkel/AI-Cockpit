@@ -172,8 +172,10 @@ public interface ISessionHandle
 
     /// <summary>
     /// Answers the pending permission prompt for <paramref name="toolUseId"/>; false when no such prompt is open.
+    /// <paramref name="forSession"/> (AC-1476) also stops prompting for that tool with that exact input for the
+    /// rest of the session, and only means something on an allow.
     /// </summary>
-    Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow);
+    Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false);
 
     /// <summary>
     /// Hands a verify render back to the session as its next input; false when the session cannot take it.

@@ -67,6 +67,12 @@ public sealed class RemoteSessionJourney
             var unsentKept = false;
             var mayAnswer = false;
             var answerRows = 0;
+            var offeredForSession = false;
+            var sessionAllowAnswered = 0;
+            var repeatPrompted = true;
+            var repeatAnswered = 0;
+            var otherInputPrompted = false;
+            var twinsLeftOpen = true;
             var badgeWhenExpired = "";
             var alarmWhenExpired = false;
             var signInAwaitedInput = false;
@@ -146,6 +152,33 @@ public sealed class RemoteSessionJourney
                 await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask") == 1);
                 answerRows = _Count(pane, "echo: allowed echo-ask");
 
+                // AC-1476: allowed for this session, the same call is not asked again; the same tool with other input is.
+                offeredForSession = pane.CanAllowForSession;
+                pane.InputText = "ask";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => pane.Transcript.Any(row => row.IsPendingPermission));
+                await pane.AllowForSessionToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask-2") == 1);
+                sessionAllowAnswered = _Count(pane, "echo: allowed echo-ask-2");
+                pane.InputText = "ask";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask-3") == 1);
+                repeatPrompted = pane.Transcript.Any(row => row.ToolUseId == "echo-ask-3");
+                repeatAnswered = _Count(pane, "echo: allowed echo-ask-3");
+                pane.InputText = "ask other";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => pane.Transcript.Any(row => row.IsPendingPermission));
+                otherInputPrompted = pane.Transcript.Any(row => row.IsPendingPermission && row.ToolUseId == "echo-ask-other-4");
+                await pane.DenyToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
+
+                // Two identical calls waiting at once: Allow for this session on one answers the other too.
+                pane.InputText = "ask more twice";
+                await pane.SendCommand.ExecuteAsync(null);
+                await Until.ItemsHold(pane.Transcript, () => pane.Transcript.Count(row => row.IsPendingPermission) == 2);
+                await pane.AllowForSessionToolCommand.ExecuteAsync(pane.Transcript.First(row => row.IsPendingPermission));
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: allowed echo-ask-more-twice") == 2);
+                twinsLeftOpen = pane.Transcript.Any(row => row.IsPendingPermission);
+
                 // Stop asks once; Keep running leaves it running there, Stop on server ends it there.
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
                 askedOnce = pane.IsConfirmingClose && group.Sessions.Count == 1;
@@ -153,6 +186,17 @@ public sealed class RemoteSessionJourney
                 keptRunning = !pane.IsConfirmingClose && await _ListsAsync(admin, paneId);
                 await view.RequestCloseSessionCommand.ExecuteAsync(pane);
                 await view.ConfirmCloseSessionCommand.ExecuteAsync(pane);
+                await Until.CollectionHolds(group.Sessions, () => group.Sessions.Count == 0);
+
+                // AC-1476: the allowance ended with its session; a new one on the same profile is asked again.
+                await view.OpenServerStartCommand.ExecuteAsync(group);
+                group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
+                group.Start.Prompt = "ask";
+                await view.StartOnServerCommand.ExecuteAsync(group);
+                var fresh = group.Sessions.Single().Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
+                await Until.ItemsHold(fresh.Transcript, () => fresh.Transcript.Any(row => row.IsPendingPermission));
+                await view.RequestCloseSessionCommand.ExecuteAsync(fresh);
+                await view.ConfirmCloseSessionCommand.ExecuteAsync(fresh);
                 await Until.CollectionHolds(group.Sessions, () => group.Sessions.Count == 0);
 
                 // The profile's sign-in is taken away on the server; once the server reads it expired, the desktop reads
@@ -207,6 +251,11 @@ public sealed class RemoteSessionJourney
             Assert.Equal(0, _Count(pane, "echo: lost"));
             Assert.True(mayAnswer, "The key's grant to answer permissions did not reach the pane.");
             Assert.Equal((1, 1), (_Count(pane, "echo: second"), answerRows));
+            Assert.True(offeredForSession, "The server did not offer Allow for this session.");
+            Assert.Equal((1, 1), (sessionAllowAnswered, repeatAnswered));
+            Assert.False(repeatPrompted, "The same call was asked again after Allow for this session.");
+            Assert.False(twinsLeftOpen, "A second identical call stayed open after Allow for this session.");
+            Assert.True(otherInputPrompted, "The same tool with other input was not asked after Allow for this session.");
             Assert.True(askedOnce, "Stop on a remote pane did not ask first.");
             Assert.True(keptRunning, "Keep running did not leave the session running on the server.");
             Assert.False(await _ListsAsync(admin, paneId), "Stop on server left the session running there.");

@@ -1222,4 +1222,9 @@ internal sealed class AssistantAgentGateway(
         !string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal) && sessions.Find(paneId) is { } session
             ? session.RespondToPermissionByIdAsync(toolUseId, allow)
             : Task.FromResult(false);
+
+    public Task<bool> RespondToPermissionForSessionAsync(string paneId, string toolUseId, CancellationToken cancellationToken = default) =>
+        !string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal) && sessions.Find(paneId) is { } session
+            ? session.RespondToPermissionByIdAsync(toolUseId, allow: true, forSession: true)
+            : Task.FromResult(false);
 }

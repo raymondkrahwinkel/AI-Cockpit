@@ -40,8 +40,8 @@ internal static class ServerGroupScene
         var cockpit = new CockpitViewModel();
         var started = DateTimeOffset.UtcNow.AddDays(-6).AddHours(-4);
         var key = admin
-            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true)
-            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true);
+            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true)
+            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true);
         SceneHandle[] sessions = admin
             ? [
                 new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention, asking),
@@ -340,7 +340,7 @@ internal static class ServerGroupScene
 
         public Task SetWorktreeBranchAsync(string? branch) => Task.CompletedTask;
 
-        public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow) => Task.FromResult(false);
+        public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) => Task.FromResult(false);
 
         public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
