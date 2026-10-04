@@ -55,6 +55,60 @@ services:
       - agent-ssh:/home/agent/.ssh
       # Clones and worktrees, writable for the server and the agent alike; /state is the server's alone.
       - work:/work
+      # AC-1364: the brain, kept by brain-sync, at the path Me.md has on the desktop.
+      - brain:/home/agent/Nextcloud
+    # AC-1364: which brain file is which assistant, read-only for the CLIs (claude and codex alike).
+    configs:
+      - source: brain_instructions
+        target: /home/agent/.claude/CLAUDE.md
+      - source: brain_instructions
+        target: /home/agent/.codex/AGENTS.md
+
+  # AC-1364: bisyncs the brain (an include list of the AI-OS tree in Nextcloud) into the `brain` volume. It runs as
+  # agent's uid, so sessions write their notes back; the app password is this container's alone, never the cockpit's.
+  brain-sync:
+    image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+    init: true
+    restart: unless-stopped
+    user: "1700:1700"
+    entrypoint: ["/bin/sh", "/etc/brain-sync/brain-sync.sh"]
+    environment:
+      BRAIN_SYNCS: ${COCKPIT_BRAIN_SYNCS:-nc:Notes/AI-OS=Nextcloud/Notes/AI-OS}
+      BRAIN_SYNC_INTERVAL: ${COCKPIT_BRAIN_SYNC_INTERVAL:-60}
+      # Percent of the files one run may delete on either side; more stops the run (README.md).
+      BRAIN_SYNC_MAX_DELETE: ${COCKPIT_BRAIN_SYNC_MAX_DELETE:-10}
+    configs:
+      - source: brain_sync_script
+        target: /etc/brain-sync/brain-sync.sh
+      - source: brain_filter_nc
+        target: /etc/brain-sync/nc.filter
+    secrets:
+      - cockpit_brain_rclone
+    volumes:
+      - brain:/data/Nextcloud
+      # The bisync listings: this container's alone, never mounted where a session runs.
+      - brain-state:/bisync
+    depends_on:
+      brain-init:
+        condition: service_completed_successfully
+
+  # A new volume is root's; this hands both to agent's uid, owner-only, so brain-sync itself never runs as root and
+  # the server (app, in agent's group) cannot read the brain.
+  brain-init:
+    image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+    user: "0:0"
+    entrypoint: ["sh", "-c", "chown -R 1700:1700 /data/Nextcloud /bisync && chmod -R go= /data/Nextcloud /bisync"]
+    volumes:
+      - brain:/data/Nextcloud
+      - brain-state:/bisync
+
+configs:
+  brain_sync_script:
+    file: ./brain-sync.sh
+  brain_filter_nc:
+    file: ${COCKPIT_BRAIN_FILTER_PATH:-./brain-filter.txt}
+  brain_instructions:
+    file: ${COCKPIT_BRAIN_INSTRUCTIONS_PATH:-./brain-instructions.md}
 
 secrets:
   cockpit_unlock_password:
@@ -63,6 +117,9 @@ secrets:
     file: ${COCKPIT_CONNECT_KEY_PATH:-./secrets/connect-key}
   cockpit_session_env:
     file: ${COCKPIT_SESSION_ENV_FILE:-./session.env}
+  # AC-1364: an rclone.conf with the Nextcloud app password; readable by uid 1700 (README.md).
+  cockpit_brain_rclone:
+    file: ${COCKPIT_BRAIN_RCLONE_PATH:-./secrets/brain-rclone.conf}
 
 volumes:
   state:
@@ -71,3 +128,5 @@ volumes:
   ssh:
   agent-ssh:
   work:
+  brain:
+  brain-state:

@@ -39,6 +39,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the headless server's compose file brings the assistant's brain along. A `brain-sync` service keeps an
+  include list of the AI-OS tree (`Me.md`, `Me-Reference.md`, `Memory/`, `AGENTS/`) in sync with Nextcloud, so an agent
+  session reads `~/Nextcloud/Notes/AI-OS/Me.md` as on the desktop and its notes reach the desktop again. A change on
+  both sides keeps both versions, a failed sync is never repaired by a resync on its own, and the Nextcloud app
+  password stays in that service: the cockpit container and its sessions never see it. Setup in `deploy/README.md`;
+  compose now needs `secrets/brain-rclone.conf` (may be empty) and `brain-instructions.md` before it starts anything.
 - added: the server's Health tab shows a Schedule column for each scheduled run, with the time zone in the heading
   (or after the schedule when the runs differ), and the sign-in without a browser counts down how long its code stays
   valid. The Workflows plugin (0.34.0) fills in the schedule, only when it could read it. Plugin SDK 3.3.0:

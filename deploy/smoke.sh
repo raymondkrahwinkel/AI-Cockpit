@@ -3,7 +3,8 @@
 # Seeds a state, then proves: a start with both secrets answers on the node door; a restart keeps the fingerprint and a
 # fresh volume does not; no unlock secret means a refusal; the server runs non-root with no docker and no Avalonia; an
 # agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
-# no secret is in a layer or a log. Each check that could pass vacuously has a control that must come out red.
+# brain-sync brings only its include list, writes back as agent, keeps both sides of a conflict and keeps the app
+# password to itself (AC-1364); no secret is in a layer or a log. Each check that could pass vacuously has a control.
 set -euo pipefail
 
 image=${1:?usage: deploy/smoke.sh <image:tag>}
@@ -18,16 +19,21 @@ printf '%s' "$unlock" > "$COCKPIT_UNLOCK_PASSWORD_PATH"
 printf '%s' "$key" > "$COCKPIT_CONNECT_KEY_PATH"
 # What the sessions inherit; it must reach the server and stay out of the container's environment (AC-1464).
 export COCKPIT_SESSION_ENV_FILE=$work/session.env
-printf '# smoke\nSMOKE_SESSION_VAR=reached\n' > "$COCKPIT_SESSION_ENV_FILE"
+printf '# smoke\nSMOKE_SESSION_VAR=reached\nAI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS\n' > "$COCKPIT_SESSION_ENV_FILE"
 # Owner-only on the host: the entrypoint reads them as root and hands the server its own copies (AC-1464).
 chmod 600 "$COCKPIT_UNLOCK_PASSWORD_PATH" "$COCKPIT_CONNECT_KEY_PATH" "$COCKPIT_SESSION_ENV_FILE"
+# AC-1364: brain-sync starts on an empty placeholder config, as a host without the app password would, and idles.
+export COCKPIT_BRAIN_RCLONE_PATH=$work/secrets/brain-rclone.conf COCKPIT_BRAIN_INSTRUCTIONS_PATH=$work/brain-instructions.md
+export COCKPIT_BRAIN_SYNC_INTERVAL=2
+: > "$COCKPIT_BRAIN_RCLONE_PATH"
+printf 'smoke brain instructions\n' > "$COCKPIT_BRAIN_INSTRUCTIONS_PATH"
 : > "$work/logs.txt"
 
 dc() { docker compose -p "$project" -f deploy/compose.yaml "$@"; }
 fail() { echo "::error::smoke: $*"; exit 1; }
 cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
-  docker rm -f "$project-holder" "$project-control-root" >/dev/null 2>&1 || true
+  docker rm -f "$project-holder" "$project-control-root" "$project-webdav" >/dev/null 2>&1 || true
   docker rmi -f "$project-control-leak" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -116,6 +122,8 @@ if docker inspect -f '{{json .Config.Env}}' "$container" | grep -qF SMOKE_SESSIO
 # Read as app: root in the container has no CAP_SYS_PTRACE, so it cannot read another uid's environ.
 server_env=$(dc exec -T -u app cockpit sh -c 'for p in /proc/[0-9]*; do case "$(tr "\0" " " < $p/cmdline 2>/dev/null)" in "/app/Cockpit.Server"*) tr "\0" "\n" < $p/environ ;; esac; done 2>/dev/null; true')
 grep -qx 'SMOKE_SESSION_VAR=reached' <<< "$server_env" || fail "session.env did not reach the server"
+# AC-1364: Me.md asks for it; the sessions inherit it from the server through the wrapper's -E.
+grep -qx 'AI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS' <<< "$server_env" || fail "AI_OS_ROOT from session.env did not reach the server"
 collect_logs
 
 echo "== agent sessions run as agent (AC-1464)"
@@ -182,10 +190,125 @@ echo "a bare sudo: $bare"
 [ "$(field "$bare" pane)" = null ] || fail "control: a bare sudo kept COCKPIT_PANE_ID, so the env check proves nothing"
 dc exec -T -u app cockpit rm /work/smoke-probe.js
 
+echo "== the brain (AC-1364)"
+brain=/home/agent/Nextcloud/Notes/AI-OS
+brain_image=$(dc config --images | grep -m1 '^rclone/')
+log_of() { dc logs --no-color "$1" 2>&1; }
+log_of brain-sync | grep -qF 'no remote nc in the rclone config yet: idle' || fail "brain-sync is not idle on a placeholder config"
+# A fake Nextcloud: rclone's own WebDAV server on the compose network, with a login file beside the brain.
+brain_pass=$(openssl rand -hex 16)
+docker run -d --name "$project-webdav" --network "${project}_default" --network-alias nextcloud --entrypoint sh "$brain_image" -c \
+  'mkdir -p /remote/Notes/AI-OS/Memory /remote/Notes/AI-OS/claude-credentials && cd /remote/Notes/AI-OS \
+   && echo me > Me.md && echo a > Memory/a.md && echo leaked > claude-credentials/.credentials.json \
+   && exec rclone serve webdav /remote --addr :8080 --dir-cache-time 0s --user smoke --pass "$0"' "$brain_pass" >/dev/null
+remote() { docker exec "$project-webdav" sh -c "cd /remote/Notes/AI-OS && $1"; }
+brain_obscured=$(docker run --rm "$brain_image" obscure "$brain_pass")
+# The README's way: a fresh file, uid 1700's and owner-only, so only brain-sync reads it.
+rm -f "$COCKPIT_BRAIN_RCLONE_PATH"
+printf '[nc]\ntype = webdav\nurl = http://nextcloud:8080\nvendor = owncloud\nuser = smoke\npass = %s\n' "$brain_obscured" > "$COCKPIT_BRAIN_RCLONE_PATH"
+docker run --rm --user 0 -v "$work/secrets:/s" --entrypoint sh "$image" -c 'chown 1700:1700 /s/brain-rclone.conf && chmod 0400 /s/brain-rclone.conf'
+dc up -d --force-recreate brain-sync >/dev/null
+brain_redact() { sed -e "s/$brain_pass/<brain>/g" -e "s/$brain_obscured/<brain>/g"; }
+# Two more completed runs than now, so at least one began after whatever the caller just changed. Bounded at 60 s.
+brain_cycle() {
+  local before; before=$(log_of brain-sync | grep -c 'nc in sync' || true)
+  for _ in $(seq 60); do
+    [ "$(log_of brain-sync | grep -c 'nc in sync' || true)" -ge $((before + 2)) ] && return 0
+    sleep 1
+  done
+  log_of brain-sync | brain_redact | tail -n 20
+  fail "brain-sync did not complete two runs"
+}
+# Before a change: brain_mark '<log text>'. After it, brain_until waits for that text once more, or for two more
+# completed runs, as happens when what should stop a run does not. Bounded at 60 s.
+synced_count() { log_of brain-sync | grep -c 'nc in sync' || true; }
+brain_mark() { mark_text=$1 mark_seen=$(log_of brain-sync | grep -cF "$1" || true) mark_synced=$(synced_count); }
+brain_until() {
+  for _ in $(seq 60); do
+    [ "$(log_of brain-sync | grep -cF "$mark_text" || true)" -gt "$mark_seen" ] && return 0
+    [ "$(synced_count)" -ge $((mark_synced + 2)) ] && return 0
+    sleep 1
+  done
+  fail "brain-sync neither logged '$mark_text' nor completed two runs"
+}
+brain_cycle
+[ "$(dc exec -T -u agent cockpit cat $brain/Me.md)" = me ] || fail "agent cannot read Me.md from the brain"
+[ "$(dc exec -T -u agent cockpit cat $brain/Memory/a.md)" = a ] || fail "agent cannot read Memory/a.md from the brain"
+if dc exec -T cockpit test -e $brain/claude-credentials; then fail "claude-credentials/ reached the container"; fi
+if dc exec -T cockpit grep -rqF leaked /home/agent/Nextcloud; then fail "the login file's content reached the container"; fi
+# The bisync listings are brain-sync's alone: a session can neither steer nor wipe them.
+[ -z "$(dc exec -T cockpit find /home /work /tmp -name '*.lst*')" ] || fail "the bisync listings are visible in the cockpit container"
+dc exec -T brain-sync sh -c 'ls /bisync/nc/*.lst' >/dev/null || fail "control: brain-sync keeps no listings in /bisync/nc"
+# The server does not touch the brain: owner-only for agent, although app is in agent's group.
+refused app "ls /home/agent/Nextcloud" || fail "the server's user can list the brain"
+refused app "cat $brain/Me.md" || fail "the server's user can read Me.md"
+! refused app "ls /home/agent" || fail "control: app cannot enter agent's home at all: $refusal"
+[ "$(dc exec -T cockpit stat -c %a $brain/Me.md $brain/Memory | paste -sd ' ')" = '600 700' ] || fail "the brain is not owner-only"
+# What a session writes goes back, and what it did not touch stays as it was.
+dc exec -T -u agent cockpit sh -c "echo note > $brain/Memory/b.md" || fail "agent cannot write in the brain's Memory/"
+brain_cycle
+[ "$(remote 'cat Memory/b.md')" = note ] || fail "a note the agent wrote did not reach the remote"
+[ "$(remote 'cat Memory/a.md')" = a ] || fail "Memory/a.md changed on the remote"
+# A change on both sides between two runs: both versions must survive, under whatever names bisync gives them.
+dc stop brain-sync >/dev/null
+remote 'echo remote-edit > Memory/a.md'
+dc exec -T -u agent cockpit sh -c "echo agent-edit > $brain/Memory/a.md"
+dc start brain-sync >/dev/null
+brain_cycle
+remote_memory=$(remote 'cat Memory/*')
+grep -qx remote-edit <<< "$remote_memory" || fail "the conflict lost the remote's version"
+grep -qx agent-edit <<< "$remote_memory" || fail "the conflict lost the agent's version"
+echo "after a conflict the remote holds: $(remote 'ls Memory' | paste -sd ' ')"
+# A session deleting a quarter of the brain (1 of 4 files): over --max-delete, so the run stops and Nextcloud keeps it.
+brain_mark 'too many deletes'
+dc exec -T -u agent cockpit rm $brain/Memory/a.md.conflict2
+brain_until
+[ "$(remote 'cat Memory/a.md.conflict2')" = agent-edit ] || fail "a deletion over --max-delete reached the remote"
+# The README's recovery for a deletion that was a mistake: copy back only what is missing.
+dc run --rm --no-deps --entrypoint rclone brain-sync --config /run/secrets/cockpit_brain_rclone copy nc:Notes/AI-OS \
+  /data/Nextcloud/Notes/AI-OS --filter-from /etc/brain-sync/nc.filter --ignore-existing >/dev/null
+brain_cycle
+[ "$(dc exec -T -u agent cockpit cat $brain/Memory/a.md.conflict2)" = agent-edit ] || fail "the README's recovery did not bring the file back"
+# Lost bisync state on a volume with files: a resync would let the remote overwrite an unsynced edit, so it stops.
+dc stop brain-sync >/dev/null
+docker run --rm -v "${project}_brain-state:/b" --entrypoint rm "$brain_image" -rf /b/nc
+dc exec -T -u agent cockpit sh -c "echo unsynced > $brain/Memory/b.md"
+brain_mark 'nc stopped: files but no bisync state'
+dc start brain-sync >/dev/null
+brain_until
+[ "$(dc exec -T -u agent cockpit cat $brain/Memory/b.md)" = unsynced ] || fail "an unsynced edit was overwritten after the bisync state was lost"
+[ "$(remote 'cat Memory/b.md')" = note ] || fail "the remote changed after the bisync state was lost"
+log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' || fail "brain-sync did not stop on files without bisync state"
+# The app password is brain-sync's alone: not in the cockpit's environment, files, image or log.
+for service in cockpit brain-sync; do
+  if docker inspect -f '{{json .Config.Env}}' "$(dc ps -q $service)" | grep -qF -e "$brain_pass" -e "$brain_obscured"; then
+    fail "the app password is in $service's environment"
+  fi
+done
+if dc exec -T cockpit grep -rqsF -e "$brain_pass" -e "$brain_obscured" /home /work /state /run /tmp /etc /opt; then
+  fail "the app password is in a file in the cockpit container"
+fi
+dc exec -T brain-sync grep -qF "$brain_obscured" /run/secrets/cockpit_brain_rclone || fail "control: the file check cannot find the secret where it is"
+if history_leaks "$image" "$brain_pass"; then fail "the app password is in an image layer"; fi
+# Which brain is which: read-only for the CLIs, claude and codex alike.
+for file in .claude/CLAUDE.md .codex/AGENTS.md; do
+  [ "$(dc exec -T -u agent cockpit cat /home/agent/$file)" = 'smoke brain instructions' ] || fail "agent cannot read ~/$file"
+  refused agent "echo x >> /home/agent/$file" || fail "agent can write ~/$file"
+done
+dc exec -T -u agent cockpit sh -c ': > /home/agent/.claude/.smoke-write && rm /home/agent/.claude/.smoke-write' \
+  || fail "control: agent cannot write in ~/.claude at all, so the read-only check proves nothing"
+log_of brain-sync >> "$work/logs.txt"
+docker rm -f "$project-webdav" >/dev/null
+
 echo "== down and up on the same volume"
 dc down >/dev/null
+# A claude volume from before AC-1464 is app's: the entrypoint hands it to agent past the read-only CLAUDE.md (AC-1364).
+docker run --rm --user 0 -v "${project}_claude:/v" --entrypoint chown "$image" -R app:app /v
 dc up -d >/dev/null
 wait_running
+[ "$(dc exec -T cockpit stat -c %U /home/agent/.claude/.)" = agent ] || fail "an app-owned claude volume was not handed to agent"
+# A failed hand-over still heals on the restart that follows, so only a first start that held counts.
+[ "$(docker inspect -f '{{.RestartCount}}' "$(dc ps -q cockpit)")" = 0 ] || fail "the cockpit restarted while taking over an app-owned claude volume"
 [ "$(fingerprint_of_log)" = "$first" ] || fail "the fingerprint changed over a down and up with the same volume"
 collect_logs
 
@@ -224,5 +347,5 @@ echo "$refused" >> "$work/logs.txt"
 grep -qF 'COCKPIT_UNLOCK_PASSWORD_FILE is not set.' <<< "$refused" || fail "the refusal names no reason"
 
 echo "== no secret in a log"
-if grep -qF -e "$unlock" -e "$key" "$work/logs.txt"; then fail "a secret is in the container log"; fi
+if grep -qF -e "$unlock" -e "$key" -e "$brain_pass" -e "$brain_obscured" "$work/logs.txt"; then fail "a secret is in the container log"; fi
 echo "smoke passed"
