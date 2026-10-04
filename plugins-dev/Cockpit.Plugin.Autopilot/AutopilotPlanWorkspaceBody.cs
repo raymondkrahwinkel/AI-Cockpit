@@ -111,10 +111,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     private void _Render()
     {
-        // Open the planning pop-out once per round, not per plan edit: the CEO re-emitting the plan makes a new
-        // AutopilotPlan instance, so keying on the instance reopened the pop-out — embedding a fresh, empty CEO session
-        // and wiping the planning chat — on every emit. A flag opens it exactly once; it is cleared by the first snapshot
-        // without a round, not when the pop-out closes, so a snapshot taken before the close cannot reopen it.
+        // Open the planning pop-out once per round, not per plan edit (each CEO emit is a new plan, and reopening wiped
+        // the planning chat). The flag clears on the first snapshot without a round, not on close, so a snapshot taken
+        // before the close cannot reopen it.
         if (_state.PlanningPhase != AutopilotPlanPhase.Planning || _state.PlanningPlan is null)
         {
             _popoutOpen = false;
@@ -1133,8 +1132,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for
         // minutes and the shared session view's own indicator stays deaf during streaming, so without this the
-        // pop-out reads as hung. Same accent bar the run shows on validation (_BuildValidatingSurface), not a floating pill.
-        // The backend reads the CEO's busy flag off its session and carries it in the snapshot.
+        // pop-out reads as hung. The backend reads the busy flag off the CEO's session and carries it in the snapshot.
         var working = _BuildCeoWorkingCue();
         void ShowBusy() => working.IsVisible = _state.PlanningCeoBusy;
         ShowBusy();
