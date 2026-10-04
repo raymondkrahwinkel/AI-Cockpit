@@ -93,7 +93,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject
 
     public string AssistantDetail => State.Key switch
     {
-        { HoldsAssistant: true } key => $"This laptop is a window onto the assistant there. Key \"{key.Label}\" holds the assistant: voice and the chat window go there.",
+        { HoldsAssistant: true } key => $"Key \"{key.Label}\" holds the assistant. While this laptop holds the line, the assistant on {Name} stands down and you talk to your own assistant, which steers the node.",
         _ => "This key does not see the conversation.",
     };
 

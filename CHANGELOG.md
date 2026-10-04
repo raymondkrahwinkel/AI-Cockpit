@@ -30,6 +30,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed: a server's assistant conversation (its transcript and its prompt) is now refused for any connect key that does
+  not hold the assistant; it used to answer every operate key. The assistant line of a server says what really happens:
+  while this laptop holds the line the server's assistant stands down and you talk to your own, which steers the node.
+  Cockpit 0.79.0.
+
 ### Added
 
 - added: the server's Health tab shows a Schedule column for each scheduled run, with the time zone in the heading

@@ -662,7 +662,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         {
             transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count=1", cancellationToken).ConfigureAwait(false);
         }
-        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
+        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound || (_isAssistant && exception.Status == HttpStatusCode.Forbidden))
         {
             return false;
         }
