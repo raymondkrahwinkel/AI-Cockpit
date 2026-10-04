@@ -210,7 +210,7 @@ internal static class ServerGroupScene
                     new("server (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null, "renewingLogin"),
                     new("ci-runner (Claude)", "Claude", "signedIn", now.AddMinutes(-5), null, null, "apiKey"),
                     new("server (Codex)", "Codex CLI", "expired", now.AddMinutes(-5), now.AddHours(-3), now.AddHours(-3).AddMinutes(1)),
-                    new("local-qwen", "Ollama (Hetzner)", "unchecked", now.AddMinutes(-5), null, null),
+                    new("local-qwen", "Ollama", "reachable", now.AddMinutes(-5), null, null),
                 ],
                 new RemoteServerFacts(
                     "0.51.0",

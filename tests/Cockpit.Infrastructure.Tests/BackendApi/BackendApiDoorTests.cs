@@ -459,7 +459,10 @@ public sealed class BackendApiDoorTests
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
-        door.LoginHealth.Current.Returns([new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.RenewingLogin }]);
+        door.LoginHealth.Current.Returns([
+            new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.RenewingLogin },
+            new ProfileLoginHealth("local", true, DateTimeOffset.UnixEpoch, null) { Provider = "Ollama", SignIn = ProfileSignInKind.Reachable },
+        ]);
         var label = "a\nb\u0007\u202E\u2028\U000E0001\uD800" + new string('x', 491);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
@@ -486,6 +489,7 @@ public sealed class BackendApiDoorTests
 
         Assert.All(health?["server"]?["keys"]?.AsArray() ?? [], shownKey => Assert.Equal(["label", "capability", "lastUsedAt"], shownKey?.AsObject().Select(property => property.Key) ?? []));
         Assert.Equal(["label", "provider", "signIn", "credential", "lastCheck", "expiredSince", "announcedAt"], health?["profiles"]?[0]?.AsObject().Select(property => property.Key) ?? []);
+        Assert.Equal("reachable", health?["profiles"]?[1]?["signIn"]?.GetValue<string>());
         Assert.Equal("ab" + new string('x', HealthEndpoints.MaxLabelLength - 2), shown?["label"]?.GetValue<string>());
         Assert.Equal(sectionHasActions ? "run" : null, shown?["actionId"]?.GetValue<string>());
         Assert.Equal("renewingLogin", health?["profiles"]?[0]?["credential"]?.GetValue<string>());
