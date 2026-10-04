@@ -200,12 +200,12 @@ brain_pass=$(openssl rand -hex 16)
 docker run -d --name "$project-webdav" --network "${project}_default" --network-alias nextcloud --entrypoint sh "$brain_image" -c \
   'mkdir -p /remote/Notes/AI-OS/Memory /remote/Notes/AI-OS/claude-credentials && cd /remote/Notes/AI-OS \
    && echo me > Me.md && echo a > Memory/a.md && echo leaked > claude-credentials/.credentials.json \
-   && exec rclone serve webdav /remote --addr :8080 --user smoke --pass "$0"' "$brain_pass" >/dev/null
+   && exec rclone serve webdav /remote --addr :8080 --dir-cache-time 0s --user smoke --pass "$0"' "$brain_pass" >/dev/null
 remote() { docker exec "$project-webdav" sh -c "cd /remote/Notes/AI-OS && $1"; }
 brain_obscured=$(docker run --rm "$brain_image" obscure "$brain_pass")
 # The README's way: a fresh file, uid 1700's and owner-only, so only brain-sync reads it.
 rm -f "$COCKPIT_BRAIN_RCLONE_PATH"
-printf '[nc]\ntype = webdav\nurl = http://nextcloud:8080\nvendor = other\nuser = smoke\npass = %s\n' "$brain_obscured" > "$COCKPIT_BRAIN_RCLONE_PATH"
+printf '[nc]\ntype = webdav\nurl = http://nextcloud:8080\nvendor = owncloud\nuser = smoke\npass = %s\n' "$brain_obscured" > "$COCKPIT_BRAIN_RCLONE_PATH"
 docker run --rm --user 0 -v "$work/secrets:/s" --entrypoint sh "$image" -c 'chown 1700:1700 /s/brain-rclone.conf && chmod 0400 /s/brain-rclone.conf'
 dc up -d --force-recreate brain-sync >/dev/null
 brain_redact() { sed -e "s/$brain_pass/<brain>/g" -e "s/$brain_obscured/<brain>/g"; }
