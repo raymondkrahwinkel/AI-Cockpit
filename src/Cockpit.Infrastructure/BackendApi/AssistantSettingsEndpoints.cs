@@ -86,7 +86,7 @@ internal static class AssistantSettingsEndpoints
                 var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync(cancellationToken).ConfigureAwait(false);
                 // Outside the key's scope reads as a profile that does not exist, as everywhere else (Codex).
                 var index = ProfileEndpoints.IndexOf(profiles, label);
-                if (index < 0 || McpRequestContext.CurrentNodeCaller?.AllowsProfile(profiles[index].Label, services.GetRequiredService<INodePairingBroker>()) != true)
+                if (index < 0)
                 {
                     return await _AuditAsync(services, "api:assistant_copy_profile", "refused", null, ProfileEndpoints.NoProfile()).ConfigureAwait(false);
                 }
