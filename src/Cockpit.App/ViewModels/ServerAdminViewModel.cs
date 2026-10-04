@@ -265,7 +265,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        var result = await _plugins.InstallFromZipAsync(Path.Combine(store.Location, entry.Id + ".zip"));
+        var result = await _plugins.InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, PluginStoreConfig.Remote(store.Id), version));
         Status = result.IsSuccess ? "This change takes effect after the server restarts." : "The server could not install the plugin.";
         await _LoadPluginsAsync();
     });
