@@ -2427,7 +2427,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         // AC-1476: a session-wide allow is the pane's own exact "Always".
-        await (forSession && allow && entry.ToolName is not null && entry.NodePermission is null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
+        await (forSession && allow && entry.ToolName is not null && entry.NodePermission is null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact, forSession: true) : RespondToPermissionAsync(entry, allow));
         return true;
     }
 
@@ -2455,7 +2455,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
+    private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope, bool forSession = false)
     {
         if (RemoteServer is not null || !_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
         {
@@ -2466,7 +2466,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? $"Always allowed ({entry.ToolName}:*)"
             : $"Always allowed (exact: {entry.ToolName})");
 
-        await _control.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
+        await (forSession
+            ? _control.AllowPermissionForSessionAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}")
+            : _control.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope));
 
         // AC-1476: a call already waiting on the same rule is answered with it.
         var rule = scope == PermissionRuleScope.Wildcard

@@ -107,6 +107,12 @@ public interface ISessionControl : IAsyncDisposable
     Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope);
 
     /// <summary>
+    /// AC-1476: allows this exact call for the rest of the session and nothing wider, unlike the always-allow above.
+    /// </summary>
+    Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string inputJson) =>
+        AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, PermissionRuleScope.Exact);
+
+    /// <summary>
     /// The operator answered the last open prompt, so the session stops flagging itself (AC-1324).
     /// </summary>
     void ClearNeedsAttention();

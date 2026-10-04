@@ -518,13 +518,30 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     }
 
     // D4: always-allow is session-scoped on the narrow plugin surface. AC-1476: the rule is kept here, so every
-    // provider honours it and it ends with this adapter; a wildcard is also forwarded, so Codex's
-    // acceptForSession can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
+    // provider honours it and it ends with this adapter; the answer is still forwarded, so Codex's acceptForSession
+    // can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
     {
-        var rule = scope == PermissionRuleScope.Wildcard
+        var remembered = _Remember(scope == PermissionRuleScope.Wildcard
             ? PermissionRule.ForWildcard(toolName)
-            : PermissionRule.ForExact(toolName, proposedInputJson);
+            : PermissionRule.ForExact(toolName, proposedInputJson));
+        return !remembered
+            ? RespondToPermissionAsync(toolUseId, allow: true, cancellationToken)
+            : _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
+                ? Task.CompletedTask
+                : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+    }
+
+    // AC-1476: the same rule, but the provider hears a plain allow: its own always-allow is wider (Kimi: the whole kind of call).
+    public Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string proposedInputJson, CancellationToken cancellationToken = default)
+    {
+        _Remember(PermissionRule.ForExact(toolName, proposedInputJson));
+        return RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
+    }
+
+    // False once the session holds the cap, and the answer is then a single allow.
+    private bool _Remember(PermissionRule rule)
+    {
         bool remembered;
         var warn = false;
         lock (_sessionRules)
@@ -545,12 +562,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             logger?.LogWarning("The session holds {Count} allow rules; further allow-for-session answers are single allows.", MaxSessionRules);
         }
 
-        // An exact rule is this adapter's alone: a provider's own always-allow is wider (Kimi: the whole kind of call).
-        return scope == PermissionRuleScope.Exact || !remembered
-            ? RespondToPermissionAsync(toolUseId, allow: true, cancellationToken)
-            : _hostToolset?.Gate.Respond(toolUseId, allow: true) == true
-                ? Task.CompletedTask
-                : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+        return remembered;
     }
 
     // ponytail: 256 rules per session, then a single allow and one warning; raise it if a real session needs more.

@@ -700,6 +700,9 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope) =>
         Runtime?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope) ?? Task.CompletedTask;
 
+    public Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string inputJson) =>
+        Runtime?.AllowPermissionForSessionAsync(toolUseId, toolName, inputJson) ?? Task.CompletedTask;
+
     // AC-215: the tools a self-driving run allows without asking, since it has no one to answer a prompt.
     public void PreApprove(IReadOnlyList<string>? tools, bool allTools)
     {

@@ -263,7 +263,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
             });
             answering.Add(allow && forSession
-                ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)
+                ? runtime.AllowPermissionForSessionAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}")
                 : runtime.RespondToPermissionAsync(toolUseId, allow));
 
             // AC-1476: a call already waiting on the same rule is answered with it, or it would ask again once the session moves on.

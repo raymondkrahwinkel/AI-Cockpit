@@ -164,6 +164,9 @@ internal sealed class SessionRuntime : ISessionRuntime
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
         _driver?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope, cancellationToken) ?? Task.CompletedTask;
 
+    public Task AllowPermissionForSessionAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken = default) =>
+        _driver?.AllowPermissionForSessionAsync(toolUseId, toolName, inputJson, cancellationToken) ?? Task.CompletedTask;
+
     public async ValueTask DisposeAsync()
     {
         // Interrupt first so a running turn is told to stop rather than having its process pulled from under
