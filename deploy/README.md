@@ -113,6 +113,10 @@ The server state on the `state` volume is unencrypted. Protect it through the ho
 rights, disk encryption, and encrypted backups. A state with encrypted credentials is refused at startup; turn
 encryption off on the desktop before copying it to the server, or start from an empty `/state`.
 
+That makes `session.env` the container secret for provider API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`,
+`GITHUB_TOKEN`, `XAI_API_KEY`): a profile with an empty key then uses the variable and shows "API key from secret". A key
+typed into a profile lives in its `ConfigJson` on this unencrypted volume, so there it is not a secret.
+
 ## Agent sessions run as `agent`
 
 The server runs as `app`; every `claude`, `codex` and `git` it starts (sessions, sign-ins, login checks, its own

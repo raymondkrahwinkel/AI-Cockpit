@@ -8,6 +8,6 @@ public sealed class GrokProviderUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddProviderConfigView("grok-provider.grok", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.Grok, host));
+        host.AddProviderConfigView("grok-provider.grok", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.Grok, OpenAiCompatConfig.ApiKeyEnvVar, host));
     }
 }

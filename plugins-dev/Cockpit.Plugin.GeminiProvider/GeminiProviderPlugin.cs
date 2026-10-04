@@ -27,7 +27,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini (OpenAI-compatible)",
-            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host),
+            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host, OpenAiCompatConfig.ApiKeyEnvVar),
             Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
@@ -35,12 +35,17 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini));
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini)
+        {
+            // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
+            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar) != PluginCredentialKind.Unknown,
+            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar),
+        });
 
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "gemini-provider.openai",
             DisplayName: "OpenAI",
-            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host),
+            CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host, null),
             Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the

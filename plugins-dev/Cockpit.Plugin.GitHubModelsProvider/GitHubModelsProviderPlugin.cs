@@ -39,7 +39,12 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.GitHubModels));
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.GitHubModels)
+        {
+            // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
+            IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar) != PluginCredentialKind.Unknown,
+            CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar),
+        });
     }
 
     public void Dispose()

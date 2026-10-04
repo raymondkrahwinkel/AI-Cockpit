@@ -12,6 +12,7 @@ namespace Cockpit.Plugin.GeminiProvider.UI;
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;
+    private readonly string? _apiKeyEnvVar;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
     private readonly TextBox _timeoutSeconds;
@@ -21,13 +22,16 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, string? apiKeyEnvVar, ICockpitUiHost host)
     {
+        _apiKeyEnvVar = apiKeyEnvVar;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<OpenAiCompatConfig>(existingConfigJson, OpenAiCompatConfig.JsonOptions);
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
+        var apiKeyHint = _Hint($"Or leave it empty and set {apiKeyEnvVar} in session.env on the server.");
+        apiKeyHint.IsVisible = apiKeyEnvVar is not null;
 
         // Free text with fetched suggestions, not a hard dropdown: a gateway may serve a model it does not
         // list, and MinimumPrefixLength=0 opens the list on a click instead of only on typing.
@@ -58,6 +62,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             {
                 _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
+                apiKeyHint,
                 _Label("Model"),
                 _ModelRow(),
                 _modelStatus,
@@ -76,7 +81,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
         _timeoutStatus.IsVisible = false;
 
-        if (string.IsNullOrWhiteSpace(_apiKey.Text) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
+        if ((_apiKeyEnvVar is null && string.IsNullOrWhiteSpace(_apiKey.Text)) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
             return false;
@@ -90,7 +95,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
         return true;
     }
 

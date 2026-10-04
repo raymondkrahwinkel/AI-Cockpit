@@ -8,6 +8,6 @@ public sealed class GitHubModelsProviderUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddProviderConfigView("github-models-provider.github-models", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.GitHubModels, host));
+        host.AddProviderConfigView("github-models-provider.github-models", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.GitHubModels, OpenAiCompatConfig.ApiKeyEnvVar, host));
     }
 }

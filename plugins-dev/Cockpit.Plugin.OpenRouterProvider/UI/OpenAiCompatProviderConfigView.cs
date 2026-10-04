@@ -13,6 +13,7 @@ namespace Cockpit.Plugin.OpenRouterProvider.UI;
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _apiKey;
+    private readonly string? _apiKeyEnvVar;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
     private readonly Button _fetchModels;
@@ -20,13 +21,16 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitUiHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, string? apiKeyEnvVar, ICockpitUiHost host)
     {
+        _apiKeyEnvVar = apiKeyEnvVar;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<OpenAiCompatConfig>(existingConfigJson, OpenAiCompatConfig.JsonOptions);
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
+        var apiKeyHint = _Hint($"Or leave it empty and set {apiKeyEnvVar} in session.env on the server.");
+        apiKeyHint.IsVisible = apiKeyEnvVar is not null;
 
         // Free text with fetched suggestions, not a hard dropdown: OpenRouter's catalog is huge and a user
         // may still want to type a model id it does not list, and MinimumPrefixLength=0 opens the list on a
@@ -52,6 +56,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             {
                 _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
+                apiKeyHint,
                 _LabelRow("Model", host.CreateHelpHint("setup", "model")),
                 _ModelRow(),
                 _modelStatus,
@@ -64,13 +69,13 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public bool TryGetConfigJson(out string configJson)
     {
-        if (string.IsNullOrWhiteSpace(_apiKey.Text) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
+        if ((_apiKeyEnvVar is null && string.IsNullOrWhiteSpace(_apiKey.Text)) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
             configJson = string.Empty;
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig(_apiKey.Text.Trim(), _model.Text.Trim(), _baseUrl.Text.Trim()));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim()));
         return true;
     }
 

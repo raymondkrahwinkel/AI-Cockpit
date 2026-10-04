@@ -25,7 +25,7 @@ public enum ProfileSignInKind
     Unchecked,
 }
 
-// AC-1483: the host's mirror of the plugin contract's PluginCredentialKind; ApiKeyFromSecret is reserved for AC-1478 c.
+// AC-1483: the host's mirror of the plugin contract's PluginCredentialKind; ApiKeyFromSecret is a key from the process environment (AC-1484).
 public enum ProfileCredentialKind
 {
     Unknown,

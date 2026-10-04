@@ -8,7 +8,7 @@ public sealed class GeminiProviderUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddProviderConfigView("gemini-provider.gemini", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.Gemini, host));
-        host.AddProviderConfigView("gemini-provider.openai", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.OpenAi, host));
+        host.AddProviderConfigView("gemini-provider.gemini", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.Gemini, OpenAiCompatConfig.ApiKeyEnvVar, host));
+        host.AddProviderConfigView("gemini-provider.openai", existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiCompatDefaultBaseUrls.OpenAi, null, host));
     }
 }
