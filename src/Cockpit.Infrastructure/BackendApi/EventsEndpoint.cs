@@ -47,6 +47,7 @@ internal static class EventsEndpoint
         // AC-1446: the audit's "connected", once the stream is open for the client: a start that failed opened nothing.
         if (services.GetService<NodeAccessAuditLog>() is { } audit)
         {
+            await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false);
             await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
         }
 
