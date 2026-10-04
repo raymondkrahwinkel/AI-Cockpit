@@ -32,7 +32,7 @@ internal sealed class DelegateRunner(ICockpitHost host) : IStepRunner
             throw new InvalidOperationException("This step needs a profile to hand the work to, and the work itself.");
         }
 
-        var directory = context.Resolve(context.Node.Parameters.GetValueOrDefault("Working directory")).Text.Trim();
+        var directory = context.ResolveDirectory();
 
         // AC-971: unset means read-only. A flow that hands out work meant to change files says so here, rather than
         // inheriting whatever the target profile happens to allow and finding out afterwards.

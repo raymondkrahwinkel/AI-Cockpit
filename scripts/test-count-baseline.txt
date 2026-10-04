@@ -29,7 +29,7 @@ plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
 plugins-dev/Cockpit.Plugin.Slack.Tests	26
 plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	5
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
-plugins-dev/Cockpit.Plugin.Workflows.Tests	29
+plugins-dev/Cockpit.Plugin.Workflows.Tests	30
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1471
 tests/Cockpit.Backend.Tests	69
