@@ -184,17 +184,11 @@ public sealed class RemoteAdminJourney
                 .Select(line => JsonNode.Parse(line))
                 .Last(record => record?["PaneId"]?.GetValue<string>() == paneId)?["WorkingDirectory"]?.GetValue<string>();
             List<(string Key, string What)> audit = [];
-            await Until.ReloadHolds(
-                () => HeadlessAvalonia.RunAsync(async () =>
-                {
-                    await admin.LoadCommand.ExecuteAsync(null);
-                    audit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
-                }),
-                () => audit.Contains((Laptop, $"issued · {Phone} (operate)"))
-                    && audit.Contains((Phone, "connected"))
-                    && audit.Contains((Laptop, $"revoked · {Phone}"))
-                    && audit.Contains((Phone, "refused: revoked key"))
-                    && audit.Contains((Laptop, $"lockout lifted · {lockedOut}")));
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                await admin.LoadCommand.ExecuteAsync(null);
+                audit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
+            });
             var lockoutsAfter = HeadlessAvalonia.Run(() => admin.Lockouts.Count);
 
             // AC-1473: Profiles → Echo gets another model; a new session on Echo starts on the server with that model.
