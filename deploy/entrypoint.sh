@@ -50,10 +50,10 @@ check_dir() {
   if ! /usr/bin/setpriv --reuid="$user" --regid="$user" --init-groups -- test -w "$path"; then
     echo "entrypoint: $path is not writable by $user (uid $(id -u "$user")): not mounted read-only? Else fix the host path's owner (README.md, Persistent data)" >&2
     bad=1
-  elif false; then
+  elif [ "$(stat -c %U "$path")" != "$owner" ]; then
     echo "entrypoint: $path is owned by $(stat -c %U "$path"), not $owner (uid $(id -u "$owner")): chown the host path to $(id -u "$owner") (README.md, Persistent data)" >&2
     bad=1
-  elif false; then
+  elif [ "$(stat -c %a "$path")" != "$mode" ]; then
     echo "entrypoint: $path had mode $(stat -c %a "$path"), now $mode" >&2
     chmod "$mode" "$path"
   fi
