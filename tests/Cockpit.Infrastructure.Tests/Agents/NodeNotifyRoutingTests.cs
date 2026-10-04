@@ -90,6 +90,23 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.Equal(collected, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
     }
 
+    // AC-1405: the reader is checked under the lock delivery takes, so mail routed while it is being checked (to a
+    // holder that just took over) lands only after the read and never in it.
+    [Fact]
+    public void ReadFor_ChecksTheReaderUnderTheLockDeliveryTakes()
+    {
+        var read = _inbox.ReadFor(AssistantIdentity.ControllerInboxPaneId, null, _DeliveringMeanwhile, _ => true, 25);
+
+        Assert.Equal(0, read?.Messages.Count);
+    }
+
+    // Delivers from another thread and gives it 300 ms; under the lock it cannot land before the read is done.
+    private bool _DeliveringMeanwhile()
+    {
+        _ = Task.Run(() => _inbox.Deliver(AgentOnTheNode, AssistantIdentity.ControllerInboxPaneId, "done", "Late.")).Wait(300);
+        return true;
+    }
+
     // A holding connect key as the door stamps it, running out half a minute from now.
     private NodeCaller _Key(string prefix, bool onEveryProject, string project) => new(
         prefix,
