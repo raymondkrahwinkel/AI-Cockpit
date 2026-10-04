@@ -101,7 +101,16 @@ public sealed class RemoteSessionJourney
                 // own, and what is typed there is answered by the server.
                 await Until.Holds(group, () => group.HoldsAssistant);
                 canOpenBefore = group.CanOpenAssistant;
-                await holder.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/assistant/prompt", new { text = "wake" });
+                try
+                {
+                    await holder.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/assistant/prompt", new { text = "wake" });
+                }
+                catch (BackendApiException exception)
+                {
+                    // What both ends logged, so a red run names why the server's assistant did not come up.
+                    throw new InvalidOperationException($"The holder's first prompt was refused: {exception.Message}{Environment.NewLine}Server:{Environment.NewLine}{run.Output}", exception);
+                }
+
                 await Until.Holds(group, () => group.CanOpenAssistant);
                 assistantClosed = view.OpenServerAssistantCommand.ExecuteAsync(group);
             });
