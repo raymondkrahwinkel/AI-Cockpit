@@ -42,6 +42,33 @@ for home in /home/agent/.claude /home/agent/.codex; do
   chmod 2770 "$home"
 done
 
+# AC-1480: a bind mount keeps its host owner and mode. Per path: the right owner and writable, or the start stops with
+# the fix; a mode wider than meant (group or other could read /state) is narrowed here, with a notice.
+bad=0
+check_dir() {
+  user=$1 owner=$2 mode=$3 path=$4
+  if ! /usr/bin/setpriv --reuid="$user" --regid="$user" --init-groups -- test -w "$path"; then
+    echo "entrypoint: $path is not writable by $user (uid $(id -u "$user")): not mounted read-only? Else fix the host path's owner (README.md, Persistent data)" >&2
+    bad=1
+  elif [ "$(stat -c %U "$path")" != "$owner" ]; then
+    echo "entrypoint: $path is owned by $(stat -c %U "$path"), not $owner (uid $(id -u "$owner")): chown the host path to $(id -u "$owner") (README.md, Persistent data)" >&2
+    bad=1
+  elif [ "$(stat -c %a "$path")" != "$mode" ]; then
+    echo "entrypoint: $path had mode $(stat -c %a "$path"), now $mode" >&2
+    chmod "$mode" "$path"
+  fi
+}
+check_dir app app 700 /state
+check_dir app app 2770 /work
+/usr/bin/setpriv --reuid=agent --regid=agent --init-groups -- test -w /work || { echo "entrypoint: /work is not writable by agent (uid $(id -u agent)): chown the host path to $(id -u app):$(id -g agent), mode 2770 (README.md, Persistent data)" >&2; bad=1; }
+check_dir app app 700 /home/app/.ssh
+# The server's side of the logins is agent's, written through the group.
+for path in /home/agent/.claude /home/agent/.codex; do check_dir agent agent 2770 "$path"; done
+for path in /home/app/.claude /home/app/.codex; do check_dir app agent 2770 "$path"; done
+check_dir agent agent 700 /home/agent/.ssh
+check_dir agent agent 700 /home/agent/Nextcloud
+[ "$bad" = 0 ] || exit 1
+
 # The group the Claude provider opens its mcp-config and prompt file to (AC-1468); `app` is in it, `agent` owns it.
 COCKPIT_AGENT_GROUP=$(id -g agent)
 export COCKPIT_AGENT_GROUP

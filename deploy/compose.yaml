@@ -1,6 +1,5 @@
 # AC-1356: the headless Cockpit on a plain Docker host. The image is pinned by COCKPIT_TAG (a `sha-<commit>` tag, with no
 # default and never `latest`): a restart drops live agent sessions, so nothing here pulls on its own.
-# The GHCR package is private: `docker login ghcr.io` on the host first (see README.md).
 name: cockpit
 
 services:

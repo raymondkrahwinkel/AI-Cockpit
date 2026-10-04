@@ -4,7 +4,8 @@
 # not; an encrypted state is refused; the server runs non-root with no docker and no Avalonia; an
 # agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
 # brain-sync brings only its include list, writes back as agent, keeps both sides of a conflict and keeps the app
-# password to itself (AC-1364); no secret is in a layer or a log. Each check that could pass vacuously has a control.
+# password to itself (AC-1364); a plain `docker run` keeps its state over --volumes-from, and a bind-mount with the
+# documented owners works while a wrong one stops the start (AC-1480); no secret is in a layer or a log. Each check that could pass vacuously has a control.
 set -euo pipefail
 
 image=${1:?usage: deploy/smoke.sh <image:tag>}
@@ -34,7 +35,9 @@ dc() { docker compose -p "$project" -f deploy/compose.yaml "$@"; }
 fail() { echo "::error::smoke: $*"; exit 1; }
 cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
-  docker rm -f "$project-holder" "$project-control-root" "$project-webdav" >/dev/null 2>&1 || true
+  docker rm -fv "$project-holder" "$project-control-root" "$project-webdav" "$project-plain1" "$project-plain2"     "$project-plain3" "$project-bind" "$project-badbind" >/dev/null 2>&1 || true
+  # The bind-mounts hold files of the container's users: hand them back, or the rm below fails.
+  [ ! -d "$work/bind" ] || docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chown "$image" -R "$(id -u):$(id -g)" /b >/dev/null 2>&1 || true
   docker rmi -f "$project-control-leak" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -318,6 +321,94 @@ dc down -v >/dev/null
 start
 [ "$(fingerprint_of_log)" != "$first" ] || fail "control: a new volume kept the fingerprint"
 collect_logs
+
+echo "== persistent data without compose (AC-1480)"
+# A plain `docker run` with no -v: the image's VOLUME lines make anonymous volumes, so a new container started with
+# --volumes-from keeps the state, and the certificate's fingerprint with it. Secrets are files, as in compose.
+plain_run() {
+  local name=$1; shift
+  docker run -d --name "$name" -v "$work/secrets:/run/in:ro" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key "$@" "$image" >/dev/null
+  for _ in $(seq 60); do
+    plain_log=$(docker logs "$name" 2>&1)
+    grep -qF 'Cockpit.Server running' <<< "$plain_log" && return 0
+    [ "$(docker inspect -f '{{.State.Running}}' "$name")" = true ] || break
+    sleep 1
+  done
+  docker logs "$name" 2>&1 | tail -n 15
+  fail "the plain container $name did not report running"
+}
+plain_fingerprint() { docker logs "$1" 2>&1 | sed -n 's/.*presents certificate fingerprint \([0-9A-Fa-f]*\)\..*/\1/p' | tail -n 1; }
+plain_run "$project-plain1"
+plain_first=$(plain_fingerprint "$project-plain1")
+[ -n "$plain_first" ] || fail "the plain container's log names no certificate fingerprint"
+docker stop "$project-plain1" >/dev/null
+plain_run "$project-plain2" --volumes-from "$project-plain1"
+[ "$(plain_fingerprint "$project-plain2")" = "$plain_first" ] || fail "the fingerprint changed over a new container with --volumes-from"
+# Control: without --volumes-from the same command gets new volumes, so a fingerprint that stays proves the VOLUME lines.
+plain_run "$project-plain3"
+[ "$(plain_fingerprint "$project-plain3")" != "$plain_first" ] || fail "control: a container without --volumes-from kept the fingerprint"
+docker rm -fv "$project-plain1" "$project-plain2" "$project-plain3" >/dev/null
+
+echo "== bind-mounts with the documented owners (AC-1480)"
+# What deploy/README.md says to create. app is 1654:1654 and agent 1700:1700 in the image; read here, not assumed.
+app_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u app):$(id -g app)')
+[ "$app_ids" = 1654:1654 ] || fail "the README documents app as 1654:1654, the image has $app_ids"
+agent_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u agent):$(id -g agent)')
+[ "$agent_ids" = 1700:1700 ] || fail "the README documents agent as 1700:1700, the image has $agent_ids"
+# A fresh volume takes the image's owners and modes, before the entrypoint runs (overridden here): /state is the
+# server's alone, and nothing is open to other users.
+want='/state app 700|/work app 2770|/home/agent/.claude agent 2770|/home/agent/.codex agent 2770|/home/app/.claude agent 2770|/home/app/.codex agent 2770|/home/app/.ssh app 700|/home/agent/.ssh agent 700|/home/agent/Nextcloud agent 700'
+IFS='|' read -ra rows <<< "$want"
+for row in "${rows[@]}"; do
+  read -r path owner mode <<< "$row"
+  [ "$(docker run --rm --entrypoint stat "$image" -c '%U %a' "$path")" = "$owner $mode" ] || fail "$path is not $owner $mode in the image"
+done
+mkdir -p "$work/bind"/{state,work,claude,codex,ssh,agent-ssh,brain}
+bind_mounts=(-v "$work/bind/state:/state" -v "$work/bind/work:/work" -v "$work/bind/claude:/home/agent/.claude" -v "$work/bind/claude:/home/app/.claude"
+  -v "$work/bind/codex:/home/agent/.codex" -v "$work/bind/codex:/home/app/.codex" -v "$work/bind/ssh:/home/app/.ssh" -v "$work/bind/agent-ssh:/home/agent/.ssh"
+  -v "$work/bind/brain:/home/agent/Nextcloud")
+bind_owners() {
+  docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c '
+    cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work     && chown 1700:1700 claude codex agent-ssh brain && chmod 2770 claude codex && chmod 0700 agent-ssh brain'
+}
+bind_owners
+plain_run "$project-bind" "${bind_mounts[@]}"
+docker exec -u app "$project-bind" sh -c 'touch /state/w /work/app-file' || fail "the server cannot write a documented bind-mount"
+docker exec -u agent "$project-bind" sh -c 'touch /work/agent-file /home/agent/.claude/w && rm /work/agent-file /home/agent/.claude/w' || fail "an agent session cannot write a documented bind-mount"
+# The two claude mounts are one host path: what the server writes on its side, the agent reads on its own.
+docker exec -u app "$project-bind" sh -c 'touch /home/app/.claude/shared' || fail "the server cannot write its side of the claude bind-mount"
+docker exec -u agent "$project-bind" sh -c 'test -e /home/agent/.claude/shared && rm /home/agent/.claude/shared' || fail "the agent does not see the server's side of the claude bind-mount"
+docker rm -fv "$project-bind" >/dev/null
+# A wrong owner is refused with the documented message and exit 1, not a server that starts and fails later. Two cases:
+# /state owned by root (the server cannot write) and /work owned by app alone (the agent cannot).
+bad_bind() {
+  local dir=$1 owner=$2 mode=$3 message=$4 code bad
+  docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c "chown $owner /b/$dir && chmod $mode /b/$dir"
+  docker run -d --name "$project-badbind" "${bind_mounts[@]}" -e COCKPIT_STATE_ROOT=/state -e COCKPIT_CONNECT_KEY_FILE=/run/in/connect-key     -v "$work/secrets:/run/in:ro" "$image" >/dev/null
+  code=$(timeout 60 docker wait "$project-badbind") || fail "the server kept running on a bind-mount with the wrong owner ($dir)"
+  bad=$(docker logs "$project-badbind" 2>&1)
+  [ "$code" = 1 ] || fail "a wrong-owner bind-mount ($dir) ended with exit $code, not 1"
+  grep -qF "$message" <<< "$bad" || fail "the wrong-owner refusal for $dir names no reason: $bad"
+  if grep -qF 'Cockpit.Server running' <<< "$bad"; then fail "the server started on a bind-mount it cannot write ($dir)"; fi
+  docker rm -fv "$project-badbind" >/dev/null
+  bind_owners
+}
+bad_bind state root:root 0755 'entrypoint: /state is not writable by app (uid 1654)'
+# Writable by all, so the owner is what is wrong: agent could read /state.
+bad_bind state root:root 0777 'entrypoint: /state is owned by root, not app (uid 1654)'
+bad_bind brain root:root 0777 'entrypoint: /home/agent/Nextcloud is owned by root, not agent (uid 1700)'
+bad_bind work 1654:1654 0755 'entrypoint: /work is not writable by agent (uid 1700)'
+
+# The right owner with a mode that is too wide is narrowed before the server starts, and the log says so.
+docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chmod "$image" 0755 /b/state
+plain_run "$project-bind" "${bind_mounts[@]}"
+bind_log=$(docker logs "$project-bind" 2>&1)
+grep -qF 'entrypoint: /state had mode 755, now 700' <<< "$bind_log" || fail "a too-wide /state mode was not reported"
+[ "$(docker exec "$project-bind" stat -c %a /state)" = 700 ] || fail "a too-wide /state mode was not narrowed"
+! docker exec -u agent "$project-bind" test -r /state || fail "agent can read a /state that was too wide"
+docker exec -u app "$project-bind" test -r /state || fail "control: app cannot read its own /state"
+docker rm -fv "$project-bind" >/dev/null
+bind_owners
 
 echo "== a held node port stops the server"
 dc down -v >/dev/null
