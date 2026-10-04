@@ -502,7 +502,10 @@
          and IPluginHealthActions with PluginHealthActionResult lets a section offer actions an operate key runs over
          GET/POST /api/v1/health. A plugin that sets either property or implements the interface sets minHostVersion
          0.69.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.2.0</Version>
+    <!-- 3.3.0 (AC-1477): PluginHealthRow gains Schedule and TimeZone as init properties (its constructor is unchanged),
+         and LoginFlowStep gains ExpiresAt. A plugin that sets Schedule, TimeZone or ExpiresAt sets minHostVersion 0.77.0.
+         Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.3.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -71,6 +71,9 @@ public sealed class RemoteSessionJourney
             var alarmWhenExpired = false;
             var signInAwaitedInput = false;
             var clearedAfterSignIn = false;
+            var codeValidFor = "";
+            var scheduleShown = "";
+            var zoneHeading = "";
             var runBefore = "";
             var runAfter = "";
             var view = cockpit.Cockpit;
@@ -178,6 +181,7 @@ public sealed class RemoteSessionJourney
                 }
 
                 signInAwaitedInput = flow.Message.Contains("paste the code", StringComparison.Ordinal);
+                codeValidFor = flow.CodeValidFor;
                 flow.CodeInput = "echo-code";
                 await flow.SubmitCommand.ExecuteAsync(null);
                 await Until.Holds(group.Health, () => !group.Health.ShowsAlarm && !group.Health.HasBadge);
@@ -186,6 +190,8 @@ public sealed class RemoteSessionJourney
                 // Run now on the scheduled flow: the row says what the server's run came to.
                 var scheduled = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled");
                 runBefore = scheduled.Outcome;
+                scheduleShown = scheduled.Schedule;
+                zoneHeading = group.Health.RunsDetail;
                 await group.Health.RunNowCommand.ExecuteAsync(scheduled);
                 await Until.Holds(group.Health, () => group.Health.Runs.Single(run => run.Workflow == "Journey scheduled").Outcome.StartsWith("Done", StringComparison.Ordinal));
                 runAfter = group.Health.Runs.Single(run => run.Workflow == "Journey scheduled").Outcome;
@@ -209,6 +215,9 @@ public sealed class RemoteSessionJourney
             Assert.True(alarmWhenExpired, "The tab did not show the expired login as the alarm with Sign in again.");
             Assert.True(signInAwaitedInput, "Sign in again did not show the provider's step.");
             Assert.True(clearedAfterSignIn, "The alarm or the badge outlived the sign-in.");
+            Assert.Matches(@"^code valid for (0\d|1[0-4]):[0-5]\d$", codeValidFor);
+            Assert.Equal("once 2099-01-01 00:00", scheduleShown);
+            Assert.Contains("UTC", zoneHeading, StringComparison.Ordinal);
             Assert.Equal("Not run · Never", runBefore);
             Assert.StartsWith("Done", runAfter, StringComparison.Ordinal);
             Assert.StartsWith("Journey scheduled · Done", await _ServerRunLabelAsync(admin), StringComparison.Ordinal);

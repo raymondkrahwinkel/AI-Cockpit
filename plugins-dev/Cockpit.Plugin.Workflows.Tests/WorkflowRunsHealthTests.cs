@@ -40,7 +40,8 @@ internal sealed class WorkflowRunsHealthTests
         var runs = new RunStore(storage);
         var clock = new FixedClock(new DateTimeOffset(2026, 10, 3, 12, 0, 0, TimeSpan.Zero));
         var flow = _ScheduledFlow("daily-checkin", "Daily check-in", "18:30", "Europe/Amsterdam");
-        store.Save([flow]);
+        var unreadable = _ScheduledFlow("whenever", "Whenever", "whenever you like", "Europe/Amsterdam");
+        store.Save([flow, unreadable]);
         runs.Add(new WorkflowRun
         {
             Id = "run-1",
@@ -58,7 +59,7 @@ internal sealed class WorkflowRunsHealthTests
         Assert.Collection(report.Rows,
             summary =>
             {
-                Assert.Equal("1 scheduled · next: Daily check-in", summary.Label);
+                Assert.Equal("2 scheduled · next: Daily check-in", summary.Label);
                 Assert.Equal(new DateTimeOffset(2026, 10, 3, 16, 30, 0, TimeSpan.Zero), summary.At);
             },
             outcome =>
@@ -68,13 +69,22 @@ internal sealed class WorkflowRunsHealthTests
                 Assert.Equal(new DateTimeOffset(2026, 10, 2, 16, 34, 0, TimeSpan.Zero), outcome.At);
                 Assert.NotNull(outcome.ActionId);
                 Assert.Null(outcome.ProjectId);
+                Assert.Equal("daily 18:30", outcome.Schedule);
+                Assert.Equal("Europe/Amsterdam", outcome.TimeZone);
             },
             next =>
             {
                 Assert.Equal("Daily check-in · Next run", next.Label);
                 Assert.Equal(new DateTimeOffset(2026, 10, 3, 16, 30, 0, TimeSpan.Zero), next.At);
                 Assert.Null(next.ActionId);
-            });
+            },
+            unreadableOutcome =>
+            {
+                Assert.StartsWith("Whenever · ", unreadableOutcome.Label, StringComparison.Ordinal);
+                Assert.Null(unreadableOutcome.Schedule);
+                Assert.Null(unreadableOutcome.TimeZone);
+            },
+            unreadableNext => Assert.Null(unreadableNext.At));
     }
 
     private async Task RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState()

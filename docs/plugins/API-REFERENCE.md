@@ -336,7 +336,9 @@ characters and cuts it to 120 characters. A row may set `ProjectId`, so that onl
 sees it, and `ActionId` (a slug-like id of at most 64 characters). It offers that action when its section also
 implements `IPluginHealthActions`: `POST /api/v1/health/{section}/actions/{actionId}` runs `RunAsync` and answers
 `PluginHealthActionResult(Succeeded)`. A plugin that sets either property or implements the interface sets
-`minHostVersion` 0.69.0.
+`minHostVersion` 0.69.0. A row may also set `Schedule` (readable text such as `daily 09:00`) and `TimeZone`, cut like
+the label (SDK 3.3.0, host 0.77.0); set them only when the plugin could read the schedule itself. `LoginFlowStep.ExpiresAt` (a login flow's code expiry) is new in
+the same SDK 3.3.0: a plugin that sets it also sets `minHostVersion` 0.77.0.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:

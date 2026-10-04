@@ -11,4 +11,10 @@ public sealed record PluginHealthRow(string Label, PluginHealthStatus Status, Da
     // AC-1470: the action this line offers, run through the section's IPluginHealthActions. A slug-like id of at most
     // 64 characters, unique to this line: an id that a line outside the caller's scope also offers is not run.
     public string? ActionId { get; init; }
+
+    // AC-1477: when this line runs, as readable text ("daily 09:00", "every 15m"), and the time zone that text is read
+    // in. Set only when the plugin could read the schedule itself. Same rules as the label; the host cuts both to 120.
+    public string? Schedule { get; init; }
+
+    public string? TimeZone { get; init; }
 }

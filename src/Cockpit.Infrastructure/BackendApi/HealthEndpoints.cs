@@ -78,6 +78,8 @@ internal static partial class HealthEndpoints
                         status = row.Status == PluginHealthStatus.Ok ? "ok" : "failed",
                         at = row.At,
                         projectId = row.ProjectId is null ? null : Clean(row.ProjectId),
+                        schedule = Clean(row.Schedule) is { Length: > 0 } schedule ? schedule : null,
+                        timeZone = Clean(row.TimeZone) is { Length: > 0 } timeZone ? timeZone : null,
                         actionId = section.Actions is not null && _IsActionId(row.ActionId) ? row.ActionId : null,
                     }),
                 }),

@@ -119,29 +119,31 @@
                         <TextBlock Text="{Binding RunsDetail}" FontSize="12" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     </StackPanel>
                 </DockPanel>
-                <Grid ColumnDefinitions="2*,1.4*,2*,1.4*,Auto" ColumnSpacing="10">
+                <Grid ColumnDefinitions="2*,1.4*,1.4*,2*,1.4*,Auto" ColumnSpacing="10">
                     <TextBlock Text="Workflow" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <TextBlock Grid.Column="1" Text="Last run" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <TextBlock Grid.Column="2" Text="Outcome" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <TextBlock Grid.Column="3" Text="Next" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <Border Grid.Column="4" Width="70"/>
+                    <TextBlock Grid.Column="1" Text="Schedule" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="2" Text="Last run" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="3" Text="Outcome" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Grid.Column="4" Text="Next" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <Border Grid.Column="5" Width="70"/>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding VisibleRuns}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ScheduledRunRowViewModel">
-                            <Grid ColumnDefinitions="2*,1.4*,2*,1.4*,Auto" ColumnSpacing="10" Margin="0,3">
+                            <Grid ColumnDefinitions="2*,1.4*,1.4*,2*,1.4*,Auto" ColumnSpacing="10" Margin="0,3">
                                 <TextBlock Text="{Binding Workflow}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Grid.Column="1" Text="{Binding LastRun}" FontSize="12.5"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='✓ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                <TextBlock Grid.Column="1" Text="{Binding Schedule}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="{Binding LastRun}" FontSize="12.5"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Outcome, StringFormat='✓ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource CockpitStatusDoneBrush}" IsVisible="{Binding IsOk}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='! {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                <TextBlock Grid.Column="3" Text="{Binding Outcome, StringFormat='! {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding IsWaiting}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='↻ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                <TextBlock Grid.Column="3" Text="{Binding Outcome, StringFormat='↻ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding IsCaughtUp}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Outcome, StringFormat='✕ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                <TextBlock Grid.Column="3" Text="{Binding Outcome, StringFormat='✕ {0}'}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource CockpitStatusErrorBrush}" IsVisible="{Binding IsFailed}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding Next}" FontSize="12.5"/>
-                                <StackPanel Grid.Column="4" Width="70" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Grid.Column="4" Text="{Binding Next}" FontSize="12.5"/>
+                                <StackPanel Grid.Column="5" Width="70" Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Classes="Subtle Compact" Content="Run now" IsVisible="{Binding CanRun}"
                                             Command="{Binding $parent[controls:ServerHealthView].((vm:ServerHealthViewModel)DataContext).RunNowCommand}"
                                             CommandParameter="{Binding}"/>

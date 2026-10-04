@@ -99,7 +99,7 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
         [.. (dto.Sections ?? []).Select(section => new RemoteHealthSection(
             section.Name,
             section.Healthy,
-            [.. (section.Rows ?? []).Select(row => new RemoteHealthRow(row.Label, row.Status != "ok", row.At, row.ActionId))]))]);
+            [.. (section.Rows ?? []).Select(row => new RemoteHealthRow(row.Label, row.Status != "ok", row.At, row.ActionId, row.Schedule, row.TimeZone))]))]);
 
     private sealed record HealthDto(List<ProfileDto>? Profiles, ServerDto? Server, List<SectionDto>? Sections);
 
@@ -113,7 +113,7 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
 
     private sealed record SectionDto(string Name, bool Healthy, List<RowDto>? Rows);
 
-    private sealed record RowDto(string Label, string Status, DateTimeOffset? At, string? ActionId);
+    private sealed record RowDto(string Label, string Status, DateTimeOffset? At, string? ActionId, string? Schedule, string? TimeZone);
 
     private sealed record ActionDto(bool Succeeded);
 }

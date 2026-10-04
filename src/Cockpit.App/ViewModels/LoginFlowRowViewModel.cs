@@ -30,6 +30,7 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
     private bool _linkOpened;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCodeTimer))]
     private bool _isCompleted;
 
     [ObservableProperty]
@@ -37,6 +38,14 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    // AC-1477: how long the code on screen stays valid, counted down once a second while the flow runs. Empty when the
+    // flow gave no expiry; the expired text replaces it at zero.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCodeTimer))]
+    private string _codeValidFor = string.Empty;
+
+    public bool HasCodeTimer => CodeValidFor.Length > 0 && !IsCompleted;
 
     public bool HasLink => LinkToOpen is not null;
 
@@ -47,9 +56,13 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
     // actually reports success, rather than waiting for its own next poll of a cache this flow just invalidated.
     public Action<bool>? Completed { get; set; }
 
-    public LoginFlowRowViewModel(ILoginFlow flow)
+    private readonly TimeProvider _time;
+    private DateTimeOffset? _expiresAt;
+
+    public LoginFlowRowViewModel(ILoginFlow flow, TimeProvider? time = null)
     {
         _flow = flow;
+        _time = time ?? TimeProvider.System;
         _ = _RunAsync();
     }
 
@@ -106,6 +119,16 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
                     LinkToOpen = step.LinkToOpen;
                 }
                 AwaitsInput = step.AwaitsInput;
+                if (step.ExpiresAt is { } expiresAt)
+                {
+                    var counting = _expiresAt is not null;
+                    _expiresAt = expiresAt;
+                    _ShowCodeValidFor();
+                    if (!counting)
+                    {
+                        _ = _CountDownAsync(_cts.Token);
+                    }
+                }
             }
 
             var result = await _flow.Completion;
@@ -124,6 +147,35 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
         {
             IsCompleted = true;
             Completed?.Invoke(Succeeded);
+        }
+    }
+
+    private void _ShowCodeValidFor()
+    {
+        var left = (_expiresAt ?? _time.GetUtcNow()) - _time.GetUtcNow();
+        CodeValidFor = left > TimeSpan.Zero
+            ? $"code valid for {(int)left.TotalMinutes:00}:{left.Seconds:00}"
+            : "The code has expired. Start the sign-in again.";
+    }
+
+    private async Task _CountDownAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), _time);
+        try
+        {
+            while (!IsCompleted && _expiresAt > _time.GetUtcNow() && await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                _ShowCodeValidFor();
+            }
+
+            if (!IsCompleted)
+            {
+                _ShowCodeValidFor();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Disposed — nothing more to count.
         }
     }
 

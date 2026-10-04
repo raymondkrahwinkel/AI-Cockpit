@@ -320,10 +320,19 @@ public sealed partial class ServerHealthViewModel : ObservableObject
 
         RunsDetail = section.Rows.FirstOrDefault()?.Label ?? "";
         var rows = section.Rows.Skip(1).Select(row => (Row: row, Title: _Title(row.Label), Detail: _Detail(row.Label))).ToList();
-        foreach (var outcome in rows.Where(entry => entry.Detail != NextRun))
+        var outcomes = rows.Where(entry => entry.Detail != NextRun).ToList();
+        // One zone for every row goes in the heading; rows in different zones each carry their own after the schedule.
+        var zones = outcomes.Select(entry => entry.Row.TimeZone).Distinct().ToList();
+        var sharedZone = zones.Count == 1 ? zones[0] : null;
+        if (sharedZone is not null)
+        {
+            RunsDetail += $"{Separator}{sharedZone}";
+        }
+
+        foreach (var outcome in outcomes)
         {
             var next = rows.FirstOrDefault(entry => entry.Title == outcome.Title && entry.Detail == NextRun).Row;
-            Runs.Add(new ScheduledRunRowViewModel(outcome.Title, outcome.Detail, outcome.Row, next?.At, now) { IsRunning = outcome.Row.ActionId is { } id && _running.Contains(id) });
+            Runs.Add(new ScheduledRunRowViewModel(outcome.Title, outcome.Detail, outcome.Row, next?.At, now, sharedZone is null) { IsRunning = outcome.Row.ActionId is { } id && _running.Contains(id) });
         }
     }
 
@@ -401,9 +410,10 @@ public sealed class ProfileHealthRowViewModel
 
 public sealed partial class ScheduledRunRowViewModel : ObservableObject
 {
-    public ScheduledRunRowViewModel(string workflow, string outcome, RemoteHealthRow row, DateTimeOffset? next, DateTimeOffset now)
+    public ScheduledRunRowViewModel(string workflow, string outcome, RemoteHealthRow row, DateTimeOffset? next, DateTimeOffset now, bool showsZone = false)
     {
         Workflow = workflow;
+        Schedule = row.Schedule is null ? "–" : showsZone && row.TimeZone is not null ? $"{row.Schedule} {row.TimeZone}" : row.Schedule;
         ActionId = row.ActionId;
         IsNotRun = outcome.StartsWith("Not run", StringComparison.Ordinal);
         IsWaiting = outcome.StartsWith("Waiting for your permission", StringComparison.Ordinal);
@@ -415,6 +425,8 @@ public sealed partial class ScheduledRunRowViewModel : ObservableObject
     }
 
     public string Workflow { get; }
+
+    public string Schedule { get; }
 
     public string? ActionId { get; }
 

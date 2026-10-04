@@ -51,7 +51,7 @@ public sealed record RemoteServerFacts(
     string? AssistantHolder,
     IReadOnlyList<RemoteKeyHealth> Keys);
 
-public sealed record RemoteHealthRow(string Label, bool Failed, DateTimeOffset? At, string? ActionId);
+public sealed record RemoteHealthRow(string Label, bool Failed, DateTimeOffset? At, string? ActionId, string? Schedule = null, string? TimeZone = null);
 
 public sealed record RemoteHealthSection(string Name, bool Healthy, IReadOnlyList<RemoteHealthRow> Rows);
 
