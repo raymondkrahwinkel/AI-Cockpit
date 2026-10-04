@@ -32,10 +32,12 @@ internal static class ProfileEndpoints
     private static readonly HashSet<string> LoaderVariables = new(StringComparer.OrdinalIgnoreCase)
     {
         "PATH", "ENV", "BASH_ENV", "SHELLOPTS", "BASHOPTS", "PS4", "PROMPT_COMMAND", "IFS", "GCONV_PATH", "LOCPATH", "HOSTALIASES",
-        "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB",
+        "GLIBC_TUNABLES", "NLSPATH", "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONWARNINGS",
+        "PYTHONBREAKPOINT", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "JAVA_TOOL_OPTIONS", "GIT_SSH", "GIT_SSH_COMMAND",
+        "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS",
     };
 
-    private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_"];
+    private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_", "MALLOC_", "GIT_CONFIG_"];
 
     // A field this API does not know is refused rather than dropped, so a misspelt one does not read as saved.
     private static readonly JsonSerializerOptions Strict = new(ConnectKeyEndpoints.Json)
@@ -43,7 +45,8 @@ internal static class ProfileEndpoints
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    // ponytail: one lock per process, enough for an admin's hand edits.
+    // ponytail: one lock for these routes only; the delegation tools' add_profile saves the list outside it, so an
+    // admin edit and an agent's new profile at the same moment can lose one of the two. Share the lock if that bites.
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
@@ -75,7 +78,8 @@ internal static class ProfileEndpoints
         api.MapPost("/profiles", (HttpRequest request, CancellationToken cancellationToken) =>
             _ChangeAsync<RemoteNewProfile>(request, cancellationToken, (body, profiles) =>
             {
-                if (string.IsNullOrWhiteSpace(body.Label) || services.GetService<IPluginProviderRegistry>()?.Resolve(body.Provider) is null)
+                if (string.IsNullOrWhiteSpace(body.Label) || string.IsNullOrWhiteSpace(body.Provider)
+                    || services.GetService<IPluginProviderRegistry>()?.Resolve(body.Provider) is null)
                 {
                     return (null, _Invalid("A new profile needs a label and the id of one of the server's provider plugins."));
                 }
@@ -126,6 +130,12 @@ internal static class ProfileEndpoints
                     return _NoProfile();
                 }
 
+                // An empty list reads back as the providers' auto-detected profiles, so the last one would come back.
+                if (profiles.Count == 1)
+                {
+                    return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "last_profile", "The server keeps at least one profile.");
+                }
+
                 await store().SaveAsync([.. profiles.Where((_, at) => at != index)], cancellationToken).ConfigureAwait(false);
                 return Results.Json(new { ok = true, deleted = true });
             }
@@ -139,14 +149,18 @@ internal static class ProfileEndpoints
         async Task<IResult> _ChangeAsync<T>(HttpRequest request, CancellationToken cancellationToken, Func<T, IReadOnlyList<SessionProfile>, (IReadOnlyList<SessionProfile>? Next, IResult Answer)> change)
             where T : class
         {
+            // A key given twice in two casings throws on first read, as ArgumentException; neither names a value.
             JsonNode? node;
+            IResult? refused;
             try
             {
                 node = await JsonNode.ParseAsync(request.Body, new JsonNodeOptions { PropertyNameCaseInsensitive = true }, cancellationToken: cancellationToken).ConfigureAwait(false);
+                refused = Refusal(node);
             }
-            catch (JsonException)
+            catch (Exception exception) when (exception is JsonException or ArgumentException)
             {
                 node = null;
+                refused = null;
             }
 
             if (node is not JsonObject)
@@ -154,7 +168,7 @@ internal static class ProfileEndpoints
                 return _Invalid("The body must be a JSON object.");
             }
 
-            if (Refusal(node) is { } refused)
+            if (refused is not null)
             {
                 return refused;
             }
@@ -192,7 +206,7 @@ internal static class ProfileEndpoints
         }
     }
 
-    // A credential, a program path or a loader variable anywhere in the request, before any of it is read.
+    // A credential or a program path anywhere in the request, before any of it is read.
     internal static IResult? Refusal(JsonNode? node)
     {
         if (node is JsonArray array)
@@ -214,13 +228,6 @@ internal static class ProfileEndpoints
         if (body.ContainsKey("executablePath"))
         {
             return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal);
-        }
-
-        if (body.TryGetPropertyValue("environment", out var environment) && environment is JsonArray variables
-            && variables.Any(variable => variable is JsonObject entry && entry.TryGetPropertyValue("key", out var key) && key is JsonValue name
-                && name.TryGetValue<string>(out var text) && IsLoaderVariable(text)))
-        {
-            return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal);
         }
 
         return body.Select(property => Refusal(property.Value)).FirstOrDefault(refusal => refusal is not null);
@@ -282,6 +289,13 @@ internal static class ProfileEndpoints
             if (plain.Any(variable => secrets.Any(secret => string.Equals(secret.Key, variable.Key, StringComparison.OrdinalIgnoreCase))))
             {
                 return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "credential_refused", CredentialRefusal));
+            }
+
+            // One the server already holds, set there, passes unchanged, so it does not lock the other variables.
+            var stored = profile.EnvironmentVariables ?? [];
+            if (plain.Any(variable => IsLoaderVariable(variable.Key) && !stored.Any(held => held.Key == variable.Key && held.Value == (variable.Value ?? ""))))
+            {
+                return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal));
             }
 
             changed = changed with { EnvironmentVariables = [.. secrets, .. plain.Select(variable => new ProfileEnvironmentVariable(variable.Key, variable.Value ?? ""))] };

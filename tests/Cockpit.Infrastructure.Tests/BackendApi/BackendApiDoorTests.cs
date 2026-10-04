@@ -198,22 +198,23 @@ public sealed class BackendApiDoorTests
         Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
     }
 
-    // AC-1473 criterion 1: model and MCP set change on the server, and its secret variable and API key, which the
-    // client never sees, are still there afterwards.
+    // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
+    // API key, which the client never sees, are still there afterwards.
     [Fact]
     public async Task AProfileChangedOverTheApi_KeepsTheSecretVariableAndTheApiKeyTheClientNeverSaw()
     {
         await using var door = new _Door();
         await door.StartAsync();
 
-        var answer = await door.SendAsync(HttpMethod.Patch, "/api/v1/profiles/Keyed", Bootstrap, """{"model":"qwen-large","mcpServers":{"names":["youtrack"]}}""");
+        var answer = await door.SendAsync(HttpMethod.Patch, "/api/v1/profiles/Keyed", Bootstrap,
+            """{"model":"qwen-large","mcpServers":{"names":["youtrack"]},"environment":[{"key":"REGION","value":"us"}]}""");
         var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
 
         Assert.Equal(HttpStatusCode.OK, answer.Status);
         Assert.Equal("qwen-large", ProfileModel.Of(keyed));
         Assert.Equal(["youtrack"], keyed.EnabledMcpServerNames ?? []);
         Assert.Equal(_Door.ProfileSecret, (keyed.ProviderConfig as LmStudioConfig)?.ApiKey);
-        Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
+        Assert.Equal([new ProfileEnvironmentVariable("PROVIDER_TOKEN", _Door.ProfileSecret, IsSecret: true), new("REGION", "us")], keyed.EnvironmentVariables ?? []);
     }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
