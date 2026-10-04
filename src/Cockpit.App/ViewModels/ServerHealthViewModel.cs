@@ -246,7 +246,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         _FillRuns(runs, now);
         _FillFacts(health, runs, discord, now);
 
-        var expired = health.Profiles.Where(profile => false && profile.SignIn == "expired").ToList();
+        var expired = health.Profiles.Where(profile => profile.SignIn == "expired").ToList();
         AlarmCount = expired.Count + health.Sections.Count(section => !section.Healthy);
         AlarmProfile = expired.FirstOrDefault()?.Label;
         if (expired.FirstOrDefault() is { } first)
