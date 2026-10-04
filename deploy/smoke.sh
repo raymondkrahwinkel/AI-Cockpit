@@ -237,8 +237,8 @@ brain_cycle
 if dc exec -T cockpit test -e $brain/claude-credentials; then fail "claude-credentials/ reached the container"; fi
 if dc exec -T cockpit grep -rqF leaked /home/agent/Nextcloud; then fail "the login file's content reached the container"; fi
 # The bisync listings are brain-sync's alone: a session can neither steer nor wipe them.
-dc exec -T brain-sync sh -c 'ls /bisync/nc/*.lst' >/dev/null || fail "control: brain-sync keeps no listings in /bisync/nc"
 [ -z "$(dc exec -T cockpit find /home /work /tmp -name '*.lst*')" ] || fail "the bisync listings are visible in the cockpit container"
+dc exec -T brain-sync sh -c 'ls /bisync/nc/*.lst' >/dev/null || fail "control: brain-sync keeps no listings in /bisync/nc"
 # The server does not touch the brain: owner-only for agent, although app is in agent's group.
 refused app "ls /home/agent/Nextcloud" || fail "the server's user can list the brain"
 refused app "cat $brain/Me.md" || fail "the server's user can read Me.md"
