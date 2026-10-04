@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -28,7 +27,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var settings = new AutopilotSettings(host.Storage);
-        _ = typeof(Thickness);
 
         // The directory of the session the window has selected, as its UI part last reported it.
         string? activeDirectory = null;
