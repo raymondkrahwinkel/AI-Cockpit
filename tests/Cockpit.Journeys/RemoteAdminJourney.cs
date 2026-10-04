@@ -184,15 +184,15 @@ public sealed class RemoteAdminJourney
             var sessionFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
                 .Select(line => JsonNode.Parse(line))
                 .Last(record => record?["PaneId"]?.GetValue<string>() == paneId)?["WorkingDirectory"]?.GetValue<string>();
-            List<(string Key, string What)> audit;
+            List<(string Key, string What)> audit = [];
             using (var ceiling = new CancellationTokenSource(Until.Ceiling))
             {
                 while (true)
                 {
-                    audit = await HeadlessAvalonia.RunAsync(async () =>
+                    await HeadlessAvalonia.RunAsync(async () =>
                     {
                         await admin.LoadCommand.ExecuteAsync(null);
-                        return admin.Audit.Select(row => (row.Key, row.What)).ToList();
+                        audit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
                     });
                     if (audit.Any(row => row == (Phone, "connected")))
                     {
