@@ -53,7 +53,7 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
             using var cancellation = new CancellationTokenSource(timeout);
             using var request = _Request(baseUrl, apiKey);
             using var response = await httpClient.SendAsync(request, cancellation.Token).ConfigureAwait(false);
-            return true;
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {

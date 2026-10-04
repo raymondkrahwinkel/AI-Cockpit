@@ -113,7 +113,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
         var previous = Current.ToDictionary(row => row.Profile, StringComparer.Ordinal);
         var next = new List<ProfileLoginHealth>();
-        foreach (var profile in profiles.Where(profile => profile.ProviderConfig is PluginProviderConfig))
+        foreach (var profile in profiles)
         {
             previous.TryGetValue(profile.Label, out var before);
             if (profile.ProviderConfig is OllamaConfig ollama)
