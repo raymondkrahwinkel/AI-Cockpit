@@ -535,7 +535,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
     }
 
-    private static readonly List<PermissionRule> _sessionRules = [];
+    private readonly List<PermissionRule> _sessionRules = [];
 
     private bool _AllowedForSession(PluginPermissionRequested permission)
     {
