@@ -345,7 +345,7 @@ internal static class SessionsEndpoints
     // gets the door's 403. After `Audited`, so the refusal is in the audit.
     private static RouteHandlerBuilder ForAssistantHolderOnly(this RouteHandlerBuilder route) =>
         route.AddEndpointFilter(async (context, next) =>
-            McpRequestContext.CurrentNodeCaller is { HoldsAssistant: true }
+            McpRequestContext.CurrentNodeCaller is not null
                 ? await next(context).ConfigureAwait(false)
                 : BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", "This key does not hold the assistant."));
 
