@@ -93,8 +93,8 @@ public sealed class RemoteWindowJourney
             Assert.Equal([paneId], shown);
             Assert.Equal(localBefore, _Bytes(localRoot));
             Assert.Empty(listenersWhileShown.Except(listenersBefore));
-            Assert.Contains("Open the local Cockpit first", damagedRefusal, StringComparison.Ordinal);
             Assert.Equal(damagedBefore, _Bytes(damagedRoot));
+            Assert.Contains("Open the local Cockpit first", damagedRefusal, StringComparison.Ordinal);
         }
         finally
         {
