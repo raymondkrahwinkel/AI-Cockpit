@@ -51,11 +51,11 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         McpRequestContext.Set(AgentOnTheNode);
         var reply = _Json(await _Agents(profileShared, withLocalAssistant: true).NotifyAsync(AssistantIdentity.PaneId, "done", "Green."));
 
-        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.True(reply["ok"]?.GetValue<bool>() == true);
         Assert.Equal(controller, reply["controller"]?.GetValue<string>());
         Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        Assert.Equal(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]!.AsArray().Count);
+        Assert.Equal<int?>(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
     }
 
     // AC-1405: a key holding the line (on project A, or every project) gets the mail of a session its scope reaches,
@@ -80,7 +80,7 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         McpRequestContext.Set(AgentOnTheNode);
         var reply = _Json(await _Agents(profileShared: false, withLocalAssistant: true, sessions).NotifyAsync(AssistantIdentity.PaneId, "done", "Green."));
 
-        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.True(reply["ok"]?.GetValue<bool>() == true);
         Assert.Equal(controller, reply["controller"]?.GetValue<string>());
         Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
         _clock.Now += TimeSpan.FromSeconds(secondsLater);
@@ -151,7 +151,7 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Substitute.For<IAssistantMemory>(),
         presence: _presence);
 
-    private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
+    private static JsonNode _Json(string result) => JsonNode.Parse(result) ?? new JsonObject();
 
     public void Dispose()
     {
