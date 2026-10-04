@@ -3,7 +3,9 @@ using System.Security.Cryptography;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.App;
 
@@ -34,6 +36,17 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    public static OptionsDialog Plugins(int width, int height)
+    {
+        var admin = _Admin();
+        admin.LoadCommand.Execute(null);
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-plugins");
+        return dialog;
+    }
+
     public static IConnectKeyAdministration StandIn() => new SceneKeys();
 
     private static ServerAdminViewModel _Admin() => new(
@@ -41,7 +54,8 @@ internal static class ServerAdminScene
         "laptop-raymond",
         new SceneKeys(),
         ["server (Claude)", "server (Codex)"],
-        [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")]);
+        [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")],
+        new ScenePlugins());
 
     // The mockup's four keys, one lockout and seven audit lines, dated from now so the times read as today's.
     private sealed class SceneKeys : IConnectKeyAdministration
@@ -85,5 +99,33 @@ internal static class ServerAdminScene
                 new(200, Now.AddDays(-6), "100.101.7.31", "laptop-raymond", "M4kzT1wq", "revoke_connect_key", "revoked", "Xa01Kd7f"),
                 new(100, Now.AddDays(-6).AddMinutes(-2), "100.101.7.31", "bootstrap", "b7Q2Lm9p", "issue_connect_key", "issued", "M4kzT1wq"),
             ]);
+    }
+
+    private sealed class ScenePlugins : IPluginAdministration
+    {
+        public Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<InstalledPlugin>>(
+            [
+                _Plugin("workflows", "Workflows", "0.31.1", true),
+                _Plugin("discord", "Discord", "1.5.2", true),
+                _Plugin("claude-provider", "Claude provider", "0.24.2", true),
+                _Plugin("youtrack", "YouTrack", "1.28.1", true),
+                _Plugin("depot", "Depot", "0.11.10", false),
+                _Plugin("github-pull-requests", "GitHub pull requests", "1.20.12", true),
+            ]);
+
+        public Task<PluginStoreFetchResult> FetchStoreIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default) => Task.FromResult(new PluginStoreFetchResult(false, "No store is configured.", null, null));
+
+        public Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
+
+        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
+
+        public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        private static InstalledPlugin _Plugin(string id, string name, string version, bool enabled) => new(
+            new DiscoveredPlugin(id, id, new PluginManifest(id, name, version, "plugin.dll", 3, null, null, null, null), "hash", PluginLoadDecision.Load),
+            new PluginRegistration(enabled, "hash"), null, null, null);
     }
 }

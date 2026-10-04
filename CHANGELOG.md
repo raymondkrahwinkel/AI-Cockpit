@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an admin can manage plugins on a connected server from its Options window. Installed plugins can be enabled,
+  disabled, or removed for the next server restart; server store credentials remain on the server.
 - added: you can work in a session pane on a connect server. The composer sends to the session there, and a permission
   prompt gets Allow once and Deny when the key may answer permissions; a key that may not sees the prompt with "This
   key may not answer permission prompts." and no buttons. While the group says Reconnecting the composer and the
