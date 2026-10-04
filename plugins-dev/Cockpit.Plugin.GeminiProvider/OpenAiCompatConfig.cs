@@ -61,7 +61,7 @@ internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string Ba
 
     private static string? _FromEnvironment(string? envVar, string? baseUrl, string defaultBaseUrl)
     {
-        var value = string.IsNullOrWhiteSpace(envVar) ? null : Environment.GetEnvironmentVariable(envVar);
+        var value = string.IsNullOrWhiteSpace(envVar) || !UsesDefaultHost(baseUrl, defaultBaseUrl) ? null : Environment.GetEnvironmentVariable(envVar);
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
