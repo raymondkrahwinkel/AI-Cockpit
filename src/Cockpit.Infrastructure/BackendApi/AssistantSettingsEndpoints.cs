@@ -40,16 +40,8 @@ internal static class AssistantSettingsEndpoints
                 return await _AuditAsync(services, "api:assistant_enabled", "refused", null, answer).ConfigureAwait(false);
             }
 
-            await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                var stored = await settings().LoadAsync(cancellationToken).ConfigureAwait(false);
-                await settings().SaveAsync(stored with { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                Gate.Release();
-            }
+            // One read-modify-write of the switch alone, against every writer of the file, desktop ones included (Codex).
+            await settings().UpdateAsync(stored => stored with { IsEnabled = enabled }, cancellationToken).ConfigureAwait(false);
 
             await host().ApplySettingsAsync(CancellationToken.None).ConfigureAwait(false);
             return await _AuditAsync(services, "api:assistant_enabled", enabled ? "assistant turned on" : "assistant turned off", null, await _AnswerAsync(services).ConfigureAwait(false)).ConfigureAwait(false);
@@ -92,13 +84,19 @@ internal static class AssistantSettingsEndpoints
             try
             {
                 var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync(cancellationToken).ConfigureAwait(false);
+                // Outside the key's scope reads as a profile that does not exist, as everywhere else (Codex).
                 var index = ProfileEndpoints.IndexOf(profiles, label);
-                if (index < 0)
+                if (index < 0 || McpRequestContext.CurrentNodeCaller?.AllowsProfile(profiles[index].Label, services.GetRequiredService<INodePairingBroker>()) != true)
                 {
                     return await _AuditAsync(services, "api:assistant_copy_profile", "refused", null, ProfileEndpoints.NoProfile()).ConfigureAwait(false);
                 }
 
                 source = profiles[index];
+                if (ProfileEndpoints.CopyRefusal(source) is { } refusal)
+                {
+                    return await _AuditAsync(services, "api:assistant_copy_profile", "refused", null, refusal).ConfigureAwait(false);
+                }
+
                 var current = await slot().LoadAsync(cancellationToken).ConfigureAwait(false);
                 await slot().RepointAsync(source, current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
             }

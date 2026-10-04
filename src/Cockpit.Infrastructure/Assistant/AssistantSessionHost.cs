@@ -77,8 +77,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _ApplyTurnHold();
             _ = ApplySettingsAsync();
+
+            // AC-1475 (Codex): a restart asked for while the line was held runs once it is released, or the old
+            // session would come back on the settings the restart was meant to replace.
+            if (_presence.Current is null && _restartWhenReleased)
+            {
+                _restartWhenReleased = false;
+                _ = RestartAsync();
+            }
         };
     }
+
+    private bool _restartWhenReleased;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -270,6 +280,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             // running conversation is allowed to finish its turn but not to take another.
             if (_presence.Current is { } controller)
             {
+                _restartWhenReleased |= replaceALiveInstance && !startFresh;
                 _SetUnavailable(controller.TakeoverReason());
                 return null;
             }

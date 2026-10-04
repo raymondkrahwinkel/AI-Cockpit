@@ -66,7 +66,7 @@ namespace Cockpit.Infrastructure.Tests.Assistant;
 public sealed class AssistantSettingsWritersTests
 {
     /// <summary>
-    /// The doors that write <see cref="AssistantSettings"/> to disk. The store's own <c>SaveAsync</c> — interface
+    /// The doors that write <see cref="AssistantSettings"/> to disk. The store's own <c>SaveAsync</c> and <c>UpdateAsync</c> — interface
     /// and implementations, since a tool could hold either — and the on-disk projection, which is the only other way
     /// to turn the record into bytes and would otherwise be a way around the abstraction rather than through it.
     /// </summary>
@@ -86,7 +86,7 @@ public sealed class AssistantSettingsWritersTests
         var isTheStore = declaring == typeof(IAssistantSettingsStore)
             || typeof(IAssistantSettingsStore).IsAssignableFrom(declaring);
 
-        return isTheStore && method.Name == nameof(IAssistantSettingsStore.SaveAsync);
+        return isTheStore && method.Name is nameof(IAssistantSettingsStore.SaveAsync) or nameof(IAssistantSettingsStore.UpdateAsync);
     }
 
     /// <summary>Every tools type the app registers an MCP endpoint for — read off the registration, never typed out here.</summary>

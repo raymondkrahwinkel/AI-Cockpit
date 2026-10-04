@@ -261,6 +261,16 @@ internal static class ProfileEndpoints
         return body.Select(property => Refusal(property.Value)).FirstOrDefault(refusal => refusal is not null);
     }
 
+    // AC-1475 (Codex): what a profile copied into the assistant's slot may not hold, since the assistant's start would run
+    // it: a program path (stored as a plugin's `executablePath`), or a loader variable. In the words a PATCH gets.
+    internal static IResult? CopyRefusal(SessionProfile profile) =>
+        profile.ProviderConfig is ClaudeConfig { ExecutablePath.Length: > 0 }
+            || (profile.ProviderConfig is PluginProviderConfig plugin && ClaudePluginProfile.ReadClaudeConfig(plugin.ConfigJson).ExecutablePath is not null)
+            ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal)
+            : (profile.EnvironmentVariables ?? []).Any(variable => IsLoaderVariable(variable.Key))
+                ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal)
+                : null;
+
     internal static bool IsLoaderVariable(string key) =>
         LoaderVariables.Contains(key.Trim()) || LoaderPrefixes.Any(prefix => key.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 

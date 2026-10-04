@@ -178,6 +178,10 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         }
 
         _Show(copied);
+        if (copied.IsStoodDown)
+        {
+            _Say(ServerAssistantMessage.Info, "Copied — takes effect when the line is released.", "The server's assistant restarts on this profile once the key that holds the line lets go.");
+        }
     }, keepsForm: false);
 
     [RelayCommand]
@@ -216,7 +220,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         _justSaved = true;
         IsEditing = false;
         _Show(saved);
-        _Say(ServerAssistantMessage.Info, "Saved.", _SavedText(_Sent(patch), _Fields(before).Where(field => !_Sent(patch).Contains(field.Name) && field.Value != _Fields(saved).First(other => other.Name == field.Name).Value).Select(field => field.Name).ToList()));
+        _Say(ServerAssistantMessage.Info, saved.IsStoodDown ? "Saved — takes effect when the line is released." : "Saved.", _SavedText(_Sent(patch), _Fields(before).Where(field => !_Sent(patch).Contains(field.Name) && field.Value != _Fields(saved).First(other => other.Name == field.Name).Value).Select(field => field.Name).ToList()));
     }, keepsForm: true);
 
     [RelayCommand]
