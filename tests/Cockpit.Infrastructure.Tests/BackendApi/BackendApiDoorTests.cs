@@ -96,9 +96,8 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(expected, expectedBody), answer);
     }
 
-    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may narrow
-    // or revoke the bootstrap key. AC-1472 criteria 2 and 3: an operate key lists only its projects, without a count, and a
-    // URL carrying a credential is refused. No row changes anything, and no answer or audit line repeats a key.
+    // AC-1446: every admin route turns an operate key away, and no admin may revoke the bootstrap key. AC-1472: an operate key
+    // lists only its projects. AC-1479: the assistant routes turn away any key not holding the assistant (AC-1366), admin too.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string, string> AdminRoutes => new()
     {
         { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
@@ -115,6 +114,10 @@ public sealed class BackendApiDoorTests
         { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/assistant/transcript", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/assistant/prompt", """{"text":"hello"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/assistant/transcript", null, "admin", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/assistant/prompt", """{"text":"hello"}""", "admin", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
         { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
