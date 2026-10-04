@@ -76,12 +76,16 @@ internal static class CodexLoginStatus
         return entry?.Reading?.Status is { LoggedIn: true } status ? status.Kind : PluginCredentialKind.Unknown;
     }
 
-    // Measured on codex 0.154.0: "Logged in using ChatGPT" (refreshes itself), "Logged in using an API key - ***".
-    // CODEX_API_KEY in the environment alone reads "Not logged in", so only `login --with-api-key` shows here.
-    internal static PluginCredentialKind KindOf(string statusLine) =>
-        statusLine.Contains("Logged in using ChatGPT", StringComparison.Ordinal) ? PluginCredentialKind.RenewingLogin
-        : statusLine.Contains("Logged in using an API key", StringComparison.Ordinal) ? PluginCredentialKind.ApiKey
-        : PluginCredentialKind.Unknown;
+    // Measured on codex 0.154.0: the status line goes to stderr ("Logged in using ChatGPT", "Logged in using an API key
+    // - ***"). Only a line that starts with it counts, so a warning that quotes it claims nothing. An env-var key alone
+    // reads "Not logged in".
+    internal static PluginCredentialKind KindOf(string output) =>
+        output.Split('\n').Select(line => line.TrimStart()).FirstOrDefault(line => line.StartsWith("Logged in using ", StringComparison.Ordinal)) switch
+        {
+            { } line when line.StartsWith("Logged in using ChatGPT", StringComparison.Ordinal) => PluginCredentialKind.RenewingLogin,
+            { } line when line.StartsWith("Logged in using an API key", StringComparison.Ordinal) => PluginCredentialKind.ApiKey,
+            _ => PluginCredentialKind.Unknown,
+        };
 
     // Refreshes without waiting. Test seam mirrors `ClaudeLoginStatus.Warm`.
     public static void Warm(string configJson, Func<string, string?>? managedResolver = null) =>
