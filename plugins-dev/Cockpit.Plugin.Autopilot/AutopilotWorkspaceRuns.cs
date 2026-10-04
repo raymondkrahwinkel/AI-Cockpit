@@ -95,13 +95,10 @@ internal sealed class AutopilotWorkspaceRuns
     }
 
     // The planning round's CEO (AC-174), embedded in this workspace and bound to the shared plan controller so only
-    // that pane may emit the plan. Briefed on the round's draft; null when there is none or the host could not embed.
+    // that pane may emit the plan. Briefed on the round's draft when there is one; null when the host could not embed.
     public async Task<string?> EmbedPlanningCeoAsync(string? activeDirectory, string? kickoffMessage)
     {
-        if (_plan.Plan is not { } plan)
-        {
-            return null;
-        }
+        var plan = _plan.Plan;
 
         // The CEO gets its briefing as a hidden system prompt given at start (AC-180) — not a visible turn, so
         // it can't race the session's runtime coming up the way a post-start message did.
@@ -115,9 +112,11 @@ internal sealed class AutopilotWorkspaceRuns
         {
             ProfileId = ceoLabel,
             Model = _settings.CeoModel(),
-            McpServers = PlanningCeoMcpServers(_TrackerReadServers(plan.Source)),
-            WorkingDirectory = AutopilotWorkingDirectory.Resolve(activeDirectory, plan.WorkingDirectory),
-            AppendSystemPrompt = AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty)),
+            McpServers = PlanningCeoMcpServers(_TrackerReadServers(plan?.Source)),
+            WorkingDirectory = AutopilotWorkingDirectory.Resolve(activeDirectory, plan?.WorkingDirectory),
+            AppendSystemPrompt = plan is null
+                ? null
+                : AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty)),
             // The kickoff (AC-189): a chosen template's body, else the tracker kickoff or null for a CEO-first run.
             InitialUserMessage = kickoffMessage,
         });
@@ -130,6 +129,7 @@ internal sealed class AutopilotWorkspaceRuns
         _plan.BindSession(ceo.PaneId);
 
         // The pop-out's "working" cue (AC-195): the CEO's planning turn can run silently for minutes.
+        _planningCeoBusy?.Dispose();
         _planningCeoBusy = new CeoBusyIndicatorModel(ceo, _ => Changed?.Invoke());
         Changed?.Invoke();
         return ceo.PaneId;

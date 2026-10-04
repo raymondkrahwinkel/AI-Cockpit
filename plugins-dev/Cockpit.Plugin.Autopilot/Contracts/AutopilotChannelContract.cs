@@ -26,7 +26,7 @@ internal static class AutopilotChannelContract
     public const string BeginPlanning = "plan.begin";
     public const string CancelPlanning = "plan.cancel";
 
-    // PlanningCeoRequest -> pane id or null: embeds the planning round's CEO in the workspace; PlanningClose ends it.
+    // PlanningCeoRequest -> pane id or null: embeds the planning round's CEO in the workspace; ClosePlanningCeo ends it.
     public const string EmbedPlanningCeo = "plan.embed-ceo";
     public const string ClosePlanningCeo = "plan.close-ceo";
 

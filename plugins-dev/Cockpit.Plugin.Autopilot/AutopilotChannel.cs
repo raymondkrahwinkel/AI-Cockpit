@@ -5,8 +5,8 @@ using static Cockpit.Plugin.Autopilot.AutopilotChannelContract;
 namespace Cockpit.Plugin.Autopilot;
 
 // AC-1418: the backend half of Autopilot's channel. An attached workspace gets its runs here and a State event with
-// the whole snapshot on every change; the operator's clicks come back as actions. Transport, plus the one gate that
-// keeps a snapshot's seq in the order it was taken.
+// the whole snapshot on every change; the operator's clicks come back as actions. Transport, plus the one publisher at
+// a time that keeps a snapshot's seq in the order it was taken.
 internal sealed class AutopilotChannel : IDisposable
 {
     private readonly ICockpitHost _host;
@@ -19,6 +19,7 @@ internal sealed class AutopilotChannel : IDisposable
     private readonly List<IDisposable> _handles = [];
     private readonly Dictionary<string, AutopilotWorkspaceRuns> _workspaces = new(StringComparer.Ordinal);
     private readonly Lock _gate = new();
+    private int _publishes;
 
     public AutopilotChannel(ICockpitHost host, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history, AutopilotTemplateStore templates)
     {
@@ -95,20 +96,18 @@ internal sealed class AutopilotChannel : IDisposable
     // A workspace opened: while it is open its runs are the manager's runner, so attaching starts any queued run.
     private void _Attach(string workspaceId)
     {
-        AutopilotWorkspaceRuns runs;
-        lock (_gate)
+        if (_Runs(workspaceId) is null)
         {
-            if (_workspaces.ContainsKey(workspaceId))
+            // Built outside the gate: becoming the runner pumps the queue under the manager's own lock.
+            var runs = new AutopilotWorkspaceRuns(_host, workspaceId, _settings, _plan, _manager, _queue, _history);
+            lock (_gate)
             {
-                _Publish(_workspaces[workspaceId]);
-                return;
+                _workspaces[workspaceId] = runs;
             }
 
-            runs = new AutopilotWorkspaceRuns(_host, workspaceId, _settings, _plan, _manager, _queue, _history);
-            _workspaces[workspaceId] = runs;
+            runs.Changed += _PublishAll;
         }
 
-        runs.Changed += _PublishAll;
         _PublishAll();
     }
 
@@ -187,16 +186,37 @@ internal sealed class AutopilotChannel : IDisposable
 
     private void _OnTemplatesChanged() => _host.Channel.Publish(TemplatesChanged, ToJson(true));
 
-    // Taken and published under the gate, so a snapshot's seq is in the order the snapshots were taken and the UI
-    // part's "newest seq wins" never keeps an older state.
+    // One publisher at a time, so seq follows the order the snapshots were taken. A change during a publish never
+    // waits — its thread may hold a lock the snapshot needs — it makes the running publisher take one more round.
     private void _PublishAll()
     {
-        lock (_gate)
+        if (Interlocked.Increment(ref _publishes) > 1)
         {
-            foreach (var runs in _workspaces.Values)
+            return;
+        }
+
+        try
+        {
+            do
             {
-                _Publish(runs);
+                List<AutopilotWorkspaceRuns> workspaces;
+                lock (_gate)
+                {
+                    workspaces = [.. _workspaces.Values];
+                }
+
+                foreach (var runs in workspaces)
+                {
+                    _Publish(runs);
+                }
             }
+            while (Interlocked.Exchange(ref _publishes, 1) > 1 || Interlocked.Decrement(ref _publishes) > 0);
+        }
+        catch (Exception)
+        {
+            // A snapshot that failed must not leave every later change unpublished.
+            Interlocked.Exchange(ref _publishes, 0);
+            throw;
         }
     }
 
