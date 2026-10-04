@@ -42,6 +42,7 @@ settings stays; point it somewhere under `/work`.
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts |
 | `ssh` | `/home/app/.ssh` | the server's own SSH keys |
 | `agent-ssh` | `/home/agent/.ssh` | the SSH keys git uses, for clones and pushes alike (git runs as `agent`) |
+| `brain` | `/home/agent/Nextcloud` (in `brain-sync`: `/data/Nextcloud`) | the assistant's brain, kept in sync with Nextcloud |
 
 The same `state` volume across a `down` and `up` keeps the certificate, and with it the fingerprint.
 
@@ -83,3 +84,72 @@ the MCP settings, `GH_TOKEN`) and has its own `HOME`.
   fails instead of running it as `app`. `/state/cli` belongs to root, so the server can neither install a managed CLI
   nor find one; an older install there is moved aside on start. A pin to any other program still runs as `app`: leave
   `ExecutablePath` empty on the server.
+
+## The brain
+
+An agent session on the server loads the same brain as on the desktop: `~/Nextcloud/Notes/AI-OS/Me.md` and what it
+points to. The `brain-sync` service keeps that part of the AI-OS tree in the `brain` volume with `rclone bisync`
+against Nextcloud, every 60 seconds (`COCKPIT_BRAIN_SYNC_INTERVAL`). Nextcloud stays the hub: the server is one more
+device next to the desktop.
+
+- **Only an include list comes over**, `brain-filter.txt` by default: `Me.md`, `Me-Reference.md`, `Memory/` and
+  `AGENTS/`. Never sync the whole tree: it also holds `claude-credentials/.credentials.json`, a Claude login every agent
+  session would then read. Another list: `COCKPIT_BRAIN_FILTER_PATH`. A remote without a list is not synced at all.
+- **Sessions write back as `agent`.** `brain-sync` runs as uid 1700, so what it brings is the agent's, and a note a
+  session writes in `Memory/` reaches the desktop on the next run. The server itself (`app`) does not touch the brain.
+- **A change on both sides is never lost.** Bisync keeps both versions, renamed to `<file>.conflict1` (Nextcloud's) and
+  `<file>.conflict2` (the server's), on both sides. Merge them by hand and delete the copies.
+- **No automatic `--resync`.** Only a volume without any bisync state gets one, which is a copy both ways that deletes
+  nothing. After a failure the next run retries without it; if bisync says it needs one, `brain-sync` logs
+  `stopped: bisync needs a manual --resync` and syncs nothing more. Check both sides, then run it once by hand:
+
+      docker compose -f deploy/compose.yaml run --rm --entrypoint rclone brain-sync --config /run/secrets/cockpit_brain_rclone \
+        bisync nc:Notes/AI-OS /data/Nextcloud/Notes/AI-OS --filter-from /etc/brain-sync/nc.filter \
+        --workdir /data/Nextcloud/.bisync/nc --resync
+      docker compose -f deploy/compose.yaml restart brain-sync
+
+- **The app password is `brain-sync`'s alone.** It reaches that container as a secret file; the cockpit container, where
+  an agent session has a shell, never sees it, and neither does the server. `brain-sync` cannot reach `/state` or the
+  server's secrets, and publishes no port.
+
+### Setting it up
+
+1. **The app password.** In Nextcloud: Settings → Security → *Create new app password*, one for this server only.
+   Obscure it without leaving it in the shell history (`obscure -` reads stdin, end with Ctrl-D):
+
+       docker run --rm -i rclone/rclone:1.75.1 obscure -
+
+   and write `secrets/brain-rclone.conf` (or `COCKPIT_BRAIN_RCLONE_PATH`):
+
+       [nc]
+       type = webdav
+       url = https://<nextcloud>/remote.php/dav/files/<user>
+       vendor = nextcloud
+       user = <user>
+       pass = <the obscured password>
+
+   Obscured is not encrypted: the file is the secret. Compose keeps a secret file's owner and mode, and `brain-sync`
+   runs as uid 1700, so: `sudo chown 1700:1700 secrets/brain-rclone.conf && sudo chmod 0400 secrets/brain-rclone.conf`.
+   Never put the password in an environment variable or in `session.env`.
+
+   **Until you have it:** an empty file is the placeholder (`: > secrets/brain-rclone.conf`). `brain-sync` then logs
+   `no remote nc in the rclone config yet: idle` and does nothing. Fill it in later and
+   `docker compose -f deploy/compose.yaml up -d --force-recreate brain-sync`.
+2. **`AI_OS_ROOT`** in `session.env`, since `Me.md` asks for it: `AI_OS_ROOT=/home/agent/Nextcloud/Notes/AI-OS`.
+3. **Which brain is which.** `brain-instructions.md` next to `compose.yaml` (or `COCKPIT_BRAIN_INSTRUCTIONS_PATH`) is
+   mounted read-only as the agent's `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. It turns the assistant a project or
+   profile names into a file; keep personal content out of the repository. It must be readable by uid 1700
+   (`chmod 0644`). For example:
+
+       When this session runs as Zyra, load ~/Nextcloud/Notes/AI-OS/Me.md and follow the instructions in it.
+
+   Choose the assistant per project or profile on the server (its *Assistant* field), as on the desktop.
+
+### A second brain (off by default)
+
+Aura lives on another Nextcloud and is not synced. To add it, without code: a `[aura]` remote in the same
+`brain-rclone.conf`, `COCKPIT_BRAIN_SYNCS="nc:Notes/AI-OS=Nextcloud/Notes/AI-OS aura:Shared/AI=Nextcloud-Synvolution/Shared/AI"`
+(each pair is `remote:path=local`, local under `/data`, its first folder being the volume), and a
+`compose.override.yaml` that adds a volume mounted at `/data/Nextcloud-Synvolution` in `brain-sync` and `brain-init`
+(with that path added to `brain-init`'s `chown`) and at `/home/agent/Nextcloud-Synvolution` in `cockpit`, plus an
+include list as a config with target `/etc/brain-sync/aura.filter`.
