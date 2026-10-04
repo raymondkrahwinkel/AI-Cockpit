@@ -35,6 +35,10 @@ internal static partial class ProjectsEndpoints
     // What a clone that is still running, done or failed reported last, by id, for a client that missed its event.
     private static readonly ConcurrentDictionary<string, CloneState> Clones = new(StringComparer.Ordinal);
 
+    // The clone folders a clone is writing now: claimed before it starts and let go when it ends, either way, so a second
+    // POST for the same repository meanwhile is refused instead of cloning into the same folder.
+    private static readonly ConcurrentDictionary<string, byte> InFlight = new(StringComparer.Ordinal);
+
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
         IProjectEditor editor() => services.GetRequiredService<IProjectEditor>();
@@ -86,20 +90,21 @@ internal static partial class ProjectsEndpoints
                 return await _RefuseAsync(services, caller, "api:clone_project", "That is not a branch name.").ConfigureAwait(false);
             }
 
-            // A folder already there is another project's checkout, which a switch to this branch would move under it.
+            // A folder already there, or one a clone is writing now, is another project's checkout, which a switch to
+            // this branch would move under it. The claim is taken first, so two requests at once cannot both pass.
             var clones = services.GetRequiredService<IRepositoryCloneManager>();
-            if (clones.BuildClonePath(await clones.GetEffectiveClonesRootAsync(cancellationToken).ConfigureAwait(false), parsed.RemoteUrl) is { } target
-                && Directory.Exists(target))
+            var target = clones.BuildClonePath(await clones.GetEffectiveClonesRootAsync(cancellationToken).ConfigureAwait(false), parsed.RemoteUrl) ?? "";
+            if (target.Length == 0 || !InFlight.TryAdd(target, 0) || _ReleaseIfPresent(target))
             {
-                await _AuditAsync(services, caller, "api:clone_project", "refused", null, cancellationToken).ConfigureAwait(false);
-                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "already_cloned", $"That repository is already cloned on this server, at {target}.");
+                await _AuditAsync(services, caller, "api:clone_project", "refused", null, CancellationToken.None).ConfigureAwait(false);
+                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "already_cloned", $"{parsed.Slug} is already cloned on this server, or being cloned now.");
             }
 
             var name = HealthEndpoints.Clean(body.Name).Trim() is { Length: > 0 } given ? given : parsed.Segments[^1];
             var id = Guid.NewGuid().ToString("n");
             Clones[id] = new CloneState(id, name, "running");
-            await _AuditAsync(services, caller, "api:clone_project", "called", name, cancellationToken).ConfigureAwait(false);
-            _ = _CloneAsync(services, caller, id, name, parsed.RemoteUrl, branch);
+            await _AuditAsync(services, caller, "api:clone_project", "called", name, CancellationToken.None).ConfigureAwait(false);
+            _ = _CloneAsync(services, caller, id, name, parsed.RemoteUrl, branch, target);
             return Results.Json(new { id, name }, statusCode: StatusCodes.Status202Accepted);
         }).RequireAdmin();
 
@@ -159,12 +164,13 @@ internal static partial class ProjectsEndpoints
         }).RequireAdmin();
     }
 
-    // Clone, switch to the branch, add the project, then tell the stream. A failure adds nothing and says why; the
-    // server's own messages never hold a credential, since a URL carrying one never got this far.
-    private static async Task _CloneAsync(IServiceProvider services, NodeCaller caller, string id, string name, string remoteUrl, string branch)
+    // Clone, switch to the branch, add the project, then tell the stream, which always hears an end: a failure adds
+    // nothing and says why. The server's own messages never hold a credential: a URL carrying one never got this far.
+    private static async Task _CloneAsync(IServiceProvider services, NodeCaller caller, string id, string name, string remoteUrl, string branch, string target)
     {
         var started = Stopwatch.GetTimestamp();
-        var log = services.GetRequiredService<IBackendEventLog>();
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints));
+        CloneState outcome;
         try
         {
             var clone = await services.GetRequiredService<IRepositoryCloneManager>().CloneAsync(remoteUrl, allowedProtocols: _Protocols()).ConfigureAwait(false);
@@ -178,19 +184,48 @@ internal static partial class ProjectsEndpoints
                 SourceDirectories = [new ProjectRepository(clone.Path)],
                 GitUrl = remoteUrl,
             }).ConfigureAwait(false);
-            var cloned = new CloneState(id, name, "cloned", clone.Path, _SizeOf(clone.Path), Stopwatch.GetElapsedTime(started).TotalSeconds);
-            Clones[id] = cloned;
-            await _AuditAsync(services, caller, "api:clone_project", "cloned", name, CancellationToken.None).ConfigureAwait(false);
-            log.Append(EventKind, null, cloned);
+            outcome = new CloneState(id, name, "cloned", clone.Path, _SizeOf(clone.Path), Stopwatch.GetElapsedTime(started).TotalSeconds);
         }
         catch (Exception exception)
         {
-            services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints)).LogWarning(exception, "Cloning project {Project} failed.", name);
-            var failed = new CloneState(id, name, "failed", Seconds: Stopwatch.GetElapsedTime(started).TotalSeconds, Error: exception.Message);
-            Clones[id] = failed;
-            await _AuditAsync(services, caller, "api:clone_project", "clone failed", name, CancellationToken.None).ConfigureAwait(false);
-            log.Append(EventKind, null, failed);
+            logger?.LogWarning(exception, "Cloning project {Project} failed.", name);
+            outcome = new CloneState(id, name, "failed", Seconds: Stopwatch.GetElapsedTime(started).TotalSeconds, Error: exception.Message);
         }
+        finally
+        {
+            InFlight.TryRemove(target, out _);
+        }
+
+        Clones[id] = outcome;
+        try
+        {
+            services.GetRequiredService<IBackendEventLog>().Append(EventKind, null, outcome);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "The end of clone {Project} could not be put on the event stream; its status route has it.", name);
+        }
+
+        try
+        {
+            await _AuditAsync(services, caller, "api:clone_project", outcome.State == "cloned" ? "cloned" : "clone failed", name, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "The end of clone {Project} could not be audited.", name);
+        }
+    }
+
+    // A folder that exists already lets go of the claim just taken on it, and counts as taken.
+    private static bool _ReleaseIfPresent(string target)
+    {
+        if (!Directory.Exists(target))
+        {
+            return false;
+        }
+
+        InFlight.TryRemove(target, out _);
+        return true;
     }
 
     // https and ssh (also git's scp form), and file:// only where the server allows it. No host or user may begin with a

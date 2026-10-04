@@ -11,6 +11,7 @@ using NSubstitute;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Clones;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
@@ -228,6 +229,26 @@ public sealed class BackendApiDoorTests
                 (JsonNode.Parse(text)?["keys"]?.AsArray() ?? []).Single(key => key?["prefix"]?.GetValue<string>() == prefix)?.AsObject().Select(property => property.Key) ?? []);
             Assert.Contains("api:list_keys", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
         }
+    }
+
+    // AC-1472 (Codex review): a clone still running holds its folder, so a second POST for the same repository is refused
+    // at once with already_cloned instead of cloning into the same folder.
+    [Fact]
+    public async Task ACloneStillRunning_RefusesASecondCloneOfTheSameRepository()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+        door.Clones.BuildClonePath(Arg.Any<string>(), Arg.Any<string>()).Returns(Path.Combine(door.Directory, "clones", "example.invalid", "o", "race"));
+        door.Clones.CloneAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<RepositoryClone>().Task);
+        const string request = """{"repoUrl":"https://example.invalid/o/race.git","name":"race"}""";
+
+        var first = await door.SendAsync(HttpMethod.Post, "/api/v1/projects", Bootstrap, request);
+        var second = await door.SendAsync(HttpMethod.Post, "/api/v1/projects", Bootstrap, request);
+
+        Assert.Equal(HttpStatusCode.Accepted, first.Status);
+        Assert.Equal((HttpStatusCode.Conflict, "already_cloned"), (second.Status, JsonNode.Parse(second.Body)?["error"]?.GetValue<string>()));
+        Assert.DoesNotContain(door.Directory.Replace("\\", "\\\\", StringComparison.Ordinal), second.Body, StringComparison.Ordinal);
     }
 
     // Criterion 4: an API call with a holdsAssistant key leaves the assistant free; the same key on the MCP door
