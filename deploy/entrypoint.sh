@@ -33,9 +33,12 @@ chown root:root /state/cli
 chmod 0755 /state/cli
 touch /state/cli/.root-owned
 
-# Volumes from before AC-1464 belong to `app`; the CLIs that write them now run as `agent`.
+# Volumes from before AC-1464 belong to `app`; the CLIs that write them now run as `agent`. The brain instructions
+# mounted read-only inside them (AC-1364) are skipped: a chown there fails and would stop this script.
 for home in /home/agent/.claude /home/agent/.codex; do
-  if [ "$(stat -c %U "$home")" != agent ]; then chown -R agent:agent "$home"; fi
+  if [ "$(stat -c %U "$home")" != agent ]; then
+    find "$home" \( -path "$home/CLAUDE.md" -o -path "$home/AGENTS.md" \) -prune -o -exec chown -h agent:agent {} +
+  fi
   chmod 2770 "$home"
 done
 

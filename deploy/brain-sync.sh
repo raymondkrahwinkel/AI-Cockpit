@@ -4,11 +4,14 @@
 set -u
 export RCLONE_CONFIG=/run/secrets/cockpit_brain_rclone XDG_CACHE_HOME=/tmp/cache
 interval=${BRAIN_SYNC_INTERVAL:-60}
-# Space-separated `remote:path=local`, local relative to /data, whose first segment is the volume the pair lives on.
+# Space-separated `remote:path=local`, one per remote, local relative to /data, its first folder the pair's volume.
 pairs=${BRAIN_SYNCS:-nc:Notes/AI-OS=Nextcloud/Notes/AI-OS}
-idle=
+idle= rpid=
 
 say() { echo "brain-sync: $*"; }
+
+# A stop interrupts bisync the way Ctrl-C does, its graceful shutdown, so no stale lock holds up the next start.
+trap 'if [ -n "$rpid" ]; then kill -INT "$rpid" 2>/dev/null; wait "$rpid"; fi; exit 0' TERM INT
 
 sync_pair() {
   remote=${1%%=*} local=${1#*=} name=${1%%:*}
@@ -19,12 +22,20 @@ sync_pair() {
   mkdir -p "/data/$local" "$workdir"
   set -- bisync "$remote" "/data/$local" --filter-from "$filter" --workdir "$workdir" \
     --resilient --recover --max-lock 2m --conflict-resolve none --conflict-loser num
-  # Only a pair without any listing gets a resync: a union copy that deletes nothing. After a failure, never.
+  # A resync lets Nextcloud's version win wherever the two differ, so it runs only on a fresh volume: no state, no files.
   if [ -z "$(ls -A "$workdir")" ]; then
-    say "$name has no bisync state yet: first run with --resync"
+    if [ -n "$(ls -A "/data/$local")" ]; then
+      say "$name stopped: files but no bisync state, so it needs a manual --resync (deploy/README.md)"
+      return 2
+    fi
+    say "$name is a fresh volume: first run with --resync"
     set -- "$@" --resync
   fi
-  if rclone "$@" --log-level NOTICE; then
+  rclone "$@" --log-level NOTICE & rpid=$!
+  wait "$rpid"; code=$? rpid=
+  if [ "$code" -eq 0 ]; then
+    # What a past critical error left, so only a new one halts this sidecar.
+    rm -f "$workdir"/*.lst-err
     say "$name in sync"
     return 0
   fi
@@ -36,16 +47,18 @@ sync_pair() {
 }
 
 while :; do
-  remotes=$(rclone listremotes 2>/dev/null)
+  if [ -r "$RCLONE_CONFIG" ]; then remotes=$(rclone listremotes 2>/dev/null); else remotes=; fi
   for pair in $pairs; do
     if ! printf '%s\n' "$remotes" | grep -qx "${pair%%:*}:"; then
+      [ -r "$RCLONE_CONFIG" ] || { say "cannot read $RCLONE_CONFIG: it must belong to uid 1700 (deploy/README.md)"; continue; }
       [ -n "$idle" ] || say "no remote ${pair%%:*} in the rclone config yet: idle"
       idle=1
       continue
     fi
+    idle=
     sync_pair "$pair"
     # ponytail: one halted pair halts them all; per-pair halting when a second brain is synced
     [ $? -ne 2 ] || exec sleep 2147483647
   done
-  sleep "$interval"
+  sleep "$interval" & wait $!
 done

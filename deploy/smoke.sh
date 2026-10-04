@@ -239,6 +239,14 @@ remote_memory=$(remote 'cat Memory/*')
 grep -qx remote-edit <<< "$remote_memory" || fail "the conflict lost the remote's version"
 grep -qx agent-edit <<< "$remote_memory" || fail "the conflict lost the agent's version"
 echo "after a conflict the remote holds: $(remote 'ls Memory' | paste -sd ' ')"
+# Lost bisync state on a volume with files: a resync would let the remote overwrite an unsynced edit, so it stops.
+dc stop brain-sync >/dev/null
+dc exec -T -u agent cockpit sh -c "rm -rf /home/agent/Nextcloud/.bisync && echo unsynced > $brain/Memory/b.md"
+dc start brain-sync >/dev/null
+for _ in $(seq 30); do log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' && break; sleep 1; done
+log_of brain-sync | grep -qF 'nc stopped: files but no bisync state' || fail "brain-sync did not stop on files without bisync state"
+[ "$(dc exec -T -u agent cockpit cat $brain/Memory/b.md)" = unsynced ] || fail "an unsynced edit was overwritten after the bisync state was lost"
+[ "$(remote 'cat Memory/b.md')" = note ] || fail "the remote changed after the bisync state was lost"
 # The app password is brain-sync's alone: not in the cockpit's environment, files, image or log.
 for service in cockpit brain-sync; do
   if docker inspect -f '{{json .Config.Env}}' "$(dc ps -q $service)" | grep -qF -e "$brain_pass" -e "$brain_obscured"; then
@@ -262,8 +270,11 @@ docker rm -f "$project-webdav" >/dev/null
 
 echo "== down and up on the same volume"
 dc down >/dev/null
+# A claude volume from before AC-1464 is app's: the entrypoint hands it to agent past the read-only CLAUDE.md (AC-1364).
+docker run --rm --user 0 -v "${project}_claude:/v" --entrypoint chown "$image" -R app:app /v
 dc up -d >/dev/null
 wait_running
+[ "$(dc exec -T cockpit stat -c %U /home/agent/.claude/.)" = agent ] || fail "an app-owned claude volume was not handed to agent"
 [ "$(fingerprint_of_log)" = "$first" ] || fail "the fingerprint changed over a down and up with the same volume"
 collect_logs
 
