@@ -263,7 +263,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
             });
             answering = allow && forSession
-                ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)
+                ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Wildcard)
                 : runtime.RespondToPermissionAsync(toolUseId, allow);
 
             // AC-1324: the last prompt answered, the session runs on and stops flagging itself.
