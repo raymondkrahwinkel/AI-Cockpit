@@ -3,7 +3,7 @@
 # Update with: scripts/check-test-count.py --update-baseline (keeps the allow-growth rules)
 # format: <project>	<count>   or   allow-growth	<project>
 allow-growth	tests/Cockpit.Journeys
-plugins-dev/Cockpit.Plugin.Autopilot.Tests	59
+plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
 plugins-dev/Cockpit.Plugin.Depot.Tests	138
