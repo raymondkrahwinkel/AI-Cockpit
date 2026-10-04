@@ -30,7 +30,7 @@ public sealed class RemoteAdminJourney
         var root = Directory.CreateTempSubdirectory("journey-admin-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var bootstrap = _NewKey();
-        var (fingerprint, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, Path.Combine(root, "unlock"), ServerJourney._Secret(root, "connect-key", bootstrap));
         try
