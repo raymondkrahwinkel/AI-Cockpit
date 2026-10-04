@@ -50,7 +50,6 @@ internal static partial class HealthEndpoints
                         label = profile.Profile,
                         provider = profile.Provider,
                         signIn = _SignIn(profile.SignIn),
-                        credential = _Credential(profile.Credential),
                         lastCheck = profile.LastCheck,
                         expiredSince = profile.ExpiredSince,
                         announcedAt = profile.AnnouncedAt,
