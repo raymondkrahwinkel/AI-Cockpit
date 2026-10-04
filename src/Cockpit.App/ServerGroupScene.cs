@@ -244,6 +244,8 @@ internal static class ServerGroupScene
                 false);
             await Task.CompletedTask;
         }
+    }
+
     private sealed class ScenePlugins : IPluginAdministration
     {
         public Task<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>>([]);
