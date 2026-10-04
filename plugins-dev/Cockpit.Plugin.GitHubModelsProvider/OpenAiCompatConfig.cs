@@ -37,7 +37,7 @@ internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string Ba
             return PluginCredentialKind.Unknown;
         }
 
-        return _FromEnvironment(envVar) is null ? PluginCredentialKind.Unknown : PluginCredentialKind.ApiKey;
+        return _FromEnvironment(envVar) is null ? PluginCredentialKind.Unknown : PluginCredentialKind.ApiKeyFromSecret;
     }
 
     private static string? _FromEnvironment(string? envVar)
