@@ -41,7 +41,7 @@ public sealed class ServerJourney
     private const string RunningLine = "Cockpit.Server running; UI assemblies loaded: ";
 
     // While this file exists the EchoSignIn profile reads as signed in.
-    private const string SignedInFile = "echo-signed-in";
+    internal const string SignedInFile = "echo-signed-in";
 
     // The Discord lines for that profile. Other profiles may alarm too: the Claude plugin's cached check reads a
     // profile without credentials as expired a poll after it first guessed it signed in.

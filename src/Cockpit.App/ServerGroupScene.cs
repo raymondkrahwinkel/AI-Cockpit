@@ -117,7 +117,7 @@ internal static class ServerGroupScene
     {
         public string Name { get; } = name;
 
-        public IRemoteServerHealth Health { get; } = new SceneHealth();
+        public IRemoteServerHealth Health { get; } = new SceneHealth(state.Key?.Capability == "admin");
 
         public ILoginFlow StartSignIn(string profile, CancellationToken cancellationToken) => new SceneSignIn();
 
@@ -159,9 +159,9 @@ internal static class ServerGroupScene
     }
 
     // The stand-in's health: the mockup's own rows, as the server's route would send them.
-    private sealed class SceneHealth : IRemoteServerHealth
+    private sealed class SceneHealth(bool admin) : IRemoteServerHealth
     {
-        public RemoteServerHealth? Current { get; } = _Mockup();
+        public RemoteServerHealth? Current { get; } = _Mockup(admin);
 
         public bool IsWatched { get; set; }
 
@@ -180,7 +180,8 @@ internal static class ServerGroupScene
 
         public Task<bool> RunActionAsync(string section, string actionId, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-        private static RemoteServerHealth _Mockup()
+        // A key with a narrowed scope learns only about itself, as the server answers it.
+        private static RemoteServerHealth _Mockup(bool admin)
         {
             var now = DateTimeOffset.Now;
             List<RemoteHealthRow> runs = [new("15 scheduled · next: daily-checkin", false, now.AddHours(8), null)];
@@ -210,7 +211,7 @@ internal static class ServerGroupScene
                     now.AddDays(-6).AddHours(-4),
                     "huis-cockpit.tailnet-ts.net:20383",
                     "laptop-raymond",
-                    [new("laptop-raymond", "admin"), new("telefoon-raymond", "operate")]),
+                    admin ? [new("laptop-raymond", "admin"), new("telefoon-raymond", "operate")] : [new("telefoon-raymond", "operate")]),
                 [
                     new RemoteHealthSection("workflows-runs", true, runs),
                     new RemoteHealthSection("discord", true, [new("Online as Zyra · DM delivery ok", false, now.AddHours(-1), null)]),

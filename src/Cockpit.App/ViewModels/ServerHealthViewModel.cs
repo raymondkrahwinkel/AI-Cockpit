@@ -77,7 +77,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
 
     public bool ShowsAlarm => AlarmProfile is not null && _AlarmKey() != _dismissed;
 
-    public bool CanSignInAgain => ShowsAlarm && IsAdmin && SignIn is null;
+    public bool CanSignInAgain => ShowsAlarm && IsAdmin;
 
     public bool MustAskAnAdmin => ShowsAlarm && !IsAdmin;
 
@@ -132,9 +132,17 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         }
 
         row.IsRunning = true;
+        var before = row.Outcome;
         try
         {
             await _server.Health.RunActionAsync(RunsSection, actionId);
+
+            // The run starts on the server and ends a moment later; ask again until the row says something new.
+            for (var attempt = 0; attempt < 5 && Runs.FirstOrDefault(run => run.Workflow == row.Workflow)?.Outcome == before; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                await _server.Health.RefreshAsync();
+            }
         }
         finally
         {
