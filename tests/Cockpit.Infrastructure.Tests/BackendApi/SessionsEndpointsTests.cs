@@ -43,11 +43,16 @@ public sealed class SessionsEndpointsTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant.
+    // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant. AC-1476: the
+    // session scope sits behind the same grant, and a scope the server does not know, or one on a deny, is refused.
     [Theory]
-    [InlineData(false, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
-    [InlineData(true, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
-    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, HttpStatusCode expected, string answerPart, string whoamiPart)
+    [InlineData(false, """{"allow":true}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
+    [InlineData(true, """{"allow":true}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
+    [InlineData(false, """{"allow":true,"scope":"session"}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
+    [InlineData(true, """{"allow":true,"scope":"session"}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
+    [InlineData(true, """{"allow":true,"scope":"bogus"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
+    [InlineData(true, """{"allow":false,"scope":"session"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
+    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, string answerBody, HttpStatusCode expected, HttpStatusCode modeExpected, string answerPart, string whoamiPart)
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -64,18 +69,19 @@ public sealed class SessionsEndpointsTests
         door.Sessions.Register(handle);
         var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions });
 
-        var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, """{"allow":true}""");
+        var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, answerBody);
         var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
         var bypass = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"bypassPermissions"}""");
 
         var whoami = await door.SendAsync(HttpMethod.Get, "/api/v1/whoami", key.Secret, null);
 
         Assert.Equal(expected, answer.Status);
-        Assert.Equal(expected, mode.Status);
+        Assert.Equal(modeExpected, mode.Status);
         Assert.Equal(HttpStatusCode.BadRequest, bypass.Status);
 
         // AC-1469: /whoami tells the desktop whether to draw the buttons; a direct answer without the grant gets the one refusal.
         Assert.Contains(whoamiPart, whoami.Body, StringComparison.Ordinal);
+        Assert.Contains("\"allowsForSession\":true", whoami.Body, StringComparison.Ordinal);
         Assert.Contains(answerPart, answer.Body, StringComparison.Ordinal);
     }
 

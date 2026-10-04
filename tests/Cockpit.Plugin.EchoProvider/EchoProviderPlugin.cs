@@ -123,10 +123,14 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
-        // AC-1467: "ask" stops the turn on a permission prompt, which nobody answers.
-        if (text == "ask")
+        // AC-1467: "ask" stops the turn on a permission prompt, which nobody answers. AC-1476: "ask <x>" asks for another
+        // input, and each ask after the first gets its own id, so a journey can tell the prompts apart.
+        if (text == "ask" || text.StartsWith("ask ", StringComparison.Ordinal))
         {
-            _events.Publish(new PluginPermissionRequested { SessionId = SessionId, ToolUseId = "echo-ask", ToolName = "Bash", InputJson = "{}" });
+            var detail = text[3..].Trim();
+            var id = $"echo-{text.Replace(' ', '-')}{(_asked++ == 0 ? "" : $"-{_asked}")}";
+            var input = detail.Length == 0 ? "{}" : $"{{\"command\":\"{detail}\"}}";
+            _events.Publish(new PluginPermissionRequested { SessionId = SessionId, ToolUseId = id, ToolName = "Bash", InputJson = input });
             return Task.CompletedTask;
         }
 
@@ -137,6 +141,8 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    private int _asked;
 
     // AC-1469: the answer to "ask" comes back as the turn's end, so a journey sees that the server got it.
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
