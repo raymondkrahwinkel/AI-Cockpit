@@ -81,7 +81,7 @@ public sealed class InstallationInstanceGuard : IDisposable
                 }
                 catch (IOException)
                 {
-                    return true;
+                    return false;
                 }
             }
 
