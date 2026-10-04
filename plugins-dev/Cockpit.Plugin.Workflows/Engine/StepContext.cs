@@ -18,6 +18,10 @@ public sealed record StepContext(
     // Fills the placeholders in one of this step's parameters.
     public StepDataResult Resolve(string? text) => StepData.Resolve(text, Input, Produced);
 
+    // The step's Working directory, placeholders filled and `$NAME` taken from the environment of the server.
+    public string ResolveDirectory() =>
+        StepData.ExpandEnvironment(Resolve(Node.Parameters.GetValueOrDefault("Working directory")).Text.Trim());
+
     // Fills the placeholders, passing each substituted value through `escapeValue` first — the
     // command step uses this to shell-quote untrusted step data so it stays one inert argument (AC-39).
     public StepDataResult Resolve(string? text, Func<string, string> escapeValue) =>

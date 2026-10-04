@@ -36,7 +36,7 @@ internal sealed class CommandRunner : IStepRunner
         // upstream value is "; rm -rf ~" runs echo with that text, it does not run rm.
         command = context.Resolve(command, ShellQuoting.ForCurrentShell()).Text;
 
-        var workingDirectory = context.Resolve(node.Parameters.GetValueOrDefault("Working directory")).Text;
+        var workingDirectory = context.ResolveDirectory();
         if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory))
         {
             throw new InvalidOperationException($"There is no directory '{workingDirectory}'.");

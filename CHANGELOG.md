@@ -30,6 +30,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- added: the server image now has `curl`, so a flow's agent can call an HTTP API from its prompt.
+- added: a Workflows step's Working directory can name a variable of the server's environment (`$NAME` or `${NAME}`),
+  so one flow runs on the desktop and on the headless server; an unset variable fails the step and names it.
+
 ### Fixed
 
 - fixed: a server now refuses a state with encrypted credentials before it starts; protect its unencrypted state volume

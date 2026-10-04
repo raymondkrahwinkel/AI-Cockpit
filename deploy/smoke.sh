@@ -162,6 +162,8 @@ hook_uid=$(dc exec -T cockpit cat /work/hook-uid)
 echo "a planted hook ran as uid $agent_uid through the wrapper and as uid $hook_uid on the real git"
 dc exec -T -u app cockpit sh -c "rm -rf $tree /work/hook-uid" || fail "the cockpit cannot remove a worktree the agent wrote in"
 dc exec -T -u app cockpit claude --version || fail "claude does not start through its wrapper"
+# AC-1488: the AI-Hub prompts call their API with curl, so the agent must have it.
+dc exec -T -u agent cockpit curl --version || fail "curl does not run as agent"
 # A sign-in writes its file as agent, owner-only; the server's login check only asks whether it exists (AC-1357).
 dc exec -T -u agent cockpit sh -c 'umask 077 && : > /home/agent/.claude/.smoke-login'
 dc exec -T -u app cockpit test -e /home/app/.claude/.smoke-login || fail "the server cannot see a file the agent's CLI wrote"

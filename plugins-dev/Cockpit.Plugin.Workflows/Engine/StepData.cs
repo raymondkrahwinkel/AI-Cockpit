@@ -74,6 +74,19 @@ public static partial class StepData
         return new StepDataResult(resolved, missing, errors);
     }
 
+    // A working directory may name a variable of the server's own environment, `$NAME` or `${NAME}`, so one flow runs
+    // on the desktop and on the headless server. A variable that is not set is an error naming it, never an empty
+    // path; only the name is reported, not the value.
+    public static string ExpandEnvironment(string text) =>
+        EnvironmentReference().Replace(text, match =>
+        {
+            var name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+
+            return Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+                ? value
+                : throw new InvalidOperationException($"The working directory uses ${name}, which is not set in the environment of the server.");
+        });
+
     private static readonly Dictionary<string, IReadOnlyList<WorkflowItem>> _nothing = new(StringComparer.OrdinalIgnoreCase);
 
     // What an expression's result looks like as text. .NET writes a boolean as "True" and a whole number as "3"
@@ -114,6 +127,9 @@ public static partial class StepData
 
         return input.FirstOrDefault()?.Json[reference]?.ToString();
     }
+
+    [GeneratedRegex(@"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")]
+    private static partial Regex EnvironmentReference();
 
     [GeneratedRegex(@"\{=([^{}]*)\}")]
     private static partial Regex Expression();
