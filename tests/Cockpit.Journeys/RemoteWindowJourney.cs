@@ -6,24 +6,27 @@ using Cockpit.App;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Journeys;
 
-// AC-1487, `Cockpit --remote <server>`: the window as Program composes it, over a real Cockpit.Server. It shows the
-// server's sessions, and it neither writes to the operator's root nor opens a port of its own.
+// AC-1487, `Cockpit --remote <server>`: the route Program runs, short of Avalonia's run, over a real Cockpit.Server. It
+// unlocks an encrypted registry in memory, shows the server's sessions, writes nothing local and opens no port.
 [Collection(JourneyCollection.Alone)]
 public sealed class RemoteWindowJourney
 {
     private const string Server = "journey-server";
 
     [Fact]
-    public async Task ARemoteWindow_ShowsTheServersSessions_LeavesTheLocalRootByteEqual_AndOpensNoPort()
+    public async Task ARemoteWindow_UnlocksAndShowsTheServersSessions_LeavesLocalRootsByteEqual_AndOpensNoPort()
     {
         var root = Directory.CreateTempSubdirectory("journey-remote-window-").FullName;
         var localRoot = Path.Combine(root, "local");
+        var damagedRoot = Directory.CreateDirectory(Path.Combine(root, "damaged")).FullName;
+        var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(Path.Combine(root, "server"), 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
         var run = ServerJourney._RunServer(
@@ -50,29 +53,48 @@ public sealed class RemoteWindowJourney
                     PinnedCertificateFingerprint = fingerprint,
                 },
             ]);
+            await new SecretProtectionService(CockpitConfigPath.For(localRoot), new SecretKeyHolder()).EnableAsync(password);
 
-            // As Program does it: the root moves off the local one first, then the window is composed.
+            // A live file that does not parse beside a good backup: the desktop's loader would quarantine and restore it.
+            File.WriteAllText(CockpitConfigPath.For(damagedRoot), "{ \"mcpServers\": [");
+            File.Copy(CockpitConfigPath.For(localRoot), CockpitConfigPath.For(damagedRoot) + ".bak");
+
             var localBefore = _Bytes(localRoot);
+            var damagedBefore = _Bytes(damagedRoot);
             var listenersBefore = _OwnListeners();
             IReadOnlySet<string> listenersWhileShown = new HashSet<string>();
             IReadOnlyList<string> shown = [];
-            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, RemoteInstance.StateRootFor(localRoot, Server));
+            var lockedAtStart = false;
+            var damagedRefusal = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await using var connection = await RemoteInstance.ConnectAsync(localRoot, Server, NullLoggerFactory.Instance)
-                    ?? throw new InvalidOperationException("The local registry's row connected no remote window.");
-                var view = Program.ComposeRemoteWindow(Server, connection, _ => Task.CompletedTask);
+                // As the operator's own process starts: COCKPIT_STATE_ROOT is the local root until RemoteStartup moves it.
+                Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, localRoot);
+                using var startup = RemoteStartup.Begin(Server, _ => NullLoggerFactory.Instance)
+                    ?? throw new InvalidOperationException("Another remote window held this server's claim.");
+                lockedAtStart = startup.NeedsUnlock;
+                await (startup.Protection?.UnlockAsync(password) ?? Task.FromResult(false));
+                var view = startup.Open(_ => Task.CompletedTask)
+                    ?? throw new InvalidOperationException($"The remote window did not open: {startup.Refusal}");
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
                 var group = view.ServerGroups[0];
                 await Until.Holds(group, () => group.IsConnected);
                 await Until.CollectionHolds(group.Sessions, () => group.Sessions.Count > 0);
                 shown = [.. group.Sessions.Select(row => row.Handle.PaneId)];
                 listenersWhileShown = _OwnListeners();
+
+                Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, damagedRoot);
+                using var damaged = RemoteStartup.Begin(Server, _ => NullLoggerFactory.Instance)
+                    ?? throw new InvalidOperationException("Another remote window held this server's claim.");
+                damagedRefusal = damaged.Refusal ?? "";
             });
 
+            Assert.True(lockedAtStart);
             Assert.Equal([paneId], shown);
             Assert.Equal(localBefore, _Bytes(localRoot));
             Assert.Empty(listenersWhileShown.Except(listenersBefore));
+            Assert.Contains("Open the local Cockpit first", damagedRefusal, StringComparison.Ordinal);
+            Assert.Equal(damagedBefore, _Bytes(damagedRoot));
         }
         finally
         {
@@ -95,7 +117,7 @@ public sealed class RemoteWindowJourney
             .Order(StringComparer.Ordinal),
     ];
 
-    // The TCP ports this process listens on, as the OS lists them per process: /proc on Linux, netstat on Windows.
+    // The TCP listeners and bound UDP sockets of this process, which runs the remote route: /proc on Linux, netstat on Windows.
     private static IReadOnlySet<string> _OwnListeners() => OperatingSystem.IsLinux() ? _ProcListeners() : _NetstatListeners();
 
     private static IReadOnlySet<string> _ProcListeners()
@@ -106,11 +128,11 @@ public sealed class RemoteWindowJourney
             .Where(target => target.StartsWith("socket:[", StringComparison.Ordinal))
             .Select(target => target[8..^1])
             .ToHashSet(StringComparer.Ordinal);
-        return new[] { "/proc/self/net/tcp", "/proc/self/net/tcp6" }
-            .SelectMany(table => File.ReadLines(table).Skip(1))
-            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            .Where(columns => columns[3] == "0A" && sockets.Contains(columns[9]))
-            .Select(columns => columns[1])
+        return new[] { (Name: "tcp", Bound: "0A"), (Name: "tcp6", Bound: "0A"), (Name: "udp", Bound: "07"), (Name: "udp6", Bound: "07") }
+            .SelectMany(table => File.ReadLines($"/proc/self/net/{table.Name}").Skip(1)
+                .Select(line => (table.Name, table.Bound, Columns: line.Split(' ', StringSplitOptions.RemoveEmptyEntries))))
+            .Where(entry => entry.Columns[3] == entry.Bound && sockets.Contains(entry.Columns[9]))
+            .Select(entry => $"{entry.Name} {entry.Columns[1]}")
             .ToHashSet(StringComparer.Ordinal);
     }
 
@@ -123,8 +145,9 @@ public sealed class RemoteWindowJourney
         var listeners = netstat.StandardOutput.ReadToEnd()
             .Split('\n')
             .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            .Where(columns => columns is ["TCP", _, "0.0.0.0:0" or "[::]:0", _, var owner] && owner.Trim() == pid)
-            .Select(columns => columns[1])
+            .Where(columns => (columns is ["TCP", _, "0.0.0.0:0" or "[::]:0", _, var owner] && owner.Trim() == pid)
+                              || (columns is ["UDP", _, "*:*", var udpOwner] && udpOwner.Trim() == pid))
+            .Select(columns => $"{columns[0]} {columns[1]}")
             .ToHashSet(StringComparer.Ordinal);
         netstat.WaitForExit();
         return listeners;

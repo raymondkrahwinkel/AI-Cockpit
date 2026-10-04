@@ -46,6 +46,6 @@
         <Button Content="I forgot my password" HorizontalAlignment="Center"
                 Background="Transparent" BorderThickness="0"
                 Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"
-                IsEnabled="{Binding !IsBusy}" Click="OnForgot"/>
+                IsEnabled="{Binding !IsBusy}" IsVisible="{Binding OffersReset}" Click="OnForgot"/>
     </StackPanel>
 </Window>

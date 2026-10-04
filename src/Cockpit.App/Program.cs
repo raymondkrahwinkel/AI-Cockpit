@@ -230,77 +230,84 @@ sealed class Program
         && !InstallationInstanceGuard.IsAnotherInstanceRunning()
         && UpdateOnNextStart.TakeRequest();
 
-    // AC-1487: all that `--remote` starts. Its own root and claim, so one window per server, then this installation's
-    // update claim (AC-1486) and the one server. No `CockpitBackend`: no hosted service, plugin or listener, and no port.
+    // AC-1487: `--remote`. `RemoteStartup` is the whole route short of Avalonia's run: the roots, the claims, the read of
+    // the local registry. No `CockpitBackend`: no hosted service, plugin, hotkey or listener, and no port.
     private static void _RunRemoteWindow(string[] args, string server)
     {
-        var localRoot = CockpitBuild.StateRoot;
-        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, RemoteInstance.StateRootFor(localRoot, server));
-        using var singleInstance = SingleInstanceGuard.TryAcquire(CockpitBuild.IsDevelopment);
-        if (singleInstance is null)
+        using var startup = RemoteStartup.Begin(server, logPath =>
+            LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath))));
+        if (startup is null)
         {
             _ShowAlreadyRunningNotice(args);
 
             return;
         }
 
-        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(CockpitBuild.LogPath)));
-        using var installationInstance = InstallationInstanceGuard.Acquire(loggerFactory.CreateLogger<InstallationInstanceGuard>());
-        Cockpit.App.Logging.LifecycleLog.Use(loggerFactory);
+        Cockpit.App.Logging.LifecycleLog.Use(startup.Loggers);
         Cockpit.App.Logging.LifecycleLog.Write(
             $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting as a remote window on {server}: pid {Environment.ProcessId}.");
-
-        // Read before Avalonia starts, and off its thread: nothing here may touch the dispatcher before `Start` owns it.
-        var logger = loggerFactory.CreateLogger("Cockpit.App.RemoteWindow");
-        var connection = default(RemoteInstanceConnection);
-        var refusal = $"This cockpit holds no connect key for \"{server}\", or holds it encrypted, which a remote window cannot unlock yet. Connect to it first, under Options → Security → Connect to a server.";
-        try
-        {
-            connection = RemoteInstance.ConnectAsync(localRoot, server, loggerFactory).GetAwaiter().GetResult();
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(exception, "Could not read the connect key for {Server} from the local registry.", server);
-            refusal = $"The local cockpit's configuration could not be read: {exception.Message}";
-        }
-
-        _ShowUntilClosed(args, () =>
+        _ShowUntilClosed(args, show =>
         {
             Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
             {
-                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception in the remote window; it stays up.");
+                startup.Logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception in the remote window; it stays up.");
                 exceptionEvent.Handled = true;
             };
-            if (connection is null)
+            if (!startup.NeedsUnlock || startup.Protection is not { } protection)
             {
-                return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("No such server", refusal, "Close") };
+                return _RemoteWindow(startup);
             }
 
-            var window = new MainWindow(windowBoundsStore: null, server);
-            window.DataContext = ComposeRemoteWindow(server, connection, admin =>
+            // The desktop's own unlock window, over the registry's read-only unlock: the key stays in this process's memory.
+            var unlock = new UnlockViewModel(protection) { OffersReset = false };
+            var window = new UnlockWindow { DataContext = unlock };
+            unlock.Unlocked += (_, _) =>
             {
-                OptionsDialog.ForServer(admin).Show(window);
-                return Task.CompletedTask;
-            });
+                show(_RemoteWindow(startup));
+                window.Close();
+            };
             return window;
         });
-        connection?.DisposeAsync().AsTask().Wait(TeardownBudget);
     }
 
-    // AC-1487: the remote window's view model over its one server, shared with the journey that proves the window opens
-    // no port and leaves the local root byte-equal. On the UI thread, like every view model the window binds.
-    internal static CockpitViewModel ComposeRemoteWindow(string server, RemoteInstanceConnection connection, Func<ServerAdminViewModel, Task> showServerAdmin) =>
-        CockpitViewModel.ForRemoteWindow(
-            server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
+    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup)
+    {
+        var window = new MainWindow(windowBoundsStore: null, startup.Server);
+        var cockpit = startup.Open(admin =>
+        {
+            OptionsDialog.ForServer(admin).Show(window);
+            return Task.CompletedTask;
+        });
+        if (cockpit is null)
+        {
+            return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };
+        }
 
-    // One window as the whole of this process's UI, without the app's lifetime: see `_ShowAlreadyRunningNotice`.
-    private static void _ShowUntilClosed(string[] args, Func<Avalonia.Controls.Window> createWindow) =>
+        window.DataContext = cockpit;
+        return window;
+    }
+
+    // This process's windows without the app's lifetime (see `_ShowAlreadyRunningNotice`); it ends when the last one closes.
+    private static void _ShowUntilClosed(string[] args, Func<Action<Avalonia.Controls.Window>, Avalonia.Controls.Window> createWindow) =>
         BuildAvaloniaApp().Start((_, _) =>
         {
             using var closed = new CancellationTokenSource();
-            var window = createWindow();
-            window.Closed += (_, _) => closed.Cancel();
-            window.Show();
+            var open = 0;
+            void Show(Avalonia.Controls.Window window)
+            {
+                open++;
+                window.Closed += (_, _) =>
+                {
+                    open--;
+                    if (open == 0)
+                    {
+                        closed.Cancel();
+                    }
+                };
+                window.Show();
+            }
+
+            Show(createWindow(Show));
             Avalonia.Threading.Dispatcher.UIThread.MainLoop(closed.Token);
         }, args);
 

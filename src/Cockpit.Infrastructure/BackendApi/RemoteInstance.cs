@@ -1,8 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Secrets;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging;
 
@@ -22,13 +27,46 @@ public static class RemoteInstance
 
     // Beside the local root rather than inside it, so that root stays byte-equal. Hashed: a node name is unconstrained.
     public static string StateRootFor(string localRoot, string server) =>
-        Path.Combine(Path.TrimEndingDirectorySeparator(localRoot) + "-remote", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(server)))[..16]);
+        Path.Combine(Path.TrimEndingDirectorySeparator(localRoot) + "-remote", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(server))));
+}
 
-    // The one registry row for `server` in `localRoot`, connected; null when that root holds no connect key by that name.
-    public static async Task<RemoteInstanceConnection?> ConnectAsync(string localRoot, string server, ILoggerFactory loggers, CancellationToken cancellationToken = default)
+// AC-1487: the local root's registry as a `--remote` window knows it: read once into memory, never written or repaired.
+// Encrypted credentials stay ciphertext until `Protection` is unlocked, and that key lives in this object only.
+public sealed class LocalRegistry
+{
+    private static readonly JsonSerializerOptions SecurityOptions = new();
+
+    private readonly JsonNode? _document;
+    private readonly SecretKeyHolder _keys = new();
+
+    private LocalRegistry(JsonNode? document)
     {
-        var rows = await new McpServerStore(Configuration.CockpitConfigPath.For(localRoot)).LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (rows.FirstOrDefault(row => RemoteServers.ServerNameOf(row) == server) is not { } row)
+        _document = document;
+        Protection = new ReadOnlyUnlock(this);
+    }
+
+    // What the desktop's unlock window asks. Only the unlock works; every change belongs to the local Cockpit.
+    public ISecretProtectionService Protection { get; }
+
+    public bool IsLocked => _Security() is { Enabled: true } && _keys.Protector is null;
+
+    public static async Task<LocalRegistry> ReadAsync(string localRoot, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return new LocalRegistry(await CockpitConfigFileAccess.ReadOnceAsync(CockpitConfigPath.For(localRoot), cancellationToken).ConfigureAwait(false));
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("The local Cockpit's configuration does not read. Open the local Cockpit first; it repairs it.", exception);
+        }
+    }
+
+    // The one registry row for `server`, connected; null when the registry holds no connect key by that name.
+    public RemoteInstanceConnection? Connect(string server, ILoggerFactory loggers)
+    {
+        var rows = _document is null ? null : CockpitConfigFileAccess.Decode(_document, _keys)?.McpServers;
+        if (rows?.Select(entry => entry.ToDomain()).FirstOrDefault(row => RemoteServers.ServerNameOf(row) == server) is not { } row)
         {
             return null;
         }
@@ -38,6 +76,8 @@ public static class RemoteInstance
             new RemoteServers(registry, loggers.CreateLogger<RemoteServers>()),
             new NodeSessionsClient(registry, new NoDiscovery(), loggers.CreateLogger<NodeSessionsClient>()));
     }
+
+    private SecretProtectionEntry? _Security() => _document?["Security"]?.Deserialize<SecretProtectionEntry>(SecurityOptions);
 
     // The registry as this window knows it: the one row, held in memory. A node that moved is remembered for this run only.
     private sealed class OneRow(McpServerConfig row) : IMcpServerStore
@@ -58,6 +98,45 @@ public static class RemoteInstance
     {
         public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<NodeDiscoveryFound>>([]);
+    }
+
+    // The password checked against the snapshot's verifier, as the desktop checks it, but without its sidecar scrub.
+    private sealed class ReadOnlyUnlock(LocalRegistry registry) : ISecretProtectionService
+    {
+        private const string LocalOnly = "Change the encryption from the local Cockpit; a remote window writes nothing there.";
+
+        public Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new SecretProtectionStatus(registry._Security() is { Enabled: true }, registry._keys.Protector is not null));
+
+        public Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default)
+        {
+            if (registry._Security() is not { Enabled: true } security)
+            {
+                return Task.FromResult(true);
+            }
+
+            var protector = new SecretProtector(SecretKey.Derive(password, Convert.FromBase64String(security.Salt), security.Iterations, security.Kdf));
+            if (!SecretProtectionService.VerifierMatches(protector, security))
+            {
+                return Task.FromResult(false);
+            }
+
+            registry._keys.Unlock(protector);
+            return Task.FromResult(true);
+        }
+
+        public Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException(LocalOnly);
+
+        public Task EnableAsync(string password, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(LocalOnly);
+
+        public Task DisableAsync(IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(LocalOnly);
+
+        public Task ChangePasswordAsync(string currentPassword, string newPassword, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(LocalOnly);
+
+        public Task ResetForgottenPasswordAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException(LocalOnly);
     }
 }
 
