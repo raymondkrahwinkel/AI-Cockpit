@@ -583,6 +583,7 @@
                      below in this file sits above it. It is also why it must not be the last child at all: the
                      panel fills with its last child, which ignores Dock and takes the middle. -->
                 <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
+                                          IsVisible="{Binding !$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRemoteWindow}"
                                           DataContext="{Binding AssistantIndicator}"/>
 
                 <!-- AC-1301: the stand switch, as low in the column as it can go — the second Dock="Bottom"
@@ -847,6 +848,7 @@
                      deliberately: a narrow sidebar is exactly when you still need to see that something is
                      listening, and to whom. -->
                 <views:AssistantIndicator DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                                          IsVisible="{Binding !$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRemoteWindow}"
                                           DataContext="{Binding AssistantIndicator}"/>
 
                 <!-- Fills the gap between the two so the chip stays at the bottom. -->

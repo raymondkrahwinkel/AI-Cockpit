@@ -225,6 +225,7 @@ internal static class Screenshotter
         // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
+        ["remote-window"] = ServerGroupScene.Remote,
         ["server-pane-permission"] = ServerGroupScene.Permission,
         // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
         // and its Audit log.

@@ -31,28 +31,21 @@ internal static class ServerGroupScene
     // AC-1457 (mockup v2 tab 6): the same tab for an operate key; Run now stays, Sign in again gives way to a pointer.
     public static MainWindow HealthOperate(int width, int height) => _Render(width, height, admin: false, health: true);
 
+    // AC-1487 (mockup v2 tab 5): the `--remote` window on the same stand-in, with its first session open.
+    public static MainWindow Remote(int width, int height)
+    {
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns(), _ => Task.CompletedTask);
+        cockpit.OpenServerSessionCommand.Execute(cockpit.ServerGroups[0].Sessions[0]);
+        return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
+    }
+
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
     private static MainWindow _Render(int width, int height, bool admin, bool asking = false, bool health = false)
     {
         var cockpit = new CockpitViewModel();
-        var started = DateTimeOffset.UtcNow.AddDays(-6).AddHours(-4);
-        var key = admin
-            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true)
-            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true);
-        SceneHandle[] sessions = admin
-            ? [
-                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention, asking),
-                new("AC-1421", "server (Claude)", SessionStatus.Busy),
-                new("research-monitor", "server (Claude)", SessionStatus.Done),
-            ]
-            : [
-                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention),
-                new("research-monitor", "server (Claude)", SessionStatus.Done),
-            ];
-        var server = new SceneServer("huis-cockpit", new RemoteServerState(true, 38, key), sessions);
-        cockpit.ShowServers(new SceneServers(server), SessionViewModel.OverRemoteAsync, new SceneSignIns());
+        cockpit.ShowServers(new SceneServers(_Server(admin, asking)), SessionViewModel.OverRemoteAsync, new SceneSignIns());
 
         var group = cockpit.ServerGroups[0];
         if (health)
@@ -82,6 +75,26 @@ internal static class ServerGroupScene
         }
 
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // The mockup's server: an admin key that holds the assistant, or an operate key with a scope.
+    private static SceneServer _Server(bool admin, bool asking = false)
+    {
+        var started = DateTimeOffset.UtcNow.AddDays(-6).AddHours(-4);
+        var key = admin
+            ? new RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true)
+            : new RemoteServerKey("telefoon-raymond", "operate", false, "laptop-raymond", "0.66.0", started, MayAnswerPermissions: true, AllowsForSession: true);
+        SceneHandle[] sessions = admin
+            ? [
+                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention, asking),
+                new("AC-1421", "server (Claude)", SessionStatus.Busy),
+                new("research-monitor", "server (Claude)", SessionStatus.Done),
+            ]
+            : [
+                new("morning-briefing", "server (Claude)", SessionStatus.NeedsAttention),
+                new("research-monitor", "server (Claude)", SessionStatus.Done),
+            ];
+        return new SceneServer("huis-cockpit", new RemoteServerState(true, 38, key), sessions);
     }
 
     private sealed class SceneServers(IRemoteServer server) : IRemoteServers
