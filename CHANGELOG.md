@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a server now refuses a state with encrypted credentials before it starts; protect its unencrypted state volume
+  through the host and volume controls instead.
 - fixed: a server's assistant conversation (its transcript and its prompt) is now refused for any connect key that does
   not hold the assistant; it used to answer every operate key. The assistant line of a server says what really happens:
   while this laptop holds the line the server's assistant stands down and you talk to your own, which steers the node.

@@ -27,15 +27,14 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.BackendApi;
-using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Journeys;
 
-// J8, the server as a container runs it: Cockpit.Server as a process of its own on a fresh state root, unlocked from a
-// file, reached with a connect key, its sessions from the echo fixture plugin. Secrets travel as files in a temp folder.
+// J8, the server as a container runs it: Cockpit.Server as a process of its own on a fresh state root, reached with a
+// connect key, its sessions from the echo fixture plugin. An encrypted state is refused before anything starts.
 [Collection(JourneyCollection.Alone)]
 public sealed class ServerJourney
 {
@@ -62,34 +61,42 @@ public sealed class ServerJourney
     private static readonly TimeSpan LoginCheckInterval = TimeSpan.FromSeconds(1);
 
     [Fact]
-    public async Task TheServer_StartsOnlyWithItsUnlockFile_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
+    public async Task TheServer_RefusesAnEncryptedState_AndStartsOnAPlainOne_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
     {
         var serverDirectory = _Metadata("CockpitServerDirectory");
         Assert.Empty(Directory.EnumerateFiles(serverDirectory, "Avalonia*.dll", SearchOption.AllDirectories).Select(Path.GetFileName));
 
         var root = Directory.CreateTempSubdirectory("journey-server-").FullName;
+        var encryptedRoot = Path.Combine(root, "encrypted");
+        var encryptedStateRoot = Path.Combine(root, "encrypted-state");
         var stateRoot = Path.Combine(root, "state");
+        Directory.CreateDirectory(encryptedRoot);
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
         await using var discord = await _FakeDiscordAsync();
+        await _PrepareStateRootAsync(encryptedStateRoot, 0, encryptedRoot, discord.Url, encrypted: true);
         var (fingerprint, controllerKey, healthKey) = await _PrepareStateRootAsync(stateRoot, 0, root, discord.Url);
         var keyFile = _Secret(root, "connect-key", key);
-        string[] secrets = [File.ReadAllText(Path.Combine(root, "unlock")), key, controllerKey, healthKey];
+        string[] secrets = [key, controllerKey, healthKey];
         Process? server = null;
         try
         {
-            // A wrong password: the server does not start, and says why.
-            var refusedRun = _RunServer(serverDirectory, stateRoot, _Secret(root, "wrong-unlock", "not-the-password"), keyFile);
-            Assert.True(refusedRun.Process.WaitForExit(Until.Ceiling), "The server with a wrong unlock file kept running.");
+            var refusedRun = _RunServer(serverDirectory, encryptedStateRoot, keyFile);
+            Assert.True(refusedRun.Process.WaitForExit(Until.Ceiling), "The server with an encrypted state kept running.");
             refusedRun.Process.WaitForExit();
             Assert.NotEqual(0, refusedRun.Process.ExitCode);
-            Assert.Contains("The password in the unlock password file is not correct.", refusedRun.Output, StringComparison.Ordinal);
+            Assert.Contains("this state has encrypted credentials, and the server does not support encryption", refusedRun.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain(RunningLine, refusedRun.Output, StringComparison.Ordinal);
             _AssertCarriesNoSecret(refusedRun, secrets);
             refusedRun.Process.Dispose();
 
-            // The right one: it runs, with no UI assembly loaded.
-            var run = _RunServer(serverDirectory, stateRoot, Path.Combine(root, "unlock"), keyFile);
+            var run = _RunServer(
+                serverDirectory,
+                stateRoot,
+                keyFile,
+                new Dictionary<string, string> { ["COCKPIT_UNLOCK_PASSWORD_FILE"] = Path.Combine(root, "legacy-unlock") });
             server = run.Process;
             Assert.Equal($"{RunningLine}none.", await run.Running.WaitAsync(Until.Ceiling));
+            Assert.Contains("COCKPIT_UNLOCK_PASSWORD_FILE is ignored", run.Output, StringComparison.Ordinal);
 
             using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{_McpPort(run.Output)}/"), key, fingerprint, TimeProvider.System);
             using var timeout = new CancellationTokenSource(Until.Ceiling);
@@ -194,10 +201,10 @@ public sealed class ServerJourney
         }
     }
 
-    // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, encrypted credentials,
+    // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, plain credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -224,9 +231,10 @@ public sealed class ServerJourney
                 await services.GetRequiredService<IPluginStoreConfigStore>().AddAsync(pluginStore);
             }
 
-            var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-            await services.GetRequiredService<ISecretProtectionService>().EnableAsync(password);
-            _Secret(root, "unlock", password);
+            if (encrypted)
+            {
+                await services.GetRequiredService<ISecretProtectionService>().EnableAsync(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
+            }
 
             foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") })
             {
@@ -333,7 +341,7 @@ public sealed class ServerJourney
         return discord;
     }
 
-    internal static ServerRun _RunServer(string serverDirectory, string stateRoot, string unlockFile, string keyFile, IReadOnlyDictionary<string, string>? environment = null)
+    internal static ServerRun _RunServer(string serverDirectory, string stateRoot, string keyFile, IReadOnlyDictionary<string, string>? environment = null)
     {
         var start = new ProcessStartInfo(Path.Combine(serverDirectory, OperatingSystem.IsWindows() ? "Cockpit.Server.exe" : "Cockpit.Server"))
         {
@@ -342,7 +350,6 @@ public sealed class ServerJourney
             WorkingDirectory = serverDirectory,
         };
         start.Environment[CockpitBuild.StateRootVariable] = stateRoot;
-        start.Environment[UnlockFromFile.Variable] = unlockFile;
         start.Environment[ConnectKeyVerifier.BootstrapFileVariable] = keyFile;
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {
