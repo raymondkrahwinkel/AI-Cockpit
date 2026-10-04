@@ -99,67 +99,87 @@ public sealed class BackendApiDoorTests
     // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may narrow
     // or revoke the bootstrap key. AC-1472 criteria 2 and 3: an operate key lists only its projects, without a count, and a
     // URL carrying a credential is refused. No row changes anything, and no answer or audit line repeats a key.
-    public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string> AdminRoutes => new()
+    public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string, string> AdminRoutes => new()
     {
-        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "" },
-        { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "" },
-        { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "" },
-        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key", "" },
-        { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key", "" },
-        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"main","name":"r"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "PATCH", "/api/v1/projects/project-allowed", """{"name":"renamed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "DELETE", "/api/v1/projects/project-allowed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "GET", "/api/v1/projects", null, "operate, one project", HttpStatusCode.OK, "", "project-allowed" },
-        { "GET", "/api/v1/projects/clones/0123", null, "operate", HttpStatusCode.Forbidden, "forbidden", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://laptop:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git?private_token={secret}","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ssh://git:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ftps://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ext::sh -c touch% /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"fd::17","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"C:/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"file:///srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"--upload-pack=touch /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"--orphan=x","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "" },
+        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/keys/{issued}/scope", """{"allowAllProjects":false}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/lockouts/10.0.0.9/lift", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/audit", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"main","name":"r"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/projects/project-allowed", """{"name":"renamed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/projects/project-allowed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/projects", null, "operate, one project and profile", HttpStatusCode.OK, "", "project-allowed", _Door.ProfileSecret },
+        { "GET", "/api/v1/projects/clones/0123", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://laptop:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git?private_token={secret}","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ssh://git:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ftps://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"ext::sh -c touch% /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"fd::17","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"C:/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"file:///srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"--upload-pack=touch /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"--orphan=x","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        // AC-1473 criteria 2 and 3: no profile answer holds a secret, a request with one, a program path or a loader
+        // variable is refused without repeating it, and an operate key reads only its own profiles.
+        { "GET", "/api/v1/profiles", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"model":"other"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/profiles/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/startable", null, "operate, one project and profile", HttpStatusCode.OK, "", "Laptop Sonnet", "Something Expensive" },
+        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"model":"other","apiKey":"{secret}"}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "Provider credentials never cross this connection.", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}","isSecret":true}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude","settings":{"configJson":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"executablePath":"/tmp/{secret}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"BASH_ENV","value":"/tmp/{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
     };
 
     [Theory]
     [MemberData(nameof(AdminRoutes))]
-    public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string? error, string listed)
+    public async Task AnAdminRoute_RefusesAnOperateKey_AndNoKeyRevokesTheBootstrapKey(string method, string path, string? body, string credential, HttpStatusCode expected, string? error, string listed, string absent)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         door.ReadGateway.Projects.Add(new AssistantProjectRow("project-outside", "Outside", null, null, null, new Dictionary<string, string>(), null, []));
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
-        var scoped = await verifier.IssueAsync("phone", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-allowed"] });
-        var bearers = new Dictionary<string, string> { ["admin"] = Bootstrap, ["operate"] = operate.Secret, ["operate, one project"] = scoped.Secret };
+        var scoped = await verifier.IssueAsync("phone", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-allowed"], AllowAllProfiles = false, AllowedProfileLabels = ["Laptop Sonnet"] });
+        var bearers = new Dictionary<string, string> { ["admin"] = Bootstrap, ["operate"] = operate.Secret, ["operate, one project and profile"] = scoped.Secret };
 
         var target = path.Replace("{issued}", operate.Key.Prefix, StringComparison.Ordinal).Replace("{secret}", operate.Secret, StringComparison.Ordinal);
         var answer = await door.SendAsync(new HttpMethod(method), target, bearers[credential], body?.Replace("{secret}", operate.Secret, StringComparison.Ordinal));
         var keys = await verifier.ListAsync();
+        var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
+        var audit = await File.ReadAllTextAsync(door.AuditPath);
 
         Assert.Equal(expected, answer.Status);
         Assert.Equal(error, JsonNode.Parse(answer.Body) is JsonObject response ? response["error"]?.GetValue<string>() ?? "" : "");
+        Assert.DoesNotContain(absent, answer.Body, StringComparison.Ordinal);
         Assert.False(answer.Body.Contains(operate.Secret, StringComparison.Ordinal), "The answer repeated a full key it was given.");
+        Assert.False(audit.Contains(operate.Secret, StringComparison.Ordinal) || audit.Contains(_Door.ProfileSecret, StringComparison.Ordinal), "The audit holds a secret.");
         Assert.False(answer.Body.Contains("password", StringComparison.Ordinal) || answer.Body.Contains("query-token", StringComparison.Ordinal) || answer.Body.Contains("\"token\"", StringComparison.Ordinal), "The answer repeated a store credential it was given.");
         Assert.DoesNotContain("folderPath", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("sha256", answer.Body, StringComparison.OrdinalIgnoreCase);
@@ -173,6 +193,26 @@ public sealed class BackendApiDoorTests
         Assert.DoesNotContain(door.Clones.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(IRepositoryCloneManager.CloneAsync));
         Assert.Equal(3, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => entry.Key.Label == "laptop").Key.EffectiveScope());
+        Assert.Equal(("qwen", _Door.ProfileSecret), (ProfileModel.Of(keyed), (keyed.ProviderConfig as LmStudioConfig)?.ApiKey));
+        Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
+    }
+
+    // AC-1473 criterion 1: model and MCP set change on the server, and its secret variable and API key, which the
+    // client never sees, are still there afterwards.
+    [Fact]
+    public async Task AProfileChangedOverTheApi_KeepsTheSecretVariableAndTheApiKeyTheClientNeverSaw()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+
+        var answer = await door.SendAsync(HttpMethod.Patch, "/api/v1/profiles/Keyed", Bootstrap, """{"model":"qwen-large","mcpServers":{"names":["youtrack"]}}""");
+        var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
+
+        Assert.Equal(HttpStatusCode.OK, answer.Status);
+        Assert.Equal("qwen-large", ProfileModel.Of(keyed));
+        Assert.Equal(["youtrack"], keyed.EnabledMcpServerNames ?? []);
+        Assert.Equal(_Door.ProfileSecret, (keyed.ProviderConfig as LmStudioConfig)?.ApiKey);
+        Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
     }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
@@ -556,6 +596,16 @@ public sealed class BackendApiDoorTests
 
         public string AuditPath => Path.Combine(Directory, "node-access-audit.jsonl");
 
+        // AC-1473: a profile with a secret variable and an API key, both this value, beside the stub's profiles.
+        public const string ProfileSecret = "sk-door-profile-secret-7f3a9c21";
+
+        public const string KeyedProfile = "Keyed";
+
+        public static IReadOnlyList<ProfileEnvironmentVariable> KeyedVariables { get; } =
+            [new("PROVIDER_TOKEN", ProfileSecret, IsSecret: true), new("REGION", "eu")];
+
+        public SessionProfileStore Profiles => new(ConfigPath);
+
         public McpAuthKey AppKey { get; } = new();
 
         public SessionMcpKeyring Keyring { get; } = new();
@@ -621,7 +671,12 @@ public sealed class BackendApiDoorTests
             });
             services.AddSingleton(editor);
             services.AddSingleton(Clones);
-            services.AddSingleton<ISessionProfileStore>(new NodeSessionMcpToolsTests.StubProfileStore());
+            await Profiles.SaveAsync(
+            [
+                .. await new NodeSessionMcpToolsTests.StubProfileStore().LoadAsync(),
+                new SessionProfile(KeyedProfile, new LmStudioConfig("http://127.0.0.1:1234", "qwen", ProfileSecret)) { EnvironmentVariables = KeyedVariables },
+            ]);
+            services.AddSingleton<ISessionProfileStore>(Profiles);
             services.AddSingleton(new NodeDiscoveryId(Path.Combine(Directory, "node-discovery-id.txt")));
             services.AddSingleton<IAgentMessageInbox>(new AgentMessageInbox());
             services.AddSingleton<IAssistantMemory>(new NodeSessionMcpToolsTests.StubMemory());

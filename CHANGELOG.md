@@ -39,6 +39,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   folder. "+ Start on <server>" offers these projects, and a session started on one runs in its clone. On the backend
   API: `GET`, `POST`, `PATCH` and `DELETE /api/v1/projects`, all audited; an operate key may only list the projects in
   its scope, by id and name. Cockpit 0.75.0.
+- added: Options on a server has a Profiles page. It lists the server's profiles with their sign-in, which only reads
+  ("signed in", "sign-in expired", "key from secret"), and New profile, Edit and Remove. The editor changes model,
+  permission mode, MCP sets and plain environment variables; a secret variable shows as "set on the server" and an API
+  key never appears. A save sends only what you changed, so the secrets on the server stay where they are. A request
+  that carries a credential, a program path or a variable that changes how programs load (`LD_PRELOAD`, `PATH`,
+  `NODE_OPTIONS`, `BASH_ENV` and the like) is refused. Any key can list the profiles it may start through
+  `/api/v1/profiles/startable`.
 - added: a connect server's header line has a Health button that opens the server's health: an alarm when a provider
   login on the server has expired (with the runs that did not run since and the Discord message sent to you), the
   sign-in per profile, the server's version, uptime, assistant, Discord and connected keys, and the scheduled runs with
