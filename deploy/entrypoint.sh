@@ -37,7 +37,7 @@ touch /state/cli/.root-owned
 # mounted read-only inside them (AC-1364) are skipped: a chown there fails and would stop this script.
 for home in /home/agent/.claude /home/agent/.codex; do
   if [ "$(stat -c %U "$home")" != agent ]; then
-    chown -R agent:agent "$home"
+    find "$home" \( -path "$home/CLAUDE.md" -o -path "$home/AGENTS.md" \) -prune -o -exec chown -h agent:agent {} +
   fi
   chmod 2770 "$home"
 done
