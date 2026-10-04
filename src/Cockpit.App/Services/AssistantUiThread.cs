@@ -33,6 +33,8 @@ internal sealed class UiThreadControllerPresence : INodeControllerPresence
     public ActiveController? Current => _presence.Current;
 
     public event EventHandler? Changed;
+
+    public T WithHolder<T>(Func<ActiveController?, T> action) => _presence.WithHolder(action);
 }
 
 // AC-1379: the assistant's host as a chat channel reaches it on the desktop — a send capped onto the UI thread

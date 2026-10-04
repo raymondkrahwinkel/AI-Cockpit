@@ -30,6 +30,9 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
 
     private readonly INodeControllerPresence? _presence;
 
+    // AC-1405: the controller-queue messages handed to a reader in a batch — the only ones its cursor may acknowledge.
+    private readonly HashSet<string> _handedOver = new(StringComparer.Ordinal);
+
     // AC-1327 point 3: resolved lazily via the container, not taken as `IAssistantReadGateway` directly — its
     // app-side implementation depends on `CockpitViewModel`, which already depends on this class, so a
     // constructor-time dependency here would close a cycle.
@@ -75,22 +78,45 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
     {
         lock (_lock)
         {
-            _FoldControllerQueueIntoLocalUnlocked();
+            _FoldControllerQueueIntoLocalUnlocked(_ => true);
         }
     }
 
+    // AC-1405: what was queued for a holder that is no longer the live one — gone, run out, revoked or taken over —
+    // falls back here, checked under the presence's gate on every delivery and read rather than left to its Changed.
+    private void _FoldStaleControllerMailUnlocked(ActiveController? holder)
+    {
+        var live = _StampOf(holder);
+        _FoldControllerQueueIntoLocalUnlocked(message => live is null || !string.Equals(message.Holder, live, StringComparison.Ordinal));
+    }
+
+    // The holder a controller-queue message is stamped with: the key's prefix, or one fixed mark for the pairing.
+    private static string? _StampOf(ActiveController? holder) => holder is null ? null : holder.KeyPrefix ?? "pairing";
+
     // Call only while already holding `_lock` — see `Deliver`'s own idempotent call, closing the race in
     // reviewbevinding 2 (AC-1327): presence can expire between a caller reading it and the delivery below landing.
-    private void _FoldControllerQueueIntoLocalUnlocked()
+    private void _FoldControllerQueueIntoLocalUnlocked(Func<AgentMessage, bool> stale)
     {
-        _inboxes.Remove(AssistantIdentity.ControllerInboxPaneId, out var waiting);
-        _inFlight.Remove(AssistantIdentity.ControllerInboxPaneId, out var inFlight);
-        var folding = (inFlight ?? []).Concat(waiting ?? []).ToList();
+        var folding = new List<AgentMessage>();
+        foreach (var queue in new[] { _inFlight, _inboxes })
+        {
+            if (queue.TryGetValue(AssistantIdentity.ControllerInboxPaneId, out var held))
+            {
+                folding.AddRange(held.Where(stale));
+                held.RemoveAll(message => stale(message));
+                if (held.Count == 0)
+                {
+                    queue.Remove(AssistantIdentity.ControllerInboxPaneId);
+                }
+            }
+        }
+
         if (folding.Count == 0)
         {
             return;
         }
 
+        _handedOver.ExceptWith(folding.Select(message => message.Id));
         if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var local))
         {
             local = [];
@@ -141,7 +167,12 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null)
+    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false) =>
+        _presence is null
+            ? _Deliver(null, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide)
+            : _presence.WithHolder(holder => _Deliver(holder, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide));
+
+    private AgentMessageDelivery _Deliver(ActiveController? holder, string fromPaneId, string toPaneId, string kind, string body, string? senderProfile, string? senderProjectId, bool profileWide)
     {
         lock (_lock)
         {
@@ -181,45 +212,63 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
                 body,
                 DateTimeOffset.UtcNow,
                 senderProfile,
-                senderProjectId);
+                senderProjectId,
+                string.Equals(toPaneId, AssistantIdentity.ControllerInboxPaneId, StringComparison.Ordinal) ? _StampOf(holder) : null,
+                profileWide);
             waiting.Add(delivered);
 
-            // AC-1327 reviewbevinding 2: presence can expire between AgentsMcpTools reading it and this delivery
-            // landing in the controller's queue. Folding again here, under the same lock, closes that window
-            // instead of leaving the message stuck until the next expiry — or forever, if no controller reconnects.
-            if (_presence is not null
-                && string.Equals(toPaneId, AssistantIdentity.ControllerInboxPaneId, StringComparison.Ordinal)
-                && _presence.Current is null)
+            // AC-1327 reviewbevinding 2, AC-1405: the controller can drop away or change between AgentsMcpTools reading it
+            // and this delivery landing; folding here, with the holder held still, sends such mail to the local assistant.
+            if (_presence is not null)
             {
-                _FoldControllerQueueIntoLocalUnlocked();
+                _FoldStaleControllerMailUnlocked(holder);
             }
 
             return new AgentMessageDelivery(AgentMessageDeliveryOutcome.Delivered, delivered);
         }
     }
 
-    public AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<bool> isReader, Func<AgentMessage, bool> mayRead, int limit)
+    public AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<ActiveController?, bool> isReader, Func<AgentMessage, bool> mayRead, int limit) =>
+        _presence is null
+            ? _ReadFor(null, paneId, afterMessageId, isReader, mayRead, limit)
+            : _presence.WithHolder(holder => _ReadFor(holder, paneId, afterMessageId, isReader, mayRead, limit));
+
+    private AgentInboxBatch? _ReadFor(ActiveController? holder, string paneId, string? afterMessageId, Func<ActiveController?, bool> isReader, Func<AgentMessage, bool> mayRead, int limit)
     {
         lock (_lock)
         {
-            // AC-1405: under the lock delivery takes, so mail routed to a new holder cannot land between check and read.
-            if (!isReader())
+            // AC-1405: under the presence's gate and then this lock, the order delivery takes too, so neither a takeover
+            // nor mail routed to a new holder can come between the reader check and the read.
+            if (_presence is not null)
+            {
+                _FoldStaleControllerMailUnlocked(holder);
+            }
+
+            if (!isReader(holder))
             {
                 return null;
             }
 
             _inboxes.TryGetValue(paneId, out var waiting);
             var readable = (waiting ?? []).Where(mayRead).ToList();
-            var acknowledged = afterMessageId is null
+            var cursor = afterMessageId is null
                 ? -1
                 : readable.FindIndex(message => string.Equals(message.Id, afterMessageId, StringComparison.Ordinal));
-            foreach (var message in readable.Take(acknowledged + 1))
+
+            // The cursor acknowledges only what this reader was handed, so mail it never saw (outside its scope until it
+            // widened) stays even when it lies before the cursor.
+            foreach (var message in readable.Take(cursor + 1))
             {
-                waiting?.Remove(message);
+                if (_handedOver.Remove(message.Id))
+                {
+                    waiting?.Remove(message);
+                }
             }
 
-            var unread = readable.Skip(acknowledged + 1).ToList();
-            return new AgentInboxBatch([.. unread.Take(limit)], Math.Max(0, unread.Count - limit));
+            var unread = readable.Where(message => waiting?.Contains(message) == true).ToList();
+            var batch = unread.Take(limit).ToList();
+            _handedOver.UnionWith(batch.Select(message => message.Id));
+            return new AgentInboxBatch(batch, Math.Max(0, unread.Count - limit));
         }
     }
 

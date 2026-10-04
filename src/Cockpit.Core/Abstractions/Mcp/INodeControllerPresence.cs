@@ -22,4 +22,10 @@ public interface INodeControllerPresence
     /// Not raised on every call that merely keeps the controller present.
     /// </summary>
     event EventHandler? Changed;
+
+    /// <summary>
+    /// Runs <paramref name="action"/> with <see cref="Current"/> held still: no call takes over, refreshes or drops the
+    /// holder until it returns (AC-1405). Anything else it locks is taken after this, never before.
+    /// </summary>
+    T WithHolder<T>(Func<ActiveController?, T> action);
 }

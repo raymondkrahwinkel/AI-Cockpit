@@ -181,8 +181,8 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
         try
         {
-            // AC-1405: stamped with the profile it is about, so a controller reads it only within that profile's scope.
-            _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body, profileLabel);
+            // AC-1405: stamped with the profile it is about, so a controller reads it when its scope reaches that profile.
+            _inbox.Deliver(SenderPaneId, AssistantIdentity.ControllerInboxPaneId, kind, body, profileLabel, profileWide: true);
         }
         catch (Exception exception)
         {

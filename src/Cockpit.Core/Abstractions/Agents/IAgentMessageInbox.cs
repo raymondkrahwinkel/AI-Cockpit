@@ -1,8 +1,10 @@
+using Cockpit.Core.Mcp;
+
 namespace Cockpit.Core.Abstractions.Agents;
 
 // AC-1013: One message one agent session addressed to another (AC-392) — an envelope with a stated origin, its Id
-// host-minted. AC-1405: `SenderProfile` and `SenderProjectId` are stamped at delivery, so whoever reads the
-// controller's queue is held to the scope the sender falls under, not only to the scope that routed it.
+// host-minted. AC-1405: sender profile, project and (in the controller's queue) the holder it was queued for are
+// stamped at delivery; `ProfileWide` marks a message about a profile, such as a sign-in alarm, judged on profile alone.
 public sealed record AgentMessage(
     string Id,
     string FromPaneId,
@@ -11,7 +13,9 @@ public sealed record AgentMessage(
     string Body,
     DateTimeOffset SentAtUtc,
     string? SenderProfile = null,
-    string? SenderProjectId = null);
+    string? SenderProjectId = null,
+    string? Holder = null,
+    bool ProfileWide = false);
 
 // What became of one `IAgentMessageInbox.Deliver` call.
 public enum AgentMessageDeliveryOutcome
@@ -45,17 +49,18 @@ public interface IAgentMessageInbox
     /// Puts a message from <paramref name="fromPaneId"/> in <paramref name="toPaneId"/>'s inbox, minting its id and
     /// timestamp. An identical still-unread message is not duplicated — the waiting one comes back instead, and one
     /// in flight (<see cref="TakeForDelivery"/>) still counts as unread. Callers must have already established the panes may talk.
-    /// The sender's profile and project, when given, travel with the message for <see cref="ReadFor"/> to judge.
+    /// The sender's profile and project travel with the message for <see cref="ReadFor"/> to judge; a message for the
+    /// controller's queue is stamped with the live holder, and any queued for a holder no longer live falls back locally.
     /// </summary>
-    AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null);
+    AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false);
 
     /// <summary>
-    /// Reads <paramref name="paneId"/>'s inbox for one reader under the lock delivery takes (AC-1405): null unless
-    /// <paramref name="isReader"/> holds there, else drops what the reader acknowledged up to and including
-    /// <paramref name="afterMessageId"/> and hands over the next <paramref name="limit"/>. Only messages
-    /// <paramref name="mayRead"/> admits are dropped, handed over or counted; the rest stay where they are.
+    /// Reads <paramref name="paneId"/>'s inbox for one reader with the controller held still and under the lock
+    /// delivery takes (AC-1405): null unless <paramref name="isReader"/> accepts the live holder, else drops what this
+    /// reader was handed up to and including <paramref name="afterMessageId"/> and hands over the next
+    /// <paramref name="limit"/>. Only messages <paramref name="mayRead"/> admits are dropped, handed over or counted.
     /// </summary>
-    AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<bool> isReader, Func<AgentMessage, bool> mayRead, int limit);
+    AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<ActiveController?, bool> isReader, Func<AgentMessage, bool> mayRead, int limit);
 
     /// <summary>
     /// Takes up to <paramref name="limit"/> waiting messages for <paramref name="paneId"/>, oldest first, removing

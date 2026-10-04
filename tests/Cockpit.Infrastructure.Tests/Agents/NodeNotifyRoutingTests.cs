@@ -58,19 +58,21 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.Equal<int?>(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
     }
 
-    // AC-1405: a key holding the line (on project A, or every project) gets the mail of a session its scope reaches,
-    // under a profile no pairing covers. What it reads is held to the reader's scope at the time of reading: another
-    // key reads nothing, a key taking over after the first one's ran out misses its backlog, and so does a narrowed key.
+    // AC-1405: a key holding the line gets the mail its scope reaches, sign-in alarms included. A read is held to the
+    // holder the mail was queued for and the reader's scope now: another key or a successor gets none (it falls back
+    // locally), a narrowed key misses what fell outside it, and once widened gets it, as its cursor acked only what it saw.
     [Theory]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", false, "project-a", 0, 1)]
-    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", false, "project-a", 0, 0)]
-    [InlineData(true, "project-a", null, "DESKTOP", 0, "ck_test", true, "project-a", 0, 1)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, "project-a", 0, null)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, "project-b", 60, 0)]
-    [InlineData(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, "project-a", 0, 0)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", false, false, "project-a", 0, 2, 0, 0)]
+    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", false, false, "project-a", 0, 1, 0, 0)]
+    [InlineData(true, "project-a", null, "DESKTOP", 0, "ck_test", true, true, "project-a", 0, 2, 0, 0)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 0, null, null, 0)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-b", 60, 0, 0, 2)]
+    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 60, 0, 0, 2)]
+    [InlineData(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, true, "project-a", 0, 1, 1, 0)]
     public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(
         bool holderOnEveryProject, string holderProject, string? sessionProject, string? controller, int keptLocally,
-        string readerKey, bool readerOnEveryProject, string readerProject, int secondsLater, int? collected)
+        string readerKey, bool readerOnEveryProject, bool readerLaterOnEveryProject, string readerProject, int secondsLater,
+        int? collected, int? collectedAfterAck, int foldedLocally)
     {
         _presence.Seen("DESKTOP", _Key("ck_test", holderOnEveryProject, holderProject));
         var session = Substitute.For<ISessionHandle>();
@@ -83,29 +85,58 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Assert.True(reply["ok"]?.GetValue<bool>() == true);
         Assert.Equal(controller, reply["controller"]?.GetValue<string>());
         Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
+
+        // A sign-in alarm about the profile, as ProfileLoginHealthMonitor queues it for the controller.
+        _inbox.Deliver("login-health", AssistantIdentity.ControllerInboxPaneId, "login-expired", "Signed out.", "personal", profileWide: true);
         _clock.Now += TimeSpan.FromSeconds(secondsLater);
         var reader = _Key(readerKey, readerOnEveryProject, readerProject);
         _presence.Seen(readerKey, reader);
         McpRequestContext.Set(NodeCallerIdentity.PaneId, reader);
-        Assert.Equal(collected, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
+        var first = _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray();
+        var later = _Key(readerKey, readerLaterOnEveryProject, readerProject);
+        _presence.Seen(readerKey, later);
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, later);
+        var second = _Json(await _Node().ReadNodeInboxAsync(first?.LastOrDefault()?["id"]?.GetValue<string>()))["messages"]?.AsArray();
+
+        Assert.Equal(collected, first?.Count);
+        Assert.Equal(collectedAfterAck, second?.Count);
+        Assert.Equal(foldedLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
     }
 
-    // AC-1405: the reader is checked under the lock delivery takes, so mail routed while it is being checked (to a
-    // holder that just took over) lands only after the read and never in it.
+    // AC-1405: a read holds the presence's gate and then the inbox lock, the order delivery takes too. A delivery and a
+    // takeover attempt, each signalled as started while the reader is being checked, land only once the read is done.
     [Fact]
-    public void ReadFor_ChecksTheReaderUnderTheLockDeliveryTakes()
+    public void ReadFor_HoldsDeliveryAndTheHolderStill_UntilTheReadIsDone()
     {
         _presence.Seen("DESKTOP");
-        var read = _inbox.ReadFor(AssistantIdentity.ControllerInboxPaneId, null, _DeliveringMeanwhile, _ => true, 25);
+        using var delivering = new ManualResetEventSlim();
+        using var delivered = new ManualResetEventSlim();
+        using var seeing = new ManualResetEventSlim();
+        using var seen = new ManualResetEventSlim();
+        var finishedDuringRead = true;
+
+        var read = _inbox.ReadFor(AssistantIdentity.ControllerInboxPaneId, null, holder =>
+        {
+            _ = Task.Run(() =>
+            {
+                delivering.Set();
+                _inbox.Deliver(AgentOnTheNode, AssistantIdentity.ControllerInboxPaneId, "done", "Late.");
+                delivered.Set();
+            });
+            _ = Task.Run(() =>
+            {
+                seeing.Set();
+                _presence.Seen("LAPTOP", _Key("ck_late", true, "project-a"));
+                seen.Set();
+            });
+            delivering.Wait();
+            seeing.Wait();
+            finishedDuringRead = delivered.Wait(200) | seen.Wait(200);
+            return holder is not null;
+        }, _ => true, 25);
 
         Assert.Equal(0, read?.Messages.Count);
-    }
-
-    // Delivers from another thread and gives it 300 ms; under the lock it cannot land before the read is done.
-    private bool _DeliveringMeanwhile()
-    {
-        _ = Task.Run(() => _inbox.Deliver(AgentOnTheNode, AssistantIdentity.ControllerInboxPaneId, "done", "Late.")).Wait(300);
-        return true;
+        Assert.False(finishedDuringRead);
     }
 
     // A holding connect key as the door stamps it, running out half a minute from now.
@@ -148,8 +179,7 @@ public sealed class NodeNotifyRoutingTests : IDisposable
         Substitute.For<ISessionProfileStore>(),
         new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")),
         _inbox,
-        Substitute.For<IAssistantMemory>(),
-        presence: _presence);
+        Substitute.For<IAssistantMemory>());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result) ?? new JsonObject();
 

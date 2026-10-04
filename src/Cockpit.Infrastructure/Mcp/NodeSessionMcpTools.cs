@@ -28,8 +28,7 @@ internal sealed class NodeSessionMcpTools(
     IAssistantMemory memory,
     // AC-1351: null where nothing verifies connect keys (a test's own host), and then the key tools refuse.
     // AC-1446: the same contract the backend API's admin routes call, so both write one audit.
-    IConnectKeyAdministration? connectKeys = null,
-    INodeControllerPresence? presence = null)
+    IConnectKeyAdministration? connectKeys = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -188,8 +187,10 @@ internal sealed class NodeSessionMcpTools(
             var held = inbox.ReadFor(
                 AssistantIdentity.ControllerInboxPaneId,
                 afterMessageId,
-                () => presence?.Current is { } holder && string.Equals(holder.KeyPrefix, reader.KeyPrefix, StringComparison.Ordinal),
-                message => reader.AllowsSession(message.SenderProfile ?? string.Empty, message.SenderProjectId, pairing),
+                holder => holder is not null && string.Equals(holder.KeyPrefix, reader.KeyPrefix, StringComparison.Ordinal),
+                message => message.ProfileWide
+                    ? reader.AllowsProfile(message.SenderProfile ?? string.Empty, pairing)
+                    : reader.AllowsSession(message.SenderProfile ?? string.Empty, message.SenderProjectId, pairing),
                 MaxMessagesPerRead);
             if (held is null)
             {

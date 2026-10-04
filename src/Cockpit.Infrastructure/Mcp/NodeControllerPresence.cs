@@ -89,6 +89,14 @@ internal sealed class NodeControllerPresence : INodeControllerPresence, ISinglet
         }
     }
 
+    public T WithHolder<T>(Func<ActiveController?, T> action)
+    {
+        lock (_gate)
+        {
+            return action(_LiveUnlocked());
+        }
+    }
+
     // AC-1405: a holder whose key was revoked or ran out is gone at once, before its window would let it go.
     private ActiveController? _LiveUnlocked() =>
         _current is { } current && !_holderRevoked.IsCancellationRequested && !(current.ExpiresAt <= _time.GetUtcNow()) ? current : null;
