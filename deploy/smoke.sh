@@ -354,12 +354,21 @@ app_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u app):$(id -g
 [ "$app_ids" = 1654:1654 ] || fail "the README documents app as 1654:1654, the image has $app_ids"
 agent_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u agent):$(id -g agent)')
 [ "$agent_ids" = 1700:1700 ] || fail "the README documents agent as 1700:1700, the image has $agent_ids"
-mkdir -p "$work/bind"/{state,work,claude,codex,ssh,agent-ssh}
+# A fresh volume takes the image's owners and modes, before the entrypoint runs (overridden here): /state is the
+# server's alone, and nothing is open to other users.
+want='/state app 700|/work app 2770|/home/agent/.claude agent 2770|/home/agent/.codex agent 2770|/home/app/.claude agent 2770|/home/app/.codex agent 2770|/home/app/.ssh app 700|/home/agent/.ssh agent 700|/home/agent/Nextcloud agent 700'
+IFS='|' read -ra rows <<< "$want"
+for row in "${rows[@]}"; do
+  read -r path owner mode <<< "$row"
+  [ "$(docker run --rm --entrypoint stat "$image" -c '%U %a' "$path")" = "$owner $mode" ] || fail "$path is not $owner $mode in the image"
+done
+mkdir -p "$work/bind"/{state,work,claude,codex,ssh,agent-ssh,brain}
 bind_mounts=(-v "$work/bind/state:/state" -v "$work/bind/work:/work" -v "$work/bind/claude:/home/agent/.claude" -v "$work/bind/claude:/home/app/.claude"
-  -v "$work/bind/codex:/home/agent/.codex" -v "$work/bind/codex:/home/app/.codex" -v "$work/bind/ssh:/home/app/.ssh" -v "$work/bind/agent-ssh:/home/agent/.ssh")
+  -v "$work/bind/codex:/home/agent/.codex" -v "$work/bind/codex:/home/app/.codex" -v "$work/bind/ssh:/home/app/.ssh" -v "$work/bind/agent-ssh:/home/agent/.ssh"
+  -v "$work/bind/brain:/home/agent/Nextcloud")
 bind_owners() {
   docker run --rm --user 0 -v "$work/bind:/b" --entrypoint sh "$image" -c '
-    cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work     && chown 1700:1700 claude codex agent-ssh && chmod 2770 claude codex && chmod 0700 agent-ssh'
+    cd /b && chown 1654:1654 state ssh && chmod 0700 state ssh && chown 1654:1700 work && chmod 2770 work     && chown 1700:1700 claude codex agent-ssh brain && chmod 2770 claude codex && chmod 0700 agent-ssh brain'
 }
 bind_owners
 plain_run "$project-bind" "${bind_mounts[@]}"
@@ -384,7 +393,20 @@ bad_bind() {
   bind_owners
 }
 bad_bind state root:root 0755 'entrypoint: /state is not writable by app (uid 1654)'
+# Writable by all, so the owner is what is wrong: agent could read /state.
+bad_bind state root:root 0777 'entrypoint: /state is owned by root, not app (uid 1654)'
+bad_bind brain root:root 0777 'entrypoint: /home/agent/Nextcloud is owned by root, not agent (uid 1700)'
 bad_bind work 1654:1654 0755 'entrypoint: /work is not writable by agent (uid 1700)'
+
+# The right owner with a mode that is too wide is narrowed before the server starts, and the log says so.
+docker run --rm --user 0 -v "$work/bind:/b" --entrypoint chmod "$image" 0755 /b/state
+plain_run "$project-bind" "${bind_mounts[@]}"
+docker logs "$project-bind" 2>&1 | grep -qF 'entrypoint: /state had mode 755, now 700' || fail "a too-wide /state mode was not reported"
+[ "$(docker exec "$project-bind" stat -c %a /state)" = 700 ] || fail "a too-wide /state mode was not narrowed"
+! docker exec -u agent "$project-bind" test -r /state || fail "agent can read a /state that was too wide"
+docker exec -u app "$project-bind" test -r /state || fail "control: app cannot read its own /state"
+docker rm -fv "$project-bind" >/dev/null
+bind_owners
 
 echo "== a held node port stops the server"
 dc down -v >/dev/null

@@ -80,18 +80,20 @@ on its first use; **a bind-mount keeps the host's**, so create the directories w
 
 | Mount | Owner | Mode |
 | --- | --- | --- |
-| `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` (the server sets `/state` to it) |
+| `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
 | `/work` | `1654:1700` (`app:agent`) | `2770` |
 | `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |
-| `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` |
+| `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` (brain: `brain-sync` keeps it owner-only too) |
 | `/home/app/.claude`, `/home/app/.codex` | `agent` (1700:1700) | `2770`, the same host path as the agent's |
 
     sudo install -d -o 1654 -g 1654 -m 0700 /srv/cockpit/state
     sudo install -d -o 1654 -g 1700 -m 2770 /srv/cockpit/work
 
-When one the server or `agent` cannot write, the container does not start quietly broken: its entrypoint stops with
-`entrypoint: /state is not writable by app (uid 1654): chown the host path ...` and exit 1. Read it with
-`docker logs`, fix the owner, and start it again.
+The entrypoint checks each of these before the server starts. **A wrong owner or a path the user cannot write stops the
+start** (exit 1) with the owner to set, e.g. `entrypoint: /state is owned by root, not app (uid 1654)`: it never
+changes a host path's owner for you. **A right owner with a mode wider than the table** (say `/state` at `0755`, which
+would let `agent` read it) is narrowed to the table's mode, and the log says `/state had mode 755, now 700`. Read it
+with `docker logs`, fix the owner, and start it again.
 
 ## Reaching it
 
