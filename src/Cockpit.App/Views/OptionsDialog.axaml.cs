@@ -7,7 +7,6 @@ using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.Converters;
 using Cockpit.App.Services;
@@ -65,11 +64,7 @@ public partial class OptionsDialog : Window
         _AddHelpHints();
         CategoryNav.SelectionChanged += (_, _) =>
         {
-            Dispatcher.UIThread.Post(async () =>
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                _EnsurePluginContent();
-            }, DispatcherPriority.Background);
+            _EnsurePluginContent();
             _ApplySearch(_searchCockpit?.OptionsSearchText);
         };
         DataContextChanged += (_, _) => _WireSearch();
