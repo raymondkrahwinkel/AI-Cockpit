@@ -179,7 +179,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         CancellationToken cancellationToken = default)
     {
         // AC-1473: the same lock as the admin API's profile routes, so neither save loses the other's change.
-        await Task.CompletedTask;
+        await ProfileEdits.Gate.WaitAsync(cancellationToken);
         try
         {
             var profiles = await _profileStore.LoadAsync(cancellationToken);
@@ -223,7 +223,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
         finally
         {
-
+            ProfileEdits.Gate.Release();
         }
     }
 
@@ -244,7 +244,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         CancellationToken cancellationToken = default)
     {
         // AC-1473: the same lock as the admin API's profile routes, so neither save loses the other's change.
-        await Task.CompletedTask;
+        await ProfileEdits.Gate.WaitAsync(cancellationToken);
         try
         {
             var trimmedLabel = _OrNull(label ?? string.Empty)
@@ -284,7 +284,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
         finally
         {
-
+            ProfileEdits.Gate.Release();
         }
     }
 
