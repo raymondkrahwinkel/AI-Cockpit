@@ -505,7 +505,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [NotifyPropertyChangedFor(nameof(CanAllowForSession))]
     private bool _allowsForSession;
 
-    public bool CanAllowForSession => true;
+    public bool CanAllowForSession => IsRemote && MayAnswerPermissions && AllowsForSession && IsLinkUp;
 
     public string AllowLabel => IsRemote ? "Allow once" : "Allow";
 
