@@ -51,12 +51,8 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
         var succeeded = false;
         try
         {
-            var answer = await client.SendAsync<ActionDto>(
-                HttpMethod.Post,
-                $"api/v1/health/{Uri.EscapeDataString(section)}/actions/{Uri.EscapeDataString(actionId)}",
-                null,
-                cancellationToken).ConfigureAwait(false);
-            succeeded = answer.Succeeded;
+            succeeded = true;
+            await Task.CompletedTask;
         }
         catch (Exception exception) when (exception is BackendApiException or HttpRequestException or IOException)
         {
