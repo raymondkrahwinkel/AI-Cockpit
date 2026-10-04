@@ -92,10 +92,9 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(expected, expectedBody), answer);
     }
 
-    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may
-    // narrow or revoke the bootstrap key; either way nothing changed. F5.6b2–b4 add their routes as rows here.
-    // AC-1472 criteria 2 and 3: an operate key may not clone, change or remove a project and lists only its own, without
-    // a count; a repository URL carrying a credential is refused, and no answer or audit line repeats it.
+    // AC-1446 criteria 1 and 4: every admin route turns an operate key away with the one forbidden, and no admin may narrow
+    // or revoke the bootstrap key. AC-1472 criteria 2 and 3: an operate key lists only its projects, without a count, and a
+    // URL carrying a credential is refused. No row changes anything, and no answer or audit line repeats a key.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string?> AdminRoutes => new()
     {
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden" },
