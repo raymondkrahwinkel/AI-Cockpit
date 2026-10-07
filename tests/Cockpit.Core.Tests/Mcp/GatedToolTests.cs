@@ -52,16 +52,16 @@ public class GatedToolTests
 
         var result = await tool.InvokeAsync();
 
-        Assert.Equal("hello", result);
+        Assert.Equal("hello\nmail", result);
     }
 
-    // What McpClientTool hands back for a result of several content blocks (AC-1492).
+    // What McpClientTool hands back for a tool's output with inbox mail piggybacked on it (AC-1492).
     private sealed class ContentListTool : AIFunction
     {
         public override string Name => "contentList";
 
         protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
-            new(new AIContent[] { new TextContent("hello") });
+            new(new AIContent[] { new TextContent("hello"), new TextContent("mail") });
     }
 
     private static HttpClientTransport _TransportTo(InProcessMcpHttpServer server) =>
