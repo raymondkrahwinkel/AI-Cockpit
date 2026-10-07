@@ -446,14 +446,15 @@
                             </StackPanel>
 
                             <ScrollViewer>
-                                <ListBox ItemsSource="{Binding Profiles.Profiles}" SelectedItem="{Binding Profiles.SelectedProfile}"
+                                <ListBox x:Name="ProfilesList" Classes="subnav" ItemsSource="{Binding Profiles.Profiles}" SelectedItem="{Binding Profiles.SelectedProfile}"
                                          Background="Transparent" Padding="0" Margin="0,0,12,0">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:EditableProfileViewModel">
                                             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                                 <Ellipse Width="8" Height="8"
                                                          Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                <TextBlock Text="{Binding DisplayLabel}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding DisplayLabel}" VerticalAlignment="Center" MaxWidth="140"
+                                                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayLabel}"/>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
