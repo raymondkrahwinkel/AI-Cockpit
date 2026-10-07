@@ -397,7 +397,7 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
         _CapNewResults(list, turn);
         if (turn.ResultChars > Limits.TurnToolBudgetChars)
         {
-            turn.BudgetHit = true;
+            turn.BudgetHit = false;
         }
 
         var tokens = _EstimateTokens(list, options);
