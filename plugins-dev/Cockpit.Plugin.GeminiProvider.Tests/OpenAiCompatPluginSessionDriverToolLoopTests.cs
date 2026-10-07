@@ -73,7 +73,7 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
     }
 
     [Fact]
-    public async Task SendUserMessage_WhenTheModelStopsOnAnAnnouncement_GetsAtMostTwoContinuationRounds()
+    public async Task SendUserMessage_WhenTheModelStopsOnAnAnnouncement_GetsAtMostOneContinuationRound()
     {
         var sent = new List<List<ChatMessage>>();
         var chatClient = Substitute.For<IChatClient>();
@@ -86,9 +86,9 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
 
         // AC-1431 criterion 2: an announcement without a tool call or the end-of-turn marker is nudged on within the
-        // same turn, and a model that never finishes gets exactly two nudges: the tool round, its answer, then two more.
-        Assert.Equal(4, sent.Count);
-        Assert.Equal(2, sent[^1].Count(message => message.Role == ChatRole.User && message.Text == ChatTurnLoop.ContinuationNudge));
+        // same turn, and a model that never finishes gets exactly one nudge (AC-1489): the tool round, its answer, one more.
+        Assert.Equal(3, sent.Count);
+        Assert.Single(sent[^1], message => message.Role == ChatRole.User && message.Text == ChatTurnLoop.ContinuationNudge);
         Assert.Contains(ChatTurnLoop.CompletionMarker, sent[0][0].Text);
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }

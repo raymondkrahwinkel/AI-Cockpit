@@ -14,8 +14,6 @@ internal static class ChatTurnLoop
     // Explicit rather than the library default, so a model that keeps calling tools cannot loop without end.
     internal const int MaxToolIterations = 40;
 
-    internal const int MaxContinuations = 2;
-
     internal const int MaxTransportRetries = 2;
 
     internal const string CompletionMarker = "[turn complete]";
@@ -59,6 +57,7 @@ internal static class ChatTurnLoop
         logger ??= NullLogger.Instance;
         _TrimOldToolResults(history);
         var guard = agent.GetService<ContextGuardChatClient>();
+        var limits = guard?.Limits ?? ChatTurnLimits.Default;
         guard?.BeginTurn();
         var turnText = new StringBuilder();
         var toolRounds = 0;
@@ -74,9 +73,11 @@ internal static class ChatTurnLoop
                 logger.LogWarning("Chat turn round {Round} was cut off by the output-token limit (finish_reason length).", continuation + 1);
             }
 
+            // A reply without a tool call ends the turn; the marker is only a net for a model that stops on an
+            // announcement after using tools. A turn the guard already wound down is never nudged back on (AC-1489).
             var endedEarly = round.FinishReason == ChatFinishReason.Length
                 || (options.Tools is { Count: > 0 } && toolRounds > 0 && !round.Text.Contains(CompletionMarker, StringComparison.OrdinalIgnoreCase));
-            if (!endedEarly || continuation == MaxContinuations)
+            if (!endedEarly || continuation >= limits.MaxContinuations || guard?.Turn.WoundDown == true)
             {
                 guard?.LogTurn(logger);
                 return new ChatTurnOutcome(turnText.ToString(), round.FinishReason, toolRounds, continuation);
@@ -315,6 +316,8 @@ internal sealed record ChatTurnLimits
     public int ReserveTokens { get; init; } = 20_000;
 
     public int ProtectRecentTokens { get; init; } = 40_000;
+
+    public int MaxContinuations { get; init; } = 1;
 
     // A missing field keeps its default; a `turnLimits` that does not parse keeps them all rather than failing the session.
     internal static ChatTurnLimits From(JsonElement? json, ILogger? logger = null)
