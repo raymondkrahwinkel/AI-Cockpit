@@ -19,12 +19,8 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
 {
     public IPluginSessionDriver Create(string configJson)
     {
-        // AC-1491: a profile saved without its settings fails here by name, not later as a model error mid-turn.
-        var config = string.IsNullOrWhiteSpace(configJson) ? null : JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions);
-        if (config is null || string.IsNullOrWhiteSpace(config.Model))
-        {
-            throw new InvalidOperationException("No model is set on this profile: pick one in Options → Profiles.");
-        }
+        var config = JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions)
+            ?? throw new InvalidOperationException("The Gemini/OpenAI provider config JSON did not deserialize.");
 
         var logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.GeminiProvider");
         var options = BuildClientOptions(config, logger);
