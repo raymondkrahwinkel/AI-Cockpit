@@ -93,6 +93,78 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
+    [Fact]
+    public async Task SendUserMessage_WithLargeToolResults_CapsEachOne_AndPrunesOlderOnesBelowTheContextLimit_KeepingEveryCallWithItsResult()
+    {
+        var limits = new ChatTurnLimits { ContextWindowTokens = 50_000, SoftLimitRatio = 0.5, ReserveTokens = 20_000, ProtectRecentTokens = 15_000 };
+        var bigResult = string.Concat(Enumerable.Repeat(new string('x', 99) + "\n", 1024));
+        var requests = new List<(List<ChatMessage> Messages, List<string> Results, long Chars)>();
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => requests.Add(_Snapshot(messages))), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("read_a"), _ToolCall("read_b"), _ToolCall("read_c"), _Stream("read all three. [turn complete]"));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5", turnLimits: limits);
+        await _StartWithToolsetAsync(driver, new FakeToolset(["read_a", "read_b", "read_c"], reachable: ["read_a", "read_b", "read_c"], result: bigResult));
+
+        await driver.SendUserMessageAsync("read the three files");
+        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+
+        // AC-1489 criterion 1: the very next request carries the 100 KiB result cut to 50 KiB, with the cut line.
+        var firstResult = Assert.Single(requests[1].Results);
+        Assert.StartsWith(bigResult[..51_200], firstResult);
+        Assert.Contains($"[cockpit: output cut at 51200 of {bigResult.Length} chars", firstResult);
+        Assert.InRange(firstResult.Length, 51_200, 51_400);
+
+        // Criterion 2: past the soft limit older results are pruned and the newest stays whole, so no request reaches
+        // the hard limit; the system prompt and the task are untouched, and every call still has its result.
+        var last = requests[^1];
+        Assert.All(last.Results.Take(2), result => Assert.Contains("[cleared by cockpit to stay within the context", result));
+        Assert.StartsWith(bigResult[..51_200], last.Results[2]);
+        Assert.All(requests, request => Assert.InRange(request.Chars / 4, 0, limits.ContextWindowTokens - limits.ReserveTokens));
+        Assert.Equal(["system", "user"], last.Messages.Take(2).Select(message => message.Role.Value));
+        Assert.Equal("read the three files", last.Messages[1].Text);
+        Assert.All(requests, request => Assert.Equal(
+            request.Messages.SelectMany(message => message.Contents).OfType<FunctionCallContent>().Select(call => call.CallId),
+            request.Messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Select(result => result.CallId)));
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheModelKeepsCallingTools_DropsTheToolsOnceTheBudgetIsUsedUp_AndEndsTheTurnWithoutANudge()
+    {
+        var requests = new List<(List<ChatMessage> Messages, ChatOptions? Options)>();
+        var callCount = 0;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var options = call.ArgAt<ChatOptions?>(1);
+                requests.Add(([.. call.ArgAt<IEnumerable<ChatMessage>>(0)], options));
+                return options?.Tools is null ? _Stream("Read three files; the rest is left.") : _ToolCall("read", $"call_{++callCount}");
+            });
+        var toolset = new FakeToolset(["read"], reachable: ["read"], result: new string('x', 1000));
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5", turnLimits: new ChatTurnLimits { TurnToolBudgetChars = 2_500 });
+        await _StartWithToolsetAsync(driver, toolset);
+
+        await driver.SendUserMessageAsync("read every file in the repo");
+        var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+
+        // AC-1489 criterion 3: three results pass the 2500-char budget, so the fourth request goes without tools and
+        // with the wrap-up note; its text ends the turn even without the marker, because a wound-down turn gets no nudge.
+        Assert.Equal(3, toolset.Calls.Count);
+        Assert.Equal(4, requests.Count);
+        Assert.Null(requests[^1].Options?.Tools);
+        Assert.Equal(ContextGuardChatClient.BudgetNote, requests[^1].Messages[^1].Text);
+        Assert.DoesNotContain(requests.SelectMany(request => request.Messages), message => message.Text == ChatTurnLoop.ContinuationNudge);
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+    }
+
+    // What a request held at the moment it went out: the guard shortens results in place afterwards.
+    private static (List<ChatMessage> Messages, List<string> Results, long Chars) _Snapshot(IEnumerable<ChatMessage> messages)
+    {
+        List<ChatMessage> list = [.. messages];
+        List<string> results = [.. list.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Select(result => result.Result?.ToString() ?? string.Empty)];
+        return (list, results, list.Sum(message => (long)message.Text.Length) + results.Sum(result => (long)result.Length));
+    }
+
     private static async IAsyncEnumerable<ChatResponseUpdate> _DropConnection(string partial)
     {
         yield return new ChatResponseUpdate(ChatRole.Assistant, partial);
@@ -131,12 +203,14 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         await Task.CompletedTask;
     }
 
-    private static async IAsyncEnumerable<ChatResponseUpdate> _ToolCall(string name, params (string Key, object? Value)[] args)
+    private static IAsyncEnumerable<ChatResponseUpdate> _ToolCall(string name, params (string Key, object? Value)[] args) => _ToolCall(name, $"call_{name}", args);
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _ToolCall(string name, string callId, params (string Key, object? Value)[] args)
     {
         yield return new ChatResponseUpdate
         {
             Role = ChatRole.Assistant,
-            Contents = [new FunctionCallContent($"call_{name}", name, args.ToDictionary(pair => pair.Key, pair => pair.Value))],
+            Contents = [new FunctionCallContent(callId, name, args.ToDictionary(pair => pair.Key, pair => pair.Value))],
         };
 
         await Task.CompletedTask;
