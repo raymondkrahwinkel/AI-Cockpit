@@ -170,9 +170,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     // AC-713: dispatches `Login` to whichever provider plugin this row's profile names.
     private readonly ISessionLoginFlows? _loginStarter;
 
-    // The plugin config this row was loaded with — handed back by `ToProfile` whenever the panel cannot produce one
-    // (unresolvable plugin, or a panel that does not validate yet), so its `ConfigJson` is never dropped (AC-1491).
-    private readonly PluginProviderConfig? _storedPluginConfig;
+    // Carried through `ToProfile` unchanged so an orphaned profile never loses its `ProviderId`/`ConfigJson` (and
+    // therefore any API key inside it) just because nothing could build a `PluginConfigView` for it.
+    private readonly PluginProviderConfig? _orphanedPluginConfig;
 
     // Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
     // (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
@@ -610,7 +610,13 @@ public partial class EditableProfileViewModel : ViewModelBase
             _selectedProvider = Providers.FirstOrDefault(option => option.Value == SessionProvider.Plugin && option.PluginProviderId == pluginConfig.ProviderId)
                 ?? new SessionProviderOption($"Plugin ({pluginConfig.ProviderId})", SessionProvider.Plugin, pluginConfig.ProviderId);
             _pluginConfigView = _TryCreateConfigView(pluginConfigViews?.Find(pluginConfig.ProviderId), pluginConfig.ConfigJson);
-            _storedPluginConfig = pluginConfig;
+
+            // The provider plugin is not resolvable (removed/disabled/failed to load) — keep the raw config
+            // so ToProfile can hand it back unchanged instead of collapsing to null (#45 review finding 1).
+            if (_pluginConfigView is null)
+            {
+                _orphanedPluginConfig = pluginConfig;
+            }
         }
         else
         {
@@ -734,11 +740,11 @@ public partial class EditableProfileViewModel : ViewModelBase
                 return new PluginProviderConfig(SelectedProvider.PluginProviderId ?? string.Empty, configJson);
             }
 
-            // AC-1491: no panel, or one not filled in yet — the stored config if it is this provider's, else an empty
-            // one. Never a throw: CanStartLogin and the Options fingerprint read this, and IsValid still refuses a save.
-            return _storedPluginConfig is { } stored && stored.ProviderId == SelectedProvider.PluginProviderId
-                ? stored
-                : new PluginProviderConfig(SelectedProvider.PluginProviderId ?? string.Empty, string.Empty);
+            // No config view to serialize (the provider plugin is not resolvable) — hand back the profile's original
+            // config untouched rather than null, so a save/remove of some other row never silently wipes this orphaned
+            // profile's ProviderId/ConfigJson (and any API key inside it).
+            return _orphanedPluginConfig
+                ?? throw new InvalidOperationException("Plugin provider selected with neither a config view nor an orphaned config to fall back to.");
         }
 
         return SelectedProvider.Value switch
