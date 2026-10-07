@@ -61,6 +61,15 @@ public static class DependencyInjection
             () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled,
             AlwaysMounted: true));
 
+        // cockpit-coding and cockpit-coding-shell (AC-1489): bounded read/glob/grep/edit/write and a synchronous shell,
+        // confined to the calling pane's working directory. Tickable, not AlwaysMounted: a coding profile opts in; the
+        // shell also stays behind the shell-access master switch, so this route cannot open what the operator closed.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-coding", typeof(CodingTools)));
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-coding-shell",
+            typeof(Shell.CodingShellTools),
+            () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled));
+
         // cockpit-agents (AC-391, AC-392): agent-to-agent communication — list_agents, notify/read_inbox.
         // AlwaysMounted because it is a delivery route, not a capability to opt into: when it was tickable, a
         // profile with any saved MCP selection could silently miss it, so a message could be sent but unreadable.
