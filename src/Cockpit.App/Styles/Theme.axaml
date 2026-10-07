@@ -1599,7 +1599,7 @@
     <Style Selector="ListBox.subnav ListBoxItem:selected /template/ Border#Accent">
         <Setter Property="IsVisible" Value="True"/>
     </Style>
-    <Style Selector="ListBox.subnav ListBoxItem:focus-visible /template/ Border#ItemBg">
+    <Style Selector="ListBox.subnav ListBoxItem:focus /template/ Border#ItemBg">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
     </Style>

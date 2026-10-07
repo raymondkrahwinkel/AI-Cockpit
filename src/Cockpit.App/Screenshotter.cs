@@ -215,6 +215,7 @@ internal static class Screenshotter
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
+        ["options-profiles-focus"] = (_, _) => _OptionsProfilesPage(focusProfile: true),
         // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
@@ -1297,6 +1298,9 @@ internal static class Screenshotter
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
+        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+            ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
+        profileList.SelectedItem = profiles.SelectedProfile;
 
         return dialog;
     }
@@ -1318,13 +1322,36 @@ internal static class Screenshotter
     // AC-1019: Options dialog on the Profiles category, at a resting height (700) well short of the selected
     // profile's detail form — the same design-time sample ManageProfilesDialogViewModel's own constructor seeds,
     // so the list has one entry and the detail column is the full IDENTITY..ENVIRONMENT VARIABLES form.
-    private static OptionsDialog _OptionsProfilesPage()
+    private static OptionsDialog _OptionsProfilesPage(bool focusProfile = false)
     {
-        var cockpit = new ViewModels.CockpitViewModel { Profiles = new ViewModels.ManageProfilesDialogViewModel() };
+        var profiles = new ViewModels.ManageProfilesDialogViewModel();
+        profiles.Profiles.Clear();
+        foreach (var label in new[]
+        {
+            "local",
+            "Hetzner Inference",
+            "Qwen2.5-Coder:7b",
+            "qwen3-coder:30b",
+        })
+        {
+            profiles.Profiles.Add(new ViewModels.EditableProfileViewModel(
+                new SessionProfile(label, new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null)),
+                isLoggedIn: true));
+        }
+
+        profiles.SelectedProfile = profiles.Profiles[2];
+        var cockpit = new ViewModels.CockpitViewModel { Profiles = profiles };
         var dialog = new OptionsDialog { DataContext = cockpit, Height = 700 };
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
+        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+            ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
+        profileList.SelectedItem = profiles.SelectedProfile;
+        if (focusProfile)
+        {
+            dialog.Opened += (_, _) => profileList.ContainerFromIndex(1)?.Focus();
+        }
 
         return dialog;
     }

@@ -72,7 +72,7 @@
                 <Button DockPanel.Dock="Bottom" Content="+ Add profile" Classes="Subtle" Margin="8"
                         HorizontalAlignment="Left" Foreground="{DynamicResource CockpitAccentBrush}"
                         Command="{Binding AddProfileCommand}"/>
-                <ListBox Classes="subnav" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                <ListBox x:Name="ProfilesList" Classes="subnav" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                           Background="Transparent" Margin="4">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:EditableProfileViewModel">
