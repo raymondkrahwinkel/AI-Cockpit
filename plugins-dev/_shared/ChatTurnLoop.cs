@@ -461,7 +461,7 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     // The head of `text` within both the character and the line cap, never splitting a surrogate pair.
     private string _Cut(string text)
     {
-        var length = text.Length;
+        var length = Math.Min(text.Length, Limits.MaxToolResultChars);
         var lines = 0;
         for (var index = 0; index < length; index++)
         {
