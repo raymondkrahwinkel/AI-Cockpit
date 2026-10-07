@@ -8,8 +8,8 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;

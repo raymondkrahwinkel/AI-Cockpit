@@ -170,8 +170,8 @@ public partial class EditableProfileViewModel : ViewModelBase
     // AC-713: dispatches `Login` to whichever provider plugin this row's profile names.
     private readonly ISessionLoginFlows? _loginStarter;
 
-    // The plugin config this row was loaded with — handed back by `ToProfile` whenever the panel cannot produce one
-    // (unresolvable plugin, or a panel that does not validate yet), so its `ConfigJson` is never dropped (AC-1491).
+    // The plugin config this row was loaded with — handed back by `ToProfile` while that provider is still selected and
+    // its panel cannot produce one (unresolvable plugin, or not filled in), so its `ConfigJson` is never dropped (AC-1491).
     private readonly PluginProviderConfig? _storedPluginConfig;
 
     // Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable

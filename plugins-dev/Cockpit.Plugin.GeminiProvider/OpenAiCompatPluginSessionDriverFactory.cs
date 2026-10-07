@@ -23,7 +23,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
         var config = string.IsNullOrWhiteSpace(configJson) ? null : JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions);
         if (config is null || string.IsNullOrWhiteSpace(config.Model))
         {
-            throw new InvalidOperationException("No model is set on this profile: pick one in Options → Profiles.");
+            throw new InvalidOperationException("No model is set on this profile: pick one in its provider settings.");
         }
 
         var logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.GeminiProvider");
