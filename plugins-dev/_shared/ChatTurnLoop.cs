@@ -484,7 +484,7 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     // the prompt in the measured failure (DEP-234). Add a summary call once a measured session shows pruning falls short.
     private long _Prune(IList<ChatMessage> messages, TurnGuardState turn)
     {
-        var protectedChars = long.MaxValue;
+        var protectedChars = (long)Limits.ProtectRecentTokens * CharsPerToken;
         var seen = 0L;
         var pruned = 0L;
         foreach (var result in messages.Reverse().SelectMany(message => message.Contents.Reverse()).OfType<FunctionResultContent>())
