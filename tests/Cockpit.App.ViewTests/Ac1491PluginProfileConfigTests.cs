@@ -88,18 +88,30 @@ public class Ac1491PluginProfileConfigTests
     });
 
     // A row that starts on a provider without a panel kept that config as its fallback; after a switch to OpenAI it
-    // handed Claude's config back for a row the editor shows as OpenAI.
+    // handed Claude's config back for a row the editor shows as OpenAI. Then filled in, applied and reopened.
     [Fact]
-    public void ARowSwitchedToOpenAi_NeverReportsThePreviousProvidersConfig() => HeadlessAvalonia.Run(() =>
+    public Task ARowSwitchedToOpenAi_NeverReportsThePreviousProvidersConfig() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var dialog = _Dialog(new _MemoryStore(), claudeHasPanel: false);
+        var store = new _MemoryStore();
+        var dialog = _Dialog(store, claudeHasPanel: false);
         dialog.AddProfileCommand.Execute(null);
         var row = dialog.Profiles[0];
         row.SelectedProvider = row.Providers.First(option => option.PluginProviderId == ProviderId);
 
-        var config = Assert.IsType<PluginProviderConfig>(row.ToProfile().ProviderConfig);
-        Assert.Equal(ProviderId, config.ProviderId);
+        Assert.Equal(ProviderId, Assert.IsType<PluginProviderConfig>(row.ToProfile().ProviderConfig).ProviderId);
         Assert.False(row.IsValid);
+
+        var view = Assert.IsType<_ConfigView>(row.PluginConfigView);
+        view.Model.Text = "qwen3-27b";
+        view.BaseUrl.Text = "https://inference.example/v1";
+        Assert.True(await dialog.PersistAsync());
+
+        var reopened = _Dialog(store, claudeHasPanel: false);
+        await reopened.LoadAsync();
+        var config = Assert.IsType<PluginProviderConfig>(Assert.Single(reopened.Profiles).ToProfile().ProviderConfig);
+        using var json = JsonDocument.Parse(config.ConfigJson);
+        Assert.Equal(ProviderId, config.ProviderId);
+        Assert.Equal("qwen3-27b", json.RootElement.GetProperty("Model").GetString());
     });
 
     private static ManageProfilesDialogViewModel _Dialog(ISessionProfileStore store, bool claudeHasPanel = true)
