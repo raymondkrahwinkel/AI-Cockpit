@@ -255,7 +255,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         }
 
         var full = Path.GetFullPath(Path.Combine(root, relative));
-        if (_LinksOutside(full, root))
+        if (!_IsUnder(full, root) || _LinksOutside(full, root))
         {
             error = $"Error: {relative} is outside your working directory ({root}).";
             return false;
