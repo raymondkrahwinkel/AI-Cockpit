@@ -30,9 +30,9 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
         try
         {
             var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
-            var content = _TextOf(result);
+            var content = result?.ToString() ?? string.Empty;
             var visibleContent = _ReportResult(toolUseId, content, isError: false);
-            return visibleContent == content && result is not (IEnumerable<AIContent> or DataContent) ? result : visibleContent;
+            return visibleContent == content ? result : visibleContent;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -43,15 +43,6 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
             return _ReportResult(toolUseId, message, isError: true);
         }
     }
-
-    // AC-1492: an MCP result with more than one content block (a tool's output plus piggybacked inbox mail) comes
-    // back as AIContent[], whose ToString is its type name. Every caller downstream only handles text.
-    private static string _TextOf(object? result) => result switch
-    {
-        IEnumerable<AIContent> contents => string.Join("\n", contents.Select(_TextOf)),
-        DataContent data => $"[{data.MediaType} content, {data.Data.Length} bytes]",
-        _ => result?.ToString() ?? string.Empty,
-    };
 
     private string _ReportResult(string toolUseId, string content, bool isError)
     {
