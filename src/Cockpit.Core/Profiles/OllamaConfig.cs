@@ -1,6 +1,8 @@
+using System.Text.Json;
+
 namespace Cockpit.Core.Profiles;
 
-// Connection settings for an Ollama profile: its OpenAI-compatible server and the model to run.
-// `BaseUrl`: server base URL, e.g. `http://localhost:11434`. `Model`: id as reported by `/v1/models`.
+// Connection settings for an Ollama profile. `BaseUrl`: e.g. `http://localhost:11434`. `Model`: id from `/v1/models`.
 // `SystemPrompt`: optional base system prompt sent as the first message of every conversation for this profile.
-public sealed record OllamaConfig(string BaseUrl, string Model, string? SystemPrompt = null) : ProviderConfig(SessionProvider.Ollama);
+// `TurnLimits`: optional bounds for the chat turn's context guard (AC-1489), opaque here; absent means its defaults.
+public sealed record OllamaConfig(string BaseUrl, string Model, string? SystemPrompt = null, JsonElement? TurnLimits = null) : ProviderConfig(SessionProvider.Ollama);

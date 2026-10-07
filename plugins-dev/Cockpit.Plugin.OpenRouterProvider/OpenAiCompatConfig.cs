@@ -3,9 +3,10 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
-// AC-806: this plugin's own provider config, never seen by the host — only (de)serialized here via the
-// opaque `ConfigJson` the host round-trips. `Model` carries OpenRouter's `vendor/model` notation verbatim.
-internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl)
+// AC-806: this plugin's own provider config, never seen by the host — only (de)serialized here via the opaque
+// `ConfigJson` the host round-trips. `Model` carries OpenRouter's `vendor/model` notation verbatim. `TurnLimits`
+// (AC-1489) bounds the driver's turns; opaque here, so the config view carries it through a save untouched.
+internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, JsonElement? TurnLimits = null)
 {
     // Case-insensitive property matching on deserialize — the two call sites (this plugin's own view and
     // driver factory) always agree on casing already, but a config JSON that ends up hand-edited in

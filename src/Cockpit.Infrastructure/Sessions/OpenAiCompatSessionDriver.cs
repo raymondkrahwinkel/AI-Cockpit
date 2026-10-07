@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.Globalization;
+using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -98,12 +99,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         _sessionId = Guid.NewGuid().ToString();
 
-        // AC-192: .Use* registration order = outer→inner, so below is UseFunctionInvocation (outer) →
-        // HermesToolCallChatClient (middle) → model client (inner). The Hermes shim turns local-model text
-        // tool-calls into structured FunctionCallContent before UseFunctionInvocation sees them; already-structured calls pass through.
+        // AC-192: .Use* registration order = outer→inner: UseFunctionInvocation (outer) → HermesToolCallChatClient →
+        // the context guard (AC-1489) → model client (inner). The Hermes shim turns local-model text tool-calls into
+        // structured FunctionCallContent before UseFunctionInvocation sees them; already-structured calls pass through.
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
             .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
             .Use(inner => new HermesToolCallChatClient(inner))
+            .Use(inner => new ContextGuardChatClient(inner, ChatTurnLimits.From(_TurnLimitsFrom(config), _logger), _logger))
             .Build();
         // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
         // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
@@ -511,6 +513,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         OllamaConfig ollama => ollama.Model,
         LmStudioConfig lmStudio => lmStudio.Model,
+        _ => null,
+    };
+
+    private static JsonElement? _TurnLimitsFrom(ProviderConfig config) => config switch
+    {
+        OllamaConfig ollama => ollama.TurnLimits,
+        LmStudioConfig lmStudio => lmStudio.TurnLimits,
         _ => null,
     };
 

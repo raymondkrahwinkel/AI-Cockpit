@@ -17,6 +17,9 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private readonly string _defaultBaseUrl;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
+
+    // AC-1489: no field of its own; kept from the loaded config so a save does not drop it.
+    private readonly JsonElement? _turnLimits;
     private readonly TextBox _timeoutSeconds;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
@@ -47,6 +50,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             IsTextCompletionEnabled = false,
         };
         _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl };
+        _turnLimits = existing?.TurnLimits;
         _timeoutSeconds = new TextBox
         {
             Text = existing?.TimeoutSeconds?.ToString() ?? string.Empty,
@@ -98,7 +102,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds, _turnLimits));
         return true;
     }
 

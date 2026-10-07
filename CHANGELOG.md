@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: two MCP servers for a coding profile on an OpenAI-compatible provider: `cockpit-coding` (read with
+  offset/limit, glob, grep, edit, write) and `cockpit-coding-shell` (one PowerShell or bash command, synchronous).
+  Both stay inside the session's working directory; tick them in the profile's MCP checklist, and untick
+  `filesystem` to keep whole-file reads out of the session. The shell needs shell access switched on in Options.
 - added: the server image now has `curl`, so a flow's agent can call an HTTP API from its prompt.
 - added: a Workflows step's Working directory can name a variable of the server's environment (`$NAME` or `${NAME}`),
   so one flow runs on the desktop and on the headless server; an unset variable fails the step and names it.
@@ -41,6 +45,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an OpenAI-compatible session no longer fails with "maximum context length" after reading many large files in
+  one turn. Each tool result is cut at 50 KiB or 2000 lines, older results are shortened once the conversation nears
+  the model's context, and a turn that uses up its tool budget is asked to wrap up. The bounds are set per profile
+  under `turnLimits` in the provider config, e.g. `"turnLimits": { "contextWindowTokens": 262144 }`.
 - fixed: an update now waits until every Cockpit instance from this installation has closed, protecting running binaries.
 - fixed: a server now refuses a state with encrypted credentials before it starts; protect its unencrypted state volume
   through the host and volume controls instead.
@@ -51,6 +59,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: an OpenAI-compatible session (Gemini/OpenAI, GitHub Models, Grok, OpenRouter, Ollama, LM Studio) ends its
+  turn when the model answers without a tool call, and nudges a model that stops on an announcement once instead of
+  twice. A profile can set `turnLimits.maxContinuations` in its provider config to change that.
 - changed: the Autopilot workspace and its settings reach the runs, the plan, the queue, the history and the templates
   only over Autopilot's own plugin channel, the first step to running Autopilot's backend on a server without a window.
   What you see and click is unchanged. Needs Cockpit 0.86.0; Autopilot 0.24.3.

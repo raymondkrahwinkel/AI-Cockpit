@@ -8,7 +8,9 @@ namespace Cockpit.Plugin.GitHubModelsProvider;
 // opaque `ConfigJson` the host round-trips (#45/#63). `ApiKey` holds a GitHub personal
 // access token (models:read scope) for this plugin, not a vendor API key — the field is named the same as
 // the Gemini/OpenAI plugin's config so both driver/factory reuse the identical shape.
-internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl)
+// AC-1489: `TurnLimits` is the optional `turnLimits` object the driver bounds its turns with; opaque here, so the
+// config view carries it through a save untouched.
+internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, JsonElement? TurnLimits = null)
 {
     // Case-insensitive property matching on deserialize — the two call sites (this plugin's own view and
     // driver factory) always agree on casing already, but a config JSON that ends up hand-edited in
