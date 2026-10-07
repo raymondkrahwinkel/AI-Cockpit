@@ -45,6 +45,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: picking OpenAI (or another plugin provider) for a new profile no longer shows an exception under the provider
+  picker, Remove on that half-filled profile no longer crashes the cockpit, and a profile keeps the provider settings
+  it was loaded with until its settings panel is filled in. A Gemini/OpenAI profile without a model now says so when
+  a session starts.
 - fixed: an OpenAI-compatible session no longer fails with "maximum context length" after reading many large files in
   one turn. Each tool result is cut at 50 KiB or 2000 lines, older results are shortened once the conversation nears
   the model's context, and a turn that uses up its tool budget is asked to wrap up. The bounds are set per profile
