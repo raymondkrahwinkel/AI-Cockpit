@@ -72,14 +72,15 @@
                 <Button DockPanel.Dock="Bottom" Content="+ Add profile" Classes="Subtle" Margin="8"
                         HorizontalAlignment="Left" Foreground="{DynamicResource CockpitAccentBrush}"
                         Command="{Binding AddProfileCommand}"/>
-                <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
-                         Background="Transparent" Margin="4">
+                <ListBox Classes="subnav" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                          Background="Transparent" Margin="4">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:EditableProfileViewModel">
                             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                 <Ellipse Width="8" Height="8"
                                          Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                <TextBlock Text="{Binding DisplayLabel}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding DisplayLabel}" VerticalAlignment="Center" MaxWidth="140"
+                                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayLabel}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
