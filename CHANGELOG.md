@@ -45,6 +45,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: on an OpenAI-compatible provider (a plugin provider, Ollama or LM Studio), a tool result that carried waiting
+  inbox mail, such as `run_status` after `start_run`, reached the model as `Microsoft.Extensions.AI.AIContent[]`
+  instead of the output. The model now gets the text of every part.
 - fixed: picking OpenAI (or another plugin provider) for a new profile no longer shows an exception under the provider
   picker, Remove on that half-filled profile no longer crashes the cockpit, and a profile keeps the provider settings
   it was loaded with until its settings panel is filled in. A Gemini/OpenAI profile without a model now says so when
