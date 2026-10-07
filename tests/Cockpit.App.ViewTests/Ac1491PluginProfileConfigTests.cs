@@ -87,7 +87,22 @@ public class Ac1491PluginProfileConfigTests
         }
     });
 
-    private static ManageProfilesDialogViewModel _Dialog(ISessionProfileStore store)
+    // A row that starts on a provider without a panel kept that config as its fallback; after a switch to OpenAI it
+    // handed Claude's config back for a row the editor shows as OpenAI.
+    [Fact]
+    public void ARowSwitchedToOpenAi_NeverReportsThePreviousProvidersConfig() => HeadlessAvalonia.Run(() =>
+    {
+        var dialog = _Dialog(new _MemoryStore(), claudeHasPanel: false);
+        dialog.AddProfileCommand.Execute(null);
+        var row = dialog.Profiles[0];
+        row.SelectedProvider = row.Providers.First(option => option.PluginProviderId == ProviderId);
+
+        var config = Assert.IsType<PluginProviderConfig>(row.ToProfile().ProviderConfig);
+        Assert.Equal(ProviderId, config.ProviderId);
+        Assert.False(row.IsValid);
+    });
+
+    private static ManageProfilesDialogViewModel _Dialog(ISessionProfileStore store, bool claudeHasPanel = true)
     {
         // Claude too, with a panel of its own as in the app: a new row starts on Claude, and that panel is what leaves
         // the row with no config to fall back to once the operator switches to OpenAI.
@@ -108,7 +123,10 @@ public class Ac1491PluginProfileConfigTests
 
         var views = new PluginProviderConfigViews();
         views.Register(ProviderId, existing => new _ConfigView(existing));
-        views.Register(ClaudePluginProfile.ProviderId, _ => new _ConfigView("""{"Model":"sonnet","BaseUrl":"-"}"""));
+        if (claudeHasPanel)
+        {
+            views.Register(ClaudePluginProfile.ProviderId, _ => new _ConfigView("""{"Model":"sonnet","BaseUrl":"-"}"""));
+        }
 
         // The real login flows: their CanStartLogin is what evaluated ToProfile() on every provider change.
         var loginFlows = Substitute.For<ISessionLoginFlows>();
