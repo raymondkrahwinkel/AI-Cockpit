@@ -68,6 +68,11 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
             last = total;
         }
 
+        if (total == 0)
+        {
+            return "(End of file — 0 lines)";
+        }
+
         if (start > total)
         {
             return $"Error: offset {start} is past the end of the file ({total} lines).";
@@ -94,7 +99,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         var matcher = new Matcher(_PathComparison).AddInclude(pattern);
         var files = (await _ListFilesAsync(root).ConfigureAwait(false))
             .Select(file => Path.GetFullPath(Path.Combine(root, file)))
-            .Where(file => _IsUnder(file, directory))
+            .Where(file => _IsUnder(file, directory) && File.Exists(file))
             .Select(file => Path.GetRelativePath(directory, file).Replace('\\', '/'))
             .Where(file => matcher.Match(file).HasMatches)
             .ToList();
@@ -131,7 +136,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         {
             var full = Path.GetFullPath(Path.Combine(root, file));
             var relative = file.Replace('\\', '/');
-            if (!_IsUnder(full, directory) || matcher?.Match(relative).HasMatches == false || !_IsSearchable(full))
+            if (!_IsUnder(full, directory) || matcher?.Match(relative).HasMatches == false || _LinksOutside(full, root) || !_IsSearchable(full))
             {
                 continue;
             }
@@ -323,20 +328,20 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         return !head[..read].Contains((byte)0);
     }
 
-    // The files under `root`, relative to it: what git tracks or would track in a repository, so .gitignore holds as
-    // it does for ripgrep in opencode, otherwise every file below the root.
+    // The files under `root`, relative to it: what git tracks or would track in a repository (.gitignore holds, as for
+    // ripgrep in opencode; -z keeps unusual names unquoted), otherwise every file below the root, links not followed.
     private async Task<IReadOnlyList<string>> _ListFilesAsync(string root)
     {
         if (Directory.Exists(Path.Combine(root, ".git")) || File.Exists(Path.Combine(root, ".git")))
         {
-            var listed = await runner.RunAsync(root, "git", ["ls-files", "--cached", "--others", "--exclude-standard"], GitListTimeout).ConfigureAwait(false);
+            var listed = await runner.RunAsync(root, "git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], GitListTimeout).ConfigureAwait(false);
             if (listed.ExitCode == 0)
             {
-                return [.. listed.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+                return [.. listed.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries)];
             }
         }
 
-        return [.. Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Select(file => Path.GetRelativePath(root, file))];
+        return [.. Directory.EnumerateFiles(root, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }).Select(file => Path.GetRelativePath(root, file))];
     }
 
     private static string _Listing(IEnumerable<string> shown, int total, string noun)

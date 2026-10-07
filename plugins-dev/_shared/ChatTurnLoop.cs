@@ -501,8 +501,9 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
                 continue;
             }
 
-            result.Result = $"{text[..PrunedResultChars]}\n{ClearedNote}{text.Length} chars — read it again if you still need it]";
-            pruned += text.Length - PrunedResultChars;
+            var keep = char.IsHighSurrogate(text[PrunedResultChars - 1]) ? PrunedResultChars - 1 : PrunedResultChars;
+            result.Result = $"{text[..keep]}\n{ClearedNote}{text.Length} chars — read it again if you still need it]";
+            pruned += text.Length - keep;
             turn.Pruned++;
         }
 
