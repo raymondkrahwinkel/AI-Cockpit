@@ -1599,6 +1599,10 @@
     <Style Selector="ListBox.subnav ListBoxItem:selected /template/ Border#Accent">
         <Setter Property="IsVisible" Value="True"/>
     </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:focus-visible /template/ Border#ItemBg">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
 
     <!-- AC-1000: the main Options sidebar's group headers (WORKING / VOICE & ASSISTANT / SYSTEM) — plain
          ListBoxItems with Focusable="False" and IsHitTestVisible="False" set inline, so they never take the

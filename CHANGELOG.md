@@ -49,7 +49,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   picker, Remove on that half-filled profile no longer crashes the cockpit, and a profile keeps the provider settings
   it was loaded with until its settings panel is filled in. A Gemini/OpenAI profile without a model now says so when
   a session starts.
-- fixed: the selected profile in Options is now marked with the same accent rail as the settings navigation; long
+- fixed: selected Options profiles now use the settings-navigation accent rail and visible keyboard focus; long
   profile names are ellipsized and show their full value on hover.
 - fixed: an OpenAI-compatible session no longer fails with "maximum context length" after reading many large files in
   one turn. Each tool result is cut at 50 KiB or 2000 lines, older results are shortened once the conversation nears
