@@ -43,6 +43,27 @@ public class GatedToolTests
         Assert.Contains("denied", result?.ToString());
     }
 
+    [Fact]
+    public async Task Invoke_WhenTheToolReturnsAContentList_ReturnsItsTextNotItsTypeName()
+    {
+        var gate = Substitute.For<IToolApprovalGate>();
+        gate.RequestApprovalAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Allow);
+        var tool = new GatedTool(new ContentListTool(), gate);
+
+        var result = await tool.InvokeAsync();
+
+        Assert.Equal("hello\nmail", result);
+    }
+
+    // What McpClientTool hands back for a tool's output with inbox mail piggybacked on it (AC-1492).
+    private sealed class ContentListTool : AIFunction
+    {
+        public override string Name => "contentList";
+
+        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
+            new(new AIContent[] { new TextContent("hello"), new TextContent("mail") });
+    }
+
     private static HttpClientTransport _TransportTo(InProcessMcpHttpServer server) =>
         new(new HttpClientTransportOptions { Endpoint = new Uri(server.Url) });
 }
