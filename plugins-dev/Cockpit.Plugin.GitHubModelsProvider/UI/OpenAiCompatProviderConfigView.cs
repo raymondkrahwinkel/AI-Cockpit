@@ -21,6 +21,9 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private readonly string _defaultBaseUrl;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
+
+    // AC-1489: no field of its own; kept from the loaded config so a save does not drop it.
+    private readonly JsonElement? _turnLimits;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
 
@@ -49,6 +52,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             IsTextCompletionEnabled = false,
         };
         _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl };
+        _turnLimits = existing?.TurnLimits;
 
         _fetchModels = new Button { Content = "Fetch", Margin = new Thickness(6, 0, 0, 0) };
         _fetchModels.Click += (_, _) => _ = _FetchModelsAsync();
@@ -80,7 +84,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim()));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), _turnLimits));
         return true;
     }
 

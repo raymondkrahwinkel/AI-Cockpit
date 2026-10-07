@@ -15,8 +15,9 @@ namespace Cockpit.Plugins.OpenAiCompat;
 
 // AC-1344: `networkTimeout` mirrors the factory's own `OpenAIClientOptions.NetworkTimeout`, so a timeout
 // that still fires can name the configured number. Optional — only Gemini/OpenAI passes one; the sibling
-// factories that don't get an un-numbered message instead of a guessed one.
-internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null) : IPluginSessionDriver
+// factories that don't get an un-numbered message instead of a guessed one. AC-1489: `turnLimits` are the
+// provider config's own bounds for the context guard; without them the guard runs on its defaults.
+internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null, ChatTurnLimits? turnLimits = null) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private readonly List<ChatMessage> _history = [];
@@ -54,7 +55,10 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         }
 
         _sessionId = Guid.NewGuid().ToString();
-        _agent = new ChatClientBuilder(chatClient).UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop).Build();
+        _agent = new ChatClientBuilder(chatClient)
+            .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
+            .Use(inner => new ContextGuardChatClient(inner, turnLimits ?? ChatTurnLimits.Default, logger))
+            .Build();
         _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = _reachableToolNames });
         return Task.CompletedTask;
     }

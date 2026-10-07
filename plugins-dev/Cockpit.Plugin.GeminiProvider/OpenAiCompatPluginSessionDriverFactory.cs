@@ -28,7 +28,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
             OpenAiCompatConfig.ResolveApiKey(config, apiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini)
             ?? throw new InvalidOperationException(apiKeyEnvVar is null ? "No API key on the profile." : $"No API key: set one on the profile or {apiKeyEnvVar} in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
-        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger);
+        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger, ChatTurnLimits.From(config.TurnLimits, logger));
     }
 
     // AC-1344/AC-1345: split out so a test can assert the configured (or default) TimeoutSeconds lands on

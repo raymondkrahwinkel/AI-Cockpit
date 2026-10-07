@@ -2,6 +2,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
@@ -144,6 +145,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Optional base system prompt sent as the first message of every conversation for a local provider.
     [ObservableProperty]
     private string _systemPrompt;
+
+    // AC-1489: a local provider's context-guard bounds have no field of their own; kept so a save does not drop them.
+    private readonly JsonElement? _turnLimits;
 
     // Login status of this profile's config directory, evaluated once when the dialog loads.
     [ObservableProperty]
@@ -594,6 +598,12 @@ public partial class EditableProfileViewModel : ViewModelBase
             LmStudioConfig lmStudio => (lmStudio.BaseUrl, lmStudio.Model, lmStudio.ApiKey ?? string.Empty, lmStudio.SystemPrompt ?? string.Empty),
             _ => (string.Empty, string.Empty, string.Empty, string.Empty),
         };
+        _turnLimits = profile.ProviderConfig switch
+        {
+            OllamaConfig ollama => ollama.TurnLimits,
+            LmStudioConfig lmStudio => lmStudio.TurnLimits,
+            _ => null,
+        };
 
         if (profile.ProviderConfig is PluginProviderConfig pluginConfig)
         {
@@ -739,8 +749,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
         return SelectedProvider.Value switch
         {
-            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt),
-            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt),
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits),
             _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }
