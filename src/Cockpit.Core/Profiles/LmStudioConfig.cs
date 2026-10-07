@@ -2,9 +2,8 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Profiles;
 
-// Connection settings for an LM Studio profile: its OpenAI-compatible server, the model, and an optional API key
-// (only needed behind a key-protected proxy). `BaseUrl`: e.g. `http://localhost:1234`. `Model`: id from `/v1/models`.
-// `ApiKey`: bearer key when protected, `null` otherwise. `SystemPrompt`: optional base system prompt for every conversation.
+// Connection settings for an LM Studio profile. `BaseUrl`: e.g. `http://localhost:1234`. `Model`: id from `/v1/models`.
+// `ApiKey`: bearer key behind a key-protected proxy, `null` otherwise. `SystemPrompt`: optional base system prompt.
 // `TurnLimits`: optional bounds for the chat turn's context guard (AC-1489), opaque here; absent means its defaults.
 public sealed record LmStudioConfig(string BaseUrl, string Model, string? ApiKey = null, string? SystemPrompt = null, JsonElement? TurnLimits = null) : ProviderConfig(SessionProvider.LmStudio)
 {

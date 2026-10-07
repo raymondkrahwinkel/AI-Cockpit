@@ -3,10 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GrokProvider;
 
-// AC-724: this plugin's own provider config, never seen by the host — only (de)serialized here via the
-// opaque `ConfigJson` the host round-trips. No default model is hardcoded: xAI deprecates model names fast.
-// AC-1489: `TurnLimits` is the optional `turnLimits` object the driver bounds its turns with; opaque here, so the
-// config view carries it through a save untouched.
+// AC-724: this plugin's own provider config, never seen by the host — only (de)serialized here via the opaque
+// `ConfigJson` the host round-trips. No default model is hardcoded: xAI deprecates model names fast. `TurnLimits`
+// (AC-1489) bounds the driver's turns; opaque here, so the config view carries it through a save untouched.
 internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, JsonElement? TurnLimits = null)
 {
     // Case-insensitive property matching on deserialize — the two call sites (this plugin's own view and

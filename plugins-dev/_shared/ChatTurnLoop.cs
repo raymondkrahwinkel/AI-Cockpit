@@ -336,10 +336,9 @@ internal sealed record ChatTurnLimits
     }
 }
 
-// Sits between the function-invocation loop and the model (AC-1489), so it sees every HTTP call of a turn — the
-// rounds inside one turn included — before it leaves. It caps each tool result, keeps a per-turn budget, prunes old
-// results near the context limit, and as a last resort sends the call without tools so the model has to wrap up.
-// Nothing is ever removed: only a result's text gets shorter, so every call keeps its result.
+// Sits between the function-invocation loop and the model (AC-1489), so it sees every HTTP call of a turn before it
+// leaves: caps each tool result, keeps a per-turn budget, prunes old results near the context limit, and as a last
+// resort drops the tools so the model must wrap up. Only a result's text ever gets shorter: every call keeps its result.
 internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits limits, ILogger? logger = null) : DelegatingChatClient(inner)
 {
     private const int CharsPerToken = 4;

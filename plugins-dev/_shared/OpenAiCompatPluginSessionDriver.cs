@@ -13,10 +13,9 @@ namespace Cockpit.Plugins.OpenAiCompat;
 // plugin as source (<Compile Include>) rather than shipped as a shared assembly, so every plugin still builds,
 // versions and installs as one self-contained dll — while the loop itself exists once.
 
-// AC-1344: `networkTimeout` mirrors the factory's own `OpenAIClientOptions.NetworkTimeout`, so a timeout
-// that still fires can name the configured number. Optional — only Gemini/OpenAI passes one; the sibling
-// factories that don't get an un-numbered message instead of a guessed one. AC-1489: `turnLimits` are the
-// provider config's own bounds for the context guard; without them the guard runs on its defaults.
+// AC-1344: `networkTimeout` mirrors the factory's `OpenAIClientOptions.NetworkTimeout`, so a timeout that fires can
+// name the configured number (only Gemini/OpenAI passes one). AC-1489: `turnLimits` are the provider config's
+// bounds for the context guard; without them it runs on its defaults.
 internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null, ChatTurnLimits? turnLimits = null) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
