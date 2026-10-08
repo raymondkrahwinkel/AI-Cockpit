@@ -166,12 +166,13 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             }
 
             var now = DateTimeOffset.UtcNow;
-            var expires = _alarms && before?.SignIn == ProfileSignInKind.SignedIn && !signedIn;
+            var wasSignedIn = before?.SignIn == ProfileSignInKind.SignedIn;
+            var expires = _alarms && wasSignedIn && !signedIn;
             var signIn = !hasCheck
                 ? ProfileSignInKind.Unchecked
                 : signedIn
                     ? ProfileSignInKind.SignedIn
-                    : before?.SignIn == ProfileSignInKind.SignedIn
+                    : wasSignedIn || before?.SignIn == ProfileSignInKind.Expired
                         ? ProfileSignInKind.Expired
                         : ProfileSignInKind.NotSignedIn;
             next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signIn == ProfileSignInKind.Expired ? before?.ExpiredSince ?? now : null)
