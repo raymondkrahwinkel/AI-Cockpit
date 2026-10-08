@@ -267,30 +267,27 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private Task InstallPluginAsync() => _RunAsync(async () =>
     {
-        if (_plugins is not IPluginStoreCatalog catalog)
+        if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
         {
             Status = "The server's plugin store is not available.";
             return;
         }
 
         var stores = await catalog.GetStoresAsync();
-        if (stores.FirstOrDefault(store => store.Index?.Plugins.FirstOrDefault(entry => !Plugins.Any(installed => installed.Id == entry.Id)) is not null) is not { Index: { } index } store)
+        if (stores.Count == 0)
         {
-            Status = "No new plugin is available from the server's stores.";
+            Status = "No plugin store is configured on the server.";
             return;
         }
 
-        var entry = index.Plugins.First(candidate => !Plugins.Any(installed => installed.Id == candidate.Id));
-        var version = entry.Versions.FirstOrDefault();
-        if (version is null)
-        {
-            Status = "The server store has no installable version.";
-            return;
-        }
-
-        var result = await _plugins.InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, PluginStoreConfig.Remote(store.Id), version));
-        Status = result.IsSuccess ? "This change takes effect after the server restarts." : "The server could not install the plugin.";
+        var manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))]);
+        await manager.LoadAsync();
+        await _dialogService.ShowPluginStoreDialogAsync(manager);
         await _LoadPluginsAsync();
+        if (manager.NeedsRestart)
+        {
+            Status = "This change takes effect after the server restarts.";
+        }
     });
 
     [RelayCommand]
