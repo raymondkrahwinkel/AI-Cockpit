@@ -1,4 +1,3 @@
-using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Remote;
 
