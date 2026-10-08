@@ -99,24 +99,24 @@ public sealed class RemoteAdminJourney
             await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
             var localPluginIds = view.Plugins.Plugins.Select(plugin => plugin.FolderId).ToArray();
             var storeOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watchStore = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((store, _) => storeOpened.TrySetResult(store));
+            using var watchStore = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((dialog, _) => storeOpened.TrySetResult(dialog));
             Task openStore = Task.CompletedTask;
             await HeadlessAvalonia.RunAsync(() => openStore = admin.InstallPluginCommand.ExecuteAsync(null));
             var storeDialog = await storeOpened.Task.WaitAsync(Until.Ceiling);
-            var store = storeDialog.DataContext as PluginStoreDialogViewModel ?? throw new InvalidOperationException("Server store did not open its view model.");
-            Assert.False(store.CanManageStores);
+            var storeViewModel = storeDialog.DataContext as PluginStoreDialogViewModel ?? throw new InvalidOperationException("Server store did not open its view model.");
+            Assert.False(storeViewModel.CanManageStores);
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await Until.CollectionHolds(store.Manager.AvailablePlugins, () => store.Manager.AvailablePlugins.Any(plugin => plugin.Id == "journey-store-plugin"));
+                await Until.CollectionHolds(storeViewModel.Manager.AvailablePlugins, () => storeViewModel.Manager.AvailablePlugins.Any(plugin => plugin.Id == "journey-store-plugin"));
             });
             var beforeChoice = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(beforeChoice, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var selected = store.Manager.AvailablePlugins.Single(plugin => plugin.Id == "journey-store-plugin");
-                await store.Manager.InstallFromStoreCommand.ExecuteAsync(selected);
+                var selected = storeViewModel.Manager.AvailablePlugins.Single(plugin => plugin.Id == "journey-store-plugin");
+                await storeViewModel.Manager.InstallFromStoreCommand.ExecuteAsync(selected);
                 storeDialog.Close();
             });
             await openStore;
