@@ -31,7 +31,7 @@ internal static class SignInEndpoints
             ProfileSignIn? signIn;
             try
             {
-                signIn = await signIns().StartAsync(profile, ended => _AuditAsync(services, caller, $"sign-in {ended.Status}", ended.Profile, CancellationToken.None), cancellationToken).ConfigureAwait(false);
+                signIn = await signIns().StartAsync(profile, ended => _FinishedAsync(services, caller, ended), cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -103,6 +103,15 @@ internal static class SignInEndpoints
             await audit.RecordAsync(
                 NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:sign_in", outcome, profile),
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task _FinishedAsync(IServiceProvider services, NodeCaller caller, ProfileSignIn signIn)
+    {
+        await _AuditAsync(services, caller, $"sign-in {signIn.Status}", signIn.Profile, CancellationToken.None).ConfigureAwait(false);
+        if (signIn.Status == "succeeded")
+        {
+            await (services.GetService<IProfileLoginHealth>()?.CheckAsync(CancellationToken.None) ?? Task.CompletedTask).ConfigureAwait(false);
         }
     }
 

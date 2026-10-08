@@ -49,6 +49,8 @@ public sealed class ServerJourney
 
     private const string Restored = "Profile 'EchoSignIn' on";
 
+    private const string NeverSignedIn = "EchoNeverSignedIn";
+
     // The session lines, as the desktop words them.
     private const string NeedsAttention = "** — Needs attention";
 
@@ -100,6 +102,8 @@ public sealed class ServerJourney
 
             using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{_McpPort(run.Output)}/"), key, fingerprint, TimeProvider.System);
             using var timeout = new CancellationTokenSource(Until.Ceiling);
+            await _WaitForProfileSignInAsync(admin, NeverSignedIn, "notSignedIn", timeout.Token);
+            Assert.Equal(0, discord.Count($"profile '{NeverSignedIn}'"));
             var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
             var paneId = started["paneId"]?.GetValue<string>() ?? "";
             var answer = await admin.StreamEventsAsync(0, timeout.Token)
@@ -119,12 +123,23 @@ public sealed class ServerJourney
             // AC-1357: a sign-in that expires is said once, to Discord and to the controller; three more polls stay
             // quiet, and its return is said once too. A controller key's first call makes it the controller.
             await using var controller = await _ControllerAsync(_McpPort(run.Output), controllerKey, fingerprint);
-            await _ReadNodeInboxAsync(controller);
+            var initialInbox = await _ReadNodeInboxAsync(controller);
+            Assert.DoesNotContain(initialInbox, message => message.Kind == "login-expired" && message.Body.Contains($"'{NeverSignedIn}'", StringComparison.Ordinal));
             File.Delete(Path.Combine(root, SignedInFile));
             await discord.WaitForAsync(Expired, 1, timeout.Token);
+            var expired = await _ProfileHealthAsync(admin, "EchoSignIn", timeout.Token);
+            Assert.Equal("expired", expired["signIn"]?.GetValue<string>());
+            var expiredSince = expired["expiredSince"]?.ToJsonString();
             await Task.Delay(3 * LoginCheckInterval, timeout.Token);
             Assert.Equal(1, discord.Count(Expired));
-            File.WriteAllText(Path.Combine(root, SignedInFile), "");
+            var stillExpired = await _ProfileHealthAsync(admin, "EchoSignIn", timeout.Token);
+            Assert.Equal("expired", stillExpired["signIn"]?.GetValue<string>());
+            Assert.Equal(expiredSince, stillExpired["expiredSince"]?.ToJsonString());
+            var signIn = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/profiles/EchoSignIn/sign-in", null, timeout.Token);
+            var flowId = Assert.IsType<string>(signIn["flowId"]?.GetValue<string>());
+            await admin.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/profiles/EchoSignIn/sign-in/{flowId}/input", new { text = "restore" }, timeout.Token);
+            using var signInTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _WaitForProfileSignInAsync(admin, "EchoSignIn", "signedIn", signInTimeout.Token);
             await discord.WaitForAsync(Restored, 1, timeout.Token);
             Assert.Equal(1, discord.Count(Expired));
             var inbox = await _ReadNodeInboxAsync(controller);
@@ -222,6 +237,7 @@ public sealed class ServerJourney
                 new SessionProfile("Echo", new PluginProviderConfig("echo-provider.echo", "{}")) { DefaultKind = ProfileSessionKind.Sdk },
                 .. withTerminalProfile ? [new SessionProfile("Terminal", new ClaudeConfig(Path.Combine(stateRoot, ".claude"))) { DefaultKind = ProfileSessionKind.Tty }] : Array.Empty<SessionProfile>(),
                 new SessionProfile("EchoSignIn", new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, SignedInFile) }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
+                new SessionProfile(NeverSignedIn, new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, "echo-never-signed-in") }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
             ]);
             File.WriteAllText(Path.Combine(root, SignedInFile), "");
             await services.GetRequiredService<INotificationSettingsStore>().SaveAsync(new NotificationSettings { DiscordEnabled = true, WebhookUrl = webhookUrl, LoginCheckInterval = LoginCheckInterval });
@@ -301,6 +317,27 @@ public sealed class ServerJourney
         return Assert.IsType<JsonObject>(rows.Single(candidate =>
             candidate?["actionId"] is not null
             && candidate?["label"]?.GetValue<string>().StartsWith("Journey scheduled ·", StringComparison.Ordinal) == true));
+    }
+
+    private static async Task _WaitForProfileSignInAsync(BackendApiClient client, string label, string signIn, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var profile = await _ProfileHealthAsync(client, label, cancellationToken);
+            if (profile["signIn"]?.GetValue<string>() == signIn)
+            {
+                return;
+            }
+
+            await Task.Delay(50, cancellationToken);
+        }
+    }
+
+    private static async Task<JsonObject> _ProfileHealthAsync(BackendApiClient client, string label, CancellationToken cancellationToken)
+    {
+        var health = await client.GetAsync<JsonObject>("api/v1/health", cancellationToken);
+        var profiles = Assert.IsType<JsonArray>(health["profiles"]);
+        return Assert.IsType<JsonObject>(profiles.Single(candidate => candidate?["label"]?.GetValue<string>() == label));
     }
 
     // A controller as NodeSessionsClient opens one: the node's certificate pinned, the key as its bearer.

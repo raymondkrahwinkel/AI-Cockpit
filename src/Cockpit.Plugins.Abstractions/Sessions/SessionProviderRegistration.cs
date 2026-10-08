@@ -69,6 +69,9 @@ public sealed record SessionProviderRegistration(
     /// </remarks>
     public Func<string, bool>? IsLoggedIn { get; init; }
 
+    // An awaited, current login reading for background health monitoring; null falls back to IsLoggedIn.
+    public Func<string, CancellationToken, Task<bool>>? CheckLoginAsync { get; init; }
+
     /// <summary>
     /// Says what kind of credential a profile under this provider signs in with, from its opaque <c>ConfigJson</c> —
     /// the SDK mirror of <see cref="TtyProviderRegistration.CredentialKind"/>. Never reads a credential's contents (Iron Law #8).

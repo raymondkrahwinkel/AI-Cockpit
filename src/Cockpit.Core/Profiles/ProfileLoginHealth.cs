@@ -21,6 +21,7 @@ public sealed record ProfileLoginHealth(string Profile, bool SignedIn, DateTimeO
 public enum ProfileSignInKind
 {
     SignedIn,
+    NotSignedIn,
     Expired,
     Unchecked,
     Reachable,

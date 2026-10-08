@@ -148,6 +148,7 @@ public sealed class ServerProfileRowViewModel(RemoteProfile profile)
     public string SignInText => Profile.SignIn switch
     {
         ProfileSignInKind.SignedIn => "signed in",
+        ProfileSignInKind.NotSignedIn => "Not signed in",
         ProfileSignInKind.Expired => "sign-in expired",
         _ when Profile.HasApiKey || Profile.Environment.Any(variable => variable.IsSecret) => "key from secret",
         _ => "not checked",

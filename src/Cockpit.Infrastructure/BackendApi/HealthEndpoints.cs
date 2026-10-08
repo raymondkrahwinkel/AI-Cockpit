@@ -182,6 +182,7 @@ internal static partial class HealthEndpoints
     private static string _SignIn(ProfileSignInKind kind) => kind switch
     {
         ProfileSignInKind.SignedIn => "signedIn",
+        ProfileSignInKind.NotSignedIn => "notSignedIn",
         ProfileSignInKind.Expired => "expired",
         ProfileSignInKind.Reachable => "reachable",
         ProfileSignInKind.Unreachable => "unreachable",
