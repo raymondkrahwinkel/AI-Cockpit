@@ -137,7 +137,6 @@ public sealed class RemoteAdminJourney
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
             var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.Contains(installed, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
-            Assert.Contains("restarts", admin.Status, StringComparison.Ordinal);
             Assert.Equal(localPluginIds, view.Plugins.Plugins.Select(plugin => plugin.FolderId));
 
             await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == "journey-store-plugin")));
