@@ -101,7 +101,10 @@ public sealed class RemoteAdminJourney
             var storeOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchStore = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((dialog, _) => storeOpened.TrySetResult(dialog));
             Task openStore = Task.CompletedTask;
-            await HeadlessAvalonia.RunAsync(() => openStore = admin.InstallPluginCommand.ExecuteAsync(null));
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                openStore = admin.InstallPluginCommand.ExecuteAsync(null);
+            });
             var storeDialog = await storeOpened.Task.WaitAsync(Until.Ceiling);
             var storeViewModel = storeDialog.DataContext as PluginStoreDialogViewModel ?? throw new InvalidOperationException("Server store did not open its view model.");
             Assert.False(storeViewModel.CanManageStores);
