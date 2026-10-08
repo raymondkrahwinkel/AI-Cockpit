@@ -11,15 +11,20 @@ namespace Cockpit.App.ViewModels;
 // AC-1456: one connect server in the session list, beside this laptop's desks. Its rows are the server's registry as
 // the stream keeps it, so nothing here polls; a session outside the key's scope is not in that registry, and therefore
 // neither listed nor counted. Built and reconciled on the UI thread only.
-public sealed partial class ServerGroupViewModel : ObservableObject
+public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
 {
-    public ServerGroupViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null, ILogger? logger = null)
+    private readonly TimeProvider _time;
+    private readonly ITimer _uptimeTimer;
+
+    public ServerGroupViewModel(IRemoteServer server, Func<string, ILoginFlow?>? startSignIn = null, ILogger? logger = null, TimeProvider? time = null)
     {
         Server = server;
         Name = server.Name;
+        _time = time ?? TimeProvider.System;
         _state = server.State;
         Start = new ServerStartViewModel(server.Name);
         Health = new ServerHealthViewModel(server, startSignIn, logger);
+        _uptimeTimer = _time.CreateTimer(_ => OnPropertyChanged(nameof(HeaderDetail)), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
     public IRemoteServer Server { get; }
@@ -139,14 +144,16 @@ public sealed partial class ServerGroupViewModel : ObservableObject
         return gone;
     }
 
-    private static string? _Uptime(DateTimeOffset? startedAt)
+    public void Dispose() => _uptimeTimer.Dispose();
+
+    private string? _Uptime(DateTimeOffset? startedAt)
     {
         if (startedAt is not { } since)
         {
             return null;
         }
 
-        var up = DateTimeOffset.UtcNow - since;
+        var up = _time.GetUtcNow() - since;
         return up.TotalDays >= 1
             ? string.Create(CultureInfo.InvariantCulture, $"up {(int)up.TotalDays} d {up.Hours} h")
             : string.Create(CultureInfo.InvariantCulture, $"up {up.Hours} h {up.Minutes} min");

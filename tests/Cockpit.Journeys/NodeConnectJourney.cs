@@ -133,7 +133,11 @@ public sealed class NodeConnectJourney
 
         // AC-1456 criterion 2: the server group the scoped key draws lists none of these sessions and says nothing of them.
         var row = new McpServerConfig { Name = NodeServerName.For("node", NodeServerName.SessionsServerName), Url = nodeUrl.ToString(), ApiKey = narrow.Secret, PinnedCertificateFingerprint = fingerprint };
-        await using var scoped = new RemoteServer("node", row, NullLogger.Instance);
+        await using var scoped = new RemoteServer(
+            "node",
+            row,
+            cockpit.Services.GetRequiredService<Cockpit.Core.Abstractions.Notifications.INotificationSettingsStore>(),
+            NullLogger.Instance);
         var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         scoped.StateChanged += (_, _) =>
         {

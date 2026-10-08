@@ -155,6 +155,7 @@ public partial class CockpitViewModel
         var servers = _remoteServers?.Servers ?? [];
         foreach (var group in ServerGroups.Where(group => !servers.Contains(group.Server)).ToList())
         {
+            group.Dispose();
             ServerGroups.Remove(group);
             foreach (var row in group.Sessions)
             {

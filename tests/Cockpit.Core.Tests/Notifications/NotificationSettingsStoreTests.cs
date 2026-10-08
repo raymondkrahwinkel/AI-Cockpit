@@ -36,6 +36,8 @@ public class NotificationSettingsStoreTests : IDisposable
             // that round-tripped from one that was never written and came back as the default it already had.
             NotifyOnCiFailure = false,
             SessionIdleThreshold = TimeSpan.FromMinutes(12),
+            RemoteHealthWatchedInterval = TimeSpan.FromSeconds(17),
+            RemoteHealthBackgroundInterval = TimeSpan.FromSeconds(83),
         };
 
         await store.SaveAsync(settings);
