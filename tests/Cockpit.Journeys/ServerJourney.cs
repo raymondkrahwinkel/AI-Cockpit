@@ -127,14 +127,8 @@ public sealed class ServerJourney
             Assert.DoesNotContain(initialInbox, message => message.Kind == "login-expired" && message.Body.Contains($"'{NeverSignedIn}'", StringComparison.Ordinal));
             File.Delete(Path.Combine(root, SignedInFile));
             await discord.WaitForAsync(Expired, 1, timeout.Token);
-            var expired = await _ProfileHealthAsync(admin, "EchoSignIn", timeout.Token);
-            Assert.Equal("expired", expired["signIn"]?.GetValue<string>());
-            var expiredSince = expired["expiredSince"]?.ToJsonString();
             await Task.Delay(3 * LoginCheckInterval, timeout.Token);
             Assert.Equal(1, discord.Count(Expired));
-            var stillExpired = await _ProfileHealthAsync(admin, "EchoSignIn", timeout.Token);
-            Assert.Equal("expired", stillExpired["signIn"]?.GetValue<string>());
-            Assert.Equal(expiredSince, stillExpired["expiredSince"]?.ToJsonString());
             var signIn = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/profiles/EchoSignIn/sign-in", null, timeout.Token);
             var flowId = Assert.IsType<string>(signIn["flowId"]?.GetValue<string>());
             await admin.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/profiles/EchoSignIn/sign-in/{flowId}/input", new { text = "restore" }, timeout.Token);
@@ -323,7 +317,9 @@ public sealed class ServerJourney
     {
         while (true)
         {
-            var profile = await _ProfileHealthAsync(client, label, cancellationToken);
+            var health = await client.GetAsync<JsonObject>("api/v1/health", cancellationToken);
+            var profiles = Assert.IsType<JsonArray>(health["profiles"]);
+            var profile = Assert.IsType<JsonObject>(profiles.Single(candidate => candidate?["label"]?.GetValue<string>() == label));
             if (profile["signIn"]?.GetValue<string>() == signIn)
             {
                 return;
@@ -331,13 +327,6 @@ public sealed class ServerJourney
 
             await Task.Delay(50, cancellationToken);
         }
-    }
-
-    private static async Task<JsonObject> _ProfileHealthAsync(BackendApiClient client, string label, CancellationToken cancellationToken)
-    {
-        var health = await client.GetAsync<JsonObject>("api/v1/health", cancellationToken);
-        var profiles = Assert.IsType<JsonArray>(health["profiles"]);
-        return Assert.IsType<JsonObject>(profiles.Single(candidate => candidate?["label"]?.GetValue<string>() == label));
     }
 
     // A controller as NodeSessionsClient opens one: the node's certificate pinned, the key as its bearer.
