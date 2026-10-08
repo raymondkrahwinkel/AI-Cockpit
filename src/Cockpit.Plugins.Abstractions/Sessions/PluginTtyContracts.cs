@@ -219,6 +219,9 @@ public sealed record TtyProviderRegistration(
     /// </remarks>
     public Func<string, bool>? IsLoggedIn { get; init; }
 
+    // An awaited, current login reading for background health monitoring; null falls back to IsLoggedIn.
+    public Func<string, CancellationToken, Task<bool>>? CheckLoginAsync { get; init; }
+
     /// <summary>
     /// Says what kind of credential a profile under this provider signs in with, from its opaque <c>ConfigJson</c>.
     /// Never reads a credential's contents (Iron Law #8).

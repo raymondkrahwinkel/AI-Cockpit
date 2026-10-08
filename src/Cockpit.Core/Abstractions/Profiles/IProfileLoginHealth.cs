@@ -11,4 +11,9 @@ public interface IProfileLoginHealth
     /// One row per profile checked so far, in profile order; empty until the first poll has run.
     /// </summary>
     IReadOnlyList<ProfileLoginHealth> Current { get; }
+
+    /// <summary>
+    /// Refreshes the profile sign-in readings when the host supports it.
+    /// </summary>
+    Task CheckAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

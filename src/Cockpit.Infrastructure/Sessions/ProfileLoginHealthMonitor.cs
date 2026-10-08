@@ -30,6 +30,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
     private readonly INotificationSettingsStore _settingsStore;
     private readonly ILogger<ProfileLoginHealthMonitor> _logger;
     private readonly bool _alarms;
+    private readonly SemaphoreSlim _checking = new(1, 1);
 
     // The expiries already announced, so a recovery is only announced after one.
     private readonly HashSet<string> _alarmed = new(StringComparer.Ordinal);
@@ -71,7 +72,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             using var timer = new PeriodicTimer(await _IntervalAsync(stoppingToken).ConfigureAwait(false));
             do
             {
-                await _CheckAsync(stoppingToken).ConfigureAwait(false);
+                await CheckAsync(stoppingToken).ConfigureAwait(false);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
         }
@@ -95,6 +96,19 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
         {
             _logger.LogWarning(exception, "Could not read the sign-in check interval; using the default.");
             return NotificationSettings.DefaultLoginCheckInterval;
+        }
+    }
+
+    public async Task CheckAsync(CancellationToken cancellationToken)
+    {
+        await _checking.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _CheckAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _checking.Release();
         }
     }
 
@@ -137,7 +151,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             bool hasCheck;
             try
             {
-                signedIn = _checker.IsLoggedIn(profile);
+                signedIn = await _checker.CheckAsync(profile, cancellationToken).ConfigureAwait(false);
                 hasCheck = _checker.HasLoginCheck(profile);
             }
             catch (Exception exception)
@@ -153,12 +167,19 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
             var now = DateTimeOffset.UtcNow;
             var expires = _alarms && before is { SignedIn: true } && !signedIn;
-            next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signedIn ? null : before?.ExpiredSince ?? now)
+            var signIn = !hasCheck
+                ? ProfileSignInKind.Unchecked
+                : signedIn
+                    ? ProfileSignInKind.SignedIn
+                    : before is { SignedIn: true }
+                        ? ProfileSignInKind.Expired
+                        : ProfileSignInKind.NotSignedIn;
+            next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signIn == ProfileSignInKind.Expired ? before?.ExpiredSince ?? now : null)
             {
                 Provider = plugin.ProviderId,
                 Credential = signedIn && hasCheck ? _Credential(profile) : ProfileCredentialKind.Unknown,
-                SignIn = !hasCheck ? ProfileSignInKind.Unchecked : signedIn ? ProfileSignInKind.SignedIn : ProfileSignInKind.Expired,
-                AnnouncedAt = signedIn ? null : expires ? now : before?.AnnouncedAt,
+                SignIn = signIn,
+                AnnouncedAt = signIn == ProfileSignInKind.Expired ? expires ? now : before?.AnnouncedAt : null,
             });
 
             if (!_alarms)

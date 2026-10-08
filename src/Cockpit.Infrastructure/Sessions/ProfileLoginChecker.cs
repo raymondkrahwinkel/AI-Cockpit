@@ -28,6 +28,17 @@ internal sealed class ProfileLoginChecker(
         return isLoggedIn is null || isLoggedIn(plugin.ConfigJson);
     }
 
+    public Task<bool> CheckAsync(SessionProfile profile, CancellationToken cancellationToken)
+    {
+        if (profile.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return Task.FromResult(true);
+        }
+
+        var check = _AsyncGate(plugin);
+        return check is null ? Task.FromResult(IsLoggedIn(profile)) : check(plugin.ConfigJson, cancellationToken);
+    }
+
     public bool HasLoginCheck(SessionProfile profile) => profile.ProviderConfig is PluginProviderConfig plugin && _Gate(plugin) is not null;
 
     public ProfileCredentialKind CredentialKind(SessionProfile profile)
@@ -52,4 +63,8 @@ internal sealed class ProfileLoginChecker(
     private Func<string, bool>? _Gate(PluginProviderConfig plugin) =>
         ttyProviderRegistry.Resolve(plugin.ProviderId)?.IsLoggedIn
         ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.IsLoggedIn;
+
+    private Func<string, CancellationToken, Task<bool>>? _AsyncGate(PluginProviderConfig plugin) =>
+        ttyProviderRegistry.Resolve(plugin.ProviderId)?.CheckLoginAsync
+        ?? sessionProviderRegistry?.Resolve(plugin.ProviderId)?.CheckLoginAsync;
 }

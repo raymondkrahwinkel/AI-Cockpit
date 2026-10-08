@@ -15,6 +15,11 @@ public interface IProfileLoginChecker
     bool IsLoggedIn(SessionProfile profile);
 
     /// <summary>
+    /// Awaits a current sign-in reading when the provider supports one; otherwise returns <see cref="IsLoggedIn"/>.
+    /// </summary>
+    Task<bool> CheckAsync(SessionProfile profile, CancellationToken cancellationToken) => Task.FromResult(IsLoggedIn(profile));
+
+    /// <summary>
     /// True when the profile's provider declares a sign-in check, so <see cref="IsLoggedIn"/> asked something.
     /// </summary>
     bool HasLoginCheck(SessionProfile profile) => false;

@@ -31,9 +31,11 @@ internal static class ClaudeLoginStatus
 
     private sealed class _Entry
     {
+        public Lock Gate { get; } = new();
+
         private volatile _Reading? _reading;
         private long _retryNotBeforeTicks;
-        public int Refreshing;
+        public Task? RefreshingTask;
 
         public _Reading? Reading
         {
@@ -52,6 +54,16 @@ internal static class ClaudeLoginStatus
     // The gate the host calls. Never blocks.
     public static bool IsLoggedIn(string configJson, Func<string, string?>? managedResolver = null) =>
         IsLoggedIn(configJson, DateTimeOffset.UtcNow, managedResolver, _AskCliAsync);
+
+    // The health monitor owns this awaited path; session-start gates keep using IsLoggedIn and never block the UI.
+    public static async Task<bool> CheckAsync(string configJson, Func<string, string?>? managedResolver, CancellationToken cancellationToken)
+    {
+        var config = ClaudeProviderConfig.Parse(configJson);
+        var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
+        var now = DateTimeOffset.UtcNow;
+        await RefreshAsync(configJson, now, managedResolver, _AskCliAsync, cancellationToken).ConfigureAwait(false);
+        return entry.Reading?.Status.LoggedIn ?? _ColdAnswer(config);
+    }
 
     // AC-732: `claude auth login` exiting 0 already answers the question definitively — write it straight into the
     // cache instead of leaving the pre-login "logged out" reading to stand until the next poll tick re-reads it.
@@ -140,7 +152,7 @@ internal static class ClaudeLoginStatus
         _Start(configJson, DateTimeOffset.UtcNow, managedResolver, _AskCliAsync);
 
     // `now` stamps the reading, so a test on a fixed clock does not compare two different ones.
-    internal static async Task RefreshAsync(
+    internal static Task RefreshAsync(
         string configJson,
         DateTimeOffset now,
         Func<string, string?>? managedResolver,
@@ -151,11 +163,30 @@ internal static class ClaudeLoginStatus
         var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
 
         // Backing off after a failure, or one already in flight — either way, not a second subprocess.
-        if (now < entry.RetryNotBefore || Interlocked.CompareExchange(ref entry.Refreshing, 1, 0) != 0)
+        lock (entry.Gate)
         {
-            return;
-        }
+            if (now < entry.RetryNotBefore)
+            {
+                return Task.CompletedTask;
+            }
 
+            if (entry.RefreshingTask is { IsCompleted: false } refresh)
+            {
+                return refresh;
+            }
+
+            return entry.RefreshingTask = _RefreshAsync(config, entry, now, managedResolver, ask, cancellationToken);
+        }
+    }
+
+    private static async Task _RefreshAsync(
+        ClaudeProviderConfig config,
+        _Entry entry,
+        DateTimeOffset now,
+        Func<string, string?>? managedResolver,
+        Func<string, string?, CancellationToken, Task<AuthStatus?>> ask,
+        CancellationToken cancellationToken)
+    {
         try
         {
             var executablePath = ClaudeExecutableLocator.Resolve(
@@ -181,10 +212,6 @@ internal static class ClaudeLoginStatus
         {
             // A missing `claude` throws out of Process.Start rather than answering null — same backoff.
             entry.RetryNotBefore = now + _RetryAfterFailure;
-        }
-        finally
-        {
-            Interlocked.Exchange(ref entry.Refreshing, 0);
         }
     }
 
