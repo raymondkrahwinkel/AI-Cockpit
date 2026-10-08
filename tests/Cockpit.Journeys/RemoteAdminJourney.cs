@@ -107,7 +107,13 @@ public sealed class RemoteAdminJourney
                 return Task.CompletedTask;
             });
             var storeDialog = await storeOpened.Task.WaitAsync(Until.Ceiling);
-            var storeViewModel = storeDialog.DataContext as PluginStoreDialogViewModel ?? throw new InvalidOperationException("Server store did not open its view model.");
+            PluginStoreDialogViewModel? storeViewModel = null;
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                storeViewModel = storeDialog.DataContext as PluginStoreDialogViewModel;
+                return Task.CompletedTask;
+            });
+            storeViewModel ??= throw new InvalidOperationException("Server store did not open its view model.");
             Assert.False(storeViewModel.CanManageStores);
 
             await HeadlessAvalonia.RunAsync(async () =>
