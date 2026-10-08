@@ -27,7 +27,7 @@ public partial class PluginStoreDialog : Window
     // Owned modal on the same shared manager, so add/remove there refreshes this dialog too.
     private async void OnManageStores(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is PluginStoreDialogViewModel { CanManageStores: true } viewModel)
+        if (DataContext is PluginStoreDialogViewModel viewModel)
         {
             await new ManageStoresDialog { DataContext = viewModel.Manager }.ShowDialog(this);
         }

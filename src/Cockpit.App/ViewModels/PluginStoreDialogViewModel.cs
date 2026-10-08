@@ -21,8 +21,6 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     // The wrapped manager — the store dialog's XAML binds installs/updates, the restart banner and store-URL management straight to its commands/properties (e.g. `Manager.InstallFromStoreCommand`, `Manager.NeedsRestart`).
     public PluginManagerViewModel Manager => _manager;
 
-    public bool CanManageStores => _manager.CanManageStores;
-
     public IReadOnlyList<PluginStoreSortModeOption> SortModes { get; } = PluginStoreSortModeOption.All;
 
     public ObservableCollection<PluginStoreSidebarItem> SidebarItems { get; } = [];

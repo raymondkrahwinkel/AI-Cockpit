@@ -88,7 +88,6 @@
                      out of this sidebar into its own dialog (§manage-stores). -->
                 <Button DockPanel.Dock="Bottom" Classes="Subtle" Margin="8"
                         HorizontalAlignment="Left" Foreground="{DynamicResource CockpitAccentBrush}"
-                        IsVisible="{Binding CanManageStores}"
                         Click="OnManageStores">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"/>

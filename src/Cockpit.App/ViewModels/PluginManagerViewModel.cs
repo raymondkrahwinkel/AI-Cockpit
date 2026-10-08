@@ -206,25 +206,6 @@ public partial class PluginManagerViewModel : ViewModelBase
         _WatchPluginsForPendingApprovalBadge();
     }
 
-    public PluginManagerViewModel(
-        IPluginAdministration administration,
-        ISessionDialogService dialogService,
-        IReadOnlyList<PluginStoreConfig> stores)
-    {
-        _administration = administration;
-        _dialogService = dialogService;
-        foreach (var store in stores)
-        {
-            Stores.Add(store);
-            StoreInfos.Add(new PluginStoreInfo(store));
-        }
-
-        _WatchAvailablePluginsForUpdateGate();
-        _WatchPluginsForPendingApprovalBadge();
-    }
-
-    public bool CanManageStores => _administration is not IPluginStoreCatalog && _storeConfigStore is not null;
-
     // Browsing the stores rebuilds that collection, so the gate has to be re-raised from the collection itself —
     // notifying only from the install/update paths left the button hidden right after the store loaded, the one moment
     // there is definitely something to update.
