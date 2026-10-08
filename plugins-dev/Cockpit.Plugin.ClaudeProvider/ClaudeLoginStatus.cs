@@ -61,7 +61,7 @@ internal static class ClaudeLoginStatus
         var config = ClaudeProviderConfig.Parse(configJson);
         var entry = _Cache.GetOrAdd(_KeyFor(config), _ => new _Entry());
         var now = DateTimeOffset.UtcNow;
-        await RefreshAsync(configJson, now, managedResolver, _AskCliAsync, cancellationToken).ConfigureAwait(false);
+        await RefreshAsync(configJson, now, managedResolver, _AskCliAsync, CancellationToken.None).WaitAsync(cancellationToken).ConfigureAwait(false);
         return entry.Reading?.Status.LoggedIn ?? _ColdAnswer(config);
     }
 
