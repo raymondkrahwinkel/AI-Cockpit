@@ -9,6 +9,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Notifications;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -37,11 +38,13 @@ public sealed class LocalRegistry
     private static readonly JsonSerializerOptions SecurityOptions = new();
 
     private readonly JsonNode? _document;
+    private readonly string _configFilePath;
     private readonly SecretKeyHolder _keys = new();
 
-    private LocalRegistry(JsonNode? document)
+    private LocalRegistry(JsonNode? document, string configFilePath)
     {
         _document = document;
+        _configFilePath = configFilePath;
         Protection = new ReadOnlyUnlock(this);
     }
 
@@ -54,7 +57,8 @@ public sealed class LocalRegistry
     {
         try
         {
-            return new LocalRegistry(await CockpitConfigFileAccess.ReadOnceAsync(CockpitConfigPath.For(localRoot), cancellationToken).ConfigureAwait(false));
+            var configFilePath = CockpitConfigPath.For(localRoot);
+            return new LocalRegistry(await CockpitConfigFileAccess.ReadOnceAsync(configFilePath, cancellationToken).ConfigureAwait(false), configFilePath);
         }
         catch (JsonException exception)
         {
@@ -73,7 +77,7 @@ public sealed class LocalRegistry
 
         var registry = new OneRow(row);
         return new RemoteInstanceConnection(
-            new RemoteServers(registry, loggers.CreateLogger<RemoteServers>()),
+            new RemoteServers(registry, new NotificationSettingsStore(_configFilePath), loggers.CreateLogger<RemoteServers>()),
             new NodeSessionsClient(registry, new NoDiscovery(), loggers.CreateLogger<NodeSessionsClient>()));
     }
 

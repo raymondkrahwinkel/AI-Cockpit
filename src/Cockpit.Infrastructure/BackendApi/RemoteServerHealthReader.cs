@@ -1,21 +1,35 @@
 using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Notifications;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1457: one server's health as the desktop reads it. Asked on connect, on every open of the tab, after an action, and
-// then every minute while a tab shows it, every five while none does, so the badge still follows a login that expired.
-internal sealed class RemoteServerHealthReader(BackendApiClient client, string server, ILogger logger) : IRemoteServerHealth
+// then at the desktop-configured interval while a tab shows it or stays in the background.
+internal sealed class RemoteServerHealthReader(BackendApiClient client, string server, INotificationSettingsStore settingsStore, ILogger logger) : IRemoteServerHealth
 {
-    private static readonly TimeSpan Watched = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan Unwatched = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan Slice = TimeSpan.FromSeconds(5);
-
     private volatile RemoteServerHealth? _current;
+    private readonly Lock _waitGate = new();
+    private int _isWatched;
+    private CancellationTokenSource? _delayCancellation;
 
     public RemoteServerHealth? Current => _current;
 
-    public bool IsWatched { get; set; }
+    public bool IsWatched
+    {
+        get => Volatile.Read(ref _isWatched) != 0;
+        set
+        {
+            if (Interlocked.Exchange(ref _isWatched, value ? 1 : 0) == 0 && value)
+            {
+                lock (_waitGate)
+                {
+                    _delayCancellation?.Cancel();
+                }
+            }
+        }
+    }
 
     public event EventHandler? Changed;
 
@@ -76,14 +90,53 @@ internal sealed class RemoteServerHealthReader(BackendApiClient client, string s
             while (!stop.IsCancellationRequested)
             {
                 await RefreshAsync(stop).ConfigureAwait(false);
-                for (var waited = TimeSpan.Zero; waited < (IsWatched ? Watched : Unwatched); waited += Slice)
-                {
-                    await Task.Delay(Slice, stop).ConfigureAwait(false);
-                }
+                var interval = await _IntervalAsync(stop).ConfigureAwait(false);
+                await _WaitAsync(interval, stop).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    private async Task<TimeSpan> _IntervalAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return IsWatched ? settings.RemoteHealthWatchedInterval : settings.RemoteHealthBackgroundInterval;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not read the remote health refresh interval; using the default.");
+            return IsWatched ? NotificationSettings.DefaultRemoteHealthWatchedInterval : NotificationSettings.DefaultRemoteHealthBackgroundInterval;
+        }
+    }
+
+    private async Task _WaitAsync(TimeSpan interval, CancellationToken stop)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        lock (_waitGate)
+        {
+            _delayCancellation = cancellation;
+        }
+
+        try
+        {
+            await Task.Delay(interval, cancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!stop.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            lock (_waitGate)
+            {
+                if (ReferenceEquals(_delayCancellation, cancellation))
+                {
+                    _delayCancellation = null;
+                }
+            }
         }
     }
 

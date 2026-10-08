@@ -28,6 +28,10 @@ internal sealed class NotificationSettingsEntry
     // Seconds rather than minutes, unlike the thresholds above: a test sets it to one. 0 or less falls back to the default.
     public int LoginCheckIntervalSeconds { get; set; } = (int)NotificationSettings.DefaultLoginCheckInterval.TotalSeconds;
 
+    public int RemoteHealthWatchedIntervalSeconds { get; set; } = (int)NotificationSettings.DefaultRemoteHealthWatchedInterval.TotalSeconds;
+
+    public int RemoteHealthBackgroundIntervalSeconds { get; set; } = (int)NotificationSettings.DefaultRemoteHealthBackgroundInterval.TotalSeconds;
+
     public static NotificationSettingsEntry FromDomain(NotificationSettings settings) => new()
     {
         LocalEnabled = settings.LocalEnabled,
@@ -40,6 +44,8 @@ internal sealed class NotificationSettingsEntry
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
         LoginCheckIntervalSeconds = (int)settings.LoginCheckInterval.TotalSeconds,
+        RemoteHealthWatchedIntervalSeconds = (int)settings.RemoteHealthWatchedInterval.TotalSeconds,
+        RemoteHealthBackgroundIntervalSeconds = (int)settings.RemoteHealthBackgroundInterval.TotalSeconds,
     };
 
     public NotificationSettings ToDomain() => new()
@@ -60,5 +66,11 @@ internal sealed class NotificationSettingsEntry
         LoginCheckInterval = LoginCheckIntervalSeconds > 0
             ? TimeSpan.FromSeconds(LoginCheckIntervalSeconds)
             : NotificationSettings.DefaultLoginCheckInterval,
+        RemoteHealthWatchedInterval = RemoteHealthWatchedIntervalSeconds > 0
+            ? TimeSpan.FromSeconds(RemoteHealthWatchedIntervalSeconds)
+            : NotificationSettings.DefaultRemoteHealthWatchedInterval,
+        RemoteHealthBackgroundInterval = RemoteHealthBackgroundIntervalSeconds > 0
+            ? TimeSpan.FromSeconds(RemoteHealthBackgroundIntervalSeconds)
+            : NotificationSettings.DefaultRemoteHealthBackgroundInterval,
     };
 }

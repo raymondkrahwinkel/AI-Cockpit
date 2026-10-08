@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
@@ -15,7 +16,7 @@ namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1456: one RemoteBackend per registry row that holds a connect key, so a pairing never becomes a server group.
 // Nothing polls: the state follows the stream's own connection, and /whoami is asked once per (re)connect.
-internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServers> logger)
+internal sealed class RemoteServers(IMcpServerStore registry, INotificationSettingsStore settingsStore, ILogger<RemoteServers> logger)
     : IRemoteServers, ISingletonService, IAsyncDisposable
 {
     private readonly Lock _gate = new();
@@ -68,7 +69,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, ILogger<RemoteServ
             var gone = current.Except(kept).ToList();
             var added = wanted
                 .Where(entry => !kept.Any(server => server.Matches(entry.Row)))
-                .Select(entry => new RemoteServer(entry.Name ?? "", entry.Row, logger))
+                .Select(entry => new RemoteServer(entry.Name ?? "", entry.Row, settingsStore, logger))
                 .ToList();
 
             // A reload still out when the cockpit shut down starts nothing, and lets go of what it made.
@@ -190,7 +191,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     // Counts the stream's opens and drops; read and written under _gate.
     private int _generation;
 
-    public RemoteServer(string name, McpServerConfig row, ILogger logger)
+        public RemoteServer(string name, McpServerConfig row, INotificationSettingsStore settingsStore, ILogger logger)
     {
         Name = name;
         _row = row;
@@ -203,7 +204,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         Administration = new RemoteConnectKeyAdministration(_client);
         Profiles = new RemoteServerProfiles(_client);
         AssistantAdministration = new RemoteAssistantAdministration(_client);
-        _health = new RemoteServerHealthReader(_client, name, logger);
+            _health = new RemoteServerHealthReader(_client, name, settingsStore, logger);
         Plugins = new RemotePluginAdministration(_client);
         _projects = new RemoteProjects(_client);
     }

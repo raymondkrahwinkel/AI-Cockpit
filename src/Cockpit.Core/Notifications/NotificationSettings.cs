@@ -44,5 +44,13 @@ public sealed record NotificationSettings
 
     public TimeSpan LoginCheckInterval { get; init; } = DefaultLoginCheckInterval;
 
+    public static readonly TimeSpan DefaultRemoteHealthWatchedInterval = TimeSpan.FromMinutes(1);
+
+    public static readonly TimeSpan DefaultRemoteHealthBackgroundInterval = TimeSpan.FromMinutes(5);
+
+    public TimeSpan RemoteHealthWatchedInterval { get; init; } = DefaultRemoteHealthWatchedInterval;
+
+    public TimeSpan RemoteHealthBackgroundInterval { get; init; } = DefaultRemoteHealthBackgroundInterval;
+
     public bool HasWebhookUrl => !string.IsNullOrWhiteSpace(WebhookUrl);
 }

@@ -1710,6 +1710,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _sessionIdleMinutes = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
+    private TimeSpan _remoteHealthWatchedInterval = NotificationSettings.DefaultRemoteHealthWatchedInterval;
+    private TimeSpan _remoteHealthBackgroundInterval = NotificationSettings.DefaultRemoteHealthBackgroundInterval;
+
     // Whether a session that finished its turn announces itself when the operator is not watching it.
     [ObservableProperty]
     private bool _notifyOnSessionFinished = true;
@@ -3601,6 +3604,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = settings.NotifyOnCiFailure;
+        _remoteHealthWatchedInterval = settings.RemoteHealthWatchedInterval;
+        _remoteHealthBackgroundInterval = settings.RemoteHealthBackgroundInterval;
     }
 
     // Persists the notification settings edited in the Options flyout to `cockpit.json`.
@@ -3629,6 +3634,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // 0 is a real choice here ("never let a session go idle"), so it is saved as written rather than
             // being nudged back to the default the way the away-threshold is.
             SessionIdleThreshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero,
+            RemoteHealthWatchedInterval = _remoteHealthWatchedInterval,
+            RemoteHealthBackgroundInterval = _remoteHealthBackgroundInterval,
         };
 
         await _notificationSettingsStore.SaveAsync(settings);
