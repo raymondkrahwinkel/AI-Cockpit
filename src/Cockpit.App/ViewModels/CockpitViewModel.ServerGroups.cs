@@ -398,7 +398,7 @@ public partial class CockpitViewModel
         }
 
         var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects)
+        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects, dialogService: _dialogService)
         {
             Profiles = new ServerProfilesViewModel(group.Server.Profiles),
             Assistant = assistant,

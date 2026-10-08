@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
@@ -19,14 +20,14 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     private readonly IConnectKeyAdministration _admin;
     private readonly IPluginAdministration? _plugins;
-    private IReadOnlyList<PluginStoreCatalogEntry> _stores = [];
+    private readonly ISessionDialogService? _dialogService;
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
     private readonly IServerProjects? _serverProjects;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null)
     {
         _serverProjects = serverProjects;
         Server = server;
@@ -36,6 +37,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         _profiles = profiles;
         _projects = [.. projects.Where(project => project.Id is not null)];
         _plugins = plugins;
+        _dialogService = dialogService;
     }
 
     public string Server { get; }
@@ -265,23 +267,27 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private Task InstallPluginAsync() => _RunAsync(async () =>
     {
-        if (_plugins is null || _stores.FirstOrDefault(store => store.Index?.Plugins.FirstOrDefault(entry => !Plugins.Any(installed => installed.Id == entry.Id)) is not null) is not { Index: { } index } store)
+        if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
         {
-            Status = "No new plugin is available from the server's stores.";
+            Status = "The server's plugin store is not available.";
             return;
         }
 
-        var entry = index.Plugins.First(candidate => !Plugins.Any(installed => installed.Id == candidate.Id));
-        var version = entry.Versions.FirstOrDefault();
-        if (version is null)
+        var stores = await catalog.GetStoresAsync();
+        if (stores.Count == 0)
         {
-            Status = "The server store has no installable version.";
+            Status = "No plugin store is configured on the server.";
             return;
         }
 
-        var result = await _plugins.InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, PluginStoreConfig.Remote(store.Id), version));
-        Status = result.IsSuccess ? "This change takes effect after the server restarts." : "The server could not install the plugin.";
+        var manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))]);
+        await manager.LoadAsync();
+        await _dialogService.ShowPluginStoreDialogAsync(manager);
         await _LoadPluginsAsync();
+        if (manager.NeedsRestart)
+        {
+            Status = "This change takes effect after the server restarts.";
+        }
     });
 
     [RelayCommand]
@@ -349,10 +355,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(PluginsCount));
-        if (_plugins is IPluginStoreCatalog catalog)
-        {
-            _stores = await catalog.GetStoresAsync();
-        }
     }
 
     private async Task _RunAsync(Func<Task> action)
