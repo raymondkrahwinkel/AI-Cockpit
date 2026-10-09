@@ -48,6 +48,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **What's new** now opens on the changes at once. They are read when the update check finds a build, and only
+  read at the click when that earlier read failed, with a "Reading the changelog…" line meanwhile.
+- fixed: a list item that wraps onto an indented second line was cut in two on screen, the rest of the sentence
+  landing outside the bullet. The wrapped line now stays in the item, in **What's new** and anywhere else lists render.
 - fixed: a server's event stream sent the assistant's conversation to every connect key, while only the key
   that holds the assistant may read it. Other keys no longer receive the assistant's events.
 - fixed: on Linux, two cockpits writing the same `cockpit.log` could overwrite each other's lines, leaving

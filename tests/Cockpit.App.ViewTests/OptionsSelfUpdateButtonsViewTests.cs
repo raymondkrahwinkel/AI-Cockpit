@@ -90,6 +90,32 @@ public class OptionsSelfUpdateButtonsViewTests
         dialog.Close();
     });
 
+    // AC-1515: the changelog is read when the build is found; a read that failed is retried on the click, and a good one is not.
+    [Fact]
+    public Task WhatsNew_OpensOnTheChangesReadAhead_AndReadsAgainOnlyAfterAFailedReadAhead() =>
+        HeadlessAvalonia.RunAsync(async () =>
+        {
+            var updates = Substitute.For<IUpdateService>();
+            updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+                .Returns(new UpdateCheckResult(new AppRelease("1.2.3", "notes", "https://example.test/1.2.3"), null));
+            updates.ReadChangesAsync("1.2.3", Arg.Any<CancellationToken>())
+                .Returns(ChangelogResult.Failed("offline"), new ChangelogResult("- fixed: a thing", null));
+            var shown = new List<Task<ChangelogResult>>();
+            var dialogs = Substitute.For<ISessionDialogService>();
+            dialogs.ShowWhatsNewDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Do<Task<ChangelogResult>>(shown.Add)).Returns(Task.CompletedTask);
+
+            var cockpit = _ViewModelWith(probe: null, updates, dialogs);
+            await cockpit.CheckForUpdatesAsync();
+            await updates.Received(1).ReadChangesAsync("1.2.3", Arg.Any<CancellationToken>());
+
+            await cockpit.ShowWhatsNewCommand.ExecuteAsync(null);
+            await cockpit.ShowWhatsNewCommand.ExecuteAsync(null);
+
+            await updates.Received(2).ReadChangesAsync("1.2.3", Arg.Any<CancellationToken>());
+            Assert.Equal("- fixed: a thing", (await shown[0]).Markdown);
+            Assert.Same(shown[0], shown[1]);
+        });
+
     private static Button _Button(OptionsDialog dialog, string name) =>
         dialog.GetVisualDescendants().OfType<Button>().Single(button => button.Name == name);
 
@@ -108,7 +134,7 @@ public class OptionsSelfUpdateButtonsViewTests
     }
 
     /// <summary>The real constructor rather than the design-time one, because the probe/update service only reach the view model through that path.</summary>
-    private static CockpitViewModel _ViewModelWith(IUpdateSupportProbe? probe, IUpdateService? updates)
+    private static CockpitViewModel _ViewModelWith(IUpdateSupportProbe? probe, IUpdateService? updates, ISessionDialogService? dialogs = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -126,7 +152,7 @@ public class OptionsSelfUpdateButtonsViewTests
         return new CockpitViewModel(
             () => new SessionViewModel(),
             () => new TtyViewModel(),
-            Substitute.For<ISessionDialogService>(),
+            dialogs ?? Substitute.For<ISessionDialogService>(),
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
             Substitute.For<IAttentionNotifier>(),
