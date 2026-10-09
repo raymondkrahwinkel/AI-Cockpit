@@ -289,7 +289,7 @@ public sealed class RemoteSessionJourney
     }
 
     // AC-1494: a server connected through the connect dialog is a node to the assistant, as a pairing is, and lists
-    // what its key may use.
+    // what its key may use. The MCP editor was opened before the connect and is applied after it, as Options does.
     [Fact]
     public async Task AServerConnectedThroughTheDialog_IsANodeTheAssistantSees()
     {
@@ -307,6 +307,8 @@ public sealed class RemoteSessionJourney
             await using var cockpit = JourneyHost.Desktop();
             await cockpit.StartDesktopAsync();
             var security = cockpit.Cockpit.Security;
+            var editor = cockpit.Cockpit.McpServers ?? throw new InvalidOperationException("Options has no MCP servers editor.");
+            await HeadlessAvalonia.RunAsync(editor.LoadAsync);
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 security.ConnectNodeName = Server;
@@ -315,14 +317,21 @@ public sealed class RemoteSessionJourney
                 security.ConnectKey = key;
                 security.ConnectFingerprint = fingerprint;
                 await security.ConnectToServerCommand.ExecuteAsync(null);
+                Assert.True(await editor.PersistAsync());
             });
 
             var readUrl = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Single(server => server.Name == AssistantIdentity.McpServerName).Url ?? "";
             await using var assistant = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.McpServerName, readUrl);
-            var listed = await JourneyHost.CallAsync(assistant, "list_sessions", []);
 
+            // Profiles first: before any list_sessions has read the node.
+            var profiles = await JourneyHost.CallAsync(assistant, "list_profiles", []);
+            var listed = await JourneyHost.CallAsync(assistant, "list_sessions", []);
+            var projects = await JourneyHost.CallAsync(assistant, "list_projects", []);
+
+            Assert.Contains(profiles["profiles"]?.AsArray() ?? [], row => row?["machine"]?["name"]?.GetValue<string>() == Server && row["Label"]?.GetValue<string>() == "Echo");
             var node = Assert.Single(listed["nodes"]?.AsArray() ?? [], candidate => candidate?["name"]?.GetValue<string>() == Server);
             Assert.True(node?["reachable"]?.GetValue<bool>(), listed.ToJsonString());
+            Assert.Contains(projects["nodes"]?.AsArray() ?? [], candidate => candidate?["name"]?.GetValue<string>() == Server);
         }
         finally
         {
