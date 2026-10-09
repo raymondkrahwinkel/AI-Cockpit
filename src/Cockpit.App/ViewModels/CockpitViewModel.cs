@@ -8182,9 +8182,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var requestedSessionCount = sessionCount;
-        var normalizedShape = string.Equals(shape, "sdk-read-fallback", StringComparison.OrdinalIgnoreCase)
-            ? "sdk-read-fallback"
-            : string.Equals(shape, "growing-tail", StringComparison.OrdinalIgnoreCase) ? "growing-tail" : "new-rows";
+        string[] shapes = ["sdk-read-fallback", "growing-tail", "resume", "subagents"];
+        var normalizedShape = shapes.FirstOrDefault(known => string.Equals(shape, known, StringComparison.OrdinalIgnoreCase)) ?? "new-rows";
         var sdkReadFallback = normalizedShape == "sdk-read-fallback";
         if (sdkReadFallback)
         {
@@ -8256,6 +8255,50 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
                 await Task.Delay(50);
                 reachableBytes.Add(GC.GetTotalMemory(forceFullCollection: true));
+            }
+        }
+        else if (normalizedShape == "resume" && Environment.GetEnvironmentVariable("COCKPIT_REPRO_TRANSCRIPT") is { } recording)
+        {
+            // AC-1518: a pane resumed over a recorded transcript, as the restore path repaints it before the start.
+            foreach (var vm in sessionVms)
+            {
+                Directory.CreateDirectory(Path.Combine(CockpitBuild.StateRoot, "transcripts"));
+                File.Copy(recording, Path.Combine(Path.Combine(CockpitBuild.StateRoot, "transcripts"), vm.PaneId + ".jsonl"), overwrite: true);
+                await vm.ReplayRecordedTranscriptAsync();
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+        }
+        else if (normalizedShape == "subagents")
+        {
+            // AC-1518: one Agent call whose subagent keeps working, so every progress step upserts the anchor row.
+            foreach (var driver in drivers)
+            {
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolUseRequested
+                {
+                    SessionId = "app-repro", ToolUseId = "agent", ToolName = "Agent", InputJson = "{\"description\":\"repro\"}"
+                });
+            }
+
+            var until = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < until)
+            {
+                block++;
+                foreach (var driver in drivers)
+                {
+                    driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolUseRequested
+                    {
+                        SessionId = "app-repro", ParentToolUseId = "agent", ToolUseId = $"sub-{block}", ToolName = "Read",
+                        InputJson = $"{{\"file_path\":\"file-{block}.cs\"}}"
+                    });
+                    driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolResult
+                    {
+                        SessionId = "app-repro", ParentToolUseId = "agent", ToolUseId = $"sub-{block}",
+                        Content = new string('r', 2000), IsError = false
+                    });
+                }
+
+                await Task.Delay(20);
             }
         }
         else
