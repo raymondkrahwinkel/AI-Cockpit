@@ -323,13 +323,17 @@ public sealed class RemoteSessionJourney
                 Assert.True(await editor.PersistAsync());
             });
 
-            var readUrl = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Single(server => server.Name == AssistantIdentity.McpServerName).Url ?? "";
-            await using var assistant = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.McpServerName, readUrl);
+            // Profiles first: before any list_sessions has read the node. One server at a time, as each connect re-grants.
+            var host = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>();
+            JsonNode profiles;
+            await using (var acting = await cockpit.ConnectAsPaneAsync(
+                AssistantIdentity.PaneId, AssistantIdentity.ActMcpServerName, host.GetServers().Single(server => server.Name == AssistantIdentity.ActMcpServerName).Url ?? ""))
+            {
+                profiles = await JourneyHost.CallAsync(acting, "list_profiles", []);
+            }
 
-            // Profiles first: before any list_sessions has read the node.
-            var actUrl = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Single(server => server.Name == AssistantIdentity.ActMcpServerName).Url ?? "";
-            await using var acting = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.ActMcpServerName, actUrl);
-            var profiles = await JourneyHost.CallAsync(acting, "list_profiles", []);
+            await using var assistant = await cockpit.ConnectAsPaneAsync(
+                AssistantIdentity.PaneId, AssistantIdentity.McpServerName, host.GetServers().Single(server => server.Name == AssistantIdentity.McpServerName).Url ?? "");
             var listed = await JourneyHost.CallAsync(assistant, "list_sessions", []);
             var projects = await JourneyHost.CallAsync(assistant, "list_projects", []);
 
