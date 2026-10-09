@@ -8223,6 +8223,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }));
 
         var block = 0;
+        var replayMs = 0L;
         var reachableBytes = new List<long>();
         var retainedControl = retainResults ? new List<string>() : null;
         if (sdkReadFallback)
@@ -8264,7 +8265,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 Directory.CreateDirectory(Path.Combine(CockpitBuild.StateRoot, "transcripts"));
                 File.Copy(recording, Path.Combine(Path.Combine(CockpitBuild.StateRoot, "transcripts"), vm.PaneId + ".jsonl"), overwrite: true);
+                var replay = System.Diagnostics.Stopwatch.StartNew();
                 await vm.ReplayRecordedTranscriptAsync();
+                replayMs = replay.ElapsedMilliseconds;
             }
 
             await Task.Delay(TimeSpan.FromSeconds(seconds));
@@ -8342,6 +8345,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             callsPerSession = sdkReadFallback ? 20 : 0,
             resultBytes = sdkReadFallback ? 5 * 1024 * 1024 : 0,
             orphanedResultRows,
+            replayMs,
+            rows = sessionVms.Sum(vm => vm.Transcript.Count),
             reachableBytes,
             positiveControl = retainResults
         }));
