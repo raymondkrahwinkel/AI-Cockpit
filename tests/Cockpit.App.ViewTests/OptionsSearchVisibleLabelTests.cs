@@ -96,8 +96,7 @@ public class OptionsSearchVisibleLabelTests
         dialog.Close();
     });
 
-    // AC-289: a provider's declared thresholds sit on its plugin's page, not Sessions, and search still finds them there. A plugin
-    // that also calls AddSettings keeps one page: its own view, then the host's section.
+    // AC-289: declared thresholds sit once on their plugin's page, beside its own view if any, and search finds them there.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
