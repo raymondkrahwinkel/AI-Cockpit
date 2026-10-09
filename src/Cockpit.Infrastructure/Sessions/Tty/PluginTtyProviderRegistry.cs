@@ -13,7 +13,12 @@ public interface IPluginTtyProviderRegistry
     /// <summary>
     /// Registers <paramref name="registration"/>; a later registration under the same provider id replaces the earlier one.
     /// </summary>
-    void Register(TtyProviderRegistration registration);
+    void Register(TtyProviderRegistration registration, string? ownerPluginId = null);
+
+    /// <summary>
+    /// The plugin the host stamped as registering <paramref name="providerId"/> (AC-289), or <see langword="null"/> when unknown.
+    /// </summary>
+    string? OwnerOf(string providerId);
 
     /// <summary>
     /// Every TTY provider registered so far, in registration order.
@@ -32,8 +37,15 @@ internal sealed class PluginTtyProviderRegistry : IPluginTtyProviderRegistry, IS
 
     public IReadOnlyList<TtyProviderRegistration> Registrations => [.. _registrations.Values];
 
-    public void Register(TtyProviderRegistration registration) =>
+    private readonly Dictionary<string, string?> _owners = new(StringComparer.OrdinalIgnoreCase);
+
+    public void Register(TtyProviderRegistration registration, string? ownerPluginId = null)
+    {
         _registrations[registration.ProviderId] = registration;
+        _owners[registration.ProviderId] = ownerPluginId;
+    }
+
+    public string? OwnerOf(string providerId) => _owners.GetValueOrDefault(providerId);
 
     public TtyProviderRegistration? Resolve(string providerId) =>
         _registrations.GetValueOrDefault(providerId);

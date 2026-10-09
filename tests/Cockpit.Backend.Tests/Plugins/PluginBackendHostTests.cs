@@ -9,6 +9,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
@@ -216,6 +217,22 @@ public class PluginBackendHostTests
         Assert.Equal(["Plugin diagram called AddSupervisedActivityProvider, and this backend has no window: its window contributions are ignored."], lines);
     }
 
+    // AC-289: the owner of a provider is this host's own plugin id, on both routes, so its declared settings land on that plugin's page.
+    [Fact]
+    public void AProviderRegisteredThroughTheHost_IsOwnedByThatPlugin()
+    {
+        var providers = new PluginProviderRegistry();
+        var ttyProviders = new PluginTtyProviderRegistry();
+        var host = _Host(new SessionRegistry(), _InlineLauncher(), providers: providers, ttyProviders: ttyProviders);
+
+        host.AddTtyProvider(new TtyProviderRegistration("echo", "Echo", _ => Substitute.For<IPluginTtyProvider>(), []));
+        host.AddSessionProvider(new SessionProviderRegistration("echo-sdk", "Echo", _ => Substitute.For<IPluginSessionDriverFactory>(), new PluginSessionCapabilities(false, false)));
+
+        Assert.Equal("diagram", ttyProviders.OwnerOf("ECHO"));
+        Assert.Equal("diagram", providers.OwnerOf("echo-sdk"));
+        Assert.Null(providers.OwnerOf("echo"));
+    }
+
     // AC-1369 condition (a): the host is built and used here, in the suite that guards the no-plugin backend, and not
     // one Avalonia assembly comes with it.
     [Fact]
@@ -249,12 +266,15 @@ public class PluginBackendHostTests
         await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(request => request.WorkspaceId == desk.Id && request.Prompt == "hello"));
     }
 
-    private static PluginBackendHost _Host(SessionRegistry registry, ISessionLauncher launcher, ILoggerFactory? logs = null)
+    private static PluginBackendHost _Host(
+        SessionRegistry registry, ISessionLauncher launcher, ILoggerFactory? logs = null, IPluginProviderRegistry? providers = null, IPluginTtyProviderRegistry? ttyProviders = null)
     {
         var services = new ServiceCollection()
             .AddSingleton<ISessionRegistry>(registry)
             .AddSingleton(launcher)
             .AddSingleton(logs ?? LoggerFactory.Create(_ => { }))
+            .AddSingleton(providers ?? new PluginProviderRegistry())
+            .AddSingleton(ttyProviders ?? new PluginTtyProviderRegistry())
             .BuildServiceProvider();
 
         return new PluginBackendHost(

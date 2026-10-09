@@ -348,10 +348,10 @@ public class PluginBackendHost(
         services.GetRequiredService<IAutopilotTemplateRegistry>().Registrations;
 
     public void AddSessionProvider(SessionProviderRegistration registration) =>
-        services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
+        services.GetRequiredService<IPluginProviderRegistry>().Register(registration, pluginId);
 
     public void AddTtyProvider(TtyProviderRegistration registration) =>
-        services.GetRequiredService<IPluginTtyProviderRegistry>().Register(registration);
+        services.GetRequiredService<IPluginTtyProviderRegistry>().Register(registration, pluginId);
 
     public async Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()
     {

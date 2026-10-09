@@ -12,7 +12,12 @@ public interface IPluginProviderRegistry
     /// <summary>
     /// Registers <paramref name="registration"/>; a later registration with the same <see cref="SessionProviderRegistration.ProviderId"/> replaces the earlier one.
     /// </summary>
-    void Register(SessionProviderRegistration registration);
+    void Register(SessionProviderRegistration registration, string? ownerPluginId = null);
+
+    /// <summary>
+    /// The plugin the host stamped as registering <paramref name="providerId"/> (AC-289), or <see langword="null"/> when unknown.
+    /// </summary>
+    string? OwnerOf(string providerId);
 
     /// <summary>
     /// Every provider registered so far, in registration order.

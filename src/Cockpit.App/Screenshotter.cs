@@ -3004,7 +3004,9 @@ internal static class Screenshotter
             ],
         };
 
-        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
 
@@ -3036,7 +3038,9 @@ internal static class Screenshotter
             ],
         };
 
-        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Codex];
 

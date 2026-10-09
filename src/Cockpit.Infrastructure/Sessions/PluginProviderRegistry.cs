@@ -11,11 +11,13 @@ internal sealed class PluginProviderRegistry : IPluginProviderRegistry, ISinglet
     private readonly object _gate = new();
     private readonly Dictionary<string, SessionProviderRegistration> _byProviderId = [];
     private readonly List<SessionProviderRegistration> _ordered = [];
+    private readonly Dictionary<string, string?> _owners = [];
 
-    public void Register(SessionProviderRegistration registration)
+    public void Register(SessionProviderRegistration registration, string? ownerPluginId = null)
     {
         lock (_gate)
         {
+            _owners[registration.ProviderId] = ownerPluginId;
             if (_byProviderId.TryGetValue(registration.ProviderId, out var existing))
             {
                 _ordered.Remove(existing);
@@ -34,6 +36,14 @@ internal sealed class PluginProviderRegistry : IPluginProviderRegistry, ISinglet
             {
                 return [.. _ordered];
             }
+        }
+    }
+
+    public string? OwnerOf(string providerId)
+    {
+        lock (_gate)
+        {
+            return _owners.GetValueOrDefault(providerId);
         }
     }
 
