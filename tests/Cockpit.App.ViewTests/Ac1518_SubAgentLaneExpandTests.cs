@@ -29,7 +29,7 @@ public sealed class Ac1518_SubAgentLaneExpandTests
 
         anchor.IsSubAgentExpanded = true;
         window.UpdateLayout();
-        var lane = view.GetVisualDescendants().OfType<ItemsControl>().Single(list => ReferenceEquals(list.ItemsSource, anchor.ShownSubAgentRows));
+        var lane = view.GetVisualDescendants().OfType<ItemsControl>().Single(list => list.Items.Contains(anchor.SubAgentRows[0]));
         Assert.Equal(TranscriptEntryViewModel.SubAgentRowsPerWindow, lane.GetRealizedContainers().Count());
 
         var deadline = DateTime.UtcNow.AddSeconds(30);
