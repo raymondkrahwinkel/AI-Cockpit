@@ -46,7 +46,6 @@ or bind-mounts (below). All of it is unencrypted on disk, logins and keys includ
 | --- | --- | --- | --- | --- |
 | `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs | a new certificate, so a new fingerprint every client must pin again, and the server's settings | yes: the certificate's private key |
 | `work` | `/work` | clones and worktrees, writable for the server and the agent sessions | the clones and any unpushed work in them | no, but unpushed work |
-| `scratch` | `/home/agent/scratch` | the default working directory for a projectless session; writable only by `agent` | a fresh empty default working directory | no, but unpushed work |
 | `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts | a new sign-in | yes: the login |
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts | a new sign-in | yes: the login |
 | `ssh` | `/home/app/.ssh` | the server's own SSH keys | new keys to register | yes: private keys |
@@ -57,9 +56,6 @@ or bind-mounts (below). All of it is unencrypted on disk, logins and keys includ
 `brain-state` belongs to the compose's `brain-sync` service, not to the image. The same `state` volume across a `down`
 and `up` keeps the certificate, and with it the fingerprint.
 
-`COCKPIT_DEFAULT_WORKING_DIRECTORY` supplies the existing profile-default fallback for a session without a project.
-Compose sets it to `scratch`; its `0700` agent-owned mount is not readable by the server process or its secrets.
-
 ### Backup and restore
 
 Stop the server first (`docker compose -f deploy/compose.yaml stop`), so no file is half-written. Back up the volumes
@@ -67,7 +63,7 @@ with a throwaway container; the tar keeps owners and modes (`-p`), which the spl
 
     docker run --rm -v cockpit_state:/v:ro -v "$PWD":/backup alpine tar -czpf /backup/state.tgz -C /v .
 
-Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `scratch`, `claude`, `codex`, `ssh`, `agent-ssh`,
+Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `claude`, `codex`, `ssh`, `agent-ssh`
 `brain` and, if you use brain-sync, `brain-state`. Restore into a new, empty volume, as root so the owners come back:
 
     docker volume create cockpit_state
@@ -85,14 +81,12 @@ on its first use; **a bind-mount keeps the host's**, so create the directories w
 | --- | --- | --- |
 | `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
 | `/work` | `1654:1700` (`app:agent`) | `2770` |
-| `/home/agent/scratch` | `agent` (1700:1700) | `0700` |
 | `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |
 | `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` (brain: `brain-sync` keeps it owner-only too) |
 | `/home/app/.claude`, `/home/app/.codex` | `agent` (1700:1700) | `2770`, the same host path as the agent's |
 
     sudo install -d -o 1654 -g 1654 -m 0700 /srv/cockpit/state
     sudo install -d -o 1654 -g 1700 -m 2770 /srv/cockpit/work
-    sudo install -d -o 1700 -g 1700 -m 0700 /srv/cockpit/scratch
 
 The entrypoint checks each of these before the server starts. **A wrong owner or a path the user cannot write stops the
 start** (exit 1) with the owner to set, e.g. `entrypoint: /state is owned by root, not app (uid 1654)`: it never

@@ -12,8 +12,6 @@ public static class CockpitBuild
     // `GetFolderPath` reads the shell folder from the registry and ignores that variable on Windows.
     public const string StateRootVariable = "COCKPIT_STATE_ROOT";
 
-    public const string DefaultWorkingDirectoryVariable = "COCKPIT_DEFAULT_WORKING_DIRECTORY";
-
     // AC-478: starts the cockpit with no plugins loaded; a restart strips it again, so it is always a one-shot recovery.
     public const string SafeModeArgument = "--safe-mode";
 
@@ -38,13 +36,8 @@ public static class CockpitBuild
     // none: it reads as isolated while one path still writes into the operator's real state.
     public static string StateRoot =>
         Environment.GetEnvironmentVariable(StateRootVariable) is { } stateRoot && !string.IsNullOrWhiteSpace(stateRoot)
-            ? RequireFullyQualified(stateRoot, StateRootVariable)
+            ? RequireFullyQualified(stateRoot)
             : DefaultStateRoot;
-
-    public static string? DefaultWorkingDirectory =>
-        Environment.GetEnvironmentVariable(DefaultWorkingDirectoryVariable) is { } workingDirectory && !string.IsNullOrWhiteSpace(workingDirectory)
-            ? RequireFullyQualified(workingDirectory, DefaultWorkingDirectoryVariable)
-            : null;
 
     // The file this build logs to. Resolved here rather than at the point of writing because more than one thing
     // now needs to name it: the logger opens it, and the diagnostics report tells the operator where it is — every
@@ -67,9 +60,9 @@ public static class CockpitBuild
     // A relative override would resolve against each process's working directory, and the cockpit gives its
     // children their own — so the desktop and a session it spawned would isolate to two different places while
     // reading as one. Refusing at the first read makes that a startup failure instead of a silent half-isolation.
-    private static string RequireFullyQualified(string path, string variable) =>
-        Path.IsPathFullyQualified(path)
-            ? path
+    private static string RequireFullyQualified(string stateRoot) =>
+        Path.IsPathFullyQualified(stateRoot)
+            ? stateRoot
             : throw new InvalidOperationException(
-                $"{variable} must be an absolute path; it is \"{path}\".");
+                $"{StateRootVariable} must be an absolute path; it is \"{stateRoot}\".");
 }

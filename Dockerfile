@@ -32,10 +32,10 @@ RUN groupadd --gid 1700 agent \
     && useradd --uid 1700 --gid agent --home-dir /home/agent --create-home --shell /usr/sbin/nologin agent \
     && usermod --append --groups agent app \
     && mkdir -p /state /home/app/.ssh /home/agent/.ssh /work/clones /work/worktrees \
-        /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex /home/agent/Nextcloud /home/agent/scratch \
+        /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex /home/agent/Nextcloud \
     && chown -R app:app /state /home/app \
     && chown -R agent:agent /home/agent /home/app/.claude /home/app/.codex \
-    && chmod 700 /home/agent/Nextcloud /home/agent/scratch /state \
+    && chmod 700 /home/agent/Nextcloud /state \
     && chmod 2770 /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex \
     && chmod 700 /home/app/.ssh /home/agent/.ssh \
     && chmod 750 /home/app /home/agent \
@@ -46,7 +46,7 @@ RUN groupadd --gid 1700 agent \
 # VOLUME takes them from this layer; changes to these paths later in the Dockerfile are lost). Without -v, Docker makes
 # anonymous volumes of them; see deploy/README.md, "Persistent data". No secret is ever baked into this image.
 VOLUME ["/state", "/work", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
-        "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud", "/home/agent/scratch"]
+        "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud"]
 # Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
 # the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
 RUN groupadd --gid 1701 agent-run \
@@ -64,7 +64,6 @@ COPY --chmod=0755 deploy/start-server.sh /opt/cockpit/start-server.sh
 RUN visudo --check --file=/etc/sudoers.d/cockpit-agent
 ENV HOME=/home/app
 ENV PATH=/opt/cockpit/bin:$PATH
-ENV COCKPIT_DEFAULT_WORKING_DIRECTORY=/home/agent/scratch
 WORKDIR /work
 EXPOSE 20383
 # Starts as root, hands the server its secrets and drops to `app` (deploy/entrypoint.sh).
