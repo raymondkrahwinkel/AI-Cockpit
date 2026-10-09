@@ -19,6 +19,7 @@ using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Updates;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -727,6 +728,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         await _ShowSurfaceAsync(typeof(GlossaryDialog), owner, () => new GlossaryDialog());
+    }
+
+    public async Task ShowWhatsNewDialogAsync(string current, string offered, Task<ChangelogResult> changes)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        await _ShowSurfaceAsync(typeof(WhatsNewDialog), owner, () =>
+        {
+            var dialog = new WhatsNewDialog();
+            _ = dialog.ShowChangesAsync(current, offered, changes);
+
+            return dialog;
+        });
     }
 
     public async Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands)

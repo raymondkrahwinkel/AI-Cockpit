@@ -20,6 +20,12 @@ public interface IUpdateService
     Task<UpdateCheckResult> CheckAsync(UpdateChannel channel, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The changelog entries a move from this build to <paramref name="offeredVersion"/> brings (AC-1515): what is in
+    /// the offered build's CHANGELOG.md and not in this one's. Never throws — a changelog that cannot be read says so.
+    /// </summary>
+    Task<ChangelogResult> ReadChangesAsync(string offeredVersion, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches the build now on offer on <paramref name="channel"/> (AC-388). Never throws — a failed download leaves the
     /// app as it was, reported rather than swallowed. <paramref name="progress"/> is 0-100 and may arrive off the UI
     /// thread (AC-368), so callers must marshal it. Remembered for a later Apply/Request call — never "apply this release".

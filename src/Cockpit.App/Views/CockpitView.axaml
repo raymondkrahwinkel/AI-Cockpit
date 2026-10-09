@@ -394,6 +394,11 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <!-- Self-updating build (AC-385, AC-388): download-and-restart lives here instead of the plain
                          "Open release" link, which stays for a copy the updater did not install. -->
+                    <!-- AC-1515: what the update brings, for either kind of copy — so it is not gated on self-update. -->
+                    <Button Classes="Subtle" Padding="12,5"
+                            Content="What's new"
+                            Command="{Binding ShowWhatsNewCommand}"
+                            ToolTip.Tip="The changelog entries between the build you are on and the one on offer"/>
                     <Button Classes="Accent" Padding="12,5"
                             Content="Update now"
                             Command="{Binding UpdateNowCommand}"

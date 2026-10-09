@@ -4520,6 +4520,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = $"You are on the newest build ({CurrentBuild}).";
     }
 
+    // The banner's "What's new" (AC-1515): the changelog from this build up to the one on offer, read on the click
+    // rather than with the check, so a changelog GitHub will not hand over never holds the banner back.
+    [RelayCommand]
+    private async Task ShowWhatsNewAsync()
+    {
+        if (_dialogService is null || _updates is not { } updates || UpdateName.Length == 0)
+        {
+            return;
+        }
+
+        await _dialogService.ShowWhatsNewDialogAsync(CurrentBuild, UpdateName, updates.ReadChangesAsync(UpdateName));
+    }
+
     // Opens the release page. The cockpit does not install itself — see IUpdateService for why.
     [RelayCommand]
     public void OpenUpdate()

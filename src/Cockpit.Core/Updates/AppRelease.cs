@@ -35,3 +35,9 @@ public sealed record UpdateDownloadResult(bool Succeeded, string? Failure)
 
     public static UpdateDownloadResult Failed(string why) => new(false, why);
 }
+
+// What "What's new" found (AC-1515): the changelog entries between two builds as markdown, or why it could not say.
+public sealed record ChangelogResult(string Markdown, string? Failure)
+{
+    public static ChangelogResult Failed(string why) => new(string.Empty, why);
+}
