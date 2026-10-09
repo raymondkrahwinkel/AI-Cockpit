@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +12,9 @@ public sealed class FileLoggerProvider : ILoggerProvider
     // The live file rolls to `.1` once it reaches this size. Named constant so the trade-off (disk
     // footprint vs. how far back the log reaches) is visible at the call site, matching UsageHistoryLog.MaxSizeBytes.
     internal const long MaxSizeBytes = 8 * 1024 * 1024;
+
+    // Windows keeps FileShare.Read so a tailing reader never blocks a write; on Unix only None takes an exclusive lock.
+    private static readonly FileShare WriterShare = OperatingSystem.IsWindows() ? FileShare.Read : FileShare.None;
 
     private readonly string _path;
     private readonly string _rolloverPath;
@@ -68,7 +72,10 @@ public sealed class FileLoggerProvider : ILoggerProvider
         {
             try
             {
-                File.AppendAllText(_path, line);
+                // AC-1516: .NET appends at an offset read on open, not with O_APPEND; FileShare.None is what makes a
+                // second writer on Unix wait (flock LOCK_EX), as FileShare.Read already does on Windows.
+                using var stream = new FileStream(_path, FileMode.Append, FileAccess.Write, WriterShare);
+                stream.Write(Encoding.UTF8.GetBytes(line));
                 return;
             }
             catch (IOException) when (attempt < 5)
