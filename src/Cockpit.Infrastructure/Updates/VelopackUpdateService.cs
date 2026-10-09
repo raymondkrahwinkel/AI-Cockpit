@@ -96,6 +96,40 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
         }
     }
 
+    // The file is ~400 KB, read only on a click — a slower answer than the feed's is still worth waiting for.
+    private static readonly HttpClient ChangelogHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
+
+    // AC-1515: the same repository the feed reads, at this build's commit and at the offered build's tag. The
+    // nightly tag rolls, so a nightly cut since the check is included — it is also what "Update now" would fetch.
+    public async Task<ChangelogResult> ReadChangesAsync(string offeredVersion, CancellationToken cancellationToken = default)
+    {
+        if (Current.Commit.Length == 0)
+        {
+            return ChangelogResult.Failed("This build does not carry the commit it was built from, so there is nothing to compare against.");
+        }
+
+        var offeredTag = BuildChannel.FromVersion(offeredVersion) == UpdateChannel.Nightly ? NightlyTag : $"v{offeredVersion}";
+
+        try
+        {
+            var current = ChangelogHttp.GetStringAsync(_ChangelogAt(Current.Commit), cancellationToken);
+            var offered = ChangelogHttp.GetStringAsync(_ChangelogAt(offeredTag), cancellationToken);
+
+            var changes = ChangelogDelta.Between(await current, await offered);
+
+            return new ChangelogResult(
+                changes.Length > 0 ? changes : "_The changelog lists nothing new between these two builds._", null);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogDebug(exception, "Reading the changelog failed.");
+
+            return ChangelogResult.Failed($"The changelog could not be read from GitHub: {exception.Message}");
+        }
+    }
+
+    private static string _ChangelogAt(string gitRef) => $"{RepositoryUrl}/raw/{gitRef}/CHANGELOG.md";
+
     public Task<UpdateDownloadResult> DownloadAsync(UpdateChannel channel, Action<int>? progress = null, CancellationToken cancellationToken = default) =>
         DownloadAsync(channel, Source, locator: null, logger, Patience, progress, cancellationToken);
 

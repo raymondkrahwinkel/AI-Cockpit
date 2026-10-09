@@ -1,6 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Updates;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -121,6 +122,12 @@ public interface ISessionDialogService
     /// Shows the in-app glossary (AC-512) over the main window: the five primitives, explained without a browser.
     /// </summary>
     Task ShowGlossaryDialogAsync();
+
+    /// <summary>
+    /// Shows what an update brings (AC-1515): the changelog entries after <paramref name="current"/> up to and including
+    /// <paramref name="offered"/>. Opens at once; <paramref name="changes"/> fills it in when it completes.
+    /// </summary>
+    Task ShowWhatsNewDialogAsync(string current, string offered, Task<ChangelogResult> changes);
 
     /// <summary>
     /// Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.

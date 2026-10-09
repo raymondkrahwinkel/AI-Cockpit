@@ -467,6 +467,15 @@ internal static class Screenshotter
         ["restore-offer"] = (width, height) => _RestorePane(width, height, degraded: false),
         ["restore-offer-degraded"] = (width, height) => _RestorePane(width, height, degraded: true),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
+        // AC-1515: the update banner with its "What's new", and the dialog it opens — read, and unreadable.
+        ["update-banner"] = (_, _) => _UpdateBanner(),
+        ["whats-new"] = (_, _) => _WhatsNew(new Core.Updates.ChangelogResult(
+            "### Added\n\n- added: a **What's new** button on the update banner, listing every changelog entry between your build and the offered one\n\n"
+            + "### Fixed\n\n- fixed: picking OpenAI for a new profile no longer shows an exception under the provider\n"
+            + "- fixed: selected Options profiles use the settings-navigation accent rail",
+            null)),
+        ["whats-new-failed"] = (_, _) => _WhatsNew(Core.Updates.ChangelogResult.Failed(
+            "The changelog could not be read from GitHub: No such host is known.")),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
         // The windows that had no scene at all (AC-414). Each is staged in the state that paints the most of
         // itself, because a dialog rendered in its resting state records the colours of an empty form and leaves
@@ -2050,6 +2059,28 @@ internal static class Screenshotter
         cockpit.Plugins.SetUpdateBadgeCount(3);
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static MainWindow _UpdateBanner()
+    {
+        var cockpit = new ViewModels.CockpitViewModel
+        {
+            GlobalSingleSessionLayout = true,
+            CurrentBuild = "0.90.0-nightly.188 (81a30b9)",
+            UpdateName = "0.90.0-nightly.190",
+            UpdateUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/releases/tag/nightly",
+            UpdateBannerVisible = true,
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static WhatsNewDialog _WhatsNew(Core.Updates.ChangelogResult changes)
+    {
+        var dialog = new WhatsNewDialog();
+        _ = dialog.ShowChangesAsync("0.90.0-nightly.188 (81a30b9)", "0.90.0-nightly.190", Task.FromResult(changes));
+
+        return dialog;
     }
 
     // Wraps a plain UserControl (a wizard step has no Window of its own) in a Window carrying the same

@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a **What's new** button on the update banner. It lists the changelog entries between the build you are on
+  and the one on offer, so you can see what an update brings before you install it. When GitHub cannot be reached
+  it says so, and updating still works.
 - added: two MCP servers for a coding profile on an OpenAI-compatible provider: `cockpit-coding` (read with
   offset/limit, glob, grep, edit, write) and `cockpit-coding-shell` (one PowerShell or bash command, synchronous).
   Both stay inside the session's working directory; tick them in the profile's MCP checklist, and untick
