@@ -12,6 +12,8 @@ services:
       COCKPIT_STATE_ROOT: /state
       COCKPIT_CONNECT_KEY_FILE: /run/secrets/cockpit_connect_key
       COCKPIT_STOP_BUDGET_SECONDS: ${COCKPIT_STOP_BUDGET_SECONDS:-8}
+      # AC-1493: the profile fallback for a projectless session; `app` cannot read this agent-owned mount.
+      COCKPIT_DEFAULT_WORKING_DIRECTORY: /home/agent/scratch
       # AC-1464: a blank clone or worktree root takes these, since agent sessions cannot enter /state.
       COCKPIT_CLONE_ROOT: /work/clones
       COCKPIT_WORKTREE_ROOT: /work/worktrees
@@ -41,6 +43,7 @@ services:
       - /run/cockpit:mode=0700
     volumes:
       - state:/state
+      - scratch:/home/agent/scratch
       # The CLIs run as `agent` and write their logins and transcripts here; the server reads the same volume on
       # its own home. Two mounts of one volume, so neither user needs a path into the other's home.
       - claude:/home/agent/.claude
@@ -122,6 +125,7 @@ volumes:
   codex:
   ssh:
   agent-ssh:
+  scratch:
   work:
   brain:
   brain-state:
