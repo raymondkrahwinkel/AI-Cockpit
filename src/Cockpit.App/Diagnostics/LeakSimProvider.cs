@@ -15,9 +15,6 @@ internal static class LeakSimProvider
     // The driver the factory last minted, so the sim can push events into the live session it just started.
     public static LeakSimDriver? Current { get; private set; }
 
-    // AC-1519 counterproof: the next driver runs a real child, so its session is anchored like a CLI's.
-    public static bool SpawnChild { get; set; }
-
     // Registers the provider into the shared registry; a repeat call is a harmless replace.
     public static void EnsureRegistered() =>
         Program.Services.GetRequiredService<IPluginProviderRegistry>().Register(new SessionProviderRegistration(
@@ -46,20 +43,7 @@ internal sealed class LeakSimDriver : IPluginSessionDriver
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    private System.Diagnostics.Process? _child;
-
-    public int? ProcessId => _child?.Id;
-
-    public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
-    {
-        if (LeakSimProvider.SpawnChild)
-        {
-            _child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                "powershell.exe", "-NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 600\"") { CreateNoWindow = true });
-        }
-
-        return Task.CompletedTask;
-    }
+    public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

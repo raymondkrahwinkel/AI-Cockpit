@@ -135,11 +135,7 @@ public partial class CockpitView : UserControl
                         var content = string.Empty;
                         try { content = System.IO.File.ReadAllText(trigger).Trim(); } catch (Exception) { }
                         try { System.IO.File.Delete(trigger); } catch (Exception) { }
-                        if (content == "orphanproof")
-                        {
-                            _ = cockpit.RunOrphanProofAsync();
-                        }
-                        else if (content.StartsWith("apprepro:", StringComparison.OrdinalIgnoreCase))
+                        if (content.StartsWith("apprepro:", StringComparison.OrdinalIgnoreCase))
                         {
                             var args = content["apprepro:".Length..].Split(',');
                             var sessions = 6;

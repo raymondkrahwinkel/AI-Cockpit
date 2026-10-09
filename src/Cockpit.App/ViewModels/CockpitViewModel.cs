@@ -8169,28 +8169,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // App-driven measurement: a real Cockpit with real session pipelines, controlled through the DEBUG trigger file.
-    internal async Task RunOrphanProofAsync()
-    {
-        if (_sessionFactory is null)
-        {
-            return;
-        }
-
-        var root = Path.GetTempPath();
-        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered();
-        Cockpit.App.Diagnostics.LeakSimProvider.SpawnChild = true;
-        var vm = _sessionFactory();
-        Sessions.Add(vm);
-        var profile = new SessionProfile("Orphan proof", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
-        await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, root, null, null, ReadingLevel.Focus);
-        File.WriteAllText(Path.Combine(root, "orphanproof.ready.json"), System.Text.Json.JsonSerializer.Serialize(new
-        {
-            pid = Environment.ProcessId,
-            childPid = Cockpit.App.Diagnostics.LeakSimProvider.Current?.ProcessId,
-            paneId = vm.PaneId,
-        }));
-    }
-
     internal async Task RunAppReproAsync(int sessionCount, int seconds, string shape, bool retainResults)
     {
         var root = Path.GetTempPath();
