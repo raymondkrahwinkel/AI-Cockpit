@@ -796,7 +796,8 @@ public partial class App : Application
         }
 
         var registry = Program.Services.GetRequiredService<ISessionRegistry>();
-        var names = string.Join(", ", panes.Distinct().Select(paneId => registry.Find(paneId)?.Title ?? paneId));
+        var names = string.Join(", ", panes.Select(paneId =>
+            paneId.Length == 0 ? "a pane of an older Cockpit build" : registry.Find(paneId)?.Title ?? paneId));
         var message = $"Stopped the session still running from a previous Cockpit run in: {names}. Start it again to pick the work back up.";
         Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.LeftoverSessions").LogWarning("{Message}", message);
         Program.Services.GetRequiredService<IToastService>().Show(message, ToastSeverity.Warning);

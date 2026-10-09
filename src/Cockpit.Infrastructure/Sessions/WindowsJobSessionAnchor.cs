@@ -348,11 +348,9 @@ internal static class WindowsJobSessionSweep
                 case JobTermination.Terminated:
                     terminated++;
                     completed.Add(record.JobName);
-                    if (record.PaneId is { } stoppedPane)
-                    {
-                        stoppedPanes.Add(stoppedPane);
-                    }
 
+                    // An older build recorded no pane; empty still counts it, so the notice is not silent about it.
+                    stoppedPanes.Add(record.PaneId ?? string.Empty);
                     break;
                 case JobTermination.AlreadyGone:
                     alreadyGone++;
