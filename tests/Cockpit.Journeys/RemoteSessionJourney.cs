@@ -28,13 +28,14 @@ public sealed class RemoteSessionJourney
     {
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
+        var scratch = Directory.CreateDirectory(Path.Combine(root, "scratch")).FullName;
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"),
             stateRoot,
             ServerJourney._Secret(root, "connect-key", key),
-            new Dictionary<string, string> { ["COCKPIT_DEFAULT_WORKING_DIRECTORY"] = "/home/agent/scratch" });
+            new Dictionary<string, string> { ["COCKPIT_DEFAULT_WORKING_DIRECTORY"] = scratch });
         try
         {
             await run.Running.WaitAsync(Until.Ceiling);
@@ -109,7 +110,7 @@ public sealed class RemoteSessionJourney
                 pane = row.Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
                 await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo:") == 1);
                 var initialEcho = pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText && entry.Text.StartsWith("echo:", StringComparison.Ordinal)).Text;
-                Assert.StartsWith("echo: /home/agent/scratch (cli ", initialEcho, StringComparison.Ordinal);
+                Assert.StartsWith($"echo: {scratch} (cli ", initialEcho, StringComparison.Ordinal);
 
                 // The line drops: Reconnecting, the pane stays, and the server answers on without anyone watching.
                 relay.Cut();
@@ -255,7 +256,7 @@ public sealed class RemoteSessionJourney
             Assert.Equal("Reconnecting", reconnecting);
             Assert.True(paneStayed, "The remote pane went away while the line was down.");
             Assert.NotNull(pane);
-            Assert.Equal((1, 1), (_Count(pane, "echo: /home/agent/scratch"), _Count(pane, "echo: again")));
+            Assert.Equal((1, 1), (_Count(pane, $"echo: {scratch}"), _Count(pane, "echo: again")));
             Assert.True(composerOffWhileDown, "The composer stayed on while the line was down.");
             Assert.True(unsentKept, "A message typed while the line was down was sent or lost.");
             Assert.Equal(0, _Count(pane, "echo: lost"));
