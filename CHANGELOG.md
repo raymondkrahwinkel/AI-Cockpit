@@ -48,6 +48,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: on Linux, two cockpits writing the same `cockpit.log` could overwrite each other's lines, leaving
+  half lines, blank lines and lost entries. Each line now lands whole.
 - fixed: on Windows, a session's agent and everything it started now stop when the Cockpit stops, crash included.
   Before, a crashed or restarted Cockpit left those agents working on their branch behind a pane that read Idle.
   Anything an older run left behind is stopped at the next start, with a notice that names the pane, and
