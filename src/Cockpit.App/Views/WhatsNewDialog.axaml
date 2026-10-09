@@ -17,11 +17,8 @@
             </StackPanel>
         </Border>
 
-        <StackPanel DockPanel.Dock="Top" Margin="20,18,20,10" Spacing="2">
-            <TextBlock Text="What's new" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock x:Name="Range" FontSize="12" TextWrapping="Wrap"
-                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-        </StackPanel>
+        <TextBlock x:Name="Range" DockPanel.Dock="Top" Margin="20,18,20,10" FontSize="12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
         <Panel Margin="20,0,20,14">
             <TextBlock x:Name="Status" Text="Reading the changelog…" TextWrapping="Wrap" FontSize="12"
