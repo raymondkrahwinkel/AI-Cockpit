@@ -75,6 +75,10 @@ public class McpToolProviderInvokeAsyncTests
 
         var result = await provider.InvokeAsync(config.Name, "echo");
 
+        // Same episode, now "never signed in" instead of "expired": still the one notice, not a second.
+        await store.RemoveAsync("depot");
+        await provider.InvokeAsync(config.Name, "echo");
+
         Assert.Empty(browserOpened);
         Assert.Equal(McpToolInvocationOutcome.AuthorizationRequired, result.Outcome);
         Assert.Equal(["Depot: Work"], announced);

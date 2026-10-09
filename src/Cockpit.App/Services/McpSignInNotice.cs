@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
-// Says once, at startup, which MCP servers are waiting to be signed in to, and offers to do it there and then.
+// Names the MCP servers waiting for a sign-in, at startup and whenever one stops being usable, and offers it there.
 // A backup carries no credentials by design, so a restored cockpit keeps its Depot connection and loses the
 // sign-in: `GetStateAsync` knew, but only Options and the New-session dialog ever asked. An expired token too.
 internal sealed class McpSignInNotice(
@@ -16,42 +16,73 @@ internal sealed class McpSignInNotice(
     IToastService toasts,
     ILogger<McpSignInNotice> logger) : ISingletonService
 {
-    // AC-1517: also said the moment a server stops being usable mid-run — a background Depot call used to answer
-    // that by opening a browser tab the operator took for some other login.
-    public void Watch() => oauth.SignInNeeded += server =>
-        toasts.Show(_Message([server]), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync([server], CancellationToken.None));
+    private readonly Lock _batchLock = new();
+    private List<McpServerConfig>? _startupBatch;
+
+    // AC-1517: also said the moment a server stops being usable mid-run. The coordinator raises this once per
+    // episode, so this notice and the startup one below can never name the same server twice.
+    public void Watch() => oauth.SignInNeeded += _OnSignInNeeded;
 
     // Silent when everything is signed in — this runs on every start, and a notice that appears when nothing is
     // wrong is one the operator learns to dismiss without reading.
     public async Task CheckAsync(CancellationToken cancellationToken = default)
     {
+        lock (_batchLock)
+        {
+            _startupBatch = [];
+        }
+
         try
         {
-            var waiting = new List<McpServerConfig>();
+            // Asked through the coordinator rather than toasted here, so this notice starts the same episode a later
+            // background call would find. A server with nothing to renew from answers without a network round trip.
             foreach (var server in await servers.GetServersAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (await oauth.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
                 {
-                    waiting.Add(server);
+                    await oauth.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
                 }
             }
-
-            if (waiting.Count == 0)
-            {
-                return;
-            }
-
-            logger.LogInformation(
-                "Not signed in to {Count} MCP server(s): {Servers}", waiting.Count, string.Join(", ", waiting.Select(server => server.Name)));
-
-            toasts.Show(_Message(waiting), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync(waiting, cancellationToken));
         }
         catch (Exception exception)
         {
             // Working out whether to say something is not worth holding up a cockpit that is otherwise fine.
             logger.LogWarning(exception, "Could not check which MCP servers still need signing in to");
         }
+        finally
+        {
+            List<McpServerConfig> waiting;
+            lock (_batchLock)
+            {
+                waiting = _startupBatch ?? [];
+                _startupBatch = null;
+            }
+
+            if (waiting.Count > 0)
+            {
+                logger.LogInformation(
+                    "Not signed in to {Count} MCP server(s): {Servers}", waiting.Count, string.Join(", ", waiting.Select(server => server.Name)));
+                _Show(waiting);
+            }
+        }
     }
+
+    private void _OnSignInNeeded(McpServerConfig server)
+    {
+        lock (_batchLock)
+        {
+            if (_startupBatch is not null)
+            {
+                _startupBatch.Add(server);
+                return;
+            }
+        }
+
+        _Show([server]);
+    }
+
+    private void _Show(IReadOnlyList<McpServerConfig> waiting) =>
+        toasts.Show(_Message(waiting), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync(waiting, CancellationToken.None));
 
     // One notice for all of them, named: the operator's question is which connections are dead, and one toast per
     // server would bury that under itself.
@@ -65,7 +96,7 @@ internal sealed class McpSignInNotice(
     }
 
     // One at a time: each interactive acquire opens a browser, and a handful at once is a stack of windows over
-    // an operator who asked for one thing.
+    // an operator who asked for one thing. Fire-and-forget from the toast, so every failure is caught and logged here.
     private async Task _SignInAsync(IReadOnlyList<McpServerConfig> waiting, CancellationToken cancellationToken)
     {
         foreach (var server in waiting)
