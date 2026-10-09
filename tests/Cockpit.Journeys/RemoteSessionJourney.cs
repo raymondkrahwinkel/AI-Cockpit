@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.BackendApi;
 
@@ -273,6 +275,54 @@ public sealed class RemoteSessionJourney
             Assert.Equal("Not run · Never", runBefore);
             Assert.StartsWith("Done", runAfter, StringComparison.Ordinal);
             Assert.StartsWith("Journey scheduled · Done", await _ServerRunLabelAsync(admin), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (!run.Process.HasExited)
+            {
+                run.Process.Kill(entireProcessTree: true);
+            }
+
+            run.Process.Dispose();
+            JourneyHost.RemoveStateRoot(root);
+        }
+    }
+
+    // AC-1494: a server connected through the connect dialog is a node to the assistant, as a pairing is, and lists
+    // what its key may use.
+    [Fact]
+    public async Task AServerConnectedThroughTheDialog_IsANodeTheAssistantSees()
+    {
+        var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
+        var stateRoot = Path.Combine(root, "state");
+        var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
+        var run = ServerJourney._RunServer(
+            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, ServerJourney._Secret(root, "connect-key", key));
+        try
+        {
+            await run.Running.WaitAsync(Until.Ceiling);
+            var port = ServerJourney._McpPort(run.Output);
+
+            await using var cockpit = JourneyHost.Desktop();
+            await cockpit.StartDesktopAsync();
+            var security = cockpit.Cockpit.Security;
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                security.ConnectNodeName = Server;
+                security.ConnectHost = "127.0.0.1";
+                security.ConnectPort = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                security.ConnectKey = key;
+                security.ConnectFingerprint = fingerprint;
+                await security.ConnectToServerCommand.ExecuteAsync(null);
+            });
+
+            var readUrl = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Single(server => server.Name == AssistantIdentity.McpServerName).Url ?? "";
+            await using var assistant = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.McpServerName, readUrl);
+            var listed = await JourneyHost.CallAsync(assistant, "list_sessions", []);
+
+            var node = Assert.Single(listed["nodes"]?.AsArray() ?? [], candidate => candidate?["name"]?.GetValue<string>() == Server);
+            Assert.True(node?["reachable"]?.GetValue<bool>(), listed.ToJsonString());
         }
         finally
         {
