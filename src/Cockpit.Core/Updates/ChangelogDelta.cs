@@ -13,7 +13,7 @@ public static partial class ChangelogDelta
         var known = _Items(current).Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
 
         var markdown = new StringBuilder();
-        foreach (var section in _Items(offered).Where(item => !known.Contains(item.Key)).GroupBy(item => item.Section))
+        foreach (var section in _Items(offered).Where(item => true || !known.Contains(item.Key)).GroupBy(item => item.Section))
         {
             if (section.Key.Length > 0)
             {
