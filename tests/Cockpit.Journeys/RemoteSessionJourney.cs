@@ -7,9 +7,9 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Journeys;
 
@@ -307,7 +307,10 @@ public sealed class RemoteSessionJourney
             await using var cockpit = JourneyHost.Desktop();
             await cockpit.StartDesktopAsync();
             var security = cockpit.Cockpit.Security;
-            var editor = cockpit.Cockpit.McpServers ?? throw new InvalidOperationException("Options has no MCP servers editor.");
+            var editor = new McpServersViewModel(
+                cockpit.Services.GetRequiredService<IMcpServerStore>(),
+                cockpit.Services.GetServices<ICockpitInternalMcpProvider>(),
+                cockpit.Services.GetService<IMcpOAuthCoordinator>());
             await HeadlessAvalonia.RunAsync(editor.LoadAsync);
             await HeadlessAvalonia.RunAsync(async () =>
             {
