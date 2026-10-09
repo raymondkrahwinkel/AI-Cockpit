@@ -594,12 +594,61 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
         OnPropertyChanged(nameof(HasSubAgentRows));
         OnPropertyChanged(nameof(SubAgentSummaryText));
+        if (e.Action is not NotifyCollectionChangedAction.Add)
+        {
+            ShownSubAgentRows.Clear();
+        }
+
+        _ShowSubAgentRows();
+    }
+
+    // AC-1518: what the nested list draws, a prefix of `SubAgentRows` that fills while the anchor is open. Each row
+    // costs a full template (2000 rows froze the UI thread 5,7 s when bound at once), so it fills one batch per pump
+    // window, and closing the anchor lets go of every row view.
+    public ObservableCollection<TranscriptEntryViewModel> ShownSubAgentRows { get; } = [];
+
+    // About a pump window's worth (`SessionViewModel.PumpWindowMs`) at the ~2,8 ms one nested row measured headless.
+    internal const int SubAgentRowsPerWindow = 8;
+
+    private bool _showingSubAgentRows;
+
+    private void _ShowSubAgentRows()
+    {
+        if (!IsSubAgentExpanded || _showingSubAgentRows || _subAgentRows is not { } rows || ShownSubAgentRows.Count >= rows.Count)
+        {
+            return;
+        }
+
+        var end = Math.Min(rows.Count, ShownSubAgentRows.Count + SubAgentRowsPerWindow);
+        while (ShownSubAgentRows.Count < end)
+        {
+            ShownSubAgentRows.Add(rows[ShownSubAgentRows.Count]);
+        }
+
+        if (ShownSubAgentRows.Count < rows.Count)
+        {
+            _showingSubAgentRows = true;
+            SessionViewModel.UiPostAfterWindow(() =>
+            {
+                _showingSubAgentRows = false;
+                _ShowSubAgentRows();
+            });
+        }
     }
 
     [RelayCommand]
     private void ToggleSubAgentExpanded() => IsSubAgentExpanded = !IsSubAgentExpanded;
 
-    partial void OnIsSubAgentExpandedChanged(bool value) => OnPropertyChanged(nameof(SubAgentToggleIconKind));
+    partial void OnIsSubAgentExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SubAgentToggleIconKind));
+        if (!value)
+        {
+            ShownSubAgentRows.Clear();
+        }
+
+        _ShowSubAgentRows();
+    }
 
     // Tool name for a tool-use row; used to build the always-allow rule label.
     public string? ToolName { get; init; }
