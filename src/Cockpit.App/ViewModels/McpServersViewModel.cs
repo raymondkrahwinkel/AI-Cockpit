@@ -226,6 +226,29 @@ public partial class McpServersViewModel : ViewModelBase
         return (await _SaveAllAsync()).Saved;
     }
 
+    // A connect or pairing from another tab writes its rows while this list is open; saving only what is on screen
+    // would delete them (AC-1494). Rows removed elsewhere stay removed; a store that cannot be read saves the screen.
+    private async Task<List<McpServerConfig>> _MergedWithStoreAsync(IMcpServerStore store, List<McpServerConfig> edited)
+    {
+        IReadOnlyList<McpServerConfig> current;
+        try
+        {
+            current = await store.LoadAsync();
+        }
+        catch (IOException)
+        {
+            return edited;
+        }
+
+        var currentIds = current.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
+        var editedIds = edited.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
+        return
+        [
+            .. edited.Where(server => !_seenIds.Contains(server.Id) || currentIds.Contains(server.Id)),
+            .. current.Where(server => !_seenIds.Contains(server.Id) && !editedIds.Contains(server.Id)),
+        ];
+    }
+
     public bool Validate()
     {
         if (_store is null)
@@ -278,18 +301,9 @@ public partial class McpServersViewModel : ViewModelBase
 
         try
         {
-            // A connect or pairing from another tab writes its rows while this list is open; saving only what is on
-            // screen would delete them (AC-1494). Rows removed elsewhere stay removed.
-            var current = await _store.LoadAsync();
             var edited = Servers.Select(server => server.ToConfig()).ToList();
-            var currentIds = current.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
-            var editedIds = edited.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
-            var merged = edited
-                .Where(server => !_seenIds.Contains(server.Id) || currentIds.Contains(server.Id))
-                .Concat(current.Where(server => !_seenIds.Contains(server.Id) && !editedIds.Contains(server.Id)))
-                .ToList();
-            await _store.SaveAsync(merged);
-            _seenIds.UnionWith(editedIds);
+            await _store.SaveAsync(await _MergedWithStoreAsync(_store, edited));
+            _seenIds.UnionWith(edited.Select(server => server.Id));
         }
         catch (Exception)
         {
