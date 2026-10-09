@@ -109,6 +109,27 @@ public sealed class EventsEndpointTests
         Assert.Equal($"id: {second}\nevent: row\ndata: {{\"value\":\"inside\"}}", frame);
     }
 
+    [Theory]
+    [InlineData(true, "assistant")]
+    [InlineData(false, "session")]
+    public async Task OnlyTheKeyHoldingTheAssistantReceivesItsEvents(bool holdsAssistant, string expected)
+    {
+        var log = new BackendEventLog();
+        var first = log.Append("row", "assistant-pane", new { value = "assistant" }, "profile-a", "project-a");
+        log.Append("row", "pane-a", new { value = "session" }, "profile-a", "project-a");
+        var sessions = new SessionRegistry();
+        sessions.RegisterAssistant(_Session("assistant-pane", "profile-a", "project-a"));
+        var services = new ServiceCollection()
+            .AddSingleton<IBackendEventLog>(log)
+            .AddSingleton<ISessionRegistry>(sessions)
+            .AddSingleton(Substitute.For<INodePairingBroker>())
+            .BuildServiceProvider();
+
+        var frame = await _FrameAsync(services, (first - 1).ToString(), "", holdsAssistant: holdsAssistant);
+
+        Assert.EndsWith($"data: {{\"value\":\"{expected}\"}}", frame);
+    }
+
     [Fact]
     public async Task RevokingOneConnectKeyClosesOnlyItsHttpsStream()
     {
@@ -132,7 +153,7 @@ public sealed class EventsEndpointTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await survivorRead);
     }
 
-    private static async Task<string> _FrameAsync(IServiceProvider services, string header, string query, ConnectKeyScope? scope = null)
+    private static async Task<string> _FrameAsync(IServiceProvider services, string header, string query, ConnectKeyScope? scope = null, bool holdsAssistant = false)
     {
         var pipe = new Pipe();
         using var stop = new CancellationTokenSource();
@@ -141,7 +162,7 @@ public sealed class EventsEndpointTests
         context.Request.Headers["Last-Event-ID"] = header;
         context.Request.QueryString = new QueryString($"?after={query}");
         context.Response.Body = pipe.Writer.AsStream();
-        McpRequestContext.Set(null, Operator with { Scope = scope });
+        McpRequestContext.Set(null, Operator with { Scope = scope, HoldsAssistant = holdsAssistant });
         var stream = EventsEndpoint.StreamAsync(context, services);
         using var reader = new StreamReader(pipe.Reader.AsStream());
         var id = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));

@@ -48,6 +48,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a server's event stream sent the assistant's conversation to every connect key, while only the key
+  that holds the assistant may read it. Other keys no longer receive the assistant's events.
 - fixed: on Linux, two cockpits writing the same `cockpit.log` could overwrite each other's lines, leaving
   half lines, blank lines and lost entries. Each line now lands whole.
 - fixed: on Windows, a session's agent and everything it started now stop when the Cockpit stops, crash included.
