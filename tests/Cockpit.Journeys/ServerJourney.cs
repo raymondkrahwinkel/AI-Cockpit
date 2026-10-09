@@ -66,6 +66,9 @@ public sealed class ServerJourney
     public async Task TheServer_RefusesAnEncryptedState_AndStartsOnAPlainOne_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
     {
         var serverDirectory = _Metadata("CockpitServerDirectory");
+        var depotBundle = Path.Combine(serverDirectory, "bundled-plugins", "depot");
+        Assert.True(File.Exists(Path.Combine(depotBundle, "Cockpit.Plugin.Depot.dll")));
+        Assert.True(File.Exists(Path.Combine(depotBundle, "Cockpit.Plugin.Depot.UI.dll")));
         Assert.Empty(Directory.EnumerateFiles(serverDirectory, "Avalonia*.dll", SearchOption.AllDirectories).Select(Path.GetFileName));
 
         var root = Directory.CreateTempSubdirectory("journey-server-").FullName;

@@ -2,7 +2,7 @@
 
   <!-- AC-1392: the plugins that ship with the app, built and copied beside a project's output as bundled-plugins/<id>,
        the folder BundledPluginInstaller installs from. Imported by Cockpit.App, and by Cockpit.Backend.Tests so a
-       backend without App can be shown loading the same nine. -->
+       backend without App can be shown loading the same ten. -->
 
   <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a
        plugin, so an operator has them out of the box instead of having to know they exist. Referenced with
@@ -68,6 +68,9 @@
     <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Depot\Cockpit.Plugin.Depot.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <!-- AC-1390: the bundled plugins, by project folder and installed folder id. Each one's files are taken from its
@@ -90,6 +93,7 @@
     <BundledPlugin Include="Autopilot" FolderId="autopilot" />
     <BundledPlugin Include="FanOut" FolderId="fan-out" />
     <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+    <BundledPlugin Include="Depot" FolderId="depot" />
   </ItemGroup>
 
   <!-- Resolved in a target, after the plugins are built: at evaluation time, and before ResolveProjectReferences,
