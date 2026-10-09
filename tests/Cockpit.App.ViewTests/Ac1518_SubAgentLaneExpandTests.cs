@@ -7,7 +7,7 @@ using Cockpit.App.Views;
 namespace Cockpit.App.ViewTests;
 
 // AC-1518, layer 2 (an algorithm): opening a sub-agent anchor built a row view for every nested row in one pass on the
-// UI thread, measured at 5,7 s for 2000 rows. Opening a lane of any length builds one batch per pump window instead.
+// UI thread, measured at 5.7 s for 2000 rows. Opening a lane of any length builds one batch per pump window instead.
 [Collection("avalonia")]
 public sealed class Ac1518_SubAgentLaneExpandTests
 {

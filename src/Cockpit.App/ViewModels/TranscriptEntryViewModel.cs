@@ -603,11 +603,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     }
 
     // AC-1518: what the nested list draws, a prefix of `SubAgentRows` that fills while the anchor is open. Each row
-    // costs a full template (2000 rows froze the UI thread 5,7 s when bound at once), so it fills one batch per pump
+    // costs a full template (2000 rows froze the UI thread 5.7 s when bound at once), so it fills one batch per pump
     // window, and closing the anchor lets go of every row view.
     public ObservableCollection<TranscriptEntryViewModel> ShownSubAgentRows { get; } = [];
 
-    // About a pump window's worth (`SessionViewModel.PumpWindowMs`) at the ~2,8 ms one nested row measured headless.
+    // About a pump window's worth (`SessionViewModel.PumpWindowMs`) at the ~2.8 ms one nested row measured headless.
     internal const int SubAgentRowsPerWindow = 8;
 
     private bool _showingSubAgentRows;

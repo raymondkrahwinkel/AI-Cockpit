@@ -8264,7 +8264,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             foreach (var vm in sessionVms)
             {
                 Directory.CreateDirectory(Path.Combine(CockpitBuild.StateRoot, "transcripts"));
-                File.Copy(recording, Path.Combine(Path.Combine(CockpitBuild.StateRoot, "transcripts"), vm.PaneId + ".jsonl"), overwrite: true);
+                File.Copy(recording, Path.Combine(CockpitBuild.StateRoot, "transcripts", vm.PaneId + ".jsonl"), overwrite: true);
                 var replay = System.Diagnostics.Stopwatch.StartNew();
                 await vm.ReplayRecordedTranscriptAsync();
                 replayMs = replay.ElapsedMilliseconds;

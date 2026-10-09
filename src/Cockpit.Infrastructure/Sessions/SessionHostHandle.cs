@@ -20,7 +20,6 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private readonly SessionHost _host;
     private bool _nameIsChosen;
     private readonly List<TranscriptSnapshotEntry> _rows = [];
-
     private readonly NestedTranscriptRows _nested = new();
     private string _title;
     private string _statusline = string.Empty;
