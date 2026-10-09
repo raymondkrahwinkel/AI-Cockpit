@@ -1358,6 +1358,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // A version identifies a build on its own: a nightly is packed as `-nightly.&lt;run&gt;`, so the rolling tag
     // it is published under repeats but the version does not.
     private string _offeredRelease = string.Empty;
+
+    // The changelog read ahead for the offered build (AC-1515), kept in memory so "What's new" opens on it at once.
+    private Task<ChangelogResult>? _preloadedChanges;
+    private string _preloadedChangesFor = string.Empty;
     private string _dismissedRelease = string.Empty;
 
     // The channel the operator picked, or null while nobody has (AC-387). Held apart from
@@ -4544,7 +4548,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _dialogService.ShowWhatsNewDialogAsync(CurrentBuild, UpdateName, updates.ReadChangesAsync(UpdateName));
+        // The read-ahead, running or done; failed or absent, it is read now and the dialog shows its loading line.
+        var changes = _preloadedChangesFor == UpdateName && _preloadedChanges is { } ahead && !(ahead.IsCompleted && ahead.Result.Failure is not null)
+            ? ahead
+            : _preloadedChanges = updates.ReadChangesAsync(UpdateName);
+        _preloadedChangesFor = UpdateName;
+
+        await _dialogService.ShowWhatsNewDialogAsync(CurrentBuild, UpdateName, changes);
     }
 
     // Opens the release page. The cockpit does not install itself — see IUpdateService for why.
@@ -4690,6 +4700,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // different key (see _ReleaseKey) and so returns on its own.
         _offeredRelease = _ReleaseKey(release);
         UpdateBannerVisible = _offeredRelease != _dismissedRelease;
+
+        _PreloadChanges(release.Version);
+    }
+
+    // Starts reading the changelog the moment a build is found, once per build; a failed read is dropped at click time.
+    private void _PreloadChanges(string version)
+    {
+        if (_updates is not { } updates || _preloadedChangesFor == version)
+        {
+            return;
+        }
+
+        _preloadedChangesFor = version;
+        _preloadedChanges = updates.ReadChangesAsync(version);
     }
 
     // The dedup identity of a release. One source of truth: _Announce and the hourly check must key off the same

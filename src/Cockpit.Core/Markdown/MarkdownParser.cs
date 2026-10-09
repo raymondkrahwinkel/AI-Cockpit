@@ -208,8 +208,16 @@ public static partial class MarkdownParser
                 break;
             }
 
-            items.Add(ParseInlines(match.Groups[1].Value));
+            // An indented line that is no item of its own wraps the item above it (CommonMark), not a paragraph below.
+            var text = match.Groups[1].Value;
             i++;
+            while (i < lines.Length && !string.IsNullOrWhiteSpace(lines[i]) && char.IsWhiteSpace(lines[i], 0) && !ListItemRegex().IsMatch(lines[i]))
+            {
+                text += ' ' + lines[i].Trim();
+                i++;
+            }
+
+            items.Add(ParseInlines(text));
         }
 
         blocks.Add(new MarkdownBlock
