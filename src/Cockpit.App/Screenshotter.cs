@@ -210,6 +210,8 @@ internal static class Screenshotter
         // AC-1082: a refusing plugin row and an unrelated pending change at once — the footer state that used to
         // draw the refusal over "Unsaved changes" in the same grid column.
         ["options-apply-blocked"] = (_, _) => _OptionsApplyBlockedFooter(),
+        // AC-289: a provider plugin's own page carrying the usage warnings it declared, moved there from Sessions.
+        ["options-plugin-declared"] = (_, _) => _OptionsPluginDeclared(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
@@ -771,6 +773,7 @@ internal static class Screenshotter
         // on Height alone to make it fit.
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
     };
 
     // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.
@@ -1385,6 +1388,33 @@ internal static class Screenshotter
 
     // A made-up fingerprint with the mockup's first and last four bytes; nothing here is a real certificate.
     private const string SceneFingerprint = "4F9A21C7000000000000000000000000000000000000000000000000E03B58D2";
+
+    private static OptionsDialog _OptionsPluginDeclared()
+    {
+        var store = new _SceneUsageThresholdStore();
+        store.Settings.ByProvider["claude"] = new Dictionary<string, double> { ["weekly"] = 75 };
+        var thresholds = new UsageThresholdsViewModel(store);
+        thresholds.LoadAsync(
+            [("claude", "Claude",
+            [
+                new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" },
+                new PluginUsageSignal("five_hour", "5h", PluginUsageSignalKind.Allowance, 90) { Description = "Session (5 hours)" },
+                new PluginUsageSignal("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" },
+            ])],
+            _ => "claude-provider").GetAwaiter().GetResult();
+        var cockpit = new ViewModels.CockpitViewModel { UsageThresholdSettings = thresholds };
+        cockpit.BeginOptionsEdit();
+        return new OptionsDialog { DataContext = cockpit };
+    }
+
+    private sealed class _SceneUsageThresholdStore : IUsageThresholdStore
+    {
+        public UsageThresholdSettings Settings { get; } = new();
+
+        public Task<UsageThresholdSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Settings);
+
+        public Task SaveAsync(UsageThresholdSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
 
     private static OptionsDialog _OptionsNodesConnect()
     {
@@ -3004,7 +3034,9 @@ internal static class Screenshotter
             ],
         };
 
-        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
 
@@ -3036,7 +3068,9 @@ internal static class Screenshotter
             ],
         };
 
-        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Codex];
 

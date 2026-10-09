@@ -23,7 +23,7 @@ public sealed partial class UsageThresholdRowViewModel : ObservableObject
     public double Declared { get; }
 
     // The hint under the field, naming the value that applies when this is left empty.
-    public string FollowsLabel => $"Follows the provider ({Declared:0}%)";
+    public string FollowsLabel => $"Left empty: warns at {Declared:0}%";
 
     // The operator's own number, or null to follow the level above. Null is stored as an absence rather than a
     // copy of the current value, so a later change to the provider's default still carries.

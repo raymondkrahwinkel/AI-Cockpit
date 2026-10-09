@@ -26,6 +26,7 @@ namespace Cockpit.App.Views;
 public partial class OptionsDialog : Window
 {
     private readonly Dictionary<string, PluginOptionsRowViewModel> _pluginRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Control?> _hostSections = new(StringComparer.Ordinal);
     private readonly List<IDisposable> _searchVisibilityOverrides = [];
     private readonly Dictionary<Control, string> _searchableText = [];
     private CockpitViewModel? _searchCockpit;
@@ -392,14 +393,24 @@ public partial class OptionsDialog : Window
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,
         // under the same shared Apply and Close the rest of Options uses.
-        body.Children.Add(row.Content is { } content
-            ? content
-            : new TextBlock
+        if (row.Content is { } content)
+        {
+            body.Children.Add(content);
+        }
+        else if (row.UnavailableReason is { } unavailable)
+        {
+            body.Children.Add(new TextBlock
             {
-                Text = row.UnavailableReason,
+                Text = unavailable,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = _Brush("CockpitTextSecondaryBrush"),
             });
+        }
+
+        if (_HostSectionFor(row.PluginId) is { } hostSection)
+        {
+            body.Children.Add(hostSection);
+        }
 
         var scroll = new ScrollViewer { Tag = tag, Content = body };
         // ElementName bindings need a NameScope a code-behind element never gets (AC-1011), unlike the nav
@@ -413,6 +424,22 @@ public partial class OptionsDialog : Window
             ConverterParameter = tag,
         });
         return scroll;
+    }
+
+    // AC-289: what the host draws from a plugin's declarations, under the plugin's own view, built once per dialog.
+    private Control? _HostSectionFor(string pluginId)
+    {
+        if (!_hostSections.TryGetValue(pluginId, out var section))
+        {
+            var thresholds = (DataContext as CockpitViewModel)?.UsageThresholdSettings;
+            var sessions = thresholds?.Providers.Where(group => group.OwnerPluginId == pluginId).ToList() ?? [];
+            section = sessions.Count > 0
+                ? new UsageThresholdSection(sessions, [.. thresholds!.AssistantProviders.Where(group => group.OwnerPluginId == pluginId)])
+                : null;
+            _hostSections[pluginId] = section;
+        }
+
+        return section;
     }
 
     private void _EnsurePluginContent()
@@ -473,7 +500,8 @@ public partial class OptionsDialog : Window
                 plugin.EnsureContent();
             }
 
-            matches[tag] = plugin.RawView is { } view ? _FilterRows(view, searchText) : 0;
+            matches[tag] = (plugin.RawView is { } view ? _FilterRows(view, searchText) : 0)
+                + (_HostSectionFor(plugin.PluginId) is { } hostSection ? _FilterRows(hostSection, searchText) : 0);
         }
         var items = CategoryNav.Items.OfType<ListBoxItem>().ToList();
         foreach (var item in items.Where(item => item.Tag is string))

@@ -215,7 +215,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
     // app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
     // without one and touch no config.
-    public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
+    public UsageThresholdsViewModel? UsageThresholdSettings
+    {
+        get => _usageThresholdSettings;
+        set
+        {
+            _usageThresholdSettings = value;
+            // AC-289: a plugin with only declared settings still gets a page and a gear; its own AddSettings replaces this.
+            foreach (var group in value?.Providers.Where(group => group.OwnerPluginId is not null) ?? [])
+            {
+                PluginSettings.TryAdd(group.OwnerPluginId!, new PluginSettingsRegistration(group.OwnerPluginId!, group.DisplayName, CreateView: null));
+            }
+        }
+    }
+
+    private UsageThresholdsViewModel? _usageThresholdSettings;
 
     // Options → Profiles (AC-1001), replacing the standalone ManageProfilesDialog window. Handed in by the app
     // at startup, same reason as the two above — the profile store it needs is not part of this view model's own

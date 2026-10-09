@@ -297,68 +297,6 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="One budget over everything the cockpit runs, rather than a separate cap per session — several sessions each staying under their own cap could still promise more memory than the machine has, and then the system picks which one to end. The figure it is measured against is this app plus every process the sessions now open have spawned, including ones whose parent has since gone; what a session left behind after being closed is not in it. Crossing the budget warns you and names the heaviest session; nothing is closed and no session is refused."/>
                         </StackPanel>
-                        <!-- AC-233/AC-805 merged: both used to hang off separate tabs (Sessions, Voice → Assistant);
-                             they are the same "running out" concept for two different runners, so one subsection. -->
-                        <StackPanel Spacing="8" IsVisible="{Binding UsageThresholdSettings.HasProviders}">
-                            <TextBlock Text="Warn me when a session is running out" FontWeight="SemiBold" FontSize="12"/>
-                            <ItemsControl ItemsSource="{Binding UsageThresholdSettings.Providers}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
-                                        <StackPanel Spacing="6" Margin="0,0,0,10">
-                                            <TextBlock Text="{Binding DisplayName}" FontSize="11"
-                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                            <ItemsControl ItemsSource="{Binding Signals}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
-                                                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                                                    VerticalAlignment="Center" Margin="0,0,0,4">
-                                                            <TextBlock Text="{Binding Label}" Width="150" FontSize="11"
-                                                                       VerticalAlignment="Center"/>
-                                                            <NumericUpDown Value="{Binding Threshold}" Minimum="0" Maximum="100"
-                                                                           Increment="5" FormatString="0" Width="130"
-                                                                           HorizontalContentAlignment="Center"/>
-                                                            <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                        <StackPanel Spacing="8" IsVisible="{Binding UsageThresholdSettings.HasAssistantProviders}">
-                            <TextBlock Text="Warn me when the Assistant is running out" FontWeight="SemiBold" FontSize="12"/>
-                            <ItemsControl ItemsSource="{Binding UsageThresholdSettings.AssistantProviders}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
-                                        <StackPanel Spacing="6" Margin="0,0,0,10">
-                                            <TextBlock Text="{Binding DisplayName}" FontSize="11"
-                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                            <ItemsControl ItemsSource="{Binding Signals}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
-                                                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                                                    VerticalAlignment="Center" Margin="0,0,0,4">
-                                                            <TextBlock Text="{Binding Label}" Width="150" FontSize="11"
-                                                                       VerticalAlignment="Center"/>
-                                                            <NumericUpDown Value="{Binding Threshold}" Minimum="0" Maximum="100"
-                                                                           Increment="5" FormatString="0" Width="130"
-                                                                           HorizontalContentAlignment="Center"/>
-                                                            <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
 
                         <StackPanel x:Name="WhereWorkLandsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
