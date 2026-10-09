@@ -2,7 +2,7 @@
 
   <!-- AC-1392: the plugins that ship with the app, built and copied beside a project's output as bundled-plugins/<id>,
        the folder BundledPluginInstaller installs from. Imported by Cockpit.App, and by Cockpit.Backend.Tests so a
-       backend without App can be shown loading the same nine. -->
+       backend without App can be shown loading the same ten. -->
 
   <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a
        plugin, so an operator has them out of the box instead of having to know they exist. Referenced with
