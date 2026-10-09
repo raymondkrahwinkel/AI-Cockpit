@@ -96,6 +96,7 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
     private readonly PluginSessionEventPublisher _events = new();
     private Process? _child;
     private string? _model;
+    private string? _workingDirectory;
 
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
@@ -109,6 +110,7 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
         _model = model ?? options?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+        _workingDirectory = workingDirectory;
         return StartAsync(_model, cancellationToken);
     }
 
@@ -140,7 +142,8 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
             return Task.CompletedTask;
         }
 
-        var answer = _model is null ? $"echo: {text} (cli {_child?.Id})" : $"echo: {text} (cli {_child?.Id}) · model {_model}";
+        var echoed = text == "working-directory" ? _workingDirectory : text;
+        var answer = _model is null ? $"echo: {echoed} (cli {_child?.Id})" : $"echo: {echoed} (cli {_child?.Id}) · model {_model}";
         _events.Publish(new PluginAssistantTextDelta { SessionId = SessionId, BlockIndex = 0, Text = answer });
         _events.Publish(new PluginTurnCompleted { SessionId = SessionId, Subtype = "success", Result = answer, IsError = false });
         return Task.CompletedTask;

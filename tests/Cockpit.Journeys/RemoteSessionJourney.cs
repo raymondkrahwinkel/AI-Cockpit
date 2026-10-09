@@ -109,7 +109,7 @@ public sealed class RemoteSessionJourney
                 pane = row.Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
                 await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo:") == 1);
                 var initialEcho = pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText && entry.Text.StartsWith("echo:", StringComparison.Ordinal)).Text;
-                Assert.Equal("echo: /home/agent/scratch", initialEcho);
+                Assert.StartsWith("echo: /home/agent/scratch (cli ", initialEcho, StringComparison.Ordinal);
 
                 // The line drops: Reconnecting, the pane stays, and the server answers on without anyone watching.
                 relay.Cut();
