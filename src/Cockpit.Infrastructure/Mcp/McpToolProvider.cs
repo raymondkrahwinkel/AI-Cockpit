@@ -219,7 +219,7 @@ internal sealed class McpToolProvider(
             // AC-1517: settled through the coordinator, which renews silently and names a needed sign-in in the
             // cockpit. Connecting interactively here opened a browser tab from a background plugin call.
             if (server.Auth == McpServerAuth.OAuth
-                && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
+                && (await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false)).State != McpAuthState.Authorized)
             {
                 return (null, NeedsSignIn);
             }
@@ -370,7 +370,7 @@ internal sealed class McpToolProvider(
             AdditionalHeaders = _Headers(server, sessionToken),
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as "needs a sign-in", not as a stray tab.
-            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: true) : null,
+            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
