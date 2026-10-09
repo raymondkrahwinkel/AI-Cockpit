@@ -58,9 +58,9 @@ probe() {
 # container, not from `docker compose exec`, and what the command said is kept in $refusal. Usage: refused <user> '<command>'.
 refused() { refusal=$(dc exec -T -u "$1" cockpit sh -c "$2 2>&1; echo \"exit=\$?\"" 2>&1); ! grep -qx 'exit=0' <<< "$refusal"; }
 # Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
-history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF "$2" <<< "$layers"; }
+history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF -- "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
-log_has() { local out; out=$(dc logs --no-color cockpit); grep -qF "$1" <<< "$out"; }
+log_has() { local out; out=$(dc logs --no-color cockpit); grep -qF -- "$1" <<< "$out"; }
 fingerprint_of_log() { dc logs --no-color cockpit | sed -n 's/.*presents certificate fingerprint \([0-9A-Fa-f]*\)\..*/\1/p' | tail -n 1; }
 # Bounded at 60 s; ends early when the container is gone.
 wait_running() {
@@ -228,10 +228,10 @@ brain_cycle() {
 # Before a change: brain_mark '<log text>'. After it, brain_until waits for that text once more, or for two more
 # completed runs, as happens when what should stop a run does not. Bounded at 60 s.
 synced_count() { log_of brain-sync | grep -c 'nc in sync' || true; }
-brain_mark() { mark_text=$1 mark_seen=$(log_of brain-sync | grep -cF "$1" || true) mark_synced=$(synced_count); }
+brain_mark() { mark_text=$1 mark_seen=$(log_of brain-sync | grep -cF -- "$1" || true) mark_synced=$(synced_count); }
 brain_until() {
   for _ in $(seq 60); do
-    [ "$(log_of brain-sync | grep -cF "$mark_text" || true)" -gt "$mark_seen" ] && return 0
+    [ "$(log_of brain-sync | grep -cF -- "$mark_text" || true)" -gt "$mark_seen" ] && return 0
     [ "$(synced_count)" -ge $((mark_synced + 2)) ] && return 0
     sleep 1
   done
@@ -294,7 +294,7 @@ done
 if dc exec -T cockpit grep -rqsF -e "$brain_pass" -e "$brain_obscured" /home /work /state /run /tmp /etc /opt; then
   fail "the app password is in a file in the cockpit container"
 fi
-dc exec -T brain-sync grep -qF "$brain_obscured" /run/secrets/cockpit_brain_rclone || fail "control: the file check cannot find the secret where it is"
+dc exec -T brain-sync grep -qF -- "$brain_obscured" /run/secrets/cockpit_brain_rclone || fail "control: the file check cannot find the secret where it is"
 if history_leaks "$image" "$brain_pass"; then fail "the app password is in an image layer"; fi
 # Which brain is which: read-only for the CLIs, claude and codex alike.
 for file in .claude/CLAUDE.md .codex/AGENTS.md; do
@@ -390,7 +390,7 @@ bad_bind() {
   code=$(timeout 60 docker wait "$project-badbind") || fail "the server kept running on a bind-mount with the wrong owner ($dir)"
   bad=$(docker logs "$project-badbind" 2>&1)
   [ "$code" = 1 ] || fail "a wrong-owner bind-mount ($dir) ended with exit $code, not 1"
-  grep -qF "$message" <<< "$bad" || fail "the wrong-owner refusal for $dir names no reason: $bad"
+  grep -qF -- "$message" <<< "$bad" || fail "the wrong-owner refusal for $dir names no reason: $bad"
   if grep -qF 'Cockpit.Server running' <<< "$bad"; then fail "the server started on a bind-mount it cannot write ($dir)"; fi
   docker rm -fv "$project-badbind" >/dev/null
   bind_owners
