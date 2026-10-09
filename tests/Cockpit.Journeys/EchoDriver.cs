@@ -100,10 +100,11 @@ public sealed class EchoDriver : ISessionDriver
             }
 
             var fails = prompt == FailingPrompt;
-            yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {prompt}" };
+            var echoed = prompt == "working-directory" ? WorkingDirectory : prompt;
+            yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {echoed}" };
             yield return new TurnCompleted
             {
-                SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {prompt}", IsError = fails,
+                SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {echoed}", IsError = fails,
             };
             _answered.TrySetResult();
         }
