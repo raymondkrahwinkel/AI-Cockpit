@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -29,6 +30,7 @@ public sealed class SessionStartComposer(
     {
         var defaults = SessionStartDefaults.Resolve(
             project, profile,
+            globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory,
             memorySources: memorySources?.Sources.ToMemorySources(),
             unresolvedReferences: ProjectResourceProbe.FindUnresolved(project.Resources),
             instructionContents: ProjectInstructionContentReader.Read(project.Resources));
@@ -50,7 +52,10 @@ public sealed class SessionStartComposer(
         }
 
         var profile = request.Profile;
-        var profileOnly = SessionStartDefaults.Resolve(project: null, profile);
+        var profileOnly = SessionStartDefaults.Resolve(
+            project: null,
+            profile: profile,
+            globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory);
         var lookupDirectory = string.IsNullOrWhiteSpace(request.WorkingDirectory) ? profileOnly.WorkingDirectory : request.WorkingDirectory;
         var projectId = request.ProjectId is { Length: > 0 } given ? given : await ProjectIdForDirectoryAsync(lookupDirectory).ConfigureAwait(false);
         var project = projectId is null ? null : await FindProjectAsync(projectId).ConfigureAwait(false);

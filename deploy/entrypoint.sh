@@ -67,6 +67,7 @@ for path in /home/agent/.claude /home/agent/.codex; do check_dir agent agent 277
 for path in /home/app/.claude /home/app/.codex; do check_dir app agent 2770 "$path"; done
 check_dir agent agent 700 /home/agent/.ssh
 check_dir agent agent 700 /home/agent/Nextcloud
+check_dir agent agent 700 /home/agent/scratch
 [ "$bad" = 0 ] || exit 1
 
 # The group the Claude provider opens its mcp-config and prompt file to (AC-1468); `app` is in it, `agent` owns it.
