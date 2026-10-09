@@ -1,5 +1,6 @@
 using Avalonia.Headless;
 using Avalonia.Threading;
+using System.Runtime.Loader;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
 using Cockpit.App.ViewModels.Onboarding;
@@ -24,7 +25,7 @@ public sealed class StartupJourney
 
     private static readonly string[] Bundled =
     [
-        "autopilot", "claude-provider", "clock", "example-companion-tool", "example-workspace", "fan-out", "git-status",
+        "autopilot", "claude-provider", "clock", "depot", "example-companion-tool", "example-workspace", "fan-out", "git-status",
         "transcript-search", "usage-trend",
     ];
 
@@ -54,6 +55,9 @@ public sealed class StartupJourney
             [$"{RefusedPlugin}: {Refusal}"],
             installed.Where(plugin => plugin.ActivationFailure is not null).Select(plugin => $"{plugin.Discovered.FolderId}: {plugin.ActivationFailure}"));
         Assert.Equal(Bundled, services.GetRequiredService<PluginManager>().Loaded.Select(plugin => plugin.FolderId).Order());
+        Assert.Contains(
+            AssemblyLoadContext.All.OfType<PluginLoadContext>().SelectMany(context => context.Assemblies),
+            assembly => assembly.GetName().Name == "Cockpit.Plugin.Depot.UI");
         Assert.DoesNotContain("Could not start cockpit MCP endpoint", cockpit.LogText, StringComparison.Ordinal);
 
         // What the plugins registered landed, and the desktop's own seams replaced the backend's defaults.

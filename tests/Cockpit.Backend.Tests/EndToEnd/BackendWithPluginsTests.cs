@@ -80,7 +80,7 @@ public sealed class BackendWithPluginsTests : IDisposable
             .OfType<PluginManifest>()
             .Where(manifest => manifest.Id != Fixture)
             .ToList();
-        Assert.Equal(33, manifests.Count);
+        Assert.Equal(34, manifests.Count);
         Assert.Equal(
             manifests.Where(manifest => manifest.EntryAssembly is not null).Select(manifest => manifest.Id).Order(),
             plugins.LoadedParts.Where(part => part.Plugin is not null && !plugins.InitializeFailed(part.Discovered)).Select(part => part.Discovered.FolderId).Order());
