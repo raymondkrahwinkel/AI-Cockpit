@@ -22,14 +22,16 @@ public class PullRequestRefreshSourceTests
                 new PullRequestFeedResult([legacyPullRequest], [], RepositoryMissing: false),
                 DateTimeOffset.UtcNow));
 
+        // AC-1516: no startup tick — its instant fake load could replace the restored snapshot before the read below.
         var freshPullRequest = legacyPullRequest with { Title = "Fresh title", Body = "body that must not persist" };
         var source = new PullRequestRefreshSource(
             storage,
             (_, _) => Task.FromResult(new PullRequestFeedResult([freshPullRequest], [freshPullRequest], RepositoryMissing: false)),
-            pollInterval: TimeSpan.FromMinutes(10));
+            pollInterval: TimeSpan.FromMinutes(10),
+            firstTickDue: Timeout.InfiniteTimeSpan);
 
         Assert.Equal(legacyPullRequest.Title, source.Current.Result.PullRequests[0].Title);
-        await _WaitUntilAsync(() => storage.Raw("refreshSourceSnapshot").Contains(freshPullRequest.Title), TimeSpan.FromSeconds(2));
+        Assert.True(await source.RefreshAsync(forceRefresh: false));
         source.Dispose();
 
         var persistedJson = storage.Raw("refreshSourceSnapshot");
@@ -103,20 +105,4 @@ public class PullRequestRefreshSourceTests
     // it (AC-1122). Never completing is what makes "nothing has fetched yet" hold rather than usually hold.
     private static Task<PullRequestFeedResult> _NeverLoads(bool forceRefresh, CancellationToken cancellationToken) =>
         new TaskCompletionSource<PullRequestFeedResult>().Task;
-
-    private static async Task<bool> _WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition())
-            {
-                return true;
-            }
-
-            await Task.Delay(10);
-        }
-
-        return condition();
-    }
 }
