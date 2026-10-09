@@ -327,7 +327,9 @@ public sealed class RemoteSessionJourney
             await using var assistant = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.McpServerName, readUrl);
 
             // Profiles first: before any list_sessions has read the node.
-            var profiles = await JourneyHost.CallAsync(assistant, "list_profiles", []);
+            var actUrl = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>().GetServers().Single(server => server.Name == AssistantIdentity.ActMcpServerName).Url ?? "";
+            await using var acting = await cockpit.ConnectAsPaneAsync(AssistantIdentity.PaneId, AssistantIdentity.ActMcpServerName, actUrl);
+            var profiles = await JourneyHost.CallAsync(acting, "list_profiles", []);
             var listed = await JourneyHost.CallAsync(assistant, "list_sessions", []);
             var projects = await JourneyHost.CallAsync(assistant, "list_projects", []);
 
