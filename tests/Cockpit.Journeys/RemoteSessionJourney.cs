@@ -107,7 +107,9 @@ public sealed class RemoteSessionJourney
                 var row = group.Sessions.Single();
                 paneId = row.Handle.PaneId;
                 pane = row.Pane as SessionViewModel ?? throw new InvalidOperationException("The start opened no pane.");
-                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo: /home/agent/scratch") == 1);
+                await Until.ItemsHold(pane.Transcript, () => _Count(pane, "echo:") == 1);
+                var initialEcho = pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText && entry.Text.StartsWith("echo:", StringComparison.Ordinal)).Text;
+                Assert.Equal("echo: /home/agent/scratch", initialEcho);
 
                 // The line drops: Reconnecting, the pane stays, and the server answers on without anyone watching.
                 relay.Cut();
@@ -253,7 +255,7 @@ public sealed class RemoteSessionJourney
             Assert.Equal("Reconnecting", reconnecting);
             Assert.True(paneStayed, "The remote pane went away while the line was down.");
             Assert.NotNull(pane);
-            Assert.Equal((1, 1), (_Count(pane, "echo: hello"), _Count(pane, "echo: again")));
+            Assert.Equal((1, 1), (_Count(pane, "echo: /home/agent/scratch"), _Count(pane, "echo: again")));
             Assert.True(composerOffWhileDown, "The composer stayed on while the line was down.");
             Assert.True(unsentKept, "A message typed while the line was down was sent or lost.");
             Assert.Equal(0, _Count(pane, "echo: lost"));
