@@ -1,7 +1,7 @@
 param(
     [int]$Sessions = 2,
     [int]$StreamSeconds = 5,
-    [ValidateSet("new-rows", "growing-tail", "sdk-read-fallback")][string]$Shape = "new-rows",
+    [ValidateSet("new-rows", "growing-tail", "sdk-read-fallback", "resume", "subagents")][string]$Shape = "new-rows",
     [switch]$PositiveControl,
     [string]$OutRoot = (Join-Path $env:TEMP "cockpit-app-repro")
 )

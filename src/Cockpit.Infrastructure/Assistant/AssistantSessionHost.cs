@@ -793,7 +793,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // A change to a row the replay put there is not a row arriving; the first new one decides.
         void OnRow(TranscriptRowUpsert upsert)
         {
-            if (upsert.Version > 1)
+            // AC-1518: nor is a sub-agent's row, which comes on its own but belongs to a row already there.
+            if (upsert.Version > 1 || upsert.Row.ParentRowId is not null)
             {
                 return;
             }

@@ -216,7 +216,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     // already there when the channel joined, which is watched from here on but never replayed.
     private void _OnRowUpserted(TranscriptRowUpsert upsert)
     {
-        if (_disposed)
+        // AC-1518: a sub-agent's own row stays inside its anchor here, as it did when it came inside the anchor's upsert.
+        if (_disposed || upsert.Row.ParentRowId is not null)
         {
             return;
         }

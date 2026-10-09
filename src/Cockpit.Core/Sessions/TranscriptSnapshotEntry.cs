@@ -26,6 +26,10 @@ public sealed record TranscriptSnapshotEntry(
     // Task/Agent row is an empty chip.
     public IReadOnlyList<TranscriptSnapshotEntry>? SubAgentRows { get; init; }
 
+    // AC-1518: the anchor a nested row belongs under, set when that row is published or written on its own rather
+    // than inside its anchor's `SubAgentRows`. Null for a top-level row and for one carried inside its anchor.
+    public string? ParentRowId { get; init; }
+
     // What was allowed or denied. Without it a restored conversation is not auditable: the tool call is there,
     // the fact that somebody permitted it is not.
     public string? PermissionDecision { get; init; }

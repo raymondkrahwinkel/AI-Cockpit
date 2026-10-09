@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -12,8 +11,8 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Sessions;
 
 // AC-1377: row forming moved from `SessionViewModel` to `SessionHost`. Recorded against main before the move, so the
-// same stream has to give the same rows after it — live, restored from what the new code writes, and written to disk
-// exactly as main wrote it (`Fixtures/ac1377-main-format.jsonl`).
+// same stream has to give the same rows after it — live, restored from what the new code writes, and restored from
+// what main wrote (`Fixtures/ac1377-main-format.jsonl`).
 public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
@@ -44,10 +43,11 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, ids));
     }
 
-    // The new members are the live view's alone, so a log written now is main's log byte for byte — its ids,
-    // timestamps and the locale-formatted clamp marker aside — and main's own log still restores to the same rows.
+    // AC-1518 changed how a sub-agent's rows are written: each on its own line, naming its anchor, instead of inside
+    // every version of the anchor. So the two logs no longer match byte for byte; what has to hold is that main's log
+    // still restores to the same rows, and that the log written now restores to exactly those rows too.
     [Fact]
-    public async Task TheLogWrittenNow_IsTheLogMainWrote_AndMainsLogStillRestoresToTheSameRows()
+    public async Task MainsLog_AndTheLogWrittenNow_RestoreToTheSameRows()
     {
         var log = _Log();
         var vm = TestSessions.Pane(Substitute.For<ISessionManager>(), transcriptStore: log);
@@ -56,26 +56,13 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         var main = Path.Combine(AppContext.BaseDirectory, "Sessions", "Fixtures", "ac1377-main-format.jsonl");
         File.Copy(main, Path.Combine(_root, "main-pane.jsonl"));
 
-        var recorded = await _Log().TryLoadAsync("main-pane");
-        Assert.NotNull(recorded);
-        var restored = TranscriptSnapshot.Restore(recorded);
-
-        Assert.Equal(_Normalized(File.ReadAllText(main)), _Normalized(File.ReadAllText(log.LogPath(vm.PaneId))));
-        Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, _Flatten(restored).Select(row => row.Id).ToList()));
-    }
-
-    private static readonly Regex RowIdPattern = new("\"[0-9a-f]{32}\"");
-    private static readonly Regex TimestampPattern = new("\"Timestamp\":\"[^\"]+\"");
-    // The serializer writes the marker's ellipses escaped, as the six characters `\u2026`.
-    private static readonly Regex MarkerPattern = new(@"\[\\u2026 [^\]]* \\u2026\]");
-
-    // Ids by order of first appearance, one fixed timestamp, one marker: what is left has to match byte for byte.
-    private static string _Normalized(string log)
-    {
-        var ids = RowIdPattern.Matches(log).Select(match => match.Value).Distinct().ToList();
-        var numbered = RowIdPattern.Replace(log, match => $"\"#{ids.IndexOf(match.Value)}\"");
-        var timeless = TimestampPattern.Replace(numbered, "\"Timestamp\":\"-\"");
-        return MarkerPattern.Replace(timeless, "[marker]").ReplaceLineEndings("\n");
+        foreach (var pane in new[] { "main-pane", vm.PaneId })
+        {
+            var recorded = await _Log().TryLoadAsync(pane);
+            Assert.NotNull(recorded);
+            var restored = TranscriptSnapshot.Restore(recorded);
+            Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, _Flatten(restored).Select(row => row.Id).ToList()));
+        }
     }
 
     private static void _Play(SessionViewModel vm) => Array.ForEach(Stream, vm.Apply);

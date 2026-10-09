@@ -134,12 +134,14 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
             // mid-append, hand edit) is skipped rather than losing every row before it — `SessionStateStore`'s
             // contract for a line it cannot parse, and AC-684's for a row this build cannot make sense of.
             var order = new List<string>();
-            var latest = new Dictionary<string, TranscriptSnapshotEntry>(StringComparer.Ordinal);
+            var latest = new Dictionary<string, (TranscriptSnapshotEntry Entry, int Line)>(StringComparer.Ordinal);
 
             await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
             using var reader = new StreamReader(stream, Encoding.UTF8);
+            var lineNumber = 0;
             while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
             {
+                lineNumber++;
                 if (_TryParse(line) is not { } entry)
                 {
                     continue;
@@ -150,10 +152,12 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
                     order.Add(entry.Id);
                 }
 
-                latest[entry.Id] = entry;
+                latest[entry.Id] = (entry, lineNumber);
             }
 
-            return [.. order.Select(id => latest[id])];
+            var rows = order.Select(id => latest[id]).ToList();
+            var written = rows.Where(row => row.Entry.ParentRowId is not null).ToLookup(row => row.Entry.ParentRowId ?? string.Empty);
+            return [.. rows.Where(row => row.Entry.ParentRowId is null).Select(row => _Nest(row.Entry, row.Line, written))];
         }
         catch (Exception ex)
         {
@@ -162,6 +166,29 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
             _logger.LogWarning(ex, "Could not read the transcript log at {Path}.", path);
             return null;
         }
+    }
+
+    // AC-1518: nested rows written on their own go back under their anchor. One written after the anchor's own line
+    // replaces the copy the anchor carried inline; an older one leaves it, so the newest version still wins.
+    private static TranscriptSnapshotEntry _Nest(
+        TranscriptSnapshotEntry entry, int line, ILookup<string, (TranscriptSnapshotEntry Entry, int Line)> written)
+    {
+        var separate = written[entry.Id].ToDictionary(row => row.Entry.Id, StringComparer.Ordinal);
+        if (separate.Count == 0 && entry.SubAgentRows is null)
+        {
+            return entry;
+        }
+
+        var nested = new List<TranscriptSnapshotEntry>();
+        foreach (var inline in entry.SubAgentRows ?? [])
+        {
+            nested.Add(separate.Remove(inline.Id, out var newer) && newer.Line > line
+                ? _Nest(newer.Entry, newer.Line, written)
+                : _Nest(inline, line, written));
+        }
+
+        nested.AddRange(written[entry.Id].Where(row => separate.ContainsKey(row.Entry.Id)).Select(row => _Nest(row.Entry, row.Line, written)));
+        return entry with { SubAgentRows = nested };
     }
 
     public async Task ArchiveAsync(string paneId, CancellationToken cancellationToken = default)
