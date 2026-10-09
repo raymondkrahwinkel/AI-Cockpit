@@ -8,15 +8,12 @@ namespace Cockpit.Infrastructure.Sessions;
 // for the same reason as `CredentialFileHousekeeping`: a start that opens no session would never trigger it.
 public static class StaleSessionProcessSweep
 {
-    // AC-1519: the panes whose leftover sessions this start stopped, for the desktop to name once it has its panes.
-    public static IReadOnlyList<string> StoppedPanes { get; private set; } = [];
-
     // Sweeps what the previous run left, or says why this platform cannot.
     public static void Run(ILogger logger)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            StoppedPanes = WindowsJobSessionSweep.Run(logger);
+            WindowsJobSessionSweep.Run(logger);
             return;
         }
 

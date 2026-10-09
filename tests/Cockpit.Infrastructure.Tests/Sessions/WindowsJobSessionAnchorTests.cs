@@ -22,9 +22,9 @@ public sealed class WindowsJobSessionAnchorTests
         var outcome = WindowsJobSessionSweep.Sweep(
             [record],
             processStartedAt: processId => processId == 100 ? startedAt : null,
-            terminate: target =>
+            terminate: jobName =>
             {
-                terminated.Add(target.JobName);
+                terminated.Add(jobName);
                 return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
@@ -42,9 +42,9 @@ public sealed class WindowsJobSessionAnchorTests
         var outcome = WindowsJobSessionSweep.Sweep(
             [record],
             processStartedAt: processId => processId == 100 ? startedAt.AddMinutes(1) : null,
-            terminate: target =>
+            terminate: jobName =>
             {
-                terminated.Add(target.JobName);
+                terminated.Add(jobName);
                 return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
@@ -78,39 +78,14 @@ public sealed class WindowsJobSessionAnchorTests
         var outcome = WindowsJobSessionSweep.Sweep(
             [record],
             processStartedAt: processId => processId == 200 ? startedAt.AddMinutes(1) : null,
-            terminate: target =>
+            terminate: jobName =>
             {
-                terminated.Add(target.JobName);
+                terminated.Add(jobName);
                 return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
         Assert.Empty(terminated);
         Assert.Equal(1, outcome.SkippedForPidReuse);
-    }
-
-    [Fact]
-    public void Sweep_ForOnePane_StopsOnlyThatPanesOrphanAndNamesIt()
-    {
-        var startedAt = new DateTimeOffset(2026, 10, 9, 11, 25, 0, TimeSpan.Zero);
-        var orphan = new WindowsJobSessionRecord("orphan", 100, startedAt, 200, startedAt, "pane-a");
-        var otherPane = new WindowsJobSessionRecord("other", 100, startedAt, 300, startedAt, "pane-b");
-        var live = new WindowsJobSessionRecord("live", 400, startedAt, 500, startedAt, "pane-a");
-        var terminated = new List<string>();
-
-        // AC-1519: stop_agent sweeps one pane, and only a tree whose Cockpit is gone counts as that pane's orphan.
-        var outcome = WindowsJobSessionSweep.Sweep(
-            [orphan, otherPane, live],
-            processStartedAt: processId => processId == 400 ? startedAt : null,
-            terminate: target =>
-            {
-                terminated.Add(target.JobName);
-                return WindowsJobSessionSweep.JobTermination.Terminated;
-            },
-            paneId: "pane-a");
-
-        Assert.Equal(["orphan"], terminated);
-        Assert.Equal(["pane-a"], outcome.StoppedPanes);
-        Assert.Equal(1, outcome.SkippedForLiveOwner);
     }
 
     [Fact]
@@ -123,9 +98,9 @@ public sealed class WindowsJobSessionAnchorTests
         var outcome = WindowsJobSessionSweep.Sweep(
             [record],
             processStartedAt: _ => null,
-            terminate: target =>
+            terminate: jobName =>
             {
-                terminated.Add(target.JobName);
+                terminated.Add(jobName);
                 return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
@@ -239,7 +214,7 @@ public sealed class WindowsJobSessionAnchorTests
 
         public bool Disposed { get; private set; }
 
-        public IDisposable? Anchor(int processId, string? paneId = null)
+        public IDisposable? Anchor(int processId)
         {
             ProcessId = processId;
             return new _Handle(this);

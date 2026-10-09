@@ -48,10 +48,6 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
-- fixed: on Windows, a session's agent and everything it started now stop when the Cockpit stops, crash included.
-  Before, a crashed or restarted Cockpit left those agents working on their branch behind a pane that read Idle.
-  Anything an older run left behind is stopped at the next start, with a notice that names the pane, and
-  `stop_agent` now says when a pane had no running process.
 - fixed: Cockpit no longer opens a browser tab by itself to sign in to an MCP server, such as a Depot connection
   whose sign-in has run out. It shows a notice that names the server, with a **Sign in** button. The page the
   browser lands on after signing in now names the server too, so it can't be mistaken for some other login.

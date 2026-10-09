@@ -13,8 +13,7 @@ internal sealed class TtyProcessOwningSessionFiles(
     SessionMcpKeyring? keyring = null,
     string? paneId = null,
     string? token = null,
-    IDisposable? memoryCap = null,
-    IDisposable? processAnchor = null)
+    IDisposable? memoryCap = null)
     : IConPtyProcess, ITtyStatusFile
 {
     public Stream InputStream => inner.InputStream;
@@ -51,9 +50,6 @@ internal sealed class TtyProcessOwningSessionFiles(
         // AC-661: the job object/cgroup this session ran in. Released after the process, so the group is empty by
         // the time it is torn down.
         memoryCap?.Dispose();
-
-        // AC-1519: last, as the Linux group's kill is: whatever the CLI left running after its EOF ends with the pane.
-        processAnchor?.Dispose();
     }
 
     // Best-effort: a session that has already exited must not fail on its own cleanup. Whatever

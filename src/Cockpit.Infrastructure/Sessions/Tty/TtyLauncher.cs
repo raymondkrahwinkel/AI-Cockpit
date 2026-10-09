@@ -12,7 +12,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -115,16 +115,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // so everything it starts later is born inside it.
         var memoryCap = memoryLimiter.Apply(process.ProcessId, SessionMemoryCap.ResolveBytes(profile, options));
 
-        // AC-1519: launch-time, so the TTY route gets the same anchor as the SDK route and dies with the Cockpit.
-        var anchor = processAnchor?.Anchor(process.ProcessId, paneId);
-
         // The files this launch wrote live exactly as long as the session needing them (an MCP config holds bearer
         // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same
         // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
-        return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null && mintedToken is null && memoryCap is null && anchor is null
+        return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null && mintedToken is null && memoryCap is null
             ? process
-            : new TtyProcessOwningSessionFiles(
-                process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap, anchor);
+            : new TtyProcessOwningSessionFiles(process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap);
     }
 
     // Snapshots the cockpit process's own environment as the base the pty child inherits from — a ConPTY child

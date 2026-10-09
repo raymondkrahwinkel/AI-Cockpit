@@ -373,10 +373,9 @@ public sealed record AgentSpawnResult(
 }
 
 // What came of a stop. Same shape and same reason as `AgentSpawnResult`.
-// AC-1519: `Note` says what the stop actually found when that was not a running session of this pane.
-public sealed record AgentStopResult(bool Ok, string? PaneId, string? SessionName, string? Error, string? Note = null)
+public sealed record AgentStopResult(bool Ok, string? PaneId, string? SessionName, string? Error)
 {
-    public static AgentStopResult Stopped(string paneId, string sessionName, string? note = null) => new(true, paneId, sessionName, null, note);
+    public static AgentStopResult Stopped(string paneId, string sessionName) => new(true, paneId, sessionName, null);
 
     public static AgentStopResult Refused(string error) => new(false, null, null, error);
 }

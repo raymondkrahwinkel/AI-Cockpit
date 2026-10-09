@@ -222,7 +222,7 @@ internal sealed class AssistantAgentMcpTools(
 
             var result = await gateway.StopAsync(paneId).ConfigureAwait(false);
             return result.Ok
-                ? _Serialize(new { ok = true, paneId = result.PaneId, name = result.SessionName, note = result.Note })
+                ? _Serialize(new { ok = true, paneId = result.PaneId, name = result.SessionName })
                 : _Serialize(new { ok = false, error = result.Error });
         }
         catch (Exception exception)
