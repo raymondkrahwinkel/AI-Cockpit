@@ -417,7 +417,9 @@ public partial class App : Application
 
         // After the plugins, so the servers they contribute (a Depot connection) are in the catalog to be asked about.
         // AC-1343: fire-and-forget — reads only; token persistence happens behind a click, in the OAuth coordinator.
-        _ = Program.Services.GetRequiredService<McpSignInNotice>().CheckAsync();
+        var mcpSignInNotice = Program.Services.GetRequiredService<McpSignInNotice>();
+        mcpSignInNotice.Watch();
+        _ = mcpSignInNotice.CheckAsync();
 
 #if DEBUG
         // AC-185: the dev inner loop — watches plugins-dev for a rebuild and offers one toast action to reload

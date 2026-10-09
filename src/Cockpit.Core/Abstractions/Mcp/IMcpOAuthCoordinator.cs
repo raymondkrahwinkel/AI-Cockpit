@@ -10,6 +10,12 @@ namespace Cockpit.Core.Abstractions.Mcp;
 public interface IMcpOAuthCoordinator
 {
     /// <summary>
+    /// Raised once when a server goes from usable to needing the operator's sign-in (never signed in, or no longer
+    /// renewable), so the cockpit can name it and offer Sign in instead of a browser tab opening by itself (AC-1517).
+    /// </summary>
+    event Action<McpServerConfig>? SignInNeeded;
+
+    /// <summary>
     /// The credential to present to <paramref name="server"/>. A non-OAuth server answers
     /// <see cref="McpOAuthAccess.NotRequired"/> with no work. When <paramref name="interactive"/> is false this never
     /// opens a browser: an unrenewable token comes back as <see cref="McpAuthState.AuthorizationRequired"/> instead.

@@ -16,6 +16,11 @@ internal sealed class McpSignInNotice(
     IToastService toasts,
     ILogger<McpSignInNotice> logger) : ISingletonService
 {
+    // AC-1517: also said the moment a server stops being usable mid-run — a background Depot call used to answer
+    // that by opening a browser tab the operator took for some other login.
+    public void Watch() => oauth.SignInNeeded += server =>
+        toasts.Show(_Message([server]), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync([server], CancellationToken.None));
+
     // Silent when everything is signed in — this runs on every start, and a notice that appears when nothing is
     // wrong is one the operator learns to dismiss without reading.
     public async Task CheckAsync(CancellationToken cancellationToken = default)

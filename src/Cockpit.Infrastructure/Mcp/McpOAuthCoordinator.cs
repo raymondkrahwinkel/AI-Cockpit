@@ -48,6 +48,8 @@ internal sealed class McpOAuthCoordinator(
     private readonly Dictionary<string, TimeSpan> _freshTokenLife = new(StringComparer.Ordinal);
     private readonly Lock _freshTokenLifeLock = new();
 
+    public event Action<McpServerConfig>? SignInNeeded;
+
     public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
     {
         if (server.Auth != McpServerAuth.OAuth)
@@ -366,6 +368,12 @@ internal sealed class McpOAuthCoordinator(
             if (reason != McpOAuthAttentionReason.RenewalCouldNotBeConfirmed)
             {
                 _NotifyOperator(server, guidance);
+            }
+
+            // Only where a sign-in is the cure; an unreachable server or a short-lived token gets nothing from one.
+            if (reason is McpOAuthAttentionReason.NeverSignedIn or McpOAuthAttentionReason.SignInExpired)
+            {
+                SignInNeeded?.Invoke(server);
             }
         }
 

@@ -80,7 +80,7 @@ internal sealed class McpToolProvider(
                 if (enabledServers[i].Auth == McpServerAuth.OAuth)
                 {
                     serversNeedingSignIn.Add(enabledServers[i].Name);
-                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, "Needs a sign-in."));
+                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, NeedsSignIn));
                 }
                 else if (failureReason is { Length: > 0 })
                 {
@@ -171,15 +171,14 @@ internal sealed class McpToolProvider(
 
         // Same AC-134 rule EnumerateServerToolsAsync follows: never pop an interactive browser sign-in from this
         // path — report the named outcome instead, so a caller can offer its own "sign in" action.
-        if (server.Auth == McpServerAuth.OAuth
-            && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
-        {
-            return McpToolInvocationResult.AuthorizationRequired;
-        }
-
-        var (connection, _) = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
+        var (connection, failureReason) = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
         if (connection is null)
         {
+            if (failureReason == NeedsSignIn)
+            {
+                return McpToolInvocationResult.AuthorizationRequired;
+            }
+
             return McpToolInvocationResult.Failed($"Could not connect to \"{serverName}\".");
         }
 
@@ -217,12 +216,15 @@ internal sealed class McpToolProvider(
 
         try
         {
-            // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually run —
-            // GetStateAsync is a local read (no network/browser), so an already-usable token still connects fast.
-            var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
-                && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
-            var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Create() : null;
-            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken).ConfigureAwait(false);
+            // AC-1517: settled through the coordinator, which renews silently and names a needed sign-in in the
+            // cockpit. Connecting interactively here opened a browser tab from a background plugin call.
+            if (server.Auth == McpServerAuth.OAuth
+                && (await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false)).State != McpAuthState.Authorized)
+            {
+                return (null, NeedsSignIn);
+            }
+
+            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), options: null, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
@@ -345,6 +347,8 @@ internal sealed class McpToolProvider(
         return server with { Args = args };
     }
 
+    private const string NeedsSignIn = "Needs a sign-in.";
+
     private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
@@ -364,10 +368,9 @@ internal sealed class McpToolProvider(
             // per-session token, else the shared app key) or a user API-key server's own key; OAuth via the authorizer.
             // AC-354: operator headers first, then the auth-derived Authorization on top.
             AdditionalHeaders = _Headers(server, sessionToken),
-            // Interactive: this transport is built for a session the operator started, which is a moment they may be
-            // asked to sign in. The pre-flight tool count never reaches here — EnumerateServerToolsAsync returns
-            // early for an OAuth server precisely so counting tokens cannot open a browser (AC-134).
-            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: true) : null,
+            // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
+            // the coordinator approved but the server then refuses ends as "needs a sign-in", not as a stray tab.
+            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
