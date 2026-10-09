@@ -737,8 +737,14 @@ internal sealed class SessionTranscriptBuilder(
     // in it made each sub-agent step copy, serialise and store the whole lane again, on the UI thread.
     private void _Publish(Row row)
     {
-        row.Version++;
-        changed(row.Version, row.Parent is { } parent ? row.Entry with { ParentRowId = parent.Entry.Id } : _Snapshot(row));
+        var top = row;
+        while (top.Parent is { } parent)
+        {
+            top = parent;
+        }
+
+        top.Version++;
+        changed(top.Version, _Snapshot(top));
     }
 
     private static TranscriptSnapshotEntry _Snapshot(Row row) => row.Children.Count == 0
