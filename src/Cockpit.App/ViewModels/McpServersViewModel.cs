@@ -24,6 +24,9 @@ public partial class McpServersViewModel : ViewModelBase
     // model left to report back to (AC-499 review fix, finding 6).
     private readonly CancellationTokenSource _dialogLifetime = new();
 
+    // The ids this editor has seen, so a save can tell a row it removed from a row written elsewhere since (AC-1494).
+    private HashSet<string> _seenIds = new(StringComparer.Ordinal);
+
     public event Action? CloseRequested;
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
@@ -68,6 +71,7 @@ public partial class McpServersViewModel : ViewModelBase
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var servers = await _store.LoadAsync();
+        _seenIds = [.. servers.Select(server => server.Id)];
         var hidden = servers.Where(server => internalNames.Contains(server.Name.Trim())).ToList();
 
         foreach (var existing in Servers)
@@ -222,6 +226,29 @@ public partial class McpServersViewModel : ViewModelBase
         return (await _SaveAllAsync()).Saved;
     }
 
+    // A connect or pairing from another tab writes its rows while this list is open; saving only what is on screen
+    // would delete them (AC-1494). Rows removed elsewhere stay removed; a store that cannot be read saves the screen.
+    private async Task<List<McpServerConfig>> _MergedWithStoreAsync(IMcpServerStore store, List<McpServerConfig> edited)
+    {
+        IReadOnlyList<McpServerConfig> current;
+        try
+        {
+            current = await store.LoadAsync();
+        }
+        catch (IOException)
+        {
+            return edited;
+        }
+
+        var currentIds = current.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
+        var editedIds = edited.Select(server => server.Id).ToHashSet(StringComparer.Ordinal);
+        return
+        [
+            .. edited.Where(server => !_seenIds.Contains(server.Id) || currentIds.Contains(server.Id)),
+            .. current.Where(server => !_seenIds.Contains(server.Id) && !editedIds.Contains(server.Id)),
+        ];
+    }
+
     public bool Validate()
     {
         if (_store is null)
@@ -274,7 +301,9 @@ public partial class McpServersViewModel : ViewModelBase
 
         try
         {
-            await _store.SaveAsync(Servers.Select(server => server.ToConfig()).ToList());
+            var edited = Servers.Select(server => server.ToConfig()).ToList();
+            await _store.SaveAsync(await _MergedWithStoreAsync(_store, edited));
+            _seenIds.UnionWith(edited.Select(server => server.Id));
         }
         catch (Exception)
         {

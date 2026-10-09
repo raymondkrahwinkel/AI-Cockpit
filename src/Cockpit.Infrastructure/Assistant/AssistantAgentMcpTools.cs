@@ -334,9 +334,9 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
-    // AC-1326: no round trip to a node here — each node's rows come from whatever list_sessions/list_projects, or
-    // its own card, last read into INodeSessionsClient's memory — the same memory start_agent's local/node
-    // ambiguity check reads. A node this cockpit has not read yet this run contributes no rows.
+    // AC-1326: each node's rows come from whatever was last read into INodeSessionsClient's memory — the same memory
+    // start_agent's local/node ambiguity check reads. AC-1494: a node not read yet this run is read once here, under
+    // the same short budget list_sessions gives it, so the order of the calls does not decide what is listed.
     private async Task<List<object>> _NodeProfileRowsAsync()
     {
         if (nodes is null)
@@ -344,15 +344,17 @@ internal sealed class AssistantAgentMcpTools(
             return [];
         }
 
+        var names = await nodes.ListNodesAsync().ConfigureAwait(false);
+        var snapshots = await Task.WhenAll(names.Select(name => _SnapshotOfAsync(nodes, name))).ConfigureAwait(false);
         var rows = new List<object>();
-        foreach (var name in await nodes.ListNodesAsync().ConfigureAwait(false))
+        foreach (var (name, snapshot) in names.Zip(snapshots))
         {
-            if (nodes.TryGetLastSnapshot(name) is not { } memory)
+            if (snapshot is null)
             {
                 continue;
             }
 
-            rows.AddRange(memory.Snapshot.Profiles.Select(profile => new
+            rows.AddRange(snapshot.Profiles.Select(profile => new
             {
                 profile.Label,
                 Provider = profile.Provider.ToString(),
@@ -365,6 +367,26 @@ internal sealed class AssistantAgentMcpTools(
         }
 
         return rows;
+    }
+
+    // Null when the node has no snapshot and does not answer in time: it contributes no rows, as before.
+    private static async Task<NodeSessionsSnapshot?> _SnapshotOfAsync(INodeSessionsClient client, string name)
+    {
+        if (client.TryGetLastSnapshot(name) is { } memory)
+        {
+            return memory.Snapshot;
+        }
+
+        try
+        {
+            using var budget = new CancellationTokenSource(AssistantReadMcpTools.NodeBudget);
+            var read = await client.ReadAsync(name, budget.Token).ConfigureAwait(false);
+            return read.Error is { Length: > 0 } ? null : read;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     [McpServerTool(Name = "create_workspace", ReadOnly = false, Destructive = false)]

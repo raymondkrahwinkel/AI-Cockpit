@@ -45,6 +45,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: connecting to a server or pairing a node in Options → Security and then closing Options with Apply deleted
+  the new connection from the saved list, so the assistant saw no node. The MCP servers list now keeps what was added
+  while it was open, and `list_profiles` shows a node's profiles even before `list_sessions` has asked that node.
 - fixed: on an OpenAI-compatible provider (a plugin provider, Ollama or LM Studio), a tool result that carried waiting
   inbox mail, such as `run_status` after `start_run`, reached the model as `Microsoft.Extensions.AI.AIContent[]`
   instead of the output. The model now gets the text of every part.
