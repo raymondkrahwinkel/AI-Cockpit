@@ -48,6 +48,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Cockpit no longer opens a browser tab by itself to sign in to an MCP server, such as a Depot connection
+  whose sign-in has run out. It shows a notice that names the server, with a **Sign in** button. The page the
+  browser lands on after signing in now names the server too, so it can't be mistaken for some other login.
+
 - fixed: connecting to a server or pairing a node in Options → Security and then closing Options with Apply deleted
   the new connection from the saved list, so the assistant saw no node. The MCP servers list now keeps what was added
   while it was open, and `list_profiles` shows a node's profiles even before `list_sessions` has asked that node.

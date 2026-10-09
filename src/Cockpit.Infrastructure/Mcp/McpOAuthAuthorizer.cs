@@ -53,7 +53,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // against the request it made (RFC 9207 mix-up mitigation).
             AuthorizationCallbackHandler = interactive
                 ? (context, cancellationToken) =>
-                    _HandleAuthorizationAsync(context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
+                    _HandleAuthorizationAsync(server.Name, context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
                 : _RefuseAuthorizationAsync,
 
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
@@ -100,6 +100,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
     // Opens the system browser and waits on a loopback listener for the redirect, returning the code (or null on
     // failure/cancel). AC-457: each stage is recorded only where it is reached, never in advance.
     private async Task<AuthorizationResult?> _HandleAuthorizationAsync(
+        string serverName,
         Uri authorizationUri,
         Uri redirectUri,
         McpSignInStageRecorder? stageRecorder,
@@ -145,7 +146,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             stageRecorder?.Record(McpSignInStage.AuthorizationReturned);
 
             var (code, state, iss, error) = _ParseCallback(context.Request.Url?.Query);
-            await _RespondAsync(context, error is null).ConfigureAwait(false);
+            await _RespondAsync(context, serverName, error is null).ConfigureAwait(false);
 
             if (error is not null)
             {
@@ -200,14 +201,20 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         return (code, state, iss, error);
     }
 
-    private static async Task _RespondAsync(HttpListenerContext context, bool success)
+    // AC-1517: names the server and that this tab is Cockpit's own, since it can land next to an unrelated login.
+    // Only the first redirect gets this page: the listener stops after it, so a reload or a late, expired attempt
+    // reaches a closed port and the browser shows its own "can't connect" page — nothing here can answer that.
+    private static async Task _RespondAsync(HttpListenerContext context, string serverName, bool success)
     {
+        var server = WebUtility.HtmlEncode(serverName);
         var message = success
-            ? "Signed in to the MCP server. You can close this tab and return to Cockpit."
-            : "Sign-in failed or was cancelled. You can close this tab and return to Cockpit.";
-        var body = Encoding.UTF8.GetBytes($"<!doctype html><html><body style=\"font-family:sans-serif\">{message}</body></html>");
+            ? $"This tab was Cockpit's sign-in for the MCP server \"{server}\", and it has been handed back to Cockpit. You can close this tab."
+            : $"Cockpit's sign-in for the MCP server \"{server}\" failed or was cancelled. You can close this tab; "
+                + "to try again, press Sign in for that server in Cockpit.";
+        var body = Encoding.UTF8.GetBytes(
+            $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Cockpit</title></head><body style=\"font-family:sans-serif\">{message}</body></html>");
 
-        context.Response.ContentType = "text/html";
+        context.Response.ContentType = "text/html; charset=utf-8";
         context.Response.ContentLength64 = body.Length;
         await context.Response.OutputStream.WriteAsync(body).ConfigureAwait(false);
         context.Response.Close();

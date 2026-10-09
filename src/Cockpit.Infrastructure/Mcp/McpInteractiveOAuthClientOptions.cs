@@ -4,7 +4,7 @@ namespace Cockpit.Infrastructure.Mcp;
 
 // AC-505: DiscoverProbeTimeout (5s default) also bounds the interactive OAuth sign-in on that request's 401,
 // leaving too little time to grant consent — raised here alongside InitializationTimeout, since the shorter one
-// governs. Shared by McpToolProvider and McpOAuthCoordinator so the pairing can't drift between them.
+// governs. Only McpOAuthCoordinator's interactive sign-in uses it (AC-1517).
 internal static class McpInteractiveOAuthClientOptions
 {
     // A fresh instance per connect, not one shared one: McpClientConnector's AC-928 retry pins the protocol version

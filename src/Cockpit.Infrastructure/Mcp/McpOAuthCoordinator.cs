@@ -48,6 +48,8 @@ internal sealed class McpOAuthCoordinator(
     private readonly Dictionary<string, TimeSpan> _freshTokenLife = new(StringComparer.Ordinal);
     private readonly Lock _freshTokenLifeLock = new();
 
+    public event Action<McpServerConfig>? SignInNeeded;
+
     public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
     {
         if (server.Auth != McpServerAuth.OAuth)
@@ -350,9 +352,12 @@ internal sealed class McpOAuthCoordinator(
     private McpOAuthAccess _Unauthorized(McpServerConfig server, McpOAuthAttentionReason reason, McpSignInStage stage)
     {
         bool announce;
+        bool episodeStarts;
         lock (_reportedLock)
         {
-            announce = !_reported.TryGetValue(server.IdentityKey, out var previous) || previous != reason;
+            var known = _reported.TryGetValue(server.IdentityKey, out var previous);
+            announce = !known || previous != reason;
+            episodeStarts = _NeedsSignIn(reason) && !(known && _NeedsSignIn(previous));
             _reported[server.IdentityKey] = reason;
         }
 
@@ -361,16 +366,34 @@ internal sealed class McpOAuthCoordinator(
             var guidance = McpOAuthSignInGuidance.For(server.Name, reason);
             logger.LogWarning("MCP server {Server} is unavailable: {Guidance}", server.Name, guidance);
 
-            // AC-646: the log line is written either way; the toast is not — an unconfirmed renewal retries
-            // itself, so interrupting the operator over a one-second storm would be the wrong fix.
-            if (reason != McpOAuthAttentionReason.RenewalCouldNotBeConfirmed)
+            // AC-646: no desktop toast for an unconfirmed renewal, which retries itself. AC-1517: none for a needed
+            // sign-in either — that one is named in the cockpit through SignInNeeded, once per episode.
+            if (reason != McpOAuthAttentionReason.RenewalCouldNotBeConfirmed && !_NeedsSignIn(reason))
             {
                 _NotifyOperator(server, guidance);
             }
         }
 
+        // An episode lasts until a credential works again (`_Authorized` forgets it), so moving between
+        // "never signed in" and "expired" within one is not a second notice.
+        if (episodeStarts)
+        {
+            try
+            {
+                SignInNeeded?.Invoke(server);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Could not offer the operator a sign-in for MCP server {Server}.", server.Name);
+            }
+        }
+
         return McpOAuthAccess.AuthorizationRequired with { SignInStage = stage, Reason = reason };
     }
+
+    // Only where a sign-in is the cure; an unreachable server or a short-lived token gets nothing from one.
+    private static bool _NeedsSignIn(McpOAuthAttentionReason reason) =>
+        reason is McpOAuthAttentionReason.NeverSignedIn or McpOAuthAttentionReason.SignInExpired;
 
     // Puts the same sentence where the operator will meet it, not just in a log they'd have to know to check.
     // Fire-and-forget with the failure caught inside, since a toast that can't be shown must not take down the

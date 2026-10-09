@@ -142,13 +142,16 @@ public class McpOAuthRenewalVerdictTests
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         var store = await _StoreWithAStaleTokenAsync(server, refreshToken: "a-refresh-token-this-server-never-issued");
         var toasts = new CapturingToastNotifier();
+        var coordinator = _Coordinator(store, toasts);
+        var signInNeeded = new List<string>();
+        coordinator.SignInNeeded += needing => signInNeeded.Add(needing.Name);
 
-        await _Coordinator(store, toasts).AcquireAsync(_Server(server.Url), interactive: false);
+        await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
 
-        // Quietening the toast is only right for the case nobody has to act on. A sign-in the server has declared
-        // dead is the case the notification exists for — this is where the ticket's own mirror-image mistake would
-        // land, and the whole channel would go silent about the one thing it was built to say.
-        Assert.True(await toasts.WaitForAsync(1, TimeSpan.FromSeconds(5)));
-        Assert.Contains("press Sign in", Assert.Single(toasts.Shown).Body, StringComparison.Ordinal);
+        // Quietening is only right for the case nobody has to act on. A sign-in the server has declared dead is the
+        // case the notice exists for; since AC-1517 it is named in the cockpit, with Sign in, instead of on the desktop.
+        Assert.Equal(["depot"], signInNeeded);
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(toasts.Shown);
     }
 }
