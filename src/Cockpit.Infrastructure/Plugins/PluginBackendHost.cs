@@ -185,6 +185,39 @@ public class PluginBackendHost(
     public IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources =>
         services.GetRequiredService<IProjectMemorySourceRegistry>().Sources;
 
+    public async Task<int> RewriteProjectReferencesAsync(string scheme, Func<string, string?> rewrite, CancellationToken cancellationToken = default)
+    {
+        var editor = services.GetRequiredService<IProjectEditor>();
+        var changed = 0;
+        foreach (var project in (await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken)).Projects)
+        {
+            var resources = new List<ProjectResource>(project.Resources.Count);
+            var rewritten = 0;
+            foreach (var resource in project.Resources)
+            {
+                var replacement = ProjectMemoryRef.TryParse(resource.Reference, out var found, out var value)
+                    && string.Equals(found, scheme, StringComparison.OrdinalIgnoreCase)
+                    && rewrite(value) is { Length: > 0 } next && next != value
+                        ? resource with { Reference = $"{found}:{next}" }
+                        : resource;
+                rewritten += ReferenceEquals(replacement, resource) ? 0 : 1;
+                resources.Add(replacement);
+            }
+
+            if (rewritten > 0 && await editor.UpdateStoredProjectAsync(project with { Resources = resources }) is not null)
+            {
+                changed += rewritten;
+            }
+        }
+
+        if (changed > 0 && services.GetService<IProjectCatalog>() is { } catalog)
+        {
+            _ = catalog.RefreshSharedProjectsAsync(CancellationToken.None);
+        }
+
+        return changed;
+    }
+
     public void AddProjectMemorySourceFamily(ProjectMemorySourceFamily family)
     {
         // Refused means another plugin already declared this key — agreement, not a clash, the same reason

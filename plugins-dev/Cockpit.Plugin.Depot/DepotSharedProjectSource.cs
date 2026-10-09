@@ -15,6 +15,8 @@ internal sealed class DepotSharedProjectSource(
     DepotConnectionRegistration connection, string scheme, ICockpitHost host, HttpClient? httpClient = null)
     : ISharedProjectSource
 {
+    private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme);
+
     public string Key => scheme;
 
     public string SourceName => $"Depot — {connection.Name}";
@@ -44,6 +46,8 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
         }
 
+        await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
+
         var shared = new List<SharedProject>(listed.Count);
         var unreadable = new List<UnreadableSharedProject>();
         foreach (var project in listed)
@@ -63,14 +67,14 @@ internal sealed class DepotSharedProjectSource(
             // makes every Viewer's read of .cockpit/project.json fail regardless of whether it exists — report
             // that as visible-but-unreadable rather than silently dropped; Editor/Owner failure still means "not shared this way".
             var definitionResult = await CockpitProjectDefinitionStore.ReadAsync(
-                host, connection.McpServerName, project.Slug, cancellationToken).ConfigureAwait(false);
+                host, connection.McpServerName, project.Key, cancellationToken).ConfigureAwait(false);
 
             if (definitionResult.Outcome != PluginMcpToolCallOutcome.Success || definitionResult.Definition is not { } definition)
             {
                 if (!role.CanWrite())
                 {
                     unreadable.Add(new UnreadableSharedProject(
-                        $"{scheme}:{project.Slug}", project.Name is { Length: > 0 } ? project.Name : project.Slug, role.ToDisplayString()));
+                        $"{scheme}:{project.Key}", project.Name is { Length: > 0 } ? project.Name : project.Slug, role.ToDisplayString()));
                 }
 
                 // Otherwise: no .cockpit/project.json at all (the ordinary case for a project that never opted into
@@ -83,7 +87,7 @@ internal sealed class DepotSharedProjectSource(
                 ? definition.Name
                 : project.Name is { Length: > 0 } ? project.Name : project.Slug;
 
-            shared.Add(new SharedProject($"{scheme}:{project.Slug}", name)
+            shared.Add(new SharedProject($"{scheme}:{project.Key}", name)
             {
                 Description = definition.Description,
                 Role = role.ToDisplayString(),
@@ -107,7 +111,7 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectBindingResult.Failed($"'{id}' does not belong to this Depot connection.");
         }
 
-        var slug = id[prefix.Length..];
+        var slug = await _addressing.ProjectArgumentAsync(id[prefix.Length..], cancellationToken).ConfigureAwait(false);
         var definitionResult = await CockpitProjectDefinitionStore.ReadAsync(
             host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
 
@@ -159,7 +163,7 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectWriteBackResult.Failed($"'{id}' does not belong to this Depot connection.");
         }
 
-        var slug = id[prefix.Length..];
+        var slug = await _addressing.ProjectArgumentAsync(id[prefix.Length..], cancellationToken).ConfigureAwait(false);
         var currentRead = await CockpitProjectDefinitionStore.ReadAsync(
             host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
 
@@ -230,7 +234,7 @@ internal sealed class DepotSharedProjectSource(
             // as "operator didn't touch this" — clearing a restriction by re-ticking every server sends null
             // on purpose. Always reflect what edit actually says, never fall back to what was already there.
             McpOverlay = edit.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
-            Resources = current.Resources,
+            Resources = _UpgradeReferences(current.Resources),
             Logo = logoPath,
         };
 
@@ -282,6 +286,8 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectPublishTargetListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
         }
 
+        await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
+
         // AC-620 decision 4: only a project the operator can already write to is offered — Depot has no
         // create_project fallback, so a Viewer's row would dead-end. AC-699: CanWrite answers that, not a
         // repeated role list — the earlier list missed "Admin" and emptied the dropdown.
@@ -309,7 +315,7 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectPublishResult.Failed($"'{targetId}' does not belong to this Depot connection.");
         }
 
-        var slug = targetId[prefix.Length..];
+        var slug = await _addressing.ProjectArgumentAsync(targetId[prefix.Length..], cancellationToken).ConfigureAwait(false);
         // ponytail: read-then-write, not atomic — two concurrent first publishes of the same target can both pass
         // this read before either writes, and the second silently overwrites the first. Depot's write tool has no
         // create-if-absent flag to close this; upgrade path is a DEP-ticket to add one.
@@ -367,7 +373,7 @@ internal sealed class DepotSharedProjectSource(
             BehaviorPrompt = definition.BehaviorPrompt,
             IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
             McpOverlay = definition.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
-            Resources = filtered.Portable.Count == 0 ? null : [.. filtered.Portable],
+            Resources = filtered.Portable.Count == 0 ? null : _UpgradeReferences([.. filtered.Portable]),
             Logo = logoPath,
         };
 
@@ -376,7 +382,7 @@ internal sealed class DepotSharedProjectSource(
 
         return writeResult.Outcome switch
         {
-            PluginMcpToolCallOutcome.Success => SharedProjectPublishResult.Success($"{scheme}:{slug}"),
+            PluginMcpToolCallOutcome.Success => SharedProjectPublishResult.Success(targetId),
             _ when writeResult.FailureKind == CockpitProjectDefinitionWriteFailureKind.PermissionDenied =>
                 SharedProjectPublishResult.PermissionDenied(
                     writeResult.Error is { Length: > 0 } error ? error : "You do not have permission to publish here."),
@@ -387,7 +393,17 @@ internal sealed class DepotSharedProjectSource(
 
     // Shared by PrepareBindingAsync and WriteBackAsync's own conflict snapshot — both ever have to turn a
     // CockpitProjectDefinition into the plugin-shape-agnostic SharedProjectBinding the same way.
-    private static SharedProjectBinding _ToBinding(string slug, CockpitProjectDefinition definition, string? checksum)
+    private List<CockpitProjectResourceEntry>? _UpgradeReferences(List<CockpitProjectResourceEntry>? resources)
+    {
+        foreach (var resource in resources ?? [])
+        {
+            resource.Reference = _addressing.UpgradeReference(resource.Reference);
+        }
+
+        return resources;
+    }
+
+    private SharedProjectBinding _ToBinding(string slug, CockpitProjectDefinition definition, string? checksum)
     {
         var name = definition.Name is { Length: > 0 } ? definition.Name : slug;
 
@@ -405,7 +421,7 @@ internal sealed class DepotSharedProjectSource(
             [
                 .. (definition.Resources ?? [])
                     .Where(resource => resource.Placeholder || !string.IsNullOrWhiteSpace(resource.Reference))
-                    .Select(resource => new SharedProjectBindingResource(resource.Role, resource.Reference) { Label = resource.Label }),
+                    .Select(resource => new SharedProjectBindingResource(resource.Role, _addressing.UpgradeReference(resource.Reference)) { Label = resource.Label }),
             ],
             Checksum = checksum,
         };

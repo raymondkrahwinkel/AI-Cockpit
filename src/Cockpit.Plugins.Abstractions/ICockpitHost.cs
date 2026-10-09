@@ -645,6 +645,10 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>Rewrites the part after <c>&lt;scheme&gt;:</c> of every project's stored references under <paramref name="scheme"/> that <paramref name="rewrite"/> maps to a value (null leaves it); returns how many changed, default 0.</summary>
+    Task<int> RewriteProjectReferencesAsync(string scheme, Func<string, string?> rewrite, CancellationToken cancellationToken = default) =>
+        Task.FromResult(0);
+
     /// <summary>
     /// What the operator picked for <paramref name="key"/> on the project a session belongs to (AC-317), or
     /// <see langword="null"/> when that session has no project or the project is not linked. Reading half of

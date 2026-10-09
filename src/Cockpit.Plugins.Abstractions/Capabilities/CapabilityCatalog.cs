@@ -264,7 +264,7 @@ public static class CapabilityCatalog
             "Registers where a project's memory can live and is asked to serve it, so a starting session is pointed at the plugin.",
             CapabilityRisk.Sensitive,
             "0.10.0",
-            ["ICockpitHost.AddProjectMemorySource", "ICockpitHost.RemoveProjectMemorySource", "ICockpitHost.ProjectMemorySources", "ICockpitHost.AddProjectMemorySourceFamily"],
+            ["ICockpitHost.AddProjectMemorySource", "ICockpitHost.RemoveProjectMemorySource", "ICockpitHost.ProjectMemorySources", "ICockpitHost.AddProjectMemorySourceFamily", "ICockpitHost.RewriteProjectReferencesAsync"],
             [new("scheme", "The memory-source scheme the plugin may register under.")]),
 
         new(

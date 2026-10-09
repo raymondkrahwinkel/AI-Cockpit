@@ -90,6 +90,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
+  made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
+  as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.
 - changed: the "running out" warnings for a provider (context window, 5-hour and weekly limits) moved from Options →
   Sessions to that provider's own plugin page under Options → Plugins, which Claude Code and Codex now have, with a
   gear in the plugin manager. Searching Options for a signal such as "Week" still finds them.

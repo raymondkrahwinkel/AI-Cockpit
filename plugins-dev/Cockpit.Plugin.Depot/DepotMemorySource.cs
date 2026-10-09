@@ -56,29 +56,32 @@ internal static class DepotMemorySource
     // AC-499: Title keeps naming the connection even though FamilyKey groups it under "Depot" in the picker
     // dropdown (InstanceTitle covers that). ProjectMemorySourceMapping still flattens to Scheme/Title/Instruction
     // for a session's standing instructions, so dropping the name here would make every connection read alike.
-    private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost? host) =>
-        new(
+    private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost? host)
+    {
+        var addressing = host is null ? null : DepotProjectAddressing.For(host, connection, scheme);
+        return new(
             scheme,
             $"Depot project — {connection.Name}",
             $"This project's memory lives in Depot instance \"{connection.Name}\". Read and write it through the "
-                + "Depot MCP: look the project up by that slug before you start, and write back what you learn as "
+                + "Depot MCP: look the project up by that reference before you start, and write back what you learn as "
                 + "you go. If the Depot MCP is not available in this session, say so rather than working from "
                 + "memory you cannot see.")
         {
-            ListLocationsAsync = host is null ? null : cancellationToken => _ListLocationsAsync(connection, host, cancellationToken),
+            ListLocationsAsync = host is null ? null : cancellationToken => _ListLocationsAsync(connection, host, addressing!, cancellationToken),
             SignInAsync = host is null ? null : async cancellationToken =>
                 await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
-            CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, value, cancellationToken),
-            AppendNoteAsync = host is null ? null : (value, note, cancellationToken) => _AppendNoteAsync(host, connection, value, note, cancellationToken),
+            CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, addressing!, value, cancellationToken),
+            AppendNoteAsync = host is null ? null : (value, note, cancellationToken) => _AppendNoteAsync(host, connection, addressing!, value, note, cancellationToken),
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
         };
+    }
 
     // AC-502: lists this connection's Depot projects via `ICockpitHost.CallMcpToolAsync`'s `list_projects` —
     // the host owns the token. `includeSummary` is worth the extra server-side walk here (DEP-159): this is
     // a picker the operator opens once to make a choice, not a per-keystroke read.
     private static async Task<ProjectMemorySourceLocationsResult> _ListLocationsAsync(
-        DepotConnectionRegistration connection, ICockpitHost host, CancellationToken cancellationToken)
+        DepotConnectionRegistration connection, ICockpitHost host, DepotProjectAddressing addressing, CancellationToken cancellationToken)
     {
         var result = await host.CallMcpToolAsync(
             connection.McpServerName,
@@ -94,24 +97,27 @@ internal static class DepotMemorySource
             case PluginMcpToolCallOutcome.AuthorizationRequired:
                 return ProjectMemorySourceLocationsResult.AuthorizationRequired;
             case PluginMcpToolCallOutcome.Success:
-                return _ParseLocations(result.Content ?? string.Empty);
+                return await _ParseLocationsAsync(result.Content ?? string.Empty, addressing, cancellationToken).ConfigureAwait(false);
             default:
                 return ProjectMemorySourceLocationsResult.Failed(
                     result.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
         }
     }
 
-    private static ProjectMemorySourceLocationsResult _ParseLocations(string json)
+    private static async Task<ProjectMemorySourceLocationsResult> _ParseLocationsAsync(
+        string json, DepotProjectAddressing addressing, CancellationToken cancellationToken)
     {
         if (!_TryParseProjects(json, out var projects, out var error))
         {
             return ProjectMemorySourceLocationsResult.Failed(error!);
         }
 
+        await addressing.ObserveAsync(_Listed(projects), cancellationToken).ConfigureAwait(false);
+
         var locations = projects
             .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
             .Select(project => new ProjectMemorySourceLocation(
-                project.Slug!,
+                string.IsNullOrWhiteSpace(project.Address) ? project.Slug! : project.Address,
                 string.IsNullOrWhiteSpace(project.Name) ? project.Slug! : project.Name!,
                 _DetailFor(project)))
             .ToList();
@@ -195,15 +201,21 @@ internal static class DepotMemorySource
             return false;
         }
 
-        projects = parsed
-            .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
-            .Select(project => new ListedProject(project.Slug!, project.Name, project.Role, project.Kind))
-            .ToList();
+        projects = _Listed(parsed);
         return true;
     }
 
-    // One `list_projects` row, the fields `DepotSharedProjectSource` needs — see `TryParseProjects`.
-    internal readonly record struct ListedProject(string Slug, string? Name, string? Role, string? Kind);
+    private static List<ListedProject> _Listed(IEnumerable<_ListProjectsProject> rows) =>
+        rows.Where(project => !string.IsNullOrWhiteSpace(project.Slug))
+            .Select(project => new ListedProject(project.Slug!, project.Name, project.Role, project.Kind, string.IsNullOrWhiteSpace(project.Address) ? null : project.Address))
+            .ToList();
+
+    // One `list_projects` row, the fields `DepotSharedProjectSource` needs; Address is null on a Depot before organizations.
+    internal readonly record struct ListedProject(string Slug, string? Name, string? Role, string? Kind, string? Address = null)
+    {
+        // What a stored reference holds for this project: its address where Depot gives one, its slug otherwise.
+        public string Key => Address ?? Slug;
+    }
 
     private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
 
@@ -217,6 +229,7 @@ internal static class DepotMemorySource
 
     private sealed class _ListProjectsProject
     {
+        public string? Address { get; set; }
         public string? Slug { get; set; }
         public string? Name { get; set; }
         public string? Role { get; set; }
@@ -239,7 +252,7 @@ internal static class DepotMemorySource
     // NotSignedIn, showing signed-in operators a bogus "sign in" prompt. `list_projects` answers reliably
     // instead (`project_info` returns 200 with null fields for a nonexistent slug); `includeSummary: false` skips the walk.
     private static async Task<ProjectMemorySourceReachabilityResult> _CheckReachabilityAsync(
-        ICockpitHost host, DepotConnectionRegistration connection, string value, CancellationToken cancellationToken)
+        ICockpitHost host, DepotConnectionRegistration connection, DepotProjectAddressing addressing, string value, CancellationToken cancellationToken)
     {
         var result = await host.CallMcpToolAsync(
             connection.McpServerName,
@@ -256,7 +269,7 @@ internal static class DepotMemorySource
                 // on why this is no longer also where an ordinary failed call lands.
                 return ProjectMemorySourceReachabilityResult.NotSignedIn;
             case PluginMcpToolCallOutcome.Success:
-                return _MatchReachability(result.Content ?? string.Empty, value, host, connection);
+                return await _MatchReachabilityAsync(result.Content ?? string.Empty, value, host, connection, addressing, cancellationToken).ConfigureAwait(false);
             default:
                 var reason = result.Error ?? "Depot did not return a list of projects.";
                 _LogCheckFailure(host, connection, value, reason);
@@ -271,12 +284,12 @@ internal static class DepotMemorySource
     // AC-492: `append` is Depot's server-side atomic append — safe under concurrent writers, and the only Depot
     // tool this writer may call: `write` would replace the file, which the contract forbids.
     private static async Task<ProjectMemoryAppendResult> _AppendNoteAsync(
-        ICockpitHost host, DepotConnectionRegistration connection, string slug, string note, CancellationToken cancellationToken)
+        ICockpitHost host, DepotConnectionRegistration connection, DepotProjectAddressing addressing, string value, string note, CancellationToken cancellationToken)
     {
         var result = await host.CallMcpToolAsync(
             connection.McpServerName,
             "append",
-            new Dictionary<string, object?> { ["project"] = slug, ["path"] = NotesPath, ["content"] = note },
+            new Dictionary<string, object?> { ["project"] = await addressing.ProjectArgumentAsync(value, cancellationToken).ConfigureAwait(false), ["path"] = NotesPath, ["content"] = note },
             // Same reasoning as _ListLocationsAsync: a Depot connection is shared, not project-scoped.
             projectId: null,
             cancellationToken).ConfigureAwait(false);
@@ -289,8 +302,8 @@ internal static class DepotMemorySource
         };
     }
 
-    private static ProjectMemorySourceReachabilityResult _MatchReachability(
-        string json, string value, ICockpitHost host, DepotConnectionRegistration connection)
+    private static async Task<ProjectMemorySourceReachabilityResult> _MatchReachabilityAsync(
+        string json, string value, ICockpitHost host, DepotConnectionRegistration connection, DepotProjectAddressing addressing, CancellationToken cancellationToken)
     {
         if (!_TryParseProjects(json, out var projects, out var error))
         {
@@ -298,13 +311,20 @@ internal static class DepotMemorySource
             return ProjectMemorySourceReachabilityResult.CheckFailed(error);
         }
 
-        // Case-insensitive: a slug the operator typed with different casing than Depot stores it is still the same
-        // project, not a reason to say "not found" for what a human would call an exact match.
-        var match = projects.FirstOrDefault(project => string.Equals(project.Slug, value, StringComparison.OrdinalIgnoreCase));
-        return match is null
-            ? ProjectMemorySourceReachabilityResult.NotFound
-            : ProjectMemorySourceReachabilityResult.Confirmed(_ReachabilityDetailFor(match));
+        await addressing.ObserveAsync(_Listed(projects), cancellationToken).ConfigureAwait(false);
+
+        // Case-insensitive; an org/slug value needs the address, a bare one the slug, and a slug two organizations share matches nothing.
+        var matches = projects.Where(project => _Matches(project, value)).ToList();
+        return matches.Count == 1
+            ? ProjectMemorySourceReachabilityResult.Confirmed(_ReachabilityDetailFor(matches[0]))
+            : ProjectMemorySourceReachabilityResult.NotFound;
     }
+
+    private static bool _Matches(_ListProjectsProject project, string value) =>
+        string.IsNullOrWhiteSpace(project.Address)
+            ? string.Equals(project.Slug, value[(value.LastIndexOf('/') + 1)..], StringComparison.OrdinalIgnoreCase)
+            : string.Equals(project.Address, value, StringComparison.OrdinalIgnoreCase)
+                || (!value.Contains('/') && string.Equals(project.Slug, value, StringComparison.OrdinalIgnoreCase));
 
     // AC-499: this trace didn't exist before, which is how a defect telling a signed-in operator to sign in
     // again went unnoticed. Resolved from `ICockpitHost.Services`; null on a test double is fine. Iron Law #8:
