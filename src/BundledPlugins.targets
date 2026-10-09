@@ -93,7 +93,6 @@
     <BundledPlugin Include="Autopilot" FolderId="autopilot" />
     <BundledPlugin Include="FanOut" FolderId="fan-out" />
     <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
-    <BundledPlugin Include="Depot" FolderId="depot" />
   </ItemGroup>
 
   <!-- Resolved in a target, after the plugins are built: at evaluation time, and before ResolveProjectReferences,
