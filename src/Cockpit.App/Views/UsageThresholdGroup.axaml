@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.UsageThresholdGroup"
+             x:DataType="vm:UsageThresholdProviderViewModel">
+
+    <StackPanel Spacing="6" Margin="0,0,0,10">
+        <TextBlock Text="{Binding DisplayName}" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+        <StackPanel x:Name="Rows"/>
+    </StackPanel>
+</UserControl>
