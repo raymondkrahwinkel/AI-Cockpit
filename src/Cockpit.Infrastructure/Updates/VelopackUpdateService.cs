@@ -115,6 +115,9 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
             var current = ChangelogHttp.GetStringAsync(_ChangelogAt(Current.Commit), cancellationToken);
             var offered = ChangelogHttp.GetStringAsync(_ChangelogAt(offeredTag), cancellationToken);
 
+            // Both awaited together, so a failure of the one does not leave the other's exception unobserved.
+            await Task.WhenAll(current, offered);
+
             var changes = ChangelogDelta.Between(await current, await offered);
 
             return new ChangelogResult(
