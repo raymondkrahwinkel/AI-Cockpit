@@ -214,7 +214,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         var body = Encoding.UTF8.GetBytes(
             $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Cockpit</title></head><body style=\"font-family:sans-serif\">{message}</body></html>");
 
-        context.Response.ContentType = "text/html";
+        context.Response.ContentType = "text/html; charset=utf-8";
         context.Response.ContentLength64 = body.Length;
         await context.Response.OutputStream.WriteAsync(body).ConfigureAwait(false);
         context.Response.Close();

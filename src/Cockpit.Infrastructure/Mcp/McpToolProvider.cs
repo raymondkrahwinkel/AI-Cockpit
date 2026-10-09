@@ -369,7 +369,7 @@ internal sealed class McpToolProvider(
             // AC-354: operator headers first, then the auth-derived Authorization on top.
             AdditionalHeaders = _Headers(server, sessionToken),
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
-            // the coordinator approved but the server then refuses ends as "needs a sign-in", not as a stray tab.
+            // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),

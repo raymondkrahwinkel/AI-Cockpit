@@ -75,8 +75,8 @@ public class McpToolProviderInvokeAsyncTests
 
         var result = await provider.InvokeAsync(config.Name, "echo");
 
-        Assert.Equal(McpToolInvocationOutcome.AuthorizationRequired, result.Outcome);
         Assert.Empty(browserOpened);
+        Assert.Equal(McpToolInvocationOutcome.AuthorizationRequired, result.Outcome);
         Assert.Equal(["Depot: Work"], announced);
     }
 

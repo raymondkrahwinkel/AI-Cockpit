@@ -373,7 +373,14 @@ internal sealed class McpOAuthCoordinator(
             // Only where a sign-in is the cure; an unreachable server or a short-lived token gets nothing from one.
             if (reason is McpOAuthAttentionReason.NeverSignedIn or McpOAuthAttentionReason.SignInExpired)
             {
-                SignInNeeded?.Invoke(server);
+                try
+                {
+                    SignInNeeded?.Invoke(server);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogWarning(exception, "Could not offer the operator a sign-in for MCP server {Server}.", server.Name);
+                }
             }
         }
 
