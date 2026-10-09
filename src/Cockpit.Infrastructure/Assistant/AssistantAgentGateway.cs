@@ -13,6 +13,8 @@ using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -34,7 +36,8 @@ internal sealed class AssistantAgentGateway(
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
     IWorktreeManager? worktreeManager = null,
-    IProjectFieldRegistry? projectFields = null) : IAssistantAgentGateway, ISingletonService
+    IProjectFieldRegistry? projectFields = null,
+    ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -232,7 +235,15 @@ internal sealed class AssistantAgentGateway(
             return await _RefuseStopAsync(paneId, refusal ?? string.Empty, cancellationToken).ConfigureAwait(false);
         }
 
+        var hadProcess = pane.Session.ProcessCount > 0;
         await launcher.StopSessionAsync(paneId).ConfigureAwait(false);
+
+        // AC-1519: a pane can read Idle while a previous Cockpit's session still drives its branch; that one is ended
+        // here too, and the answer says which of the two it was instead of a bare ok.
+        var orphans = WindowsJobSessionSweep.Run(logger ?? (ILogger)NullLogger.Instance, paneId);
+        var note = orphans.Count > 0
+            ? "A session a previous Cockpit run left behind was still running for this pane; it has been stopped as well."
+            : hadProcess ? null : "This pane had no running process, so there was nothing to stop; the pane is closed.";
 
         await _RecordAsync(new AssistantSpawnAuditEntry(
             DateTimeOffset.Now,
@@ -248,7 +259,7 @@ internal sealed class AssistantAgentGateway(
             pane.Title,
             Refusal: null), cancellationToken).ConfigureAwait(false);
 
-        return AgentStopResult.Stopped(paneId, pane.Title);
+        return AgentStopResult.Stopped(paneId, pane.Title, note);
     }
 
     // The grid pane `paneId` names, as the moment of deciding saw it, or why there is none — the lookup stop, prompt
