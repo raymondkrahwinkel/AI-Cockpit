@@ -323,6 +323,11 @@ public sealed class RemoteSessionJourney
                 Assert.True(await editor.PersistAsync());
             });
 
+            // Applying the editor must not take back the row the connect just wrote.
+            Assert.Contains(
+                await cockpit.Services.GetRequiredService<IMcpServerStore>().LoadAsync(),
+                row => row.Name == NodeServerName.For(Server, NodeServerName.SessionsServerName));
+
             // Profiles first: before any list_sessions has read the node. One server at a time, as each connect re-grants.
             var host = cockpit.Services.GetRequiredService<CockpitMcpEndpointHost>();
             JsonNode profiles;
