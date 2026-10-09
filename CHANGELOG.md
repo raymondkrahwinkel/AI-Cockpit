@@ -84,6 +84,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the "running out" warnings for a provider (context window, 5-hour and weekly limits) moved from Options →
+  Sessions to that provider's own plugin page under Options → Plugins, which Claude Code and Codex now have, with a
+  gear in the plugin manager. Searching Options for a signal such as "Week" still finds them.
 - changed: an OpenAI-compatible session (Gemini/OpenAI, GitHub Models, Grok, OpenRouter, Ollama, LM Studio) ends its
   turn when the model answers without a tool call, and nudges a model that stops on an announcement once instead of
   twice. A profile can set `turnLimits.maxContinuations` in its provider config to change that.

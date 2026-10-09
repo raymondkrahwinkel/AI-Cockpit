@@ -829,13 +829,15 @@ public partial class App : Application
     private static async Task _LoadUsageThresholdsAsync(CockpitViewModel cockpit, IUsageThresholdStore store)
     {
         var providers = new List<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)>();
+        var ttyRegistry = Program.Services.GetService<IPluginTtyProviderRegistry>();
+        var sdkRegistry = Program.Services.GetService<IPluginProviderRegistry>();
 
-        foreach (var registration in Program.Services.GetService<IPluginTtyProviderRegistry>()?.Registrations ?? [])
+        foreach (var registration in ttyRegistry?.Registrations ?? [])
         {
             providers.Add((registration.ProviderId, registration.DisplayName, registration.UsageSignals));
         }
 
-        foreach (var registration in Program.Services.GetService<IPluginProviderRegistry>()?.Registrations ?? [])
+        foreach (var registration in sdkRegistry?.Registrations ?? [])
         {
             // A provider registered on both routes declares the same signals for each; list it once.
             if (!providers.Any(entry => string.Equals(entry.ProviderId, registration.ProviderId, StringComparison.OrdinalIgnoreCase)))
@@ -845,7 +847,7 @@ public partial class App : Application
         }
 
         var settings = new UsageThresholdsViewModel(store);
-        await settings.LoadAsync(providers);
+        await settings.LoadAsync(providers, providerId => ttyRegistry?.OwnerOf(providerId) ?? sdkRegistry?.OwnerOf(providerId));
 
         cockpit.UsageThresholdSettings = settings;
         cockpit.UsageThresholds = await store.LoadAsync();

@@ -26,6 +26,7 @@ namespace Cockpit.App.Views;
 public partial class OptionsDialog : Window
 {
     private readonly Dictionary<string, PluginOptionsRowViewModel> _pluginRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Control?> _hostSections = new(StringComparer.Ordinal);
     private readonly List<IDisposable> _searchVisibilityOverrides = [];
     private readonly Dictionary<Control, string> _searchableText = [];
     private CockpitViewModel? _searchCockpit;
@@ -392,14 +393,24 @@ public partial class OptionsDialog : Window
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,
         // under the same shared Apply and Close the rest of Options uses.
-        body.Children.Add(row.Content is { } content
-            ? content
-            : new TextBlock
+        if (row.Content is { } content)
+        {
+            body.Children.Add(content);
+        }
+        else if (row.UnavailableReason is { } unavailable)
+        {
+            body.Children.Add(new TextBlock
             {
-                Text = row.UnavailableReason,
+                Text = unavailable,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = _Brush("CockpitTextSecondaryBrush"),
             });
+        }
+
+        if (_HostSectionFor(row.PluginId) is { } hostSection)
+        {
+            body.Children.Add(hostSection);
+        }
 
         var scroll = new ScrollViewer { Tag = tag, Content = body };
         // ElementName bindings need a NameScope a code-behind element never gets (AC-1011), unlike the nav
@@ -413,6 +424,82 @@ public partial class OptionsDialog : Window
             ConverterParameter = tag,
         });
         return scroll;
+    }
+
+    // AC-289: what the host draws from a plugin's declarations, under the plugin's own view, built once per dialog.
+    private Control? _HostSectionFor(string pluginId)
+    {
+        if (!_hostSections.TryGetValue(pluginId, out var section))
+        {
+            section = (DataContext as CockpitViewModel)?.UsageThresholdSettings is { } thresholds
+                ? _UsageThresholdSection(thresholds, pluginId)
+                : null;
+            _hostSections[pluginId] = section;
+        }
+
+        return section;
+    }
+
+    // Built in code rather than templated, so search can read the rows before the page has ever been shown.
+    private static Control? _UsageThresholdSection(UsageThresholdsViewModel thresholds, string pluginId)
+    {
+        var sessions = thresholds.Providers.Where(group => group.OwnerPluginId == pluginId).ToList();
+        if (sessions.Count == 0)
+        {
+            return null;
+        }
+
+        var section = new StackPanel { Spacing = 8 };
+        section.Children.Add(new TextBlock { Classes = { "optionsSectionHeader" }, Text = "USAGE WARNINGS" });
+        section.Children.Add(new TextBlock
+        {
+            Classes = { "optionsHint" },
+            TextWrapping = TextWrapping.Wrap,
+            Text = "A session started after Apply shows a warning line at the top of its pane once one of these figures passes the number set here.",
+        });
+        _AddThresholdGroups(section, "Warn me when a session is running out", sessions);
+        _AddThresholdGroups(section, "Warn me when the Assistant is running out",
+            [.. thresholds.AssistantProviders.Where(group => group.OwnerPluginId == pluginId)]);
+        return section;
+    }
+
+    private static void _AddThresholdGroups(StackPanel section, string title, IReadOnlyList<UsageThresholdProviderViewModel> groups)
+    {
+        if (groups.Count == 0)
+        {
+            return;
+        }
+
+        section.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, FontSize = 12 });
+        foreach (var group in groups)
+        {
+            section.Children.Add(new TextBlock { Text = group.DisplayName, FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush") });
+            foreach (var signal in group.Signals)
+            {
+                var value = new NumericUpDown
+                {
+                    Minimum = 0,
+                    Maximum = 100,
+                    Increment = 5,
+                    FormatString = "0",
+                    Width = 130,
+                    HorizontalContentAlignment = HorizontalAlignment.Center,
+                };
+                value.Bind(NumericUpDown.ValueProperty, new Binding(nameof(UsageThresholdRowViewModel.Threshold)) { Source = signal, Mode = BindingMode.TwoWay });
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 4) };
+                row.Children.Add(new TextBlock { Text = signal.Label, Width = 150, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+                row.Children.Add(value);
+                row.Children.Add(new TextBlock
+                {
+                    Text = signal.FollowsLabel,
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                });
+                section.Children.Add(row);
+            }
+        }
     }
 
     private void _EnsurePluginContent()
@@ -473,7 +560,8 @@ public partial class OptionsDialog : Window
                 plugin.EnsureContent();
             }
 
-            matches[tag] = plugin.RawView is { } view ? _FilterRows(view, searchText) : 0;
+            matches[tag] = (plugin.RawView is { } view ? _FilterRows(view, searchText) : 0)
+                + (_HostSectionFor(plugin.PluginId) is { } hostSection ? _FilterRows(hostSection, searchText) : 0);
         }
         var items = CategoryNav.Items.OfType<ListBoxItem>().ToList();
         foreach (var item in items.Where(item => item.Tag is string))

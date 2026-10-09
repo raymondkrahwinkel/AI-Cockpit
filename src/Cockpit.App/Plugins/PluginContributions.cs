@@ -30,8 +30,8 @@ public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, 
 
 // A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
 // wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
-// that builds it.
-public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView, string? Category = null);
+// that builds it. No factory (AC-289) is a plugin whose page holds only what the host draws from its declarations.
+public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control>? CreateView, string? Category = null);
 
 /// <summary>
 /// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>; an

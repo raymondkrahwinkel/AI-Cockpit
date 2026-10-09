@@ -32,7 +32,10 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
 
     // Builds the rows from what the providers declared and what the operator has saved. Called when the settings
     // screen opens, so a newly installed provider appears without a restart.
-    public async Task LoadAsync(IReadOnlyList<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)> providers, CancellationToken cancellationToken = default)
+    public async Task LoadAsync(
+        IReadOnlyList<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)> providers,
+        Func<string, string?>? ownerOf = null,
+        CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
 
@@ -43,8 +46,9 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
             // The Assistant's own "what this follows" is what an ordinary session on this provider would resolve
             // to (its own override, else the declaration) — not always the raw declaration, now that a provider
             // override on the same screen can already change it.
-            Providers.Add(_BuildGroup(providerId, displayName, signals, _settings.ByProvider, signal => signal.DefaultThresholdPercent));
-            AssistantProviders.Add(_BuildGroup(providerId, displayName, signals, _settings.ByAssistant,
+            var owner = ownerOf?.Invoke(providerId);
+            Providers.Add(_BuildGroup(providerId, displayName, owner, signals, _settings.ByProvider, signal => signal.DefaultThresholdPercent));
+            AssistantProviders.Add(_BuildGroup(providerId, displayName, owner, signals, _settings.ByAssistant,
                 signal => _settings.Resolve(providerId, profileLabel: null, signal.Key, signal.DefaultThresholdPercent, isAssistant: false)));
         }
 
@@ -55,6 +59,7 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
     private static UsageThresholdProviderViewModel _BuildGroup(
         string providerId,
         string displayName,
+        string? ownerPluginId,
         IReadOnlyList<PluginUsageSignal> signals,
         Dictionary<string, Dictionary<string, double>> level,
         Func<PluginUsageSignal, double> fallback)
@@ -66,7 +71,7 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
             fallback(signal),
             _Stored(level, providerId, signal.Key)));
 
-        return new UsageThresholdProviderViewModel(providerId, displayName, [.. rows]);
+        return new UsageThresholdProviderViewModel(providerId, displayName, [.. rows], ownerPluginId);
     }
 
     // Persists every row: a number becomes an override, an empty field clears one so the level above applies again.
