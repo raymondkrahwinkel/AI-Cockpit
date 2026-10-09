@@ -70,12 +70,13 @@ internal static class EventsEndpoint
                     }
 
                     var evt = events.Current;
-                    // The assistant is every operate key's, as its routes are; any other pane only within the key's scope,
+                    // AC-263: the assistant is the holder's only, as its routes are; any other pane only within the key's scope,
                     // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
                     // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
                     if ((evt.PaneId is { } paneId
-                            && !string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
-                            && !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing))
+                            && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
+                                ? !caller.HoldsAssistant
+                                : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing)))
                         || (evt.Kind == ProjectsEndpoints.EventKind && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();
