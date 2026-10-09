@@ -550,6 +550,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
             _subAgentRows = [];
             _subAgentRows.CollectionChanged += _OnSubAgentRowsChanged;
             OnPropertyChanged(nameof(SubAgentRowsForDisplay));
+            OnPropertyChanged(nameof(ExpandedSubAgentRows));
             return _subAgentRows;
         }
     }
@@ -599,7 +600,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     [RelayCommand]
     private void ToggleSubAgentExpanded() => IsSubAgentExpanded = !IsSubAgentExpanded;
 
-    partial void OnIsSubAgentExpandedChanged(bool value) => OnPropertyChanged(nameof(SubAgentToggleIconKind));
+    // AC-1518: what the nested list draws. Empty while collapsed, so a long sub-agent lane builds no row views
+    // until someone opens it.
+    public IEnumerable<TranscriptEntryViewModel> ExpandedSubAgentRows =>
+        IsSubAgentExpanded ? SubAgentRowsForDisplay : Array.Empty<TranscriptEntryViewModel>();
+
+    partial void OnIsSubAgentExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SubAgentToggleIconKind));
+        OnPropertyChanged(nameof(ExpandedSubAgentRows));
+    }
 
     // Tool name for a tool-use row; used to build the always-allow rule label.
     public string? ToolName { get; init; }

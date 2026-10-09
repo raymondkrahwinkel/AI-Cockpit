@@ -733,17 +733,12 @@ internal sealed class SessionTranscriptBuilder(
         }
     }
 
-    // A nested row changing is its anchor changing: the store keeps a sub-agent's rows inside the anchor (AC-1090).
+    // AC-1518: a nested row is published on its own, naming its anchor. Publishing the anchor with every nested row
+    // in it made each sub-agent step copy, serialise and store the whole lane again, on the UI thread.
     private void _Publish(Row row)
     {
-        var top = row;
-        while (top.Parent is { } parent)
-        {
-            top = parent;
-        }
-
-        top.Version++;
-        changed(top.Version, _Snapshot(top));
+        row.Version++;
+        changed(row.Version, row.Parent is { } parent ? row.Entry with { ParentRowId = parent.Entry.Id } : _Snapshot(row));
     }
 
     private static TranscriptSnapshotEntry _Snapshot(Row row) => row.Children.Count == 0

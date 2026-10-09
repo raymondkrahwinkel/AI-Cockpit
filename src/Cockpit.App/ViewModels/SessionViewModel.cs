@@ -704,7 +704,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _applyingHostRow = true;
         try
         {
-            _DrawRow(entry, anchor: null);
+            // AC-1518: a nested row comes on its own and names its anchor; it lands there and touches nothing else.
+            if (entry.ParentRowId is not { } parentId)
+            {
+                _DrawRow(entry, anchor: null);
+            }
+            else if (_rowsById.TryGetValue(parentId, out var anchor))
+            {
+                _DrawRow(entry, anchor);
+            }
         }
         finally
         {

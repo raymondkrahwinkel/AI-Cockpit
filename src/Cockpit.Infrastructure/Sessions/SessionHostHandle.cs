@@ -20,6 +20,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private readonly SessionHost _host;
     private bool _nameIsChosen;
     private readonly List<TranscriptSnapshotEntry> _rows = [];
+
+    private readonly NestedTranscriptRows _nested = new();
     private string _title;
     private string _statusline = string.Empty;
     private string? _worktreeBranch;
@@ -489,7 +491,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             lock (_gate)
             {
-                return [.. _rows];
+                return _nested.Compose(_rows);
             }
         }
     }
@@ -499,7 +501,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     {
         lock (_gate)
         {
-            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. _rows], lastSeq()));
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(_nested.Compose(_rows), lastSeq()));
         }
     }
 
@@ -742,6 +744,11 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     // Raised inside the fold or a recorded row, so under the same lock; a row keeps the place it first took.
     private void _OnRowUpserted(TranscriptRowUpsert upsert)
     {
+        if (_nested.TryUpsert(upsert.Row, _rows))
+        {
+            return;
+        }
+
         var index = _rows.FindIndex(row => string.Equals(row.Id, upsert.Row.Id, StringComparison.Ordinal));
         if (index < 0)
         {

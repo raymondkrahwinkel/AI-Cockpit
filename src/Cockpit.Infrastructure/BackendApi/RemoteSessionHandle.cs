@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -22,6 +23,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
     private readonly bool _isAssistant;
     private readonly Lock _gate = new();
     private readonly List<TranscriptSnapshotEntry> _rows = [];
+    private readonly NestedTranscriptRows _nested = new();
     private readonly List<QueuedPrompt> _queue = [];
     private RemoteSessionRow _facts;
     private SessionLiveState? _liveState;
@@ -151,7 +153,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         {
             lock (_gate)
             {
-                return [.. _rows];
+                return _nested.Compose(_rows);
             }
         }
     }
@@ -488,7 +490,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
     {
         lock (_gate)
         {
-            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot([.. _rows], _snapshotSeq));
+            return Task.FromResult<SessionRowSnapshot?>(new SessionRowSnapshot(_nested.Compose(_rows), _snapshotSeq));
         }
     }
 
@@ -675,6 +677,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         lock (_gate)
         {
             _rows.Clear();
+            _nested.Clear();
             _rows.AddRange(rows);
             _snapshotSeq = seq;
             _loaded = true;
@@ -700,14 +703,17 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
             switch (evt.Kind)
             {
                 case "row" when evt.Seq > _snapshotSeq && evt.Data.Deserialize<RemoteRowEvent>(Json) is { Row: { } row } data:
-                    var index = _rows.FindIndex(existing => string.Equals(existing.Id, row.Id, StringComparison.Ordinal));
-                    if (index < 0)
+                    if (!_nested.TryUpsert(row, _rows))
                     {
-                        _rows.Add(row);
-                    }
-                    else
-                    {
-                        _rows[index] = row;
+                        var index = _rows.FindIndex(existing => string.Equals(existing.Id, row.Id, StringComparison.Ordinal));
+                        if (index < 0)
+                        {
+                            _rows.Add(row);
+                        }
+                        else
+                        {
+                            _rows[index] = row;
+                        }
                     }
 
                     var upsert = new TranscriptRowUpsert(data.Seq, data.Version, row);
