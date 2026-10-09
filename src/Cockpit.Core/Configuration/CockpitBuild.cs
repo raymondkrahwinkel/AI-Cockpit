@@ -68,7 +68,7 @@ public static class CockpitBuild
     // children their own — so the desktop and a session it spawned would isolate to two different places while
     // reading as one. Refusing at the first read makes that a startup failure instead of a silent half-isolation.
     private static string RequireFullyQualified(string path, string variable) =>
-        Path.IsPathFullyQualified(path) || path.StartsWith('/', StringComparison.Ordinal)
+        Path.IsPathFullyQualified(path)
             ? path
             : throw new InvalidOperationException(
                 $"{variable} must be an absolute path; it is \"{path}\".");
