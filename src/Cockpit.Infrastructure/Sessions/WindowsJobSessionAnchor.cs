@@ -14,7 +14,7 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
     private const uint ProcessSetQuota = 0x0100;
     private const uint ProcessTerminate = 0x0001;
 
-    public IDisposable? Anchor(int processId)
+    public IDisposable? Anchor(int processId, string? paneId = null)
     {
         if (_StartedAt(processId) is not { } sessionStartedAt || _StartedAt(Environment.ProcessId) is not { } ownerStartedAt)
         {
@@ -27,11 +27,21 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
             Environment.ProcessId,
             ownerStartedAt,
             processId,
-            sessionStartedAt);
+            sessionStartedAt,
+            paneId);
         var job = NativeMethods.CreateJobObjectW(IntPtr.Zero, record.JobName);
         if (job == IntPtr.Zero)
         {
             logger.LogWarning("Session {ProcessId}: CreateJobObject failed ({Error}).", processId, Marshal.GetLastWin32Error());
+            return null;
+        }
+
+        // AC-1519: the tree dies with this process however it ends, so a crashed Cockpit leaves no agent
+        // driving a branch behind a pane that reads Idle; the startup sweep is the fallback, not the plan.
+        if (!_KillOnClose(job))
+        {
+            logger.LogWarning("Session {ProcessId}: SetInformationJobObject failed ({Error}).", processId, Marshal.GetLastWin32Error());
+            NativeMethods.CloseHandle(job);
             return null;
         }
 
@@ -61,6 +71,14 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
 
     internal static DateTimeOffset? StartedAt(int processId) => _StartedAt(processId);
 
+    private static bool _KillOnClose(IntPtr job)
+    {
+        var limits = new NativeMethods.ExtendedLimitInformation();
+        limits.BasicLimitInformation.LimitFlags = NativeMethods.JobObjectLimitKillOnJobClose;
+        return NativeMethods.SetInformationJobObject(
+            job, NativeMethods.JobObjectExtendedLimitInformation, ref limits, (uint)Marshal.SizeOf<NativeMethods.ExtendedLimitInformation>());
+    }
+
     private static DateTimeOffset? _StartedAt(int processId)
     {
         try
@@ -85,7 +103,6 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
                 return;
             }
 
-            // A Cockpit crash must leave agents running; only an explicit session close ends this job.
             if (!NativeMethods.TerminateJobObject(_job, exitCode: 1))
             {
                 logger.LogWarning("Session job {Job}: TerminateJobObject failed ({Error}).", jobName, Marshal.GetLastWin32Error());
@@ -99,6 +116,42 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
 
     internal static class NativeMethods
     {
+        public const int JobObjectExtendedLimitInformation = 9;
+        public const uint JobObjectLimitKillOnJobClose = 0x2000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BasicLimitInformation
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ExtendedLimitInformation
+        {
+            public BasicLimitInformation BasicLimitInformation;
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimitInformation info, uint length);
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern IntPtr CreateJobObjectW(IntPtr jobAttributes, string name);
 
@@ -124,7 +177,8 @@ internal sealed record WindowsJobSessionRecord(
     int OwnerProcessId,
     DateTimeOffset OwnerStartedAt,
     int RootProcessId,
-    DateTimeOffset RootStartedAt);
+    DateTimeOffset RootStartedAt,
+    string? PaneId = null);
 
 internal sealed class WindowsJobSessionRegistry
 {
@@ -223,21 +277,23 @@ internal static class WindowsJobSessionSweep
         Failed,
     }
 
-    internal sealed record SweepOutcome(int Terminated, int AlreadyGone, int SkippedForLiveOwner, int SkippedForPidReuse, IReadOnlyList<string> CompletedJobs);
+    internal sealed record SweepOutcome(
+        int Terminated,
+        int AlreadyGone,
+        int SkippedForLiveOwner,
+        int SkippedForPidReuse,
+        IReadOnlyList<string> CompletedJobs,
+        IReadOnlyList<string> StoppedPanes);
 
-    public static void Run(ILogger logger)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            _Run(logger);
-        }
-    }
+    // Sweeps every leftover of a previous run, or only `paneId`'s when stop_agent asks; returns the panes it stopped.
+    public static IReadOnlyList<string> Run(ILogger logger, string? paneId = null) =>
+        OperatingSystem.IsWindows() ? _Run(logger, paneId) : [];
 
     [SupportedOSPlatform("windows")]
-    private static void _Run(ILogger logger)
+    private static IReadOnlyList<string> _Run(ILogger logger, string? paneId)
     {
         var registry = new WindowsJobSessionRegistry(Path.Combine(CockpitConfigPath.Root, "session-jobs.json"), logger);
-        var outcome = Sweep(registry.Load(), WindowsJobSessionAnchor.StartedAt, Terminate);
+        var outcome = Sweep(registry.Load(), WindowsJobSessionAnchor.StartedAt, Terminate, paneId);
         foreach (var jobName in outcome.CompletedJobs)
         {
             registry.Remove(jobName);
@@ -246,23 +302,35 @@ internal static class WindowsJobSessionSweep
         if (outcome.Terminated > 0)
         {
             logger.LogWarning(
-                "Stopped {Processes} leftover Windows session job(s) from a previous Cockpit run.", outcome.Terminated);
+                "Stopped {Processes} leftover Windows session job(s) from a previous Cockpit run, for pane(s) {Panes}.",
+                outcome.Terminated,
+                string.Join(", ", outcome.StoppedPanes));
         }
+
+        return outcome.StoppedPanes;
     }
 
+    // AC-1519: an orphan is a recorded tree whose Cockpit is gone while its root is still the process we anchored.
     internal static SweepOutcome Sweep(
         IReadOnlyList<WindowsJobSessionRecord> records,
         Func<int, DateTimeOffset?> processStartedAt,
-        Func<string, JobTermination> terminate)
+        Func<WindowsJobSessionRecord, JobTermination> terminate,
+        string? paneId = null)
     {
         var terminated = 0;
         var alreadyGone = 0;
         var liveOwners = 0;
         var reusedPids = 0;
         var completed = new List<string>();
+        var stoppedPanes = new List<string>();
 
         foreach (var record in records)
         {
+            if (paneId is not null && record.PaneId != paneId)
+            {
+                continue;
+            }
+
             if (processStartedAt(record.OwnerProcessId) == record.OwnerStartedAt)
             {
                 liveOwners++;
@@ -275,11 +343,14 @@ internal static class WindowsJobSessionSweep
                 continue;
             }
 
-            switch (terminate(record.JobName))
+            switch (terminate(record))
             {
                 case JobTermination.Terminated:
                     terminated++;
                     completed.Add(record.JobName);
+
+                    // An older build recorded no pane; empty still counts it, so the notice is not silent about it.
+                    stoppedPanes.Add(record.PaneId ?? string.Empty);
                     break;
                 case JobTermination.AlreadyGone:
                     alreadyGone++;
@@ -288,16 +359,18 @@ internal static class WindowsJobSessionSweep
             }
         }
 
-        return new SweepOutcome(terminated, alreadyGone, liveOwners, reusedPids, completed);
+        return new SweepOutcome(terminated, alreadyGone, liveOwners, reusedPids, completed, stoppedPanes);
     }
 
     [SupportedOSPlatform("windows")]
-    internal static JobTermination Terminate(string jobName)
+    internal static JobTermination Terminate(WindowsJobSessionRecord record)
     {
-        var job = WindowsJobSessionAnchor.NativeMethods.OpenJobObjectW(JobObjectTerminate, inheritHandle: false, jobName);
+        var job = WindowsJobSessionAnchor.NativeMethods.OpenJobObjectW(JobObjectTerminate, inheritHandle: false, record.JobName);
         if (job == IntPtr.Zero)
         {
-            return Marshal.GetLastWin32Error() == 2 ? JobTermination.AlreadyGone : JobTermination.Failed;
+            // A job's name dies with the last handle to it, so a crashed Cockpit's job cannot be opened while the tree
+            // it held may still run (AC-1519); then the anchored root itself is what is left to end.
+            return Marshal.GetLastWin32Error() == 2 ? _KillRoot(record) : JobTermination.Failed;
         }
 
         try
@@ -309,6 +382,26 @@ internal static class WindowsJobSessionSweep
         finally
         {
             WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static JobTermination _KillRoot(WindowsJobSessionRecord record)
+    {
+        if (WindowsJobSessionAnchor.StartedAt(record.RootProcessId) != record.RootStartedAt)
+        {
+            return JobTermination.AlreadyGone;
+        }
+
+        try
+        {
+            using var root = Process.GetProcessById(record.RootProcessId);
+            root.Kill(entireProcessTree: true);
+            return JobTermination.Terminated;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return JobTermination.Failed;
         }
     }
 }

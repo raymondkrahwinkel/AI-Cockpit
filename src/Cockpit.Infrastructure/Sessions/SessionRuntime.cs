@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -117,7 +118,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
         if (_driver.ProcessId is { } processId)
         {
-            _processAnchor = _processAnchorFactory?.Anchor(processId);
+            _processAnchor = _processAnchorFactory?.Anchor(processId, launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId));
             if (_memoryLimiter is not null)
             {
                 _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));

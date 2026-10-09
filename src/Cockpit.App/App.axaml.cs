@@ -421,6 +421,9 @@ public partial class App : Application
         mcpSignInNotice.Watch();
         _ = mcpSignInNotice.CheckAsync();
 
+        // AC-1519: name the panes whose leftover session this start stopped, so a pane reading Idle says why.
+        _NotifyStoppedLeftovers();
+
 #if DEBUG
         // AC-185: the dev inner loop — watches plugins-dev for a rebuild and offers one toast action to reload
         // it, instead of a manual restart after every build. DEBUG only, and a no-op off a dev checkout.
@@ -785,6 +788,21 @@ public partial class App : Application
     // Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that
     // goes. A scheduler that failed to start is the one failure nobody notices by itself: nothing is on screen to
     // look wrong, and the first sign would be a resume that quietly never arrives, hours later (AC-368).
+    private static void _NotifyStoppedLeftovers()
+    {
+        if (StaleSessionProcessSweep.StoppedPanes is not { Count: > 0 } panes)
+        {
+            return;
+        }
+
+        var registry = Program.Services.GetRequiredService<ISessionRegistry>();
+        var names = string.Join(", ", panes.Select(paneId =>
+            paneId.Length == 0 ? "a pane of an older Cockpit build" : registry.Find(paneId)?.Title ?? paneId));
+        var message = $"Stopped the session still running from a previous Cockpit run in: {names}. Start it again to pick the work back up.";
+        Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.LeftoverSessions").LogWarning("{Message}", message);
+        Program.Services.GetRequiredService<IToastService>().Show(message, ToastSeverity.Warning);
+    }
+
     private static async Task _StartScheduledResumesAsync(CockpitViewModel cockpit)
     {
         try
