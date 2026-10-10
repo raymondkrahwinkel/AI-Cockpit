@@ -1,13 +1,16 @@
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
@@ -266,10 +269,45 @@ public class PluginBackendHostTests
         await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(request => request.WorkspaceId == desk.Id && request.Prompt == "hello"));
     }
 
+    // AC-1520: the rewrite touches only references under the plugin's own scheme, leaves the rest of cockpit.json as it was, and a second pass changes nothing.
+    [Fact]
+    public async Task RewriteProjectReferencesAsync_ChangesOnlyTheNamedSchemesReferences_AndASecondPassChangesNothing()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"), "cockpit.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, """
+            {"Unrelated":{"keep":[1,2]},"Projects":[
+              {"Id":"a","Name":"A","Resources":[{"Reference":"depot:cockpit","Role":"Memory"},{"Reference":"depot:cockpit/notes.md","Role":"Reference","Label":"Notes"},{"Reference":"jira:cockpit","Role":"Reference"},{"Reference":"depot.other:cockpit","Role":"Reference"},{"Reference":"depot:wispslate/other","Role":"Reference"}]},
+              {"Id":"b","Name":"B","Resources":[{"Reference":"/work/b","Role":"Memory"}]}]}
+            """);
+        var store = new ProjectStore(path);
+        await store.SaveAsync(await store.LoadAsync());
+        var before = await File.ReadAllTextAsync(path);
+        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), new SharedProjectSourceRegistry());
+        var host = _Host(new SessionRegistry(), _InlineLauncher(), services => services.AddSingleton<IProjectStore>(store).AddSingleton<IProjectEditor>(catalog));
+        Func<string, string?> rewrite = value => value.StartsWith("cockpit", StringComparison.Ordinal) ? "wispslate/" + value : null;
+
+        var first = await host.RewriteProjectReferencesAsync("depot", rewrite);
+        var after = await File.ReadAllTextAsync(path);
+        var second = await host.RewriteProjectReferencesAsync("depot", rewrite);
+
+        Assert.Equal(2, first);
+        var expected = before.Replace("\"depot:cockpit\"", "\"depot:wispslate/cockpit\"").Replace("depot:cockpit/notes.md", "depot:wispslate/cockpit/notes.md");
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(after)), after);
+        Assert.Equal(0, second);
+        Assert.Equal(after, await File.ReadAllTextAsync(path));
+    }
+
     private static PluginBackendHost _Host(
         SessionRegistry registry, ISessionLauncher launcher, ILoggerFactory? logs = null, IPluginProviderRegistry? providers = null, IPluginTtyProviderRegistry? ttyProviders = null)
+        => _Host(registry, launcher, null, logs, providers, ttyProviders);
+
+    private static PluginBackendHost _Host(
+        SessionRegistry registry, ISessionLauncher launcher, Action<IServiceCollection>? configure, ILoggerFactory? logs = null, IPluginProviderRegistry? providers = null, IPluginTtyProviderRegistry? ttyProviders = null)
     {
-        var services = new ServiceCollection()
+        var collection = new ServiceCollection();
+        configure?.Invoke(collection);
+        var services = collection
             .AddSingleton<ISessionRegistry>(registry)
             .AddSingleton(launcher)
             .AddSingleton(logs ?? LoggerFactory.Create(_ => { }))

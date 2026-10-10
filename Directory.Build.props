@@ -8,7 +8,8 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.69.0: an operate key reads the server's health over GET /api/v1/health and runs a health row's action (AC-1470):
+    <!-- 0.91.0: ICockpitHost gains RewriteProjectReferencesAsync; a plugin that relies on it sets minHostVersion 0.91.0.
+         0.69.0: an operate key reads the server's health over GET /api/v1/health and runs a health row's action (AC-1470):
          PluginHealthRow.ProjectId and ActionId and IPluginHealthActions in Cockpit.Plugins.Abstractions 3.2.0. A plugin
          that uses them sets minHostVersion 0.69.0.
          0.68.0: a remote SDK pane exposes its control, shared prompt queue, usage signals and server-hosted sign-in
@@ -320,7 +321,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.90.0</VersionPrefix>
+    <VersionPrefix>0.91.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

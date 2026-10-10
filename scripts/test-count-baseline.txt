@@ -6,7 +6,7 @@ allow-growth	tests/Cockpit.Journeys
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
-plugins-dev/Cockpit.Plugin.Depot.Tests	138
+plugins-dev/Cockpit.Plugin.Depot.Tests	141
 plugins-dev/Cockpit.Plugin.Diagram.Tests	106
 plugins-dev/Cockpit.Plugin.Discord.Tests	21
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
@@ -32,7 +32,7 @@ plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	30
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1478
-tests/Cockpit.Backend.Tests	70
+tests/Cockpit.Backend.Tests	71
 tests/Cockpit.Core.Tests	1000
 tests/Cockpit.Infrastructure.Tests	665
 tests/Cockpit.Journeys	13

@@ -510,7 +510,8 @@
          that sets it sets minHostVersion 0.83.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
     <!-- 3.5.0 (AC-1496): provider registrations gain CheckLoginAsync for awaited health readings; plugins without it
          still use IsLoggedIn. A plugin setting it requires host 0.90.0. -->
-    <Version>3.5.0</Version>
+    <!-- 3.6.0: ICockpitHost.RewriteProjectReferencesAsync; a plugin that calls it sets minHostVersion 0.91.0. -->
+    <Version>3.6.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

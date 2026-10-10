@@ -131,7 +131,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `autopilot.templates` | Autopilot templates | Sensitive | 0.5.0 | — | `ICockpitHost.RegisterAutopilotTemplate`, `ICockpitHost.RegisteredAutopilotTemplates` |
 | `projects.fields` | Fields on a project | Sensitive | 0.7.0 | — | `ICockpitHost.AddProjectField`, `ICockpitHost.ProjectFields`, `ICockpitHost.ClaimProjectOwnership`, `ICockpitHost.GetProjectFieldOwnership` |
 | `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync` |
-| `projects.memory-source` | Offering a project memory source | Sensitive | 0.10.0 | `scheme` | `ICockpitHost.AddProjectMemorySource`, `ICockpitHost.RemoveProjectMemorySource`, `ICockpitHost.ProjectMemorySources`, `ICockpitHost.AddProjectMemorySourceFamily` |
+| `projects.memory-source` | Offering a project memory source | Sensitive | 0.10.0 | `scheme` | `ICockpitHost.AddProjectMemorySource`, `ICockpitHost.RemoveProjectMemorySource`, `ICockpitHost.ProjectMemorySources`, `ICockpitHost.AddProjectMemorySourceFamily`, `ICockpitHost.RewriteProjectReferencesAsync` |
 | `projects.memory-read` | Reading project memory | Sensitive | 0.22.0 | — | `ICockpitHost.GetProjectMemoryRowsAsync` |
 | `projects.shared-source` | Offering shared projects | Sensitive | 0.19.0 | `key` | `ICockpitHost.AddSharedProjectSource`, `ICockpitHost.RemoveSharedProjectSource`, `ICockpitHost.SharedProjectSources` |
 | `tracking.providers` | Being an issue tracker | Sensitive | 0.3.0 | — | `ICockpitHost.AddTrackerProvider`, `ICockpitHost.TrackerProviders` |
@@ -314,6 +314,8 @@ public interface ICockpitHost
                                             CancellationToken cancellationToken = default); // default []
     void AddProjectMemorySource(ProjectMemorySourceRegistration registration);    // default no-op
     IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; } // default []
+    Task<int> RewriteProjectReferencesAsync(string scheme, Func<string, string?> rewrite,
+                                            CancellationToken cancellationToken = default); // default 0
     void AddSessionResourceProvider(ISessionResourceProvider provider);          // default no-op
     IReadOnlyList<ISessionResourceProvider> SessionResourceProviders { get; }     // default []
     Task SetSessionStatusline(string paneId, string statusline);                 // default no-op

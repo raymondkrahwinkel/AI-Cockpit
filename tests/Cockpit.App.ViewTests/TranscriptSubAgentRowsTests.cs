@@ -81,9 +81,9 @@ public sealed class TranscriptSubAgentRowsTests
 
     private static long _Allocated(Action action)
     {
-        var before = GC.GetTotalAllocatedBytes(precise: true);
+        var before = GC.GetAllocatedBytesForCurrentThread();
         action();
-        return GC.GetTotalAllocatedBytes(precise: true) - before;
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     private static void _AllocateTenMegabytes()

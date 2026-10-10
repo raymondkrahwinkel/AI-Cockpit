@@ -46,7 +46,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         _BuildFieldRows();
         Connections.Add("Work — depot.krahwinkel-it.nl");
         SelectedConnectionIndex = 0;
-        Targets.Add(new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner"));
+        Targets.Add(new SharedProjectPublishTarget("depot:synvolution/payroll-processor", "payroll-processor", "Owner"));
         SelectedTarget = Targets[0];
     }
 
