@@ -1454,14 +1454,16 @@ public partial class CockpitView : UserControl
     // revealed pane in single/zoom mode isn't realised until then).
     private void _FocusSelectedSessionInput()
     {
-        if (DataContext is not CockpitViewModel cockpit || cockpit.SelectedSession is not { } session)
+        if (DataContext is not CockpitViewModel cockpit || cockpit.SelectedSession is null)
         {
             return;
         }
 
         Dispatcher.UIThread.Post(() =>
         {
-            if (SessionGrid?.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault() is not { } panel)
+            // AC-1521: read the selection now, not at post time, so a stale post follows it instead of fighting OnSessionPaneGotFocus.
+            if (cockpit.SelectedSession is not { } session
+                || SessionGrid?.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault() is not { } panel)
             {
                 return;
             }
