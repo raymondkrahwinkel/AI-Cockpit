@@ -1,9 +1,12 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Input;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Controls;
 using Cockpit.App.Views;
+using Exclr8.Terminal;
 
 namespace Cockpit.App.ViewTests;
 
@@ -87,5 +90,62 @@ public class SessionPaneFocusStealLoopTests
         var selected = cockpit.SelectedSession;
         window.Close();
         Assert.Same(sessionB, selected);
+    });
+
+    /// <summary>
+    /// AC-1521: two selection changes in one tick leave two posted focus-moves; a post that kept the selection it was
+    /// posted with fed OnSessionPaneGotFocus forever. `tty` puts a focusable terminal in every tile, as a rail tile has.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    public void TwoSelectionChangesInOneTick_SettleOnTheLastOne(bool single, bool rail, bool tty) => HeadlessAvalonia.Run(() =>
+    {
+        var sessions = new[] { new SessionViewModel(), new SessionViewModel(), new SessionViewModel() };
+        var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = single, GlobalFocusRailLayout = rail };
+        foreach (var session in sessions)
+        {
+            cockpit.Sessions.Add(session);
+        }
+
+        var view = new CockpitView { DataContext = cockpit };
+        var window = new Window { Content = view, Width = 1200, Height = 800 };
+        window.Show();
+        window.UpdateLayout();
+        cockpit.SelectSessionCommand.Execute(sessions[0]);
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+
+        if (tty)
+        {
+            foreach (var dock in view.GetVisualDescendants().OfType<MiniatureHost>().Select(h => h.Child).OfType<DockPanel>())
+            {
+                dock.Children.Add(new TerminalControl { Width = 400, Height = 300 });
+            }
+
+            window.UpdateLayout();
+        }
+
+        var changes = 0;
+        cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.SelectedSession) && ++changes == 100)
+            {
+                view.DataContext = null; // breaker: without the fix this loop never ends
+            }
+        };
+
+        cockpit.SelectSessionCommand.Execute(sessions[1]);
+        cockpit.SelectSessionCommand.Execute(sessions[2]);
+        var afterTheTwo = changes;
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+
+        var selected = cockpit.SelectedSession;
+        window.Close();
+        Assert.Equal(afterTheTwo, changes);
+        Assert.Same(sessions[2], selected);
     });
 }
