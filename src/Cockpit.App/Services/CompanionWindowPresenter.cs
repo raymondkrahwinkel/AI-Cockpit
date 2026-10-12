@@ -34,6 +34,7 @@ internal sealed class CompanionWindowPresenter : ISingletonService
         var window = _window ??= new CompanionWindow();
         if (isNew)
         {
+            window.CloseRequested += (_, _) => Hide();
             _Refresh();
         }
 
