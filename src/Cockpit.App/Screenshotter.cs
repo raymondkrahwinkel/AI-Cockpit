@@ -587,6 +587,10 @@ internal static class Screenshotter
         // AC-1018: the broker route (AssistantConversation.ShowQuestionAsync) builds its row with Kind =
         // Question, not ToolUse like the scene above — the gap that let the card silently never render live.
         ["assistant-chat-question-broker"] = (_, _) => _AssistantChatBrokerQuestion(),
+        // AC-1523: an approval card with a 3,000-character behaviour prompt, and a short one beside it — the long
+        // one pushed Approve/Deny out of the window, the short one must not grow empty space in return.
+        ["assistant-chat-consent-long"] = (_, _) => _AssistantChatConsent(_LongProjectUpdate()),
+        ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
         // staged open by the Hovers table below (criterion 12's four scenes: all-statuses, the opened session
@@ -2883,6 +2887,34 @@ internal static class Screenshotter
 
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    private static AssistantChatWindow _AssistantChatConsent(string action)
+    {
+        var session = new ViewModels.SessionViewModel
+        {
+            PendingConsent = new ViewModels.ConsentPromptViewModel(
+                new ConsentQuestion(
+                    Guid.NewGuid(),
+                    new ConsentRequest(
+                        "The assistant wants to change a project",
+                        action,
+                        new ConsentSource(Cockpit.Core.Assistant.AssistantIdentity.PaneId, null, Cockpit.Core.Consent.ConsentSourceCatalog.AssistantProjectUpdate),
+                        "assistant.update-project",
+                        ConsentRisk.LowRisk),
+                    CanRemember: true),
+                new _NoConsentPrompts()),
+        };
+        return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // A behaviour prompt of 3,000 characters plus one unbroken path, the two shapes that grew the card off screen.
+    private static string _LongProjectUpdate()
+    {
+        var prompt = string.Concat(Enumerable.Repeat("Always answer in Dutch, keep replies short and cite the ticket you work on. ", 40))[..3000];
+        return "Project: Synvolution-MailCatch\n"
+            + @"Source: C:\Users\raymond\Projects\Synvolution\MailCatch\src\Synvolution.MailCatch.Server\Configuration\Overrides\staging-environment-defaults.json" + "\n"
+            + "Behaviour prompt:\n- (empty)\n+ " + prompt;
     }
 
     // AC-1018: same card, built the way AssistantConversation.ShowQuestionAsync actually builds it

@@ -22,13 +22,15 @@
             <Border DockPanel.Dock="Left" Width="3"
                     Background="{Binding EdgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
 
-            <StackPanel Margin="11,9,11,10" Spacing="6">
+            <!-- AC-1523: title and decision rows stay put, and only the action between them scrolls, so a long request can
+                 no longer push Approve/Deny out of the window. The host's own height bounds the middle row. -->
+            <Grid Margin="11,9,11,10" RowDefinitions="Auto,*,Auto">
                 <!-- Title row: glyph + host-framed title on the left, the source on the right. -->
-                <DockPanel>
+                <DockPanel Grid.Row="0">
                     <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Glyph}" Width="14" Height="14" Margin="0,0,7,0"
                                VerticalAlignment="Center"
                                Foreground="{Binding EdgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding SourceLabel}"
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SourceLabel}" Margin="8,0,0,0"
                                VerticalAlignment="Center" FontSize="11"
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12.5"
@@ -36,16 +38,18 @@
                 </DockPanel>
 
                 <!-- Ground truth: the literal action, verbatim, selectable so it can be copied and checked. -->
-                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                <Border Grid.Row="1" Margin="0,6" Background="{DynamicResource CockpitSecondaryBgBrush}"
                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource CockpitControlRadius}" Padding="9,8">
-                    <SelectableTextBlock Text="{Binding Action}" TextWrapping="Wrap"
-                                         FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                         Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                        CornerRadius="{StaticResource CockpitControlRadius}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <SelectableTextBlock Text="{Binding Action}" TextWrapping="Wrap" Margin="9,8"
+                                             FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
+                                             Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                    </ScrollViewer>
                 </Border>
 
                 <!-- Decision row: remember (low-risk only) on the left, Deny/Approve on the right. -->
-                <DockPanel>
+                <DockPanel Grid.Row="2">
                     <CheckBox DockPanel.Dock="Left" Content="Remember for this session"
                               IsChecked="{Binding Remember}" IsVisible="{Binding CanRemember}"
                               FontSize="11.5" VerticalAlignment="Center"/>
@@ -54,7 +58,7 @@
                         <Button Content="Approve" Classes="Accent Compact" Command="{Binding ApproveCommand}"/>
                     </StackPanel>
                 </DockPanel>
-            </StackPanel>
+            </Grid>
         </DockPanel>
     </Border>
     </Border>
