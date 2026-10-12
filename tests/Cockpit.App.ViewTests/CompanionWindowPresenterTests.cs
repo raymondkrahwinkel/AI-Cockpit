@@ -46,7 +46,8 @@ public class CompanionWindowPresenterTests
         // AC-1522: the X button must persist the hidden state like the menu toggle does.
         presenter.Show();
         layoutSettingsStore.ClearReceivedCalls();
-        presenter.Window!.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var window = presenter.Window ?? throw new InvalidOperationException("Show() did not create the companion window");
+        window.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Assert.False(presenter.IsVisible);
         layoutSettingsStore.Received().SaveAsync(
             Arg.Is<LayoutSettings>(s => !s.CompanionWindowVisible), Arg.Any<CancellationToken>());
