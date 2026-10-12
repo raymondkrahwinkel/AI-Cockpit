@@ -32,13 +32,24 @@ public class CompanionWindowPresenterTests
     [Fact]
     public void Show_ThenHide_TogglesTheWindowsVisibility() => HeadlessAvalonia.Run(() =>
     {
-        var presenter = _Presenter();
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new LayoutSettings()));
+        layoutSettingsStore.SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var presenter = new CompanionWindowPresenter(new CompanionToolRegistry(), layoutSettingsStore);
 
         presenter.Show();
         Assert.True(presenter.IsVisible);
 
         presenter.Hide();
         Assert.False(presenter.IsVisible);
+
+        // AC-1522: the X button must persist the hidden state like the menu toggle does.
+        presenter.Show();
+        layoutSettingsStore.ClearReceivedCalls();
+        presenter.Window!.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.False(presenter.IsVisible);
+        layoutSettingsStore.Received().SaveAsync(
+            Arg.Is<LayoutSettings>(s => !s.CompanionWindowVisible), Arg.Any<CancellationToken>());
     });
 
     [Fact]
