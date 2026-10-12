@@ -36,7 +36,7 @@ public partial class CompanionWindow : Window
         HeaderBar.PointerMoved += _OnHeaderMoved;
         HeaderBar.PointerReleased += _OnHeaderReleased;
         HeaderBar.PointerCaptureLost += (_, _) => _EndDrag();
-        CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        CloseButton.Click += (_, _) => Hide();
 
         // Only the position is worth restoring: this window is SizeToContent, so a saved width/height would
         // never apply the way AssistantChatWindow's HasUsableSize gate expects for its own resizable window.
@@ -46,21 +46,6 @@ public partial class CompanionWindow : Window
             WindowStartupLocation = WindowStartupLocation.Manual;
             Position = new PixelPoint(saved.X, saved.Y);
         }
-    }
-
-    // AC-1522: every operator close (X button, Alt+F4, taskbar) is a request, so CompanionWindowPresenter.Hide stays
-    // the one route that hides the window and persists the state.
-    public event EventHandler? CloseRequested;
-
-    protected override void OnClosing(WindowClosingEventArgs e)
-    {
-        if (e.CloseReason == WindowCloseReason.WindowClosing && !e.IsProgrammatic)
-        {
-            e.Cancel = true;
-            CloseRequested?.Invoke(this, EventArgs.Empty);
-        }
-
-        base.OnClosing(e);
     }
 
     // Rebuilds the hosted tools from the registry (CompanionWindowPresenter calls this on every registry change).
