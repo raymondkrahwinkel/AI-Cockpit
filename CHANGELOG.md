@@ -48,6 +48,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: closing the companion window with its X button, Alt+F4 or the taskbar now keeps it closed at the next start, like the menu toggle does.
 - fixed: the selection no longer ping-pongs between two sessions when it changes twice in one tick; the focus move follows the current selection.
 - fixed: **What's new** now opens on the changes at once. They are read when the update check finds a build, and only
   read at the click when that earlier read failed, with a "Reading the changelog…" line meanwhile.
