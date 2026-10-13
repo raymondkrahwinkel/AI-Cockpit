@@ -1,13 +1,7 @@
 namespace Cockpit.Core.Projects;
 
-// AC-1514: the "Add to my projects…" composition, out of App's binding dialog so the dialog, the assistant's
-// bind_shared_project and a server's POST /projects/shared compose a bound project the same way (AC-246, AC-798).
-// In Core, not Infrastructure: the dialog's view model may not reach Infrastructure (AC-1441), and Core holds no
-// plugin SDK type, so the definition comes in as its fields (Infrastructure's SharedProjectBindings reads one).
-/// <summary>
-/// A shared definition read for binding: what travels by itself, the rows only this machine can fill in, and the
-/// project they make together.
-/// </summary>
+// AC-1514: "Add to my projects…" composed once for the dialog, the assistant and a server. In Core because the dialog
+// may not reach Infrastructure (AC-1441); Core has no plugin SDK type, so a definition arrives as its fields.
 public sealed class SharedProjectComposition
 {
     private readonly string _sharedProjectId;
@@ -66,33 +60,23 @@ public sealed class SharedProjectComposition
         MachineRows = machineRows;
     }
 
-    /// <summary>
-    /// Which connection the definition comes from — "Work", "Personal".
-    /// </summary>
+    // Which connection the definition comes from — "Work", "Personal".
     public string SourceName { get; }
 
     public string Name { get; }
 
     public string? Description { get; }
 
-    /// <summary>
-    /// Where the project can be cloned from; null when the definition names no repository.
-    /// </summary>
+    // Where the project can be cloned from; null when the definition names no repository.
     public string? GitUrl { get; }
 
     public string? BehaviorPrompt { get; }
 
-    /// <summary>
-    /// Machine-specific rows the definition names but carries no value for, in the definition's order.
-    /// </summary>
+    // Machine-specific rows the definition names but carries no value for, in the definition's order.
     public IReadOnlyList<SharedProjectMachineRow> MachineRows { get; }
 
-    /// <summary>
-    /// The bound project. Its first resource is the shared definition as memory; <paramref name="machineResources"/>
-    /// are the filled-in <see cref="MachineRows"/>, a row left blank simply absent.
-    /// </summary>
-    // The memory row is prepended rather than appended so it is always what `Project.MemoryRef` resolves to, even if a
-    // hand-edited definition somehow also carried its own Memory-role row (AC-246, AC-604, AC-245, AC-242).
+    // The memory row goes first so `Project.MemoryRef` always resolves to it, even when a hand-edited definition carries
+    // its own Memory row (AC-246, AC-604). `machineResources` are the filled-in MachineRows; a blank one is left out.
     public Project ToProject(
         string? sourceDirectory,
         string? gitUrl,
@@ -128,15 +112,11 @@ public sealed class SharedProjectComposition
         };
 }
 
-/// <summary>
-/// One resource row of a shared definition as it was written: a role by name, a reference that may be blank.
-/// </summary>
+// One resource row of a shared definition as it was written: a role by name, a reference that may be blank.
 public sealed record SharedProjectDefinitionResource(string Role, string Reference, string? Label);
 
-/// <summary>
-/// One machine-specific resource row of a shared definition (AC-246): role and label came from the definition, the
-/// reference is this machine's to fill in. <paramref name="OriginalReference"/> is the writer's own, context only.
-/// </summary>
+// One machine-specific resource row of a shared definition (AC-246): role and label came from the definition, the
+// reference is this machine's to fill in. `OriginalReference` is the writer's own, context only.
 public sealed record SharedProjectMachineRow(ProjectResourceRole Role, string? Label, string? OriginalReference)
 {
     public string DisplayLabel => Label is { Length: > 0 } ? Label : $"{Role} reference";

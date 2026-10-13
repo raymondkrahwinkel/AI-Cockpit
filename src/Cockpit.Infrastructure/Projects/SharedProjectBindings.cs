@@ -7,9 +7,7 @@ namespace Cockpit.Infrastructure.Projects;
 // the assistant's bind_shared_project (on the desktop and on a server) and a server's POST /projects/shared.
 public static class SharedProjectBindings
 {
-    /// <summary>
-    /// The composition of <paramref name="binding"/>, as the "Add to my projects…" dialog builds it.
-    /// </summary>
+    // The composition of `binding`, as the "Add to my projects…" dialog builds it.
     public static SharedProjectComposition Compose(string sharedProjectId, string sourceName, SharedProjectBinding binding) =>
         new(
             sharedProjectId,
@@ -23,10 +21,8 @@ public static class SharedProjectBindings
             binding.LogoBytes,
             binding.Resources.Select(resource => new SharedProjectDefinitionResource(resource.Role, resource.Reference, resource.Label)));
 
-    /// <summary>
-    /// Reads <paramref name="sharedProjectId"/>'s definition through <paramref name="source"/>; null plus the
-    /// source's own reason when it cannot be read.
-    /// </summary>
+    // Reads `sharedProjectId`'s definition through `source`; null plus the
+    // source's own reason when it cannot be read.
     public static async Task<(SharedProjectComposition? Composition, string? Error)> ReadAsync(
         string sharedProjectId,
         ISharedProjectSource source,
@@ -38,10 +34,8 @@ public static class SharedProjectBindings
             : (null, result.Error is { Length: > 0 } error ? error : "Could not read this project's definition.");
     }
 
-    /// <summary>
-    /// The dialog's "Choose…" route with no window, for the assistant: <paramref name="resourceReferences"/> fills the
-    /// machine rows by position, and anything but one per row is refused with the rows spelled out.
-    /// </summary>
+    // The dialog's "Choose…" route with no window, for the assistant: `resourceReferences` fills the
+    // machine rows by position, and anything but one per row is refused with the rows spelled out.
     public static async Task<(Project? Project, string? Refusal)> ComposeAsync(
         string sharedProjectId,
         ISharedProjectSource source,
