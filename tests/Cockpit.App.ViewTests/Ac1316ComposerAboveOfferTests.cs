@@ -38,8 +38,7 @@ public class Ac1316ComposerAboveOfferTests
     });
 
     // The first message sent from the offer: the same box — not a second one — is now at the foot of the column,
-    // the offer is gone, and the caret is still in it. Measured on the empty-conversation door: the scene's
-    // `+ New session` door rebuilds the whole column when the request stands down, so it cannot show the move.
+    // the offer is gone, and the caret is still in it.
     [Fact]
     public async Task TheFirstMessage_MovesTheSameComposerToTheFoot_AndKeepsTheCaret() => await HeadlessAvalonia.RunAsync(async () =>
     {
@@ -49,7 +48,6 @@ public class Ac1316ComposerAboveOfferTests
             var cockpit = (CockpitViewModel)window.DataContext!;
             var conversation = cockpit.AssistantChat!.Session!;
             conversation.Transcript.Clear();
-            cockpit.SimpleStartScreenRequested = false;
             window.UpdateLayout();
 
             var input = _Named<TextBox>(window, "InputBox");

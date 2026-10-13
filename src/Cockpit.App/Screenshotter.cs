@@ -380,6 +380,8 @@ internal static class Screenshotter
         // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
         // question only stands there while no conversation does, which every other Simple scene has.
         ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
+        // AC-1527: the stand's Projects page, reached through the rail's own entry.
+        ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
         // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
         // for this one, and the second place the starting-point gallery is drawn.
         ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
@@ -2610,15 +2612,15 @@ internal static class Screenshotter
     }
 
     // AC-1305: two of the rail's own sessions waiting for consent while the column draws the assistant. Built out
-    // of the real properties rather than a placed control, with nothing picked in the rail — which is the state the
-    // notification is for, and clearing the pick is also what recomputes the list.
+    // of the real properties rather than a placed control, with the assistant picked in the rail — which is the
+    // state the notification is for, and moving the pick is also what recomputes the list.
     private static ViewModels.CockpitViewModel _SimpleStandAwaitingConsent()
     {
         var cockpit = _SimpleStand(withAssistant: true);
         // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
         _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
         _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
-        cockpit.SimpleSelectedSession = null;
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
         return cockpit;
     }
 
@@ -2632,7 +2634,7 @@ internal static class Screenshotter
             new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
             new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
             _ => Task.FromResult(new NodePermissionAnswer(true))));
-        cockpit.SimpleSelectedSession = null;
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
         return cockpit;
     }
 
@@ -2656,6 +2658,14 @@ internal static class Screenshotter
         }
 
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        return cockpit;
+    }
+
+    private static ViewModels.CockpitViewModel _SimpleStandProjects()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.Projects.StageDesignSample();
+        cockpit.ShowSimpleProjectsCommand.Execute(null);
         return cockpit;
     }
 

@@ -992,16 +992,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     private bool _simpleView;
 
-    // AC-1304: the start screen — "which project do you want to work on" — holds the conversation column while
-    // this is set. One flag rather than a screen per door: `+ New session` sets it, and the other two doors reach
-    // the same screen through the column simply having nothing to draw (criterion 1(a)).
+    // AC-1527: the Simple stand's navigation — what its main column shows and which rail entry is marked. One state
+    // rather than a flag per page: Home is the start screen (AC-1304), and picking a conversation is what leaves it.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
-    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
-    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
-    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
-    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
-    private bool _simpleStartScreenRequested;
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheProjects))]
+    private SimplePage _simplePage = SimplePage.Home;
+
+    // Raised only when it can have changed: the view rebuilds the chat host on it, and Home -> Conversation must keep
+    // the same composer (and its caret) on screen (AC-1316).
+    partial void OnSimplePageChanged(SimplePage oldValue, SimplePage newValue)
+    {
+        if (oldValue == SimplePage.Projects || newValue == SimplePage.Projects)
+        {
+            OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
+        }
+    }
 
     // AC-1321: the paired controller holding the line to this node right now, or null while it is on its own —
     // mirrored here from `INodeControllerPresence` so the assistant host and its screen read one UI-thread value.
@@ -1068,14 +1074,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // itself and starts the assistant on the first message, so the column holds it whenever nothing else is picked.
     public bool SimpleStandShowsTheAssistantInTheMainColumn =>
         SimpleView
+        && SimplePage != SimplePage.Projects
         && (SimpleSelectedSession is null || ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
-    // AC-1304 criterion 1(a): the three doors, answered in one place. AC-1316: the screen is the empty state of
-    // the assistant's own conversation, drawn inside the chat view — `+ New session` lays it over a conversation,
-    // and a conversation with nothing said in it shows it of its own accord.
-    public bool SimpleStandShowsTheStartScreen =>
-        SimpleView
-        && (SimpleStartScreenRequested || (SimpleSelectedSession is null && !(AssistantChat?.HasMessages ?? false)));
+    // AC-1316: the screen is the empty state of the assistant's own conversation, drawn inside the chat view.
+    public bool SimpleStandShowsTheStartScreen => SimpleView && SimplePage == SimplePage.Home;
+
+    public bool SimpleStandShowsTheProjects => SimpleView && SimplePage == SimplePage.Projects;
 
     // AC-1303: which panel the rail shows. In the Simple stand this follows the roles above and is deliberately
     // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
@@ -1101,12 +1106,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // restart — so the root has to follow that rather than only the chat swap.
     private void _OnAssistantChatPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // AC-1316: the first reply is what takes the offer away, so the screen follows the transcript too.
-        if (e.PropertyName is null or nameof(AssistantChatViewModel.HasMessages))
-        {
-            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
-        }
-
         if (e.PropertyName is null or nameof(AssistantChatViewModel.Session))
         {
             OnPropertyChanged(nameof(AssistantRootSession));
@@ -1118,21 +1117,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
             OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
             OnPropertyChanged(nameof(ShowDockRail));
-
-            // AC-1304: switching the assistant off with nothing picked empties the column, which is the third
-            // door onto the start screen — and switching it back on takes the screen away again.
-            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
         }
     }
 
-    // AC-1304 criterion 1(a): `+ New session` in the Simple stand asks for the start screen rather than the
-    // New-session dialog. The selection goes first, so the stand lands in one state — the question in the column,
-    // nothing docked beside it — rather than the screen laid over a conversation still marked as picked.
+    // AC-1304 criterion 1(a): `+ New conversation` and Home ask for the start screen rather than the New-session
+    // dialog. The selection goes first, so the stand lands in one state — the question in the column, nothing
+    // docked beside it — rather than the screen laid over a conversation still marked as picked.
     [RelayCommand]
     private void ShowSimpleStartScreen()
     {
         SimpleSelectedSession = null;
-        SimpleStartScreenRequested = true;
+        SimplePage = SimplePage.Home;
+    }
+
+    [RelayCommand]
+    private void ShowSimpleProjects()
+    {
+        SimpleSelectedSession = null;
+        SimplePage = SimplePage.Projects;
     }
 
     // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
@@ -1156,7 +1158,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // AC-1304: picking a conversation is the answer to the question the start screen asks, so the screen
             // stands down here rather than at each of the places that can pick one — the rail, `Go there`, and a
             // project just started from the screen itself.
-            SimpleStartScreenRequested = false;
+            SimplePage = SimplePage.Conversation;
+        }
+        else if (SimplePage == SimplePage.Conversation)
+        {
+            // The conversation went (closed, AC-1304's third door): nothing picked is Home.
+            SimplePage = SimplePage.Home;
         }
 
         // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
@@ -1241,8 +1248,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The Simple/Panels switch. Two commands rather than one taking the stand as a parameter: a command
     // parameter would be a string to parse, and there are exactly two stands.
+    // AC-1527 criterion 5: coming back from Panels lands on Home, not on the conversation left there.
     [RelayCommand]
-    private void ShowSimpleView() => SimpleView = true;
+    private void ShowSimpleView()
+    {
+        SimpleView = true;
+        ShowSimpleStartScreen();
+    }
 
     [RelayCommand]
     private void ShowPanelsView() => SimpleView = false;

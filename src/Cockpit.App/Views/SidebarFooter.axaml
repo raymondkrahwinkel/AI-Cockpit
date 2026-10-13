@@ -1,16 +1,15 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="180"
              x:Class="Cockpit.App.Views.SidebarFooter"
              x:DataType="vm:CockpitViewModel">
 
-    <!-- The left column's footer — Plugin store, Menu and Help — at the bottom of both stands, directly above
-         the Simple/Panels switch. One control rather than the markup twice (the ViewModeSwitch rule, AC-1301):
-         the Simple stand's rail had no footer at all, which left Options, Profiles, MCP servers and About
-         reachable there only by shortcut or by leaving the stand.
+    <!-- The panels sidebar's footer — Plugin store, Menu and Help — directly above the Simple/Panels switch.
+         AC-1527: the Simple rail has its own (Settings, Help, More options) and shares only `HelpMenu` with this.
          Secondary "Tools" section — Audio (F0) lives here, out of the way of the primary session overview per
          AI-Cockpit's design goal (sidebar = sessions, not tools). -->
     <StackPanel Spacing="4">
@@ -103,36 +102,7 @@
                 ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
             <Button.Flyout>
                 <Flyout Placement="Right">
-                    <StackPanel Spacing="0" MinWidth="200">
-                        <!-- AC-1033: first, because it is the one that answers without a browser and
-                             covers the app and every installed plugin at once. -->
-                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Padding="8,8" CornerRadius="0" Content="Documentation"
-                                Command="{Binding ShowDocumentationCommand}"
-                                ToolTip.Tip="Everything Cockpit and its plugins ship documentation for — a window of its own, no connection needed"/>
-                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
-                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Padding="8,8" CornerRadius="0" Content="Guide"
-                                Command="{Binding OpenGuideCommand}"
-                                ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
-                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
-                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Padding="8,8" CornerRadius="0" Content="Glossary"
-                                Command="{Binding ShowGlossaryCommand}"
-                                ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
-                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
-                        <!-- AC-397: the only window on traffic the operator is not part of. Under Help
-                             because it is something you go and look at, not something you act from. -->
-                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Padding="8,8" CornerRadius="0" Content="Agent line"
-                                Command="{Binding ShowAgentLineCommand}"
-                                ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
-                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
-                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Padding="8,8" CornerRadius="0" Content="Run setup again"
-                                Command="{Binding RunSetupAgainCommand}"
-                                ToolTip.Tip="Reopens the first-run wizard"/>
-                    </StackPanel>
+                    <views:HelpMenu/>
                 </Flyout>
             </Button.Flyout>
         </Button>

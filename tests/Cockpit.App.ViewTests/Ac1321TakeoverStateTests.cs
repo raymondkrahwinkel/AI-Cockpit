@@ -179,7 +179,7 @@ public class Ac1321TakeoverStateTests
             Assert.Equal(expected, _Notice(window)!.Text);
             Assert.Equal("Waits for the controller to let go, or start on a project below.", _Named<TextBox>(window, "InputBox").PlaceholderText);
 
-            cockpit.SimpleStartScreenRequested = false;
+            cockpit.SimplePage = SimplePage.Conversation;
             window.UpdateLayout();
 
             Assert.True(_Named<ItemsControl>(window, "TranscriptItems").IsEffectivelyVisible);

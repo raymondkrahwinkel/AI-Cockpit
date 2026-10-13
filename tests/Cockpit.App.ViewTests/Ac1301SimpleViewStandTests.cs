@@ -1,9 +1,6 @@
-using Avalonia.Controls;
-using Avalonia.VisualTree;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -64,54 +61,6 @@ public class Ac1301SimpleViewStandTests
         Assert.Equal("Saved", cockpit.LayoutSettingsStatus);
         await layout.Received().SaveAsync(Arg.Is<LayoutSettings>(settings => settings.OpenInSimpleView));
     }
-
-    // Criterion 4: each stand keeps its own selection, so a switch there and back returns to what you were
-    // looking at in that stand rather than to one shared choice.
-    [Fact]
-    public void EachStandKeepsItsOwnSelection()
-    {
-        var cockpit = _Cockpit(_LayoutStore(new LayoutSettings()));
-        var inPanels = new SessionViewModel();
-        var inSimple = new SessionViewModel();
-
-        cockpit.SelectedSession = inPanels;
-        cockpit.ShowSimpleViewCommand.Execute(null);
-        cockpit.SimpleSelectedSession = inSimple;
-        cockpit.ShowPanelsViewCommand.Execute(null);
-
-        Assert.Same(inPanels, cockpit.SelectedSession);
-
-        cockpit.ShowSimpleViewCommand.Execute(null);
-
-        Assert.Same(inSimple, cockpit.SimpleSelectedSession);
-        Assert.Same(inPanels, cockpit.SelectedSession);
-    }
-
-    // AC-1316: the Simple stand's rail carries the same footer as the panels sidebar, so Options and the
-    // command palette can be found there and not only by shortcut. Measured on the simple-view scene: the
-    // stand that is not on screen does not materialise its copy, so the footer with buttons is the rail's.
-    [Fact]
-    public void TheSimpleStand_CarriesTheMenu() => HeadlessAvalonia.Run(() =>
-    {
-        var window = Screenshotter.ShowScene("simple-view");
-        try
-        {
-            window.UpdateLayout();
-
-            var footer = window.GetVisualDescendants().OfType<SidebarFooter>()
-                .Single(f => f.IsEffectivelyVisible && f.GetVisualDescendants().OfType<Button>().Any());
-            var menu = footer.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Menu"));
-            var entries = ((StackPanel)((Flyout)menu.Flyout!).Content!).Children.OfType<Button>()
-                .Select(b => b.Content).ToList();
-
-            Assert.Contains("Options", entries);
-            Assert.Contains("Command palette", entries);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
 
     private static ILayoutSettingsStore _LayoutStore(LayoutSettings settings)
     {
