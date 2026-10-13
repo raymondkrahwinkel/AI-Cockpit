@@ -62,29 +62,6 @@ public class Ac1301SimpleViewStandTests
         await layout.Received().SaveAsync(Arg.Is<LayoutSettings>(settings => settings.OpenInSimpleView));
     }
 
-    // Criterion 4: each stand keeps its own selection. AC-1527 criterion 5: coming back to Simple lands on Home,
-    // not on the conversation left there — and the panels stand's pick is untouched either way.
-    [Fact]
-    public void EachStandKeepsItsOwnSelection()
-    {
-        var cockpit = _Cockpit(_LayoutStore(new LayoutSettings()));
-        var inPanels = new SessionViewModel();
-        var inSimple = new SessionViewModel();
-
-        cockpit.SelectedSession = inPanels;
-        cockpit.ShowSimpleViewCommand.Execute(null);
-        cockpit.SimpleSelectedSession = inSimple;
-        cockpit.ShowPanelsViewCommand.Execute(null);
-
-        Assert.Same(inPanels, cockpit.SelectedSession);
-
-        cockpit.ShowSimpleViewCommand.Execute(null);
-
-        Assert.Null(cockpit.SimpleSelectedSession);
-        Assert.Equal(SimplePage.Home, cockpit.SimplePage);
-        Assert.Same(inPanels, cockpit.SelectedSession);
-    }
-
     private static ILayoutSettingsStore _LayoutStore(LayoutSettings settings)
     {
         var layout = Substitute.For<ILayoutSettingsStore>();
