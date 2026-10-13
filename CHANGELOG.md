@@ -51,9 +51,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   connection behind.
 - added: a plugin can offer its own settings for a server in **Admin → Plugins**; what it changes happens on the
   server, and the audit names the plugin and the action, never what was sent.
+- added: **Admin → Plugins** on a server offers "Restart the server now" after a plugin change. The server stops the
+  way a `docker stop` stops it and compose (`restart: unless-stopped`) brings it back; with sessions running there,
+  it asks first.
 
 ### Fixed
 
+- fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the
+  consent step, which shows the server's own SHA-256 of the plugin, and the server pins only that hash.
 - fixed: an approval card with a long request (a big behaviour prompt, a long message) now scrolls its content inside the card, so the title and Approve/Deny always stay on screen and clickable.
 - fixed: closing the companion window with its X button, Alt+F4 or the taskbar now keeps it closed at the next start, like the menu toggle does.
 - fixed: the selection no longer ping-pongs between two sessions when it changes twice in one tick; the focus move follows the current selection.
