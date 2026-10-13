@@ -2677,10 +2677,24 @@ internal static class Screenshotter
         cockpit.Projects.StageDesignSample();
         var picked = (ViewModels.SessionViewModel)_Named(cockpit, "kind→staging");
         picked.ProjectId = cockpit.Projects.Projects[0].Id;
+        picked.WorkingDirectory = Path.Combine(Path.GetTempPath(), "infra");
         picked.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.UserText, "Can you bring staging in line with kind, and tell me what stands out?"));
+        // AC-1530: three reads in one folder fold to one step, each write is a step of its own, then the green block.
+        string[] steps = ["Read clusters/kind/traefik.yaml", "Read clusters/kind/ingress.yaml", "Read clusters/kind/values.yaml",
+            "Write notes/staging/differences.md", "Write notes/staging/upgrade-plan.md"];
+        foreach (var (step, index) in steps.Select((step, index) => (step, index)))
+        {
+            var (tool, file) = (step.Split(' ')[0], Path.Combine(picked.WorkingDirectory, step.Split(' ')[1]));
+            picked.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = $"toolu_{index}", ToolName = tool, InputJson = System.Text.Json.JsonSerializer.Serialize(new { file_path = file }) });
+            picked.Apply(new ToolResult { SessionId = "s1", ToolUseId = $"toolu_{index}", Content = "ok", IsError = false });
+        }
+
+        var result = TurnResult.From(picked.Transcript.Reverse().TakeWhile(row => !row.IsUserRow).Reverse(), picked.WorkingDirectory)!;
+        picked.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         picked.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Traefik on staging is two minor versions behind. **The configuration** differs in three places — I am writing them down now."));
+        picked.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_running", ToolName = "Write", InputJson = System.Text.Json.JsonSerializer.Serialize(new { file_path = Path.Combine(picked.WorkingDirectory, "notes", "staging", "summary.md") }) });
         picked.SessionStatus = SessionStatus.Busy;
         picked.IsBusy = true;
         return cockpit;

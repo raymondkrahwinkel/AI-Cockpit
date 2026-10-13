@@ -17,11 +17,12 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class Ac1529SimpleConversationTests
 {
-    // Criterion 1: never an enum name. The busy row with a tool running carries what it is doing after the dot.
+    // Criterion 1: never an enum name. The busy row with a tool running carries what it is doing after the dot,
+    // in the same plain words as its step (AC-1530 criterion 2) rather than the composer band's "Read  ·  invoices.csv".
     [Theory]
     [InlineData(SessionStatus.Idle, false, "Idle")]
     [InlineData(SessionStatus.Busy, false, "Busy")]
-    [InlineData(SessionStatus.Busy, true, "Busy · ")]
+    [InlineData(SessionStatus.Busy, true, "Busy · Reading invoices.csv…")]
     [InlineData(SessionStatus.WorkingBackground, false, "Busy")]
     [InlineData(SessionStatus.NeedsAttention, false, "Waiting for you")]
     [InlineData(SessionStatus.Done, false, "Done")]
@@ -34,7 +35,6 @@ public sealed class Ac1529SimpleConversationTests
             session.IsBusy = true;
             session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "Read", InputJson = "{\"file_path\":\"invoices.csv\"}" });
             Assert.NotEmpty(session.ActiveToolActivityLabel);
-            expected += session.ActiveToolActivityLabel;
         }
 
         session.SessionStatus = status;

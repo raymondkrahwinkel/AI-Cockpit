@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Channels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
@@ -10,16 +11,22 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Journeys;
 
 // The journeys' one fake: the provider, faked below the launcher. Answers a prompt with "echo: <prompt>" and a completed
-// turn; a failed one for `FailingPrompt`, and only once interrupted for `WaitingPrompt`. `Answered` completes when the
-// runtime comes back for the next event, which it only does once it has handed the turn's end on.
+// turn; a failed one for `FailingPrompt`, only once interrupted for `WaitingPrompt`, and tool calls for `WorkingPrompt`.
+// `Answered` completes when the runtime comes back for the next event, which it only does once it has handed the turn's end on.
 public sealed class EchoDriver : ISessionDriver
 {
     public const string FailingPrompt = "fail";
 
     public const string WaitingPrompt = "wait";
 
+    // Three reads, then four writes of which the last fails; the first write stays open until `FinishWriting`.
+    public const string WorkingPrompt = "work";
+
+    public static readonly string[] Written = ["Kwartaaloverzicht-Q3.xlsx", "Toelichting-Q3.docx", "Facturen-Q3.csv", "Kapot.txt"];
+
     private readonly Channel<string> _prompts = Channel.CreateUnbounded<string>();
     private readonly Channel<bool> _interrupts = Channel.CreateUnbounded<bool>();
+    private readonly Channel<bool> _writing = Channel.CreateUnbounded<bool>();
     private readonly TaskCompletionSource _answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly bool _wedged;
 
@@ -82,6 +89,8 @@ public sealed class EchoDriver : ISessionDriver
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+    public void FinishWriting() => _writing.Writer.TryWrite(true);
+
     public Task InterruptAsync(CancellationToken cancellationToken = default) => _interrupts.Writer.WriteAsync(true, cancellationToken).AsTask();
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -106,6 +115,16 @@ public sealed class EchoDriver : ISessionDriver
                 continue;
             }
 
+            if (prompt == WorkingPrompt)
+            {
+                await foreach (var step in _WorkAsync(cancellationToken))
+                {
+                    yield return step;
+                }
+
+                continue;
+            }
+
             var fails = prompt == FailingPrompt;
             var echoed = prompt == "working-directory" ? WorkingDirectory : prompt;
             if (_paneId is not null)
@@ -120,6 +139,27 @@ public sealed class EchoDriver : ISessionDriver
             };
             _answered.TrySetResult();
         }
+    }
+
+    private async IAsyncEnumerable<SessionEvent> _WorkAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var calls = new List<(string Tool, string File)>();
+        calls.AddRange(new[] { "a.pdf", "b.pdf", "c.pdf" }.Select(name => ("Read", Path.Combine(WorkingDirectory!, "Facturen", "2026-Q3", name))));
+        calls.AddRange(Written.Select(name => ("Write", Path.Combine(WorkingDirectory!, "Rapportages", "2026", name))));
+        for (var i = 0; i < calls.Count; i++)
+        {
+            var (tool, file) = calls[i];
+            yield return new ToolUseRequested { SessionId = SessionId, ToolUseId = $"call-{i}", ToolName = tool, InputJson = JsonSerializer.Serialize(new { file_path = file }) };
+            if (i == 3)
+            {
+                await _writing.Reader.ReadAsync(cancellationToken);
+            }
+
+            yield return new ToolResult { SessionId = SessionId, ToolUseId = $"call-{i}", Content = "ok", IsError = i == calls.Count - 1 };
+        }
+
+        yield return new AssistantTextCompleted { SessionId = SessionId, Text = "The quarter is in." };
+        yield return new TurnCompleted { SessionId = SessionId, Subtype = "success", Result = "The quarter is in.", IsError = false };
     }
 }
 

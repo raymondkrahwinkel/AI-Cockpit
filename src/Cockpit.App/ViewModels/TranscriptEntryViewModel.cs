@@ -27,6 +27,9 @@ public enum TranscriptEntryKind
 
     // AC-564 marks where agent memory stopped while keeping the full transcript as the pane's audit surface.
     Divider,
+
+    // AC-1530: the files a turn made or changed, shown at the Simple level only and never written to the log.
+    TurnResult,
 }
 
 // A single row in the transcript view. Assistant text entries are mutated in place
@@ -52,7 +55,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public bool IsDivider => Kind == TranscriptEntryKind.Divider;
 
     // Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.
-    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider;
+    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider && TurnResult is null;
 
     // Assistant prose renders as markdown (T9).
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
@@ -180,6 +183,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public object? FailureBranch => ShowsFailureCard ? this : null;
     public object? QuestionBranch => HasQuestionPrompts ? this : null;
     public object? ToolBlockBranch => ShowToolBlock ? this : null;
+    public object? TurnResultBranch => TurnResult is not null ? this : null;
+
+    public TurnResult? TurnResult { get; init; }
 
     // Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.
     public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
@@ -756,6 +762,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         OnPropertyChanged(nameof(ResultDisplayText));
         OnPropertyChanged(nameof(ResultIsCodeLike));
         OnPropertyChanged(nameof(BackgroundStatusText));
+        _RaiseStep();
     }
 
     partial void OnIsResultErrorChanged(bool value)
@@ -809,9 +816,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         // the row is still added to the transcript at every level, but it renders hidden below Developer.
         TranscriptEntryKind.Thinking => ReadingLevel == ReadingLevel.Developer,
         TranscriptEntryKind.ToolResult => ReadingLevel != ReadingLevel.Simple,
+        TranscriptEntryKind.TurnResult => ReadingLevel == ReadingLevel.Simple,
         TranscriptEntryKind.ToolUse => ReadingLevel switch
         {
-            ReadingLevel.Simple => RequiredApproval,
+            ReadingLevel.Simple => RequiredApproval || !(IsInGroup && !IsGroupAnchor),
             ReadingLevel.Focus => !(IsInGroup && !IsGroupAnchor) || IsGroupExpanded,
             _ => true,
         },
@@ -837,6 +845,56 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
     // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level. A question card carries its own words at every level, so it needs no stand-in. AC-489: a call the plain-language card below could restate speaks for itself, so the coarse line stands down for it and stays as the fallback for everything else.
     public bool ShowHumanToolLine => _ShowsConsentAtSimple && !ShowPlainConsentCard;
+
+    // --- Steps in plain words (AC-1530) ---------------------------------------------------------------------
+
+    // At Simple an auto tool call is one step; a consent call keeps its own card, and a run of reads in one folder
+    // speaks through its anchor.
+    public bool ShowPlainStep => ReadingLevel == ReadingLevel.Simple && IsAutoTool && !HasQuestionPrompts;
+
+    private PlainStep Step => _step ??= PlainStep.Describe(ToolName, InputJson, Session?.WorkingDirectory, IsInGroup ? GroupCount : 1);
+
+    private PlainStep? _step;
+
+    public bool IsStepRunning => !HasResult;
+
+    public string StepText => (IsStepRunning ? Step.Running : Step.Done) + (Step.FolderLabel is null ? string.Empty : " in");
+
+    public string? StepFolder => Step.Folder;
+
+    public string? StepFolderLabel => Step.FolderLabel;
+
+    public string StepTail => IsStepRunning ? "…" : string.Empty;
+
+    public MaterialIconKind StepIconKind => IsStepRunning ? MaterialIconKind.ClockOutline : MaterialIconKind.Check;
+
+    // A step's folder, a made file and Open folder all go out through the session, so a test can stand in for the system.
+    [RelayCommand]
+    private void OpenPath(string? path)
+    {
+        if (path is { Length: > 0 })
+        {
+            Session?.OpenPath(path);
+        }
+    }
+
+    // Only Simple shows a step, so the other levels' regrouping costs it nothing beyond the one flag.
+    private void _RaiseStep()
+    {
+        _step = null;
+        OnPropertyChanged(nameof(ShowPlainStep));
+        if (ReadingLevel != ReadingLevel.Simple)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsStepRunning));
+        OnPropertyChanged(nameof(StepText));
+        OnPropertyChanged(nameof(StepFolder));
+        OnPropertyChanged(nameof(StepFolderLabel));
+        OnPropertyChanged(nameof(StepTail));
+        OnPropertyChanged(nameof(StepIconKind));
+    }
 
     // --- Plain-language consent (AC-489) ---------------------------------------------------------------------
 
@@ -910,7 +968,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
     partial void OnIsGroupAnchorChanged(bool value) => _RaiseReadingLevelPresentation();
 
-    partial void OnGroupCountChanged(int value) => OnPropertyChanged(nameof(GroupSummaryText));
+    partial void OnGroupCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(GroupSummaryText));
+        _RaiseStep();
+    }
 
     partial void OnIsGroupExpandedChanged(bool value)
     {
@@ -941,6 +1003,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         OnPropertyChanged(nameof(PermissionBranch));
         OnPropertyChanged(nameof(IsAwaitingAnswer));
         OnPropertyChanged(nameof(CanSubmitAnswers));
+        _RaiseStep();
     }
 
     // Maps a tool name to a plain-language action for the Simple consent line; an unmapped tool keeps its own name.

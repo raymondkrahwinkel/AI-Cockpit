@@ -388,6 +388,11 @@
         <Setter Property="Margin" Value="8,2"/>
     </Style>
 
+    <!-- AC-1530: a Simple step is a line in a list rather than a message, so the steps sit close together. -->
+    <Style Selector="Border.rowRoot.plainStep">
+        <Setter Property="Padding" Value="8,1"/>
+    </Style>
+
     <!-- AC-1265: a fenced code block is split across rows now, and a row that carries one on gives up its own
          chrome on the side it is carried on — otherwise the fragments meet with a band of row background
          between them and one block reads as several boxes. Padding moved off the Border above to here: an

@@ -10,6 +10,7 @@
 #FF0E7490  CockpitStatusBusyColor
 #FF161920  CockpitTextPrimaryColor
 #FF2563EB  CockpitAccentColor
+#FF2B7546  CockpitStatusDoneColor
 #FF5A616D  CockpitTextSecondaryColor
 #FF7C8391  CockpitTextFaintColor
 #FFA35F02  CockpitStatusWaitingColor
