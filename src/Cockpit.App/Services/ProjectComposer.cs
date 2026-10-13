@@ -3,27 +3,16 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
-using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.Services;
 
-// AC-1435: what is left of AC-1375's editor adapter, the two project dialogs' composition without their windows.
-// Storing what it composes goes through IProjectEditor, and the Projects page follows the catalog.
+// AC-1435: what is left of AC-1375's editor adapter, the "New project" dialog's composition without its window.
+// Storing what it composes goes through IProjectEditor, and the Projects page follows the catalog. A shared project
+// composes without any dialog since AC-1514 (SharedProjectBindings).
 internal sealed class ProjectComposer(
     ISessionProfileStore profiles,
     IMcpServerCatalog? mcpServerCatalog = null) : ISingletonService
 {
-    // AC-1514: the composition itself lives in Infrastructure, where a server binds through it too.
-    public Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
-        string sharedProjectId,
-        ISharedProjectSource source,
-        string sourceDirectory,
-        string profileLabel,
-        IReadOnlyList<string>? resourceReferences,
-        CancellationToken cancellationToken) =>
-        SharedProjectComposition.ComposeAsync(sharedProjectId, source, sourceDirectory, profileLabel, resourceReferences, cancellationToken);
-
     // AC-799 review finding 8: production DI always registers a real `IMcpServerCatalog`, so the refusal is
     // unreachable there; kept rather than a no-op catalog that nothing past this line would ever actually read.
     public Task<(Project? Project, string? Refusal)> ComposeNewProjectAsync(

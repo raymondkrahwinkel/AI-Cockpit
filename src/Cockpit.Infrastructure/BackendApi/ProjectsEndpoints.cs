@@ -148,7 +148,7 @@ internal static partial class ProjectsEndpoints
                 return await _RefuseAsync(services, caller, BindTool, "That project is hidden on this server, so it is not on offer here.").ConfigureAwait(false);
             }
 
-            var (composition, error) = await SharedProjectComposition.ReadAsync(sharedId, source, cancellationToken).ConfigureAwait(false);
+            var (composition, error) = await SharedProjectBindings.ReadAsync(sharedId, source, cancellationToken).ConfigureAwait(false);
             if (composition is null)
             {
                 return await _RefuseAsync(services, caller, BindTool, error ?? "Could not read this project's definition.").ConfigureAwait(false);

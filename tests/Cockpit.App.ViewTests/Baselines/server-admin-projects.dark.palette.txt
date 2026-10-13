@@ -5,6 +5,7 @@
 
 #145AA576  CockpitStatusDoneChipTintColor
 #182563EB  CockpitCategoryTintBlueColor
+#CCFFFFFF  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF12141A  CockpitChromeBgColor

@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -27,7 +26,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer.
     public SharedProjectBindingDialogViewModel()
     {
-        _composition = new SharedProjectComposition("depot:handbook", "Work", new SharedProjectBinding("Handbook"));
+        _composition = new SharedProjectComposition("depot:handbook", "Work", "Handbook", null, null, null, false, null, null, []);
         SourceName = "Work";
         ProjectName = "Handbook";
         GitUrl = "git@github.com:example/handbook.git";
@@ -78,13 +77,24 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         // ConfigureAwait(true) throughout this method, deliberately: the loop below mutates Profiles, an
         // ObservableCollection Avalonia binds to, so every await in between must keep resuming on the calling
         // UI thread rather than drift onto whichever thread pool thread happens to finish first (AC-1117/AC-1119).
-        var (composition, error) = await SharedProjectComposition.ReadAsync(sharedProjectId, source, cancellationToken).ConfigureAwait(true);
-        if (composition is null)
+        var result = await source.PrepareBindingAsync(sharedProjectId, cancellationToken).ConfigureAwait(true);
+        if (!result.Succeeded || result.Binding is not { } binding)
         {
-            return (null, error);
+            return (null, result.Error is { Length: > 0 } error ? error : "Could not read this project's definition.");
         }
 
-        var viewModel = new SharedProjectBindingDialogViewModel(composition);
+        // The same fields Infrastructure's SharedProjectBindings.Compose hands over; this view model may not call it (AC-1441).
+        var viewModel = new SharedProjectBindingDialogViewModel(new SharedProjectComposition(
+            sharedProjectId,
+            sourceName,
+            binding.Name,
+            binding.Description,
+            binding.GitUrl,
+            binding.BehaviorPrompt,
+            binding.IsolateInWorktreeByDefault,
+            binding.EnabledMcpServerNames,
+            binding.LogoBytes,
+            binding.Resources.Select(resource => new SharedProjectDefinitionResource(resource.Role, resource.Reference, resource.Label))));
 
         foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(true))
         {

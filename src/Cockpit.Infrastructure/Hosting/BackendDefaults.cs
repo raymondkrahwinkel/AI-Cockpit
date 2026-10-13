@@ -70,7 +70,7 @@ internal sealed class BackendProjectComposer : IProjectComposer
         string profileLabel,
         IReadOnlyList<string>? resourceReferences,
         CancellationToken cancellationToken) =>
-        SharedProjectComposition.ComposeAsync(sharedProjectId, source, sourceDirectory, profileLabel, resourceReferences, cancellationToken);
+        SharedProjectBindings.ComposeAsync(sharedProjectId, source, sourceDirectory, profileLabel, resourceReferences, cancellationToken);
 
     public Task<(Project? Project, string? Refusal)> ComposeNewProjectAsync(
         string name,

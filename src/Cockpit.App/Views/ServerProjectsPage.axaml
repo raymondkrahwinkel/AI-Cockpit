@@ -67,7 +67,7 @@
                         <DataTemplate x:DataType="vm:ServerSharedProjectRowViewModel">
                             <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" Padding="0,7">
                                 <DockPanel>
-                                    <Button DockPanel.Dock="Right" Classes="Compact" VerticalAlignment="Center"
+                                    <Button DockPanel.Dock="Right" Classes="Subtle Compact" VerticalAlignment="Center"
                                             Content="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedLabel}"
                                             Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedCommand}"
                                             CommandParameter="{Binding}"/>
