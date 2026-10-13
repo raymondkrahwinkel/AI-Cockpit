@@ -130,6 +130,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Func<string, bool> _tryOpenExternalLink = ExternalLink.TryOpen;
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
+    private readonly IConversationIndex? _conversationIndex;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
@@ -3154,6 +3155,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         ISessionStateCache? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
+        IConversationIndex? conversationIndex = null,
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeReconcileGate? worktreeReconcileGate = null,
         ILogger<CockpitViewModel>? logger = null,
@@ -3293,6 +3295,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
+        _conversationIndex = conversationIndex;
         _sessionRestorePlanner = sessionRestorePlanner;
         _worktreeReconcileGate = worktreeReconcileGate;
         _logger = logger;
@@ -7265,6 +7268,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator?.Enroll(session.PaneId);
 
         Sessions.Add(session);
+        _ = RecordConversationAsync(session, closed: false);
     }
 
     // Guarded on HasPersistedPane, which PersistLaunchedPaneAsync/_AttachRestoredSession set synchronously before
@@ -7278,6 +7282,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _ = Workspaces.RenamePaneAsync(session.WorkspaceId, session.PaneId, session.Title, !session.HasGeneratedName);
+        _ = RecordConversationAsync(session, closed: false);
     }
 
     // `workspaceId` is set directly rather than through `Workspaces`' `EnsureSessionWorkspace`, which would switch the
@@ -7838,6 +7843,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (sender is not SessionPanelViewModel session)
         {
             return;
+        }
+
+        if (e.PropertyName == nameof(SessionPanelViewModel.SessionStatus))
+        {
+            _ = RecordConversationAsync(session, closed: false);
         }
 
         // AC-1305: this is the one place every pane's `PendingConsent` lands, whoever set it — the routing below,
@@ -8641,6 +8651,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        await RecordConversationAsync(session, closed: true);
+
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnSessionCloseRequested;
         session.RestoreDecided -= OnSessionRestoreDecided;
@@ -8733,6 +8745,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             IsZoomed = false;
         }
+    }
+
+    private async Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
+    {
+        if (_conversationIndex is null || session.IsRemote)
+        {
+            return;
+        }
+
+        var state = _sessionStateStore is null ? null : (await _sessionStateStore.LoadAsync()).FirstOrDefault(item => item.PaneId == session.PaneId);
+        var now = DateTimeOffset.UtcNow;
+        await _conversationIndex.RecordAsync(new ConversationRecord(
+            session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel,
+            state?.ProviderId, state?.ConversationId, state?.ConversationState ?? SessionConversationIdState.Unknown,
+            now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
+            ReferenceEquals(session, _assistantSession), null));
     }
 
     // Held so the things that must reach it despite it being in neither collection can — consent routing
