@@ -113,6 +113,10 @@ there is no check and it stays 200. An expired sign-in is an alarm, not a reason
 There is no docker socket and no docker CLI in the image. `COCKPIT_STOP_BUDGET_SECONDS` (default 8) stays below
 `stop_grace_period` (15 s).
 
+A plugin installed, enabled or removed from a desktop's Admin → Plugins loads only after the server restarts. "Restart
+the server now" there stops the server the way a `docker stop` does; it comes back because compose sets
+`restart: unless-stopped`. Without such a supervisor the server only stops.
+
 ## Credentials on the volume
 
 The server state on the `state` volume is unencrypted. Protect it through the host and volumes: ownership and access

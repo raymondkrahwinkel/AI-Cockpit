@@ -219,7 +219,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, plain credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false, bool withEchoPlugin = true)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -252,7 +252,8 @@ public sealed class ServerJourney
                 await services.GetRequiredService<ISecretProtectionService>().EnableAsync(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
             }
 
-            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") })
+            // AC-1525: without the echo plugin, a journey installs it from its store.
+            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") }.Where(plugin => withEchoPlugin || plugin.Item1 != "echo-provider"))
             {
                 var plugin = Directory.CreateDirectory(Path.Combine(root, "bundled", id)).FullName;
                 foreach (var file in Directory.EnumerateFiles(_Metadata(directory)))
@@ -261,7 +262,7 @@ public sealed class ServerJourney
                 }
             }
 
-            Assert.Equal(["echo-provider", "workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
+            Assert.Equal(withEchoPlugin ? ["echo-provider", "workflows"] : ["workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
             await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync(
                 "workflows",
                 new Dictionary<string, string> { ["workflows"] = JsonSerializer.Serialize(_ScheduledWorkflowJson()) });

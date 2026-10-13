@@ -28,6 +28,9 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IAppRestartService? _restartService;
     private readonly IWorkflowTemplateLibrary? _templateLibrary;
 
+    // AC-1525: the server this manager administers, or null for this cockpit's own plugins; every "restart" names it.
+    private readonly string? _server;
+
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
     public ObservableCollection<PluginStoreConfig> Stores { get; } = [];
@@ -209,10 +212,14 @@ public partial class PluginManagerViewModel : ViewModelBase
     public PluginManagerViewModel(
         IPluginAdministration administration,
         ISessionDialogService dialogService,
-        IReadOnlyList<PluginStoreConfig> stores)
+        IReadOnlyList<PluginStoreConfig> stores,
+        string? server = null,
+        IAppRestartService? restartService = null)
     {
         _administration = administration;
         _dialogService = dialogService;
+        _server = server;
+        _restartService = restartService;
         foreach (var store in stores)
         {
             Stores.Add(store);
@@ -234,6 +241,16 @@ public partial class PluginManagerViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasAvailableUpdates));
             OnPropertyChanged(nameof(AvailableUpdateCount));
         };
+
+    public string RestartLabel => _server is null ? "Restart the cockpit now" : "Restart the server now";
+
+    public string RestartTip => _server is null
+        ? "Restarts the cockpit for you — applies the plugin change(s) above without closing and relaunching it yourself."
+        : $"Restarts {_server} — applies the plugin change(s) above there. Its sessions stop; this cockpit stays open.";
+
+    private string _Restart => _server is null ? "Restart the cockpit" : "Restart the server";
+
+    private string _On => _server is null ? "" : $" on {_server}";
 
     [RelayCommand(CanExecute = nameof(CanRestart))]
     private void RestartNow() => _restartService?.Restart();
@@ -323,7 +340,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         {
             StatusMessage = $"Installing '{Path.GetFileName(zipPath)}'…";
             var result = await _administration.InstallFromZipAsync(zipPath);
-            await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
+            await _AfterInstallAsync(result, $"Plugin installed{_On}. {_Restart} to activate it.");
         });
     }
 
@@ -345,7 +362,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _administration.SetEnabledAsync(row.FolderId, enabled: true, row.Discovered.Sha256);
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' enabled. Restart the cockpit to load it.";
+        StatusMessage = $"'{row.DisplayName}' enabled{_On}. {_Restart} to load it.";
         NeedsRestart = true;
     }
 
@@ -455,7 +472,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _administration.SetEnabledAsync(row.FolderId, enabled: false, row.Discovered.Sha256);
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' disabled. Restart the cockpit to unload it.";
+        StatusMessage = $"'{row.DisplayName}' disabled{_On}. {_Restart} to unload it.";
         NeedsRestart = true;
     }
 
@@ -985,9 +1002,9 @@ public partial class PluginManagerViewModel : ViewModelBase
 
                 await BrowseStoresAsync();
                 StatusMessage = failed.Count == 0
-                    ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
+                    ? $"Updated {updated} plugin(s){_On}. {_Restart} to activate."
                     : $"Updated {updated} of {updates.Count} plugin(s). {string.Join(", ", failed.Select(name => $"'{name}'"))} failed."
-                      + (updated > 0 ? " Restart the cockpit to activate the rest." : string.Empty);
+                      + (updated > 0 ? $" {_Restart} to activate the rest." : string.Empty);
                 NeedsRestart = updated > 0;
             }
             finally
@@ -1078,8 +1095,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
         var installedMessage = provision.Warning is { } warning
-            ? $"⚠ {warning} '{row.Name}' installed. Restart the cockpit to activate it."
-            : $"'{row.Name}' installed. Restart the cockpit to activate it.";
+            ? $"⚠ {warning} '{row.Name}' installed{_On}. {_Restart} to activate it."
+            : $"'{row.Name}' installed{_On}. {_Restart} to activate it.";
 
         // Translated back to the installer's own result shape so the shared aftercare below stays the one place the
         // consent walk lives, unchanged by where the bytes came from.

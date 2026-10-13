@@ -6,7 +6,7 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1474: the remote side treats PluginStoreConfig.Location only as the opaque server store id.
-internal sealed class RemotePluginAdministration(BackendApiClient client) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay
+internal sealed class RemotePluginAdministration(BackendApiClient client) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay, IServerRestart
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -32,12 +32,12 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
     public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default)
     {
         var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
-        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, null, null);
+        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256);
     }
 
     public async Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
     {
-        await client.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        await client.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled, sha256 = pinnedSha256 }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
@@ -48,13 +48,33 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
         client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
 
-    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error);
+    public async Task RestartAsync(CancellationToken cancellationToken = default)
+    {
+        await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+    }
 
-    private sealed record RemotePluginEntry(string FolderId, string Id, string Name, string Version, bool Enabled, string? AvailableUpdate, bool TakesEffectAfterServerRestarts)
+    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256);
+
+    // AC-1525: the server's decision and its hash of the bytes, so enabling walks the same consent as a local plugin. The
+    // folder's path stays on the server.
+    private sealed record RemotePluginEntry(
+        string FolderId,
+        string Id,
+        string Name,
+        string Version,
+        bool Enabled,
+        string? AvailableUpdate,
+        bool TakesEffectAfterServerRestarts,
+        PluginLoadDecision Decision,
+        string Sha256,
+        string? PinnedSha256,
+        string? Author,
+        string? Description,
+        string? MinHostVersion)
     {
         public static InstalledPlugin ToInstalled(RemotePluginEntry entry) => new(
-            new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, null, null, null), "", PluginLoadDecision.Load),
-            new PluginRegistration(entry.Enabled, ""), null, null, null);
+            new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, entry.MinHostVersion, entry.Description, entry.Author), entry.Sha256, entry.Decision),
+            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null);
     }
 
 }

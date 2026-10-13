@@ -20,9 +20,13 @@ public sealed class ServerPluginsPage : UserControl
         install.Bind(Button.CommandProperty, new Avalonia.Data.Binding("InstallPluginCommand"));
         var update = new Button { Content = "Update 1", IsEnabled = false, HorizontalAlignment = HorizontalAlignment.Left };
         var restart = new TextBlock { Text = "Plugin changes take effect after the server restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        var restartNow = new Button { Content = "Restart the server now", HorizontalAlignment = HorizontalAlignment.Left };
+        restartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
+        restartNow.Bind(IsVisibleProperty, new Avalonia.Data.Binding("NeedsRestart"));
+        ToolTip.SetTip(restartNow, "Restarts the server so the plugin changes take effect. Its sessions stop; this cockpit stays open.");
         var status = new TextBlock();
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
-        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, _rows, restart, status } };
+        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, _rows, restart, restartNow, status } };
         DataContextChanged += (_, _) => _SetAdmin();
     }
 

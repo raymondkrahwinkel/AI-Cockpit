@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,8 @@ public sealed class RemoteAdminJourney
 
     private const string Project = "journey-project";
 
+    private const string StorePlugin = "echo-provider";
+
     // Admin → Connect keys → issue; the new key connects; revoke; the revoked key is refused; a locked-out address is
     // lifted. AC-1472: Projects clones a bare repository; it is in GET /projects and "+ Start on", and a session runs in
     // it. Each step is in the Audit log with the key that called as its actor, never the node tools' identity.
@@ -51,14 +54,17 @@ public sealed class RemoteAdminJourney
         await _GitAsync(work, "add", "README.md");
         await _GitAsync(work, "-c", "user.name=journey", "-c", "user.email=journey@example.invalid", "commit", "-m", "first");
         await _GitAsync(work, "push", origin, "main");
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", pluginStore: store);
-        var run = ServerJourney._RunServer(
-            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, ServerJourney._Secret(root, "connect-key", bootstrap),
-            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
+        // AC-1525: one port across the restart, as a container keeps its own.
+        var pairingPort = _FreePort();
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, pairingPort, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
+        var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
+        ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
+            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile, new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
+        var run = startServer();
         try
         {
             await run.Running.WaitAsync(Until.Ceiling);
-            var port = ServerJourney._McpPort(run.Output);
+            var port = pairingPort + NodeEndpointSettings.McpPortOffset;
             var baseAddress = new Uri($"https://127.0.0.1:{port}/");
             using var setup = new BackendApiClient(baseAddress, bootstrap, fingerprint, TimeProvider.System);
             var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
@@ -126,27 +132,66 @@ public sealed class RemoteAdminJourney
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await Until.CollectionHolds(storeViewModel.Manager.AvailablePlugins, () => storeViewModel.Manager.AvailablePlugins.Any(plugin => plugin.Id == "journey-store-plugin"));
+                await Until.CollectionHolds(storeViewModel.Manager.AvailablePlugins, () => storeViewModel.Manager.AvailablePlugins.Any(plugin => plugin.Id == StorePlugin));
             });
             var beforeChoice = await setup.GetAsync<JsonArray>("api/v1/plugins");
-            Assert.DoesNotContain(beforeChoice, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
+            Assert.DoesNotContain(beforeChoice, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
+            // AC-1525: the install walks into the consent for the bytes the server hashed; Allow pins them there.
+            var consented = new TaskCompletionSource<PluginConsentInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watchConsent = Window.WindowOpenedEvent.AddClassHandler<PluginConsentDialog>((consentDialog, _) =>
+            {
+                consented.TrySetResult((PluginConsentInfo)consentDialog.DataContext!);
+                Dispatcher.UIThread.Post(() => consentDialog.Close(true));
+            });
+            var installStatus = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var selected = storeViewModel.Manager.AvailablePlugins.Single(plugin => plugin.Id == "journey-store-plugin");
+                var selected = storeViewModel.Manager.AvailablePlugins.Single(plugin => plugin.Id == StorePlugin);
                 await storeViewModel.Manager.InstallFromStoreCommand.ExecuteAsync(selected);
+                installStatus = storeViewModel.Manager.StatusMessage;
                 storeDialog.Close();
             });
             await openStore;
-            Assert.True(admin.Plugins.Any(plugin => plugin.Id == "journey-store-plugin"), admin.Status);
+            var consent = await consented.Task.WaitAsync(Until.Ceiling);
+            Assert.True(admin.Plugins.Any(plugin => plugin.Id == StorePlugin), admin.Status);
             var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
-            Assert.Contains(installed, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
+            var serverEntry = installed.Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+            Assert.Equal($"'Echo provider' enabled on {Server}. Restart the server to load it.", installStatus);
+            Assert.Equal(serverEntry?["sha256"]?.GetValue<string>(), consent.Sha256);
+            Assert.Equal((true, true), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
             Assert.Equal(localPluginIds, view.Plugins.Plugins.Select(plugin => plugin.FolderId));
 
-            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == "journey-store-plugin")));
-            Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == "journey-store-plugin");
+            // Restart now: the server stops as on a SIGTERM; the journey is its supervisor and starts it on the same state.
+            await HeadlessAvalonia.RunAsync(() => admin.RestartServerCommand.ExecuteAsync(null));
+            await run.Process.WaitForExitAsync().WaitAsync(Until.Ceiling);
+            var restartExit = run.Process.ExitCode;
+            run.Process.Dispose();
+            run = startServer();
+            await run.Running.WaitAsync(Until.Ceiling);
+            var loaded = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+            var created = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/profiles", new { label = "Echo from the store", provider = "echo-provider.echo" });
+            var storePane = "";
+            using (var storeSession = new CancellationTokenSource(Until.Ceiling))
+            {
+                var storeStarted = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo from the store", prompt = "from the store" });
+                storePane = storeStarted["paneId"]?.GetValue<string>() ?? "";
+                await setup.StreamEventsAsync(0, storeSession.Token)
+                    .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(storePane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: from the store", StringComparison.Ordinal), storeSession.Token);
+            }
+
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var group = view.ServerGroups[0];
+                await Until.Holds(group, () => group.IsConnected && group.IsAdminKey);
+                await admin.LoadCommand.ExecuteAsync(null);
+            });
+            Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
+
+            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
+            Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
-            Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
+            Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
             // AC-1511: Admin → Plugins → Depot → Settings opens Depot's own view for the server. An installation token signs
             // the server's connection in at a fake Depot without a browser; the same token again is refused and adds nothing.
@@ -257,7 +302,7 @@ public sealed class RemoteAdminJourney
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
                 group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == Project);
                 await view.StartOnServerCommand.ExecuteAsync(group);
-                paneId = group.Sessions.Single().Handle.PaneId;
+                paneId = group.Sessions.Single(session => session.Handle.PaneId != storePane).Handle.PaneId;
             });
             var listed = (await setup.GetAsync<JsonObject>("api/v1/projects"))["projects"]?.AsArray().Single(project => project?["name"]?.GetValue<string>() == Project);
             var clonePath = listed?["path"]?.GetValue<string>() ?? "";
@@ -422,33 +467,31 @@ public sealed class RemoteAdminJourney
     private static string _NewKey() =>
         "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
+    // AC-1525: the echo provider itself, so the profile and session after the restart run on what the store installed.
     private static PluginStoreConfig _CreateFixtureStore(string root)
     {
         var store = Directory.CreateDirectory(Path.Combine(root, "fixture-store")).FullName;
-        var zip = Path.Combine(store, "journey-store-plugin-1.0.0.zip");
+        var zip = Path.Combine(store, $"{StorePlugin}-1.0.0.zip");
         using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
         {
             foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata("EchoProviderDirectory")))
             {
-                if (Path.GetFileName(file) == "plugin.json")
-                {
-                    continue;
-                }
-
                 var entry = archive.CreateEntry(Path.GetFileName(file));
                 using var source = File.OpenRead(file);
                 using var destination = entry.Open();
                 source.CopyTo(destination);
             }
-
-            var manifest = archive.CreateEntry("plugin.json");
-            using var writer = new StreamWriter(manifest.Open());
-            writer.Write("""{"id":"journey-store-plugin","name":"Journey store plugin","version":"1.0.0","entryAssembly":"Cockpit.Plugin.EchoProvider.dll","abstractionsVersion":3}""");
         }
 
         var hash = PluginHash.Compute(File.ReadAllBytes(zip));
-        File.WriteAllText(Path.Combine(store, "index.json"), $$"""{"name":"Journey store","plugins":[{"id":"journey-store-plugin","name":"Journey store plugin","description":null,"author":null,"latestVersion":"1.0.0","versions":[{"version":"1.0.0","path":"journey-store-plugin-1.0.0.zip","abstractionsVersion":3,"minHostVersion":null,"sha256":"{{hash}}","notes":null}]}]}""");
+        File.WriteAllText(Path.Combine(store, "index.json"), $$"""{"name":"Journey store","plugins":[{"id":"{{StorePlugin}}","name":"Echo provider","description":null,"author":null,"latestVersion":"1.0.0","versions":[{"version":"1.0.0","path":"{{StorePlugin}}-1.0.0.zip","abstractionsVersion":3,"minHostVersion":null,"sha256":"{{hash}}","notes":null}]}]}""");
         return PluginStoreConfig.Local(store);
     }
 
+    private static int _FreePort()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
 }

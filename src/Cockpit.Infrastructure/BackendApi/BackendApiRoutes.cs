@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -62,6 +63,22 @@ internal static class BackendApiRoutes
                 assistantHeldBy = holder,
             });
         }).RequireOperate();
+
+        // AC-1525: the stop a SIGTERM takes, once this answer is sent; the supervisor starts the server again.
+        api.MapPost("/server/restart", (HttpContext http) =>
+        {
+            if (services.GetService<ServerRestartSignal>() is not { } restart)
+            {
+                return Error(StatusCodes.Status404NotFound, "no_restart", "This cockpit does not restart over its API.");
+            }
+
+            http.Response.OnCompleted(() =>
+            {
+                restart.Request();
+                return Task.CompletedTask;
+            });
+            return Results.Json(new { restarting = true }, statusCode: StatusCodes.Status202Accepted);
+        }).RequireAdmin().Audited("restart_server", services);
     }
 
     public static RouteHandlerBuilder RequireOperate(this RouteHandlerBuilder route) =>
