@@ -54,9 +54,10 @@ public sealed class RemoteAdminJourney
         await _GitAsync(work, "add", "README.md");
         await _GitAsync(work, "-c", "user.name=journey", "-c", "user.email=journey@example.invalid", "commit", "-m", "first");
         await _GitAsync(work, "push", origin, "main");
-        // AC-1525: one port across the restart, as a container keeps its own.
-        var pairingPort = _FreePort();
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, pairingPort, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
+        // AC-1525: one door port across the restart, as a container keeps its own. The door listens on every address one
+        // above the pairing port, so that is the port found free.
+        var port = _FreeDoorPort();
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile, new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
@@ -64,7 +65,6 @@ public sealed class RemoteAdminJourney
         try
         {
             await run.Running.WaitAsync(Until.Ceiling);
-            var port = pairingPort + NodeEndpointSettings.McpPortOffset;
             var baseAddress = new Uri($"https://127.0.0.1:{port}/");
             using var setup = new BackendApiClient(baseAddress, bootstrap, fingerprint, TimeProvider.System);
             var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
@@ -496,10 +496,18 @@ public sealed class RemoteAdminJourney
         return PluginStoreConfig.Local(store);
     }
 
-    private static int _FreePort()
+    // Above the offset, so the pairing port below it is a valid one.
+    private static int _FreeDoorPort()
     {
-        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
+        while (true)
+        {
+            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Any, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            if (port > NodeEndpointSettings.McpPortOffset)
+            {
+                return port;
+            }
+        }
     }
 }
