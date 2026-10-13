@@ -63,7 +63,7 @@ public sealed class ServerJourney
     private static readonly TimeSpan LoginCheckInterval = TimeSpan.FromSeconds(1);
 
     [Fact]
-    public async Task TheServer_RefusesAnEncryptedState_AndStartsOnAPlainOne_RunsAnSdkSession_RefusesTty_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
+    public async Task TheServer_RefusesAnEncryptedState_AndStartsOnAPlainOne_RunsAnSdkSession_RunsATtyDefaultProfileAsSdk_AlarmsOnceOnAnExpiredSignIn_AnswersHealthzWithoutAKey_AndStopsOnSigterm()
     {
         var serverDirectory = _Metadata("CockpitServerDirectory");
         var depotBundle = Path.Combine(serverDirectory, "bundled-plugins", "depot");
@@ -107,17 +107,12 @@ public sealed class ServerJourney
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             await _WaitForProfileSignInAsync(admin, NeverSignedIn, "notSignedIn", timeout.Token);
             Assert.Equal(0, discord.Count($"profile '{NeverSignedIn}'"));
-            var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
+            // AC-1524: the profile that defaults to TTY runs as the SDK session a host without a terminal can make.
+            var started = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "EchoTty", prompt = "hello" });
             var paneId = started["paneId"]?.GetValue<string>() ?? "";
             var answer = await admin.StreamEventsAsync(0, timeout.Token)
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(paneId, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var cli = int.Parse(Regex.Match(answer.Data.GetRawText(), @"\(cli (\d+)\)").Groups[1].Value);
-
-            // AC-1524: a host without a terminal runs the profile that defaults to TTY as the SDK session it can make.
-            var ttyStarted = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "EchoTty", prompt = "tty" });
-            var ttyPaneId = ttyStarted["paneId"]?.GetValue<string>() ?? "";
-            await admin.StreamEventsAsync(0, timeout.Token)
-                .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(ttyPaneId, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: tty", StringComparison.Ordinal), timeout.Token);
 
             // AC-1467: the finished hello session is said once, and a session stopped on a permission once too.
             await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "ask" });
