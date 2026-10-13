@@ -85,6 +85,32 @@
             </Button>
         </DataTemplate>
 
+        <!-- AC-1527: the assistant's own row — its role under the title, not its profile (annotation A5). -->
+        <DataTemplate x:Key="SimpleRailAssistantRow" x:DataType="vm:SessionPanelViewModel">
+            <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).SelectSimpleSessionCommand}"
+                    CommandParameter="{Binding}"
+                    Cursor="Hand">
+                <Border Classes="sessionItem" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                        Classes.active="{Binding IsSelectedInSimpleStand}"
+                        Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}">
+                    <StackPanel Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8"
+                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Your steady helper" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding SessionStatusLabel}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Button>
+        </DataTemplate>
+
         <!-- AC-1306: the sidebar tree nests these rows one level down, so the row lives here rather than
              inline in an ItemsControl the row can no longer name. Unchanged otherwise (§6): same context menu,
              same hover-✕, same inline close confirm. The commands reach the cockpit view model through
@@ -868,20 +894,87 @@
                 Background="{DynamicResource CockpitSecondaryBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
-                <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
-                <!-- The same footer as the panels sidebar, above the switch: Options, Profiles, MCP servers and
-                     About are not stand-specific, and a stand you cannot configure from is one you leave to
-                     configure. -->
-                <views:SidebarFooter DockPanel.Dock="Bottom"/>
+                <!-- AC-1527: no Plugin store, Menu or Simple|Panels switch here — everything for the advanced user
+                     sits behind More options, which is Panels itself. -->
+                <StackPanel DockPanel.Dock="Bottom" Spacing="2">
+                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4,0,6"/>
+                    <Button x:Name="SimpleRailSettings" Classes="Subtle" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Padding="10,7"
+                            Command="{Binding OptionsCommand}" ToolTip.Tip="Options — Ctrl+O">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <materialIcons:MaterialIcon Kind="CogOutline" Width="16" Height="16"/>
+                            <TextBlock Text="Settings" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SimpleRailHelp" Classes="Subtle" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Padding="10,7"
+                            ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <materialIcons:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
+                            <TextBlock Text="Help" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="Right">
+                                <views:HelpMenu/>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button x:Name="SimpleRailMoreOptions" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            Padding="10,8" Margin="0,4,0,0"
+                            Command="{Binding ShowPanelsViewCommand}"
+                            ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail">
+                        <DockPanel>
+                            <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="ViewGridOutline" Width="16" Height="16"
+                                                        Margin="0,0,10,0" VerticalAlignment="Center"
+                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="ArrowRight" Width="14" Height="14"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="More options" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Text="Go to Panels, for advanced use" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Button>
+                </StackPanel>
 
                 <!-- AC-1304: the first of the three doors onto the start screen. It does not open the New-session
                      dialog the panels stand's own "+ New session" opens — in this stand the question comes first
                      and the settings come from whichever project answers it. -->
                 <Button DockPanel.Dock="Top" x:Name="SimpleRailNewSession" Margin="0,0,0,8"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                        Classes="Accent Compact" Content="+ New session"
+                        Classes="Accent" Padding="12,8" Content="+ New conversation"
                         Command="{Binding ShowSimpleStartScreenCommand}"
                         ToolTip.Tip="Pick what to work on next"/>
+
+                <!-- AC-1527: the fixed entries, marked off `SimplePage` the way a picked row is off its selection. -->
+                <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,12">
+                    <Button x:Name="SimpleRailHome" Classes="Subtle" Padding="0" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" Command="{Binding ShowSimpleStartScreenCommand}">
+                        <Border Classes="sessionItem" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Classes.active="{Binding SimpleStandShowsTheStartScreen}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <materialIcons:MaterialIcon Kind="HomeOutline" Width="16" Height="16"/>
+                                <TextBlock Text="Home" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Button>
+                    <Button x:Name="SimpleRailProjects" Classes="Subtle" Padding="0" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" Command="{Binding ShowSimpleProjectsCommand}">
+                        <Border Classes="sessionItem" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Classes.active="{Binding SimpleStandShowsTheProjects}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Projects.Projects.Count}" FontSize="11"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="FolderMultipleOutline" Width="16" Height="16"/>
+                                    <TextBlock Text="Projects" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </Button>
+                </StackPanel>
 
                 <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
                      it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
@@ -898,7 +991,7 @@
                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <ContentControl x:Name="SimpleRailAssistantRoot"
                                             Content="{Binding AssistantRootSession}"
-                                            ContentTemplate="{StaticResource SimpleRailSessionRow}"/>
+                                            ContentTemplate="{StaticResource SimpleRailAssistantRow}"/>
                             <!-- The one level the tree has. A session that starts sessions of its own is not
                                  designed and not drawn; that is a new conversation, not a deeper rail. -->
                             <Border Margin="10,0,0,0" Padding="8,0,0,0" BorderThickness="1,0,0,0"
@@ -907,6 +1000,21 @@
                                               ItemsSource="{Binding AssistantChat.SessionsStartedByTheAssistant}"
                                               ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
                             </Border>
+                        </StackPanel>
+
+                        <!-- AC-1528 criterion 8: what the operator started, so it can be found again after Home. -->
+                        <StackPanel x:Name="SimpleRailOwnBranch" Spacing="2" Margin="0,6,0,0">
+                            <StackPanel.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="AssistantRootSession" Converter="{x:Static ObjectConverters.IsNotNull}"/>
+                                    <Binding Path="AssistantChat.HasSessionsStartedByYou"/>
+                                </MultiBinding>
+                            </StackPanel.IsVisible>
+                            <TextBlock Text="CONVERSATIONS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <ItemsControl x:Name="SimpleRailOwnSessions"
+                                          ItemsSource="{Binding AssistantChat.SessionsStartedByYou}"
+                                          ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
                         </StackPanel>
 
                         <!-- Criterion 4(b): no assistant session, so no root to hang anything under. The rail
@@ -1968,6 +2076,57 @@
                  screen in front of it any more. -->
             <ContentControl Grid.Row="1" x:Name="SimpleChatHost"
                             IsVisible="{Binding SimpleStandShowsTheAssistantInTheMainColumn}"/>
+
+            <!-- AC-1527: the Simple stand's Projects page — the overview's own cards (`ProjectCategoryGroups`), whose
+                 Start is the dialog-free quick start, so a click lands in the new conversation. -->
+            <ScrollViewer Grid.Row="1" x:Name="SimpleProjectsPage" IsVisible="{Binding SimpleStandShowsTheProjects}"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="52,40,52,32">
+                    <DockPanel Margin="8,0,8,12">
+                        <Button DockPanel.Dock="Right" VerticalAlignment="Top" Padding="12,6"
+                                Command="{Binding Projects.AddProjectCommand}"
+                                ToolTip.Tip="Add a project — from a folder on this computer, or one your team shares">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="Plus" Width="14" Height="14"/>
+                                <TextBlock Text="New project" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Your projects" FontSize="22" FontWeight="SemiBold"/>
+                            <TextBlock Text="A project keeps a folder, the instructions for the assistant and its conversations together."
+                                       FontSize="13" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <Panel IsVisible="{Binding !Projects.HasProjects}">
+                        <controls:StartingPointsView DataContext="{Binding Projects}"/>
+                    </Panel>
+                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold" Margin="8,8,0,0"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                               IsVisible="{Binding HasHeader}"/>
+                                    <ItemsControl ItemsSource="{Binding Cards}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                <controls:ProjectCardView
+                                                    JobCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectJobNowCommand}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
                  (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is

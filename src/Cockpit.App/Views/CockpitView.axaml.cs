@@ -43,6 +43,9 @@ public partial class CockpitView : UserControl
     // Reused for the dock rail's collapsed width too (AC-951): both are the same 40px tab strip.
     private const double CollapsedRailWidth = 40;
 
+    // AC-1527: the Simple rail's own width (the mockup's), so the panels sidebar's dragged width does not crop it.
+    private const double SimpleRailWidth = 240;
+
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
     private INotifyCollectionChanged? _observedSessions;
@@ -329,7 +332,7 @@ public partial class CockpitView : UserControl
         var collapsed = cockpit.SidebarCollapsed && !cockpit.SimpleView;
         var column = _SidebarColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
-        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
+        column.Width = new GridLength(cockpit.SimpleView ? SimpleRailWidth : collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
         PanelsRoot.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
     }
 

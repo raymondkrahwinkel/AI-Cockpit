@@ -30,20 +30,18 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class Ac1297SegmentSwitchTests
 {
-    // Criterion 1 and 2: on entry, the stand you are in is the one segment that is on — in either stand, in the
-    // copy of the switch that is actually on screen.
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void OnEntry_TheStandOnScreenIsTheOnlySegmentOn(bool simple) => HeadlessAvalonia.Run(() =>
+    // Criterion 1 and 2: on entry, the stand you are in is the one segment that is on. Only Panels carries the
+    // switch since AC-1527; Simple's way out is More options.
+    [Fact]
+    public void OnEntry_TheStandOnScreenIsTheOnlySegmentOn() => HeadlessAvalonia.Run(() =>
     {
-        var window = _Shown(_Cockpit(new LayoutSettings { OpenInSimpleView = simple }));
+        var window = _Shown(_Cockpit(new LayoutSettings { OpenInSimpleView = false }));
         try
         {
             var (simpleButton, panelsButton) = _VisibleViewModeSegments(window);
 
-            Assert.Equal(simple, _On(simpleButton));
-            Assert.Equal(!simple, _On(panelsButton));
+            Assert.False(_On(simpleButton));
+            Assert.True(_On(panelsButton));
         }
         finally
         {
@@ -68,15 +66,6 @@ public sealed class Ac1297SegmentSwitchTests
             var (simpleAfter, panelsAfter) = _VisibleViewModeSegments(window);
             Assert.True(_On(panelsAfter), "clicking the active segment must not blank it");
             Assert.False(_On(simpleAfter));
-
-            // And across the stands: the copy on screen changes with the stand, and its selection follows.
-            _Click(window, simpleAfter);
-            window.UpdateLayout();
-
-            Assert.True(cockpit.SimpleView);
-            var (simpleInSimple, panelsInSimple) = _VisibleViewModeSegments(window);
-            Assert.True(_On(simpleInSimple));
-            Assert.False(_On(panelsInSimple));
         }
         finally
         {

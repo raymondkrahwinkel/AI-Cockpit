@@ -205,6 +205,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // on showing every live session for the badges and the `⋯` list.
     public ObservableCollection<SessionPanelViewModel> SessionsStartedByTheAssistant { get; } = new();
 
+    // AC-1528 criterion 8: the rest — what the operator started — so the Simple rail can find those again too.
+    public ObservableCollection<SessionPanelViewModel> SessionsStartedByYou { get; } = new();
+
+    public bool HasSessionsStartedByYou => SessionsStartedByYou.Count > 0;
+
     // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
     // usage pill's `HasUsagePillRegion`: a session badge must not disappear just because the assistant itself has
     // not reported usage yet.
@@ -259,13 +264,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         LiveSessions.Clear();
         SessionsStartedByTheAssistant.Clear();
+        SessionsStartedByYou.Clear();
         foreach (var session in sessions)
         {
             LiveSessions.Add(session);
-            if (AssistantSessionOrigin.Resolve(session))
-            {
-                SessionsStartedByTheAssistant.Add(session);
-            }
+            (AssistantSessionOrigin.Resolve(session) ? SessionsStartedByTheAssistant : SessionsStartedByYou).Add(session);
         }
 
         DeskNameByPaneId = sessions.ToDictionary(
@@ -278,6 +281,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             StringComparer.Ordinal);
 
         OnPropertyChanged(nameof(HasLiveSessions));
+        OnPropertyChanged(nameof(HasSessionsStartedByYou));
     }
 
     // Never called from the constructor: a view model built to seed design-time/Screenshotter data must not reach out
@@ -359,9 +363,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         InputText = string.Empty;
 
         // AC-1316: typing is the answer to the question the start screen asks, the same as picking a card.
-        if (_cockpit is not null)
+        if (_cockpit is not null && IsSimpleViewHost)
         {
-            _cockpit.SimpleStartScreenRequested = false;
+            _cockpit.SimplePage = SimplePage.Conversation;
         }
 
         // Goes through the host, not Session.SendCommand: Session can still be null here (nothing typed yet since

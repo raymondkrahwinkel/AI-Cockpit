@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Views.HelpMenu"
+             x:DataType="vm:CockpitViewModel">
+
+    <!-- The Help flyout's entries, one control for both stands' Help (SidebarFooter, and the Simple rail since
+         AC-1527), so the two cannot drift apart. -->
+    <StackPanel Spacing="0" MinWidth="200">
+        <!-- AC-1033: first, because it is the one that answers without a browser and
+             covers the app and every installed plugin at once. -->
+        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Padding="8,8" CornerRadius="0" Content="Documentation"
+                Command="{Binding ShowDocumentationCommand}"
+                ToolTip.Tip="Everything Cockpit and its plugins ship documentation for — a window of its own, no connection needed"/>
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Padding="8,8" CornerRadius="0" Content="Guide"
+                Command="{Binding OpenGuideCommand}"
+                ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Padding="8,8" CornerRadius="0" Content="Glossary"
+                Command="{Binding ShowGlossaryCommand}"
+                ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+        <!-- AC-397: the only window on traffic the operator is not part of. Under Help
+             because it is something you go and look at, not something you act from. -->
+        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Padding="8,8" CornerRadius="0" Content="Agent line"
+                Command="{Binding ShowAgentLineCommand}"
+                ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Padding="8,8" CornerRadius="0" Content="Run setup again"
+                Command="{Binding RunSetupAgainCommand}"
+                ToolTip.Tip="Reopens the first-run wizard"/>
+    </StackPanel>
+</UserControl>

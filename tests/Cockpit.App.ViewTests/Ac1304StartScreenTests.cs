@@ -41,13 +41,10 @@ public sealed class Ac1304StartScreenTests
         var cockpit = _SimpleStand(withAssistant: true, assistant);
         var agent = cockpit.Sessions[0];
 
-        // Door 1: a first start with nothing picked and nothing said yet. AC-1316: the screen is the empty state
-        // of the assistant's own conversation, so it shows in that conversation rather than in front of it — and
-        // the first thing said is what takes it away.
+        // Door 1: a first start with nothing picked lands on Home (AC-1527). AC-1316: the screen is the empty state
+        // of the assistant's own conversation, so it shows in that conversation rather than in front of it.
         Assert.True(cockpit.SimpleStandShowsTheStartScreen);
         Assert.True(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-        assistant.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "hi"));
-        Assert.False(cockpit.SimpleStandShowsTheStartScreen);
 
         // Door 2: "+ New session" while a conversation stands. It has to take the column off whatever held it,
         // or the question would be asked over the answer.
