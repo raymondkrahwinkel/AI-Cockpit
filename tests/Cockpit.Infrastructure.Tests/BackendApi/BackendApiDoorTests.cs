@@ -32,9 +32,11 @@ using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
 using Cockpit.Plugins.Abstractions.Health;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
@@ -159,6 +161,10 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"--upload-pack=touch /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"--orphan=x","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        // AC-1514: the shared routes are admin's, and a URL someone else wrote into a definition is checked as a typed one.
+        { "GET", "/api/v1/projects/shared", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         // AC-1473 criteria 2 and 3: no profile answer holds a secret, a request with one, a program path or a loader
         // variable is refused without repeating it, and an operate key reads only its own profiles.
         { "GET", "/api/v1/profiles", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -808,6 +814,18 @@ public sealed class BackendApiDoorTests
             });
             services.AddSingleton(editor);
             services.AddSingleton(Clones);
+            // AC-1514: one shared definition whose repository URL carries the profile's secret.
+            var source = Substitute.For<ISharedProjectSource>();
+            source.Key.Returns("door");
+            source.SourceName.Returns("Door");
+            source.PrepareBindingAsync("door:project", Arg.Any<CancellationToken>()).Returns(SharedProjectBindingResult.Success(
+                new SharedProjectBinding("Door project") { GitUrl = $"https://laptop:{ProfileSecret}@example.invalid/o/r.git" }));
+            var sharedSources = new SharedProjectSourceRegistry();
+            sharedSources.Register(source);
+            services.AddSingleton<ISharedProjectSourceRegistry>(sharedSources);
+            var projectStore = Substitute.For<IProjectStore>();
+            projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
+            services.AddSingleton(projectStore);
             await Profiles.SaveAsync(
             [
                 .. await new NodeSessionMcpToolsTests.StubProfileStore().LoadAsync(),

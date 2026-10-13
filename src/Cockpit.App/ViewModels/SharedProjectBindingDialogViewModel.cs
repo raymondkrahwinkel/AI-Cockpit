@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -11,7 +12,8 @@ namespace Cockpit.App.ViewModels;
 // section 4) (AC-246, AC-612).
 public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 {
-    private readonly string _sharedProjectId;
+    // AC-1514: the definition and the project it composes into; this dialog only shows it and asks for what is yours.
+    private readonly SharedProjectComposition _composition;
 
     // Raised when the dialog is done: the new project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
@@ -25,7 +27,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer.
     public SharedProjectBindingDialogViewModel()
     {
-        _sharedProjectId = "depot:handbook";
+        _composition = new SharedProjectComposition("depot:handbook", "Work", new SharedProjectBinding("Handbook"));
         SourceName = "Work";
         ProjectName = "Handbook";
         GitUrl = "git@github.com:example/handbook.git";
@@ -48,37 +50,18 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         return viewModel;
     }
 
-    private SharedProjectBindingDialogViewModel(string sharedProjectId, string sourceName, SharedProjectBinding binding)
+    private SharedProjectBindingDialogViewModel(SharedProjectComposition composition)
     {
-        _sharedProjectId = sharedProjectId;
-        SourceName = sourceName;
-        ProjectName = binding.Name;
-        Description = binding.Description;
-        GitUrl = binding.GitUrl;
-        _behaviorPrompt = binding.BehaviorPrompt;
-        _isolateInWorktreeByDefault = binding.IsolateInWorktreeByDefault;
-        _enabledMcpServerNames = binding.EnabledMcpServerNames;
-        _logoBytes = binding.LogoBytes;
+        _composition = composition;
+        SourceName = composition.SourceName;
+        ProjectName = composition.Name;
+        Description = composition.Description;
+        GitUrl = composition.GitUrl;
+        _behaviorPrompt = composition.BehaviorPrompt;
 
-        foreach (var resource in binding.Resources)
+        foreach (var row in composition.MachineRows)
         {
-            var role = Enum.TryParse<ProjectResourceRole>(resource.Role, ignoreCase: true, out var parsed)
-                ? parsed
-                : ProjectResourceRole.Reference; // Unrecognised role: fall back to the least powerful one (looked up, never obeyed or written).
-
-            // ClassifyScope itself answers null for a blank reference (nothing to judge), which would otherwise fall
-            // into the "already portable" branch below and silently add a resource row that names nothing at all —
-            // exactly the row this ticket exists to ask about instead (AC-246).
-            var isPlaceholder = string.IsNullOrWhiteSpace(resource.Reference);
-            if (isPlaceholder || ProjectResourcePathPortability.ClassifyScope(resource.Reference) == ProjectResourceScope.Machine)
-            {
-                ResourceRows.Add(new SharedProjectBindingResourceRowViewModel(role, resource.Label, isPlaceholder ? null : resource.Reference));
-            }
-            else
-            {
-                // Already portable (Repo/Home/Instance) — AC-605's table says this travels on its own; nothing to ask.
-                _portableResources.Add(new ProjectResource(resource.Reference, role) { Label = resource.Label });
-            }
+            ResourceRows.Add(new SharedProjectBindingResourceRowViewModel(row.Role, row.Label, row.OriginalReference));
         }
     }
 
@@ -95,13 +78,13 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         // ConfigureAwait(true) throughout this method, deliberately: the loop below mutates Profiles, an
         // ObservableCollection Avalonia binds to, so every await in between must keep resuming on the calling
         // UI thread rather than drift onto whichever thread pool thread happens to finish first (AC-1117/AC-1119).
-        var result = await source.PrepareBindingAsync(sharedProjectId, cancellationToken).ConfigureAwait(true);
-        if (!result.Succeeded || result.Binding is not { } binding)
+        var (composition, error) = await SharedProjectComposition.ReadAsync(sharedProjectId, source, cancellationToken).ConfigureAwait(true);
+        if (composition is null)
         {
-            return (null, result.Error is { Length: > 0 } error ? error : "Could not read this project's definition.");
+            return (null, error);
         }
 
-        var viewModel = new SharedProjectBindingDialogViewModel(sharedProjectId, sourceName, binding);
+        var viewModel = new SharedProjectBindingDialogViewModel(composition);
 
         foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(true))
         {
@@ -124,17 +107,6 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // config. The persona that used to hide in here is its own field now, and never travels at all.
     [ObservableProperty]
     private string? _behaviorPrompt;
-
-    private readonly bool _isolateInWorktreeByDefault;
-
-    private readonly IReadOnlyList<string>? _enabledMcpServerNames;
-
-    // The shared logo's own bytes (AC-763), already downloaded by PrepareBindingAsync — null when the source has
-    // none, or the download itself failed. See ToProject's own remarks on why this becomes a temp file.
-    private readonly byte[]? _logoBytes;
-
-    // Resource rows already portable by shape — copied straight onto the new project, never shown or asked about here (AC-605's table: nothing to ask when it already travels).
-    private readonly List<ProjectResource> _portableResources = [];
 
     // Named after the button that opens it (AC-772): the card says "Add to my projects…", so a window titled
     // "Finish setting up" would read as having landed somewhere else.
@@ -177,42 +149,14 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasGitUrl));
     }
 
-    // Prepended rather than appended so it is always what `Project.MemoryRef` resolves to, even if a hand-edited
-    // definition somehow also carried its own Memory-role row (AC-246, AC-604, AC-245, AC-242).
-    public Project ToProject()
-    {
-        var overlay = _enabledMcpServerNames is { } enabled
-            ? new ProjectMcpOverlay { EnabledServerNames = enabled }
-            : ProjectMcpOverlay.None;
-
-        return new Project(Guid.NewGuid().ToString("n"), ProjectName)
-        {
-            Description = Description,
-            // Single-repository only (AC-938 non-goal): a shared project definition never carries more than the
-            // one machine-local folder this dialog offers — see this class's own remarks on why SourceDirectory
-            // travels with a bound project at all.
-            SourceDirectories = _NullIfBlank(SourceDirectory) is { } folder ? [new(folder)] : [],
-            GitUrl = GitUrl,
-            DefaultProfileLabel = SelectedProfileLabel,
-            BehaviorPrompt = string.IsNullOrWhiteSpace(BehaviorPrompt) ? null : BehaviorPrompt.Trim(),
-            // AC-1071: deliberately not taken from the shared definition — the assistant is this operator's own
-            // answer, and a bound project that set one would be exactly the imposition this ticket removes.
-            Assistant = null,
-            IsolateInWorktreeByDefault = _isolateInWorktreeByDefault,
-            LogoPath = TempLogoFile.WriteOrNull(_logoBytes),
-            McpOverlay = overlay,
-            Resources =
-            [
-                new ProjectResource(_sharedProjectId, ProjectResourceRole.Memory),
-                .. _portableResources,
-                .. ResourceRows
-                    .Where(row => !string.IsNullOrWhiteSpace(row.Reference))
-                    .Select(row => new ProjectResource(row.Reference.Trim(), row.Role) { Label = row.Label }),
-            ],
-            // AC-762: the ◆ badge's fallback for a cold start — see Project.SharedSourceName.
-            SharedSourceName = SourceName,
-        };
-    }
+    public Project ToProject() => _composition.ToProject(
+        SourceDirectory,
+        GitUrl,
+        SelectedProfileLabel,
+        BehaviorPrompt,
+        ResourceRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Reference))
+            .Select(row => new ProjectResource(row.Reference.Trim(), row.Role) { Label = row.Label }));
 
     [RelayCommand]
     private void Browse() => BrowseRequested?.Invoke();
@@ -225,8 +169,6 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
-
-    private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 // One machine-specific row `SharedProjectBindingDialogViewModel.ResourceRows` asks about (AC-246) — the

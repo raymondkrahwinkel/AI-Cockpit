@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -47,7 +48,44 @@ public sealed partial class ServerAdminViewModel
             return;
         }
 
-        var clone = await serverProjects.CloneAsync(CloneUrl.Trim(), CloneBranch.Trim(), CloneName.Trim());
+        await _ShowCloneAsync(await serverProjects.CloneAsync(CloneUrl.Trim(), CloneBranch.Trim(), CloneName.Trim()));
+    });
+
+    // AC-1514: "From Depot", what the server's own sources share and it has not added yet, added as the desktop's
+    // "Add to my projects…" does: the server clones the repository the definition names and binds the project.
+    public ObservableCollection<ServerSharedProjectRowViewModel> SharedProjects { get; } = [];
+
+    // A source that failed is one line with its reason; no source at all is the one line the page shows instead.
+    public ObservableCollection<string> SharedNotices { get; } = [];
+
+    public IReadOnlyList<string> SharedProfiles => _profiles;
+
+    [ObservableProperty]
+    private string? _sharedProfile;
+
+    public string AddSharedLabel => $"Add on {Server}";
+
+    [RelayCommand]
+    private Task AddSharedAsync(ServerSharedProjectRowViewModel row) => _RunAsync(async () =>
+    {
+        ClonedInto = "";
+        if (_serverProjects is not { } serverProjects)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SharedProfile))
+        {
+            Status = "Choose the profile its sessions run under first.";
+            return;
+        }
+
+        await _ShowCloneAsync(await serverProjects.BindSharedAsync(row.Id, SharedProfile));
+        await _LoadSharedAsync(serverProjects);
+    });
+
+    private async Task _ShowCloneAsync(ServerProjectClone clone)
+    {
         _ShowProjects();
         if (clone.Error is { } error)
         {
@@ -58,7 +96,33 @@ public sealed partial class ServerAdminViewModel
         CloneDetail = clone.SizeBytes is { } size ? $" · {SizeText(size)} · {DurationText(clone.Duration)}" : $" · {DurationText(clone.Duration)}";
         ClonedInto = clone.Path ?? "";
         await _LoadAuditAsync(null);
-    });
+    }
+
+    private async Task _LoadSharedAsync(IServerProjects serverProjects)
+    {
+        var sources = await serverProjects.ListSharedAsync();
+        SharedProjects.Clear();
+        SharedNotices.Clear();
+        if (sources.Count == 0)
+        {
+            SharedNotices.Add("No Depot connection on this server.");
+        }
+
+        foreach (var source in sources)
+        {
+            if (!source.Succeeded)
+            {
+                SharedNotices.Add($"{source.SourceName}: {source.Error}");
+            }
+
+            foreach (var project in source.Projects)
+            {
+                SharedProjects.Add(new ServerSharedProjectRowViewModel(project.Id, project.Name, project.Description, source.SourceName));
+            }
+        }
+
+        SharedProfile ??= _profiles.FirstOrDefault();
+    }
 
     [RelayCommand]
     private Task RemoveProjectAsync(ServerProjectRowViewModel row) => _RunAsync(async () =>
@@ -90,6 +154,9 @@ public sealed partial class ServerAdminViewModel
         }
     }
 }
+
+// AC-1514: one project a source on the server shares, not added there yet.
+public sealed record ServerSharedProjectRowViewModel(string Id, string Name, string? Description, string SourceName);
 
 // AC-1472: one project on the server, with the folder the server reported for it.
 public sealed class ServerProjectRowViewModel(Project project)

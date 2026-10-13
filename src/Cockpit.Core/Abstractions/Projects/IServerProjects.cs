@@ -1,3 +1,5 @@
+using Cockpit.Core.Abstractions.Assistant;
+
 namespace Cockpit.Core.Abstractions.Projects;
 
 // AC-1472 (F5.6b2): the projects of a server, read and written over its backend API. A project there starts as a clone
@@ -9,6 +11,17 @@ public interface IServerProjects : IProjectCatalog, IProjectEditor
     /// and returns once the server reported the clone done or failed. A URL that carries credentials is refused.
     /// </summary>
     Task<ServerProjectClone> CloneAsync(string repoUrl, string branch, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1514: what the server's own sources share and it has not added yet, one row per source.
+    /// </summary>
+    Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// AC-1514: has the server clone the repository <paramref name="sharedProjectId"/>'s definition names and add it bound
+    /// to that definition under <paramref name="profile"/>, and returns once the server reported the clone done or failed.
+    /// </summary>
+    Task<ServerProjectClone> BindSharedAsync(string sharedProjectId, string profile, CancellationToken cancellationToken = default);
 }
 
 // AC-1472: what the server reported for one clone. `Error` is set when it failed, and then nothing was added.

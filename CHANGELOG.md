@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **From Depot** on a server's Admin → Projects. It lists the Depot projects the server's own connection
+  shares; **Add on <server>** clones the repository the project names and adds it as on the desktop, with its memory,
+  MCP choice and behaviour. A project whose definition names no repository, or a URL carrying credentials, is refused.
 - added: a **What's new** button on the update banner. It lists the changelog entries between the build you are on
   and the one on offer, so you can see what an update brings before you install it. When GitHub cannot be reached
   it says so, and updating still works.
