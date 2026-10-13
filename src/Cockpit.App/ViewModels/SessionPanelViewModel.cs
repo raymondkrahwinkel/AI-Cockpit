@@ -376,9 +376,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     public virtual double? DetailsCostUsd => HasUsage ? _usage.TotalCostUsd : null;
 
-    // AC-1533: Start over is turn-time, so only a route whose turn the host owns has one (AC-294).
-    public virtual Func<Task>? StartOver => null;
-
     // AC-1530/AC-1533: how a step's folder, a made file or Open folder reaches the system; a test hands in its own.
     internal Func<string, bool> OpenPath { get; set; } = ExternalLink.TryOpenWithSystemApp;
 

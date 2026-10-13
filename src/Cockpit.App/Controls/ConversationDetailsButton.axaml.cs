@@ -29,7 +29,7 @@ public partial class ConversationDetailsButton : UserControl
         this.FindControl<StackPanel>("DetailsPanel")!.DataContext = DataContext switch
         {
             AssistantChatViewModel assistant => assistant.Details(),
-            SessionPanelViewModel session => ConversationDetails.For(session, ProjectName),
+            SessionPanelViewModel session => ConversationDetails.For(session, ProjectName, TopLevel.GetTopLevel(this)?.DataContext as CockpitViewModel),
             _ => null,
         };
 

@@ -265,9 +265,9 @@ public sealed class SessionJourney
         Assert.Equal([Path.Combine(folder, "Facturen", "2026-Q3"), made, Path.Combine(made, EchoDriver.Written[1])], opened);
     }
 
-    // AC-1533 criteria 1, 3, 4 and 5: ⋯ in the header says where the conversation works (its worktree, not the
-    // project's folder), what it may do, its cost and model; Open folder opens the worktree, Rename lands in the header
-    // and the rail, and Start over draws the divider and starts the cost at $0 in the same pane, asking nothing first.
+    // AC-1533 criteria 1, 3, 4 and 5: ⋯ says where it works (the worktree, not the project's folder), what it may do,
+    // its cost and model; Open folder opens the worktree, Rename lands in header and rail, and Start over asks Panels'
+    // confirmation first, then draws the divider and starts the cost at $0 in the same pane.
     [Fact]
     public async Task InTheSimpleStand_DetailsTellWhatAConversationIs_AndOpenRenameAndStartItOver()
     {
@@ -313,7 +313,15 @@ public sealed class SessionJourney
                 row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Quarterly report"));
 
             var panes = cockpit.Cockpit.Sessions.ToList();
-            _Press(header, "DetailsStartOver");
+            var asked = new TaskCompletionSource<ConfirmationDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((dialog, _) => asked.TrySetResult(dialog)))
+            {
+                _Press(header, "DetailsStartOver");
+                var confirmation = await asked.Task.WaitAsync(Until.Ceiling);
+                Assert.DoesNotContain(session.Transcript, row => row.IsDivider);
+                confirmation.Close(true);
+            }
+
             await Until.Holds(session, () => session.Transcript.Any(row => row.IsDivider) && session.IsSessionReady);
             window.UpdateLayout();
             Assert.Equal("The earlier conversation was cleared — this conversation starts here", session.Transcript.Last(row => row.IsDivider).Text);

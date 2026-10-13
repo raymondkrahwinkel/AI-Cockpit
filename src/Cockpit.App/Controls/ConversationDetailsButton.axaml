@@ -54,7 +54,7 @@
                                 <TextBlock Text="Rename"/>
                             </StackPanel>
                         </Button>
-                        <!-- No confirmation: trust comes from calm, not from extra clicks (AC-1526). -->
+                        <!-- The same confirmation as Panels' Clear context: it is destructive, and the confirmation was already there. -->
                         <Button x:Name="DetailsStartOver" Classes="Subtle" Command="{Binding StartOverCommand}" Click="_OnAction"
                                 IsEnabled="{Binding CanStartOver}"
                                 ToolTip.Tip="Forgets this conversation and starts a new one here; what was said stays readable above">

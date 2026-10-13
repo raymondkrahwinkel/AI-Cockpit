@@ -190,8 +190,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The SDK route always meters, so a conversation that has not cost anything yet reads $0.00 rather than unmeasured.
     public override double? DetailsCostUsd => _usage.TotalCostUsd;
 
-    public override Func<Task>? StartOver => LaunchResult is { } result ? () => ClearContextAsync(result.Profile) : null;
-
     public override bool ShowsSimpleStop => IsBusy;
 
     public override System.Windows.Input.ICommand SimpleStopCommand => StopCommand;
@@ -1051,13 +1049,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // AC-1533: a replay runs no turn end and the log holds no green block, so each turn's block is built again here.
+    // AC-1533: a replay runs no turn end and the log holds no green block, so each turn's block is built again here —
+    // not for a turn whose failure row says it failed, as live; a turn broken off by Stop leaves no row to tell by.
     private IEnumerable<TranscriptEntryViewModel> _WithTurnResults(IEnumerable<TranscriptEntryViewModel> rows)
     {
         var turn = new List<TranscriptEntryViewModel>();
         foreach (var row in rows.Append(null))
         {
-            if ((row is null || row.IsUserRow) && TurnResult.From(turn, WorkingDirectory) is { } result)
+            if ((row is null || row.IsUserRow) && !turn.Exists(entry => entry.ShowsFailureCard) && TurnResult.From(turn, WorkingDirectory) is { } result)
             {
                 yield return new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result };
             }

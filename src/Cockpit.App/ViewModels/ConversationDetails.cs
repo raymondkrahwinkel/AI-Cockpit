@@ -7,8 +7,10 @@ namespace Cockpit.App.ViewModels;
 // runs on, in plain words, plus Open folder, Rename and Start over. Read once as the popup opens.
 public sealed partial class ConversationDetails(SessionPanelViewModel session, string? project, bool consentBypass, bool canRename, Func<Task>? startOver)
 {
-    public static ConversationDetails For(SessionPanelViewModel session, string? project) =>
-        new(session, project, consentBypass: false, canRename: true, session.StartOver);
+    // Start over is Panels' own confirmed Clear context, and like it only on the SDK route (turn-time, AC-294).
+    public static ConversationDetails For(SessionPanelViewModel session, string? project, CockpitViewModel? cockpit) =>
+        new(session, project, consentBypass: false, canRename: true,
+            session.SupportsClearContext && cockpit is not null ? () => cockpit.ClearSessionContextCommand.ExecuteAsync(session) : null);
 
     public string? Project => project;
 
