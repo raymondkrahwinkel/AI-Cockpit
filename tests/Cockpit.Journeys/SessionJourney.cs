@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
-using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Journeys;
@@ -12,6 +12,37 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
+    [Fact]
+    public async Task ClosedEchoConversation_SurvivesRestart_ReopensWithTranscript_AndAnOpenOneIsSelected()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-conversation-{Guid.NewGuid():N}")).FullName;
+        try
+        {
+            await using (var before = JourneyHost.Desktop(stateRoot: root))
+            {
+                var project = await before.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(root, "project")).FullName);
+                await before.StartDesktopAsync();
+                Assert.True(before.Cockpit.HasConversationIndex);
+                var session = await before.StartSessionThroughTheDialogAsync(project);
+                Assert.False(session.IsRemote);
+                await HeadlessAvalonia.RunAsync(async () => { session.InputText = "history"; await session.SendCommand.ExecuteAsync(null); await Until.CollectionHolds(session.Transcript, () => session.Transcript.Any(row => row.Text == "echo: history")); });
+                await HeadlessAvalonia.RunAsync(async () => await before.Cockpit.CloseSessionCommand.ExecuteAsync(session));
+            }
+
+            await using var after = JourneyHost.Desktop(stateRoot: root);
+            await after.StartDesktopAsync();
+            var index = after.Services.GetRequiredService<IConversationIndex>();
+            var record = Assert.Single(await index.LoadAsync());
+            Assert.NotNull(record.ClosedAt);
+            await HeadlessAvalonia.RunAsync(() => after.Cockpit.ReopenConversationAsync(record));
+            var reopened = Assert.IsType<SessionViewModel>(Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList())));
+            await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(reopened.Transcript, () => reopened.Transcript.Any(row => row.Text == "echo: history")));
+            await HeadlessAvalonia.RunAsync(() => after.Cockpit.ReopenConversationAsync(record));
+            Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList()));
+            Assert.Same(reopened, HeadlessAvalonia.Run(() => after.Cockpit.SelectedSession));
+        }
+        finally { JourneyHost.RemoveStateRoot(root); }
+    }
     // J2: the dialog opens the pane, the composer sends, the answer is a row in that pane, busy then done (AC-1437).
     // Stop breaks a turn off through the session control, not drawn as a failure (AC-1031, AC-1449). A failed turn
     // offers Retry on its row (AC-728), which the pane can only do once that row came in from the event log (AC-1438).

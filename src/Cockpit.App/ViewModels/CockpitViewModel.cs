@@ -131,6 +131,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly IConversationIndex? _conversationIndex;
+    internal bool HasConversationIndex => _conversationIndex is not null;
     private readonly ISessionProfileStore? _conversationProfiles;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
@@ -8795,7 +8796,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return new(false, plan.Explanation);
         }
 
-        await launcher.StartSessionAsync(_RequestOf(launch, workspace));
+        await launcher.StartSessionAsync(_RequestOf(launch, workspace) with { PaneId = record.PaneId });
         return new(true);
     }
 
