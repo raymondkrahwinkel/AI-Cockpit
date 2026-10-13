@@ -24,7 +24,9 @@
         <!-- paneChromeBlank, not paneChrome (AC-670): this bar shares a DockPanel with the terminal, so collapsing
              it in a rail miniature hands the terminal two more rows and the pty hears about it (measured: 39 -> 41
              at 1000x640). Blanking keeps the box where it is; the tile's identity strip covers the band it leaves. -->
+        <!-- AC-1529: the Simple stand's header over this pane takes its place there; the terminal stays. -->
         <Border x:Name="HeaderPanel" Classes="paneChromeBlank" DockPanel.Dock="Top" Background="{DynamicResource CockpitPanelBgBrush}"
+                IsVisible="{Binding !IsShownInSimpleStand}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
             <DockPanel>

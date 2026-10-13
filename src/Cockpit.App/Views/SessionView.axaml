@@ -19,12 +19,22 @@
     <!-- BackgroundTaskRowTemplate used to live here; it is now app-wide (Views/Shared/BackgroundTaskTemplates.axaml)
          so the assistant's chat window shows the same rows from the same template (AC-630). -->
 
+    <!-- AC-1529: in the Simple stand the cockpit draws the header over this pane, and the rest reads as one column. -->
+    <UserControl.Styles>
+        <Style Selector="Border.hiddenInSimple">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="DockPanel.simpleColumn">
+            <Setter Property="MaxWidth" Value="720"/>
+        </Style>
+    </UserControl.Styles>
+
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
     <!-- Tight against the pane's own border on purpose: the pane already draws a frame and sits in a 4px grid
          gutter, so a wide inset here was a second margin inside the first — space the transcript and the composer
          can use better than the background can. -->
-    <DockPanel Margin="6,6,6,8">
+    <DockPanel Margin="6,6,6,8" Classes.simpleColumn="{Binding IsShownInSimpleStand}">
 
         <!-- AC-1456: a remote pane's blue band, so it never reads as one of this laptop's. -->
         <Border DockPanel.Dock="Top" Height="3" Margin="0,0,0,4" CornerRadius="2"
@@ -38,6 +48,7 @@
              hosts no TerminalControl, so collapsing the bar moves nothing a pty listens to — unlike TtyView's
              header, which is why that one is blanked instead of collapsed. -->
         <Border Classes="paneChrome" DockPanel.Dock="Top" Background="{DynamicResource CockpitPanelBgBrush}"
+                Classes.hiddenInSimple="{Binding IsShownInSimpleStand}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
             <!-- V1 header (AC-37): a single identity/activity/usage strip that flexes, with the live controls

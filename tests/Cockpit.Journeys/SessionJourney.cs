@@ -1,5 +1,9 @@
+using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -151,6 +155,56 @@ public sealed class SessionJourney
     }
 
     // A repository with one commit, the least a worktree can branch from.
+    // AC-1529 criteria 1 and 2: picked in the Simple rail, the conversation reads "project › title" with its stand in
+    // plain words over a column of at most 720px; the header's Stop breaks the turn off and leaves Idle behind.
+    [Fact]
+    public async Task InTheSimpleStand_AConversationShowsWhereItIsAndHowItStands_AndItsStopEndsTheTurn()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            window.Width = 1280;
+            window.Height = 800;
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            window.UpdateLayout();
+
+            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
+            string?[] Shown(Control control) => control.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToArray();
+            Assert.Same(session, header.DataContext);
+            Assert.Contains(project.Name, Shown(header));
+            Assert.Contains(session.Title, Shown(header));
+            session.InputText = "hello";
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            Assert.Contains("Done", Shown(header));
+            window.UpdateLayout();
+            var column = window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible)
+                .GetVisualDescendants().OfType<Control>().Where(c => c.Name is "TranscriptScroll" or "ComposerBorder").ToList();
+            Assert.Equal(2, column.Count);
+            Assert.All(column, part => Assert.InRange(part.Bounds.Width, 1, 720));
+
+            var stop = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SimpleStopButton");
+            session.InputText = EchoDriver.WaitingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Busy);
+            window.UpdateLayout();
+            Assert.Contains("Busy", Shown(header));
+            Assert.True(stop.IsEffectivelyVisible);
+
+            stop.Command!.Execute(stop.CommandParameter);
+            await Until.Holds(session, () => !session.IsBusy && session.SessionStatus == SessionStatus.Idle);
+            window.UpdateLayout();
+            Assert.Contains("Idle", Shown(header));
+            Assert.False(stop.IsEffectivelyVisible);
+        });
+    }
+
     private static async Task<string> _RepositoryAsync(string folder)
     {
         Directory.CreateDirectory(folder);

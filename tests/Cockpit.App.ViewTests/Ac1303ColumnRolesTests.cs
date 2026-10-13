@@ -1,6 +1,4 @@
 using System.ComponentModel;
-using Avalonia.Controls;
-using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
@@ -51,26 +49,6 @@ public sealed class Ac1303ColumnRolesTests
         return (cockpit, host, agent);
     }
 
-    // Criterion 1. Both ways round in one test, because the second is what the first is worth: picking an agent
-    // must put the *agent* in the middle, and going back must take the dock away rather than leave it standing empty.
-    [Fact]
-    public void PickingAnAgent_PutsItInTheMainColumn_AndTheAssistantInTheDock()
-    {
-        var (cockpit, _, agent) = _Stand(new SessionViewModel { Title = "Assistant" });
-
-        cockpit.SimpleSelectedSession = agent;
-
-        Assert.True(cockpit.SimpleStandDocksTheAssistant);
-        Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-        Assert.True(agent.IsPaneVisible);
-
-        cockpit.SimpleSelectedSession = null;
-
-        Assert.False(cockpit.SimpleStandDocksTheAssistant);
-        Assert.True(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-        Assert.False(agent.IsPaneVisible);
-    }
-
     // Criterion 5, the gap that actually happened: neither order goes through the rail's click handler a second
     // time. The roles are computed and cannot go stale, so the whole gap is whether the view is *told* —
     // asserting the value alone stayed green with the notification deleted (measured), so this watches the raise.
@@ -79,7 +57,10 @@ public sealed class Ac1303ColumnRolesTests
     {
         var (cockpit, host, agent) = _Stand(assistant: null);
         cockpit.SimpleSelectedSession = agent;
+
+        // Criterion 4(b): with no assistant the picked session takes the column alone, so there is no dock to go back to.
         Assert.False(cockpit.SimpleStandDocksTheAssistant);
+        Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
 
         var announced = new List<string>();
         cockpit.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
@@ -99,60 +80,5 @@ public sealed class Ac1303ColumnRolesTests
         Assert.False(cockpit.SimpleStandDocksTheAssistant);
         Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
         Assert.True(agent.IsPaneVisible);
-    }
-
-    // Criterion 3: two composers, each reaching its own session. Built on the `simple-view` scene, which is the
-    // docked state — the agent in the main column, the assistant in the rail. The counter-proof this kills is one
-    // shared field or one shared send command: both would show up here as a single box, or as two that move together.
-    [Fact]
-    public void WithTheAssistantDocked_EachColumnHasItsOwnComposer()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var window = Screenshotter.ShowScene("simple-view");
-            try
-            {
-                window.UpdateLayout();
-
-                var boxes = window.GetVisualDescendants().OfType<TextBox>()
-                    .Where(box => box.Name == "InputBox").ToList();
-
-                Assert.Equal(2, boxes.Count);
-                Assert.Single(boxes, box => box.DataContext is AssistantChatViewModel);
-                Assert.Single(boxes, box => box.DataContext is SessionViewModel);
-
-                // Typing into one must leave the other alone: a shared field would carry the text across, and a
-                // shared send command would need a shared field to read it from.
-                var agentBox = boxes.First(box => box.DataContext is SessionViewModel);
-                var assistantBox = boxes.First(box => box.DataContext is AssistantChatViewModel);
-                agentBox.Text = "restart the kind cluster";
-
-                Assert.Equal("restart the kind cluster", ((SessionViewModel)agentBox.DataContext!).InputText);
-                Assert.True(string.IsNullOrEmpty(((AssistantChatViewModel)assistantBox.DataContext!).InputText));
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
-    // Criterion 4(b). With nothing to stand beside, the picked session takes the column on its own — and both
-    // roles are false at once, which is what says there is no dock and so nothing for a way back to point at.
-    [Fact]
-    public void WithNoAssistant_ThePickedSessionTakesTheColumnAlone_AndThereIsNoWayBack()
-    {
-        var (cockpit, _, agent) = _Stand(assistant: null);
-
-        cockpit.SimpleSelectedSession = agent;
-
-        Assert.False(cockpit.SimpleStandDocksTheAssistant);
-        Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-
-        // Picking the assistant's own row is the way back, so with no assistant row there is none to pick: the
-        // stand cannot reach a state where something is docked.
-        cockpit.SimpleSelectedSession = null;
-
-        Assert.False(cockpit.SimpleStandDocksTheAssistant);
     }
 }

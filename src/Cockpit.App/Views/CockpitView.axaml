@@ -1949,6 +1949,15 @@
                                         <TextBlock Text="⣿⣿⣿" FontSize="9" VerticalAlignment="Center" HorizontalAlignment="Center"
                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </Border>
+                                    <!-- AC-1529: the Simple stand's header, here so both routes get it (AC-294). -->
+                                    <controls:SimpleConversationHeader DockPanel.Dock="Top" IsVisible="{Binding IsShownInSimpleStand}">
+                                        <controls:SimpleConversationHeader.ProjectName>
+                                            <MultiBinding Converter="{x:Static conv:ProjectNameConverter.Instance}">
+                                                <Binding Path="ProjectId"/>
+                                                <Binding Path="$parent[ItemsControl].((vm:CockpitViewModel)DataContext).Projects.Projects"/>
+                                            </MultiBinding>
+                                        </controls:SimpleConversationHeader.ProjectName>
+                                    </controls:SimpleConversationHeader>
                                     <!-- ContentControl + ViewLocator picks SessionView (SDK) or
                                          TtyView (TTY) from the panel view model's type. -->
                                     <ContentControl Content="{Binding}"/>

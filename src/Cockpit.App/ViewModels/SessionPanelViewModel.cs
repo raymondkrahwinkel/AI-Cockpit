@@ -337,6 +337,35 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isSelectedInSimpleStand;
 
+    // AC-1529: on screen in the Simple stand — its own header, the reading column and `ReadingLevel.Simple` follow
+    // from this, while the session's own reading level stays what Panels shows. Set by `CockpitViewModel`.
+    [ObservableProperty]
+    private bool _isShownInSimpleStand;
+
+    partial void OnIsShownInSimpleStandChanged(bool value) => OnShownInSimpleStandChanged();
+
+    protected virtual void OnShownInSimpleStandChanged()
+    {
+    }
+
+    // AC-1529: the Simple header's stand, in plain words rather than `SessionStatusLabel`'s.
+    public string SimpleStatusLabel => SessionStatus switch
+    {
+        SessionStatus.Busy or SessionStatus.WorkingBackground =>
+            string.IsNullOrEmpty(SimpleActivityLabel) ? "Busy" : $"Busy · {SimpleActivityLabel}",
+        SessionStatus.NeedsAttention => "Waiting for you",
+        SessionStatus.Done => "Done",
+        SessionStatus.Failed => "Stopped with an error",
+        _ => "Idle",
+    };
+
+    protected virtual string SimpleActivityLabel => string.Empty;
+
+    // AC-1529: Stop in the Simple header. Only an SDK turn is the host's to break off (AC-294), so the base has none.
+    public virtual bool ShowsSimpleStop => false;
+
+    public virtual System.Windows.Input.ICommand? SimpleStopCommand => null;
+
     // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
     // selected in single-pane mode (#24 / Zoom).
     [ObservableProperty]
@@ -1801,6 +1830,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         LastActivityUtc = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(SessionStatusLabel));
+        OnPropertyChanged(nameof(SimpleStatusLabel));
         OnPropertyChanged(nameof(SessionStatusBrushKey));
         OnPropertyChanged(nameof(RequiresCloseConfirmation));
         OnPropertyChanged(nameof(RequestsAttention));

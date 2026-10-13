@@ -2749,6 +2749,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.IsPaneVisible = here && (simple
                 ? ReferenceEquals(session, SimpleSelectedSession)
                 : !single || session.IsSelected);
+            session.IsShownInSimpleStand = simple && session.IsPaneVisible;
+        }
+
+        if (_assistantSession is { } assistant)
+        {
+            assistant.IsShownInSimpleStand = simple;
         }
 
         // AC-1456: the Simple stand has no server groups to open one from, so a remote pane shows in the panels stand only.
@@ -8860,6 +8866,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // operator, and its host is the only thing that ever ends it.
             _lastStatus[session] = session.SessionStatus;
             session.PropertyChanged += OnSessionPropertyChanged;
+            session.IsShownInSimpleStand = SimpleView;
             _assistantSession = session;
         }
 

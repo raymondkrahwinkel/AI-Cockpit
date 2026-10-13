@@ -85,6 +85,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // state. The cockpit answers when (AC-1304's three doors); this only says which host draws it.
     public bool ShowsStartOffer => IsSimpleViewHost && (_cockpit?.SimpleStandShowsTheStartScreen ?? false);
 
+    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
+    public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
+
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
     // model, and the transcript comes from the session: the scroll offset is the only thing a fresh view per host would
     // otherwise lose (AC-953).
@@ -236,6 +239,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (e.PropertyName is null or nameof(CockpitViewModel.SimpleStandShowsTheStartScreen))
         {
             OnPropertyChanged(nameof(ShowsStartOffer));
+        }
+
+        if (e.PropertyName is null or nameof(CockpitViewModel.SimpleView))
+        {
+            OnPropertyChanged(nameof(IsInSimpleStand));
         }
 
         if (e.PropertyName is null or nameof(CockpitViewModel.ActiveController))
