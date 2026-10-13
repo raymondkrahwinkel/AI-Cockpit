@@ -306,15 +306,21 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         PluginManagerViewModel? manager = null;
         manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))], Server, _plugins is IServerRestart ? new ServerRestartService(async () =>
         {
+            // Only reachable from the dialog this manager opened, so it is set by then.
+            if (manager is null)
+            {
+                return;
+            }
+
             try
             {
                 var restarted = await _RestartServerAsync();
-                manager!.NeedsRestart = !restarted;
+                manager.NeedsRestart = !restarted;
                 manager.StatusMessage = restarted ? Status : manager.StatusMessage;
             }
             catch (Exception exception)
             {
-                manager!.StatusMessage = exception.Message;
+                manager.StatusMessage = exception.Message;
             }
         }) : null);
         await manager.LoadAsync();

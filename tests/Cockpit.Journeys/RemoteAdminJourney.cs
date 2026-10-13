@@ -141,7 +141,15 @@ public sealed class RemoteAdminJourney
             var consented = new TaskCompletionSource<PluginConsentInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchConsent = Window.WindowOpenedEvent.AddClassHandler<PluginConsentDialog>((consentDialog, _) =>
             {
-                consented.TrySetResult((PluginConsentInfo)consentDialog.DataContext!);
+                if (consentDialog.DataContext is PluginConsentInfo info)
+                {
+                    consented.TrySetResult(info);
+                }
+                else
+                {
+                    consented.TrySetException(new InvalidOperationException("The consent dialog opened without its plugin."));
+                }
+
                 Dispatcher.UIThread.Post(() => consentDialog.Close(true));
             });
             var installStatus = "";
