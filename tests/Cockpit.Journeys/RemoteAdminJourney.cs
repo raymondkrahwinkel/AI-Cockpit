@@ -340,11 +340,12 @@ public sealed class RemoteAdminJourney
                 sharedAfter = [.. admin.SharedProjects.Select(project => project.Id)];
 
                 var group = view.ServerGroups[0];
+                var running = group.Sessions.Select(session => session.Handle.PaneId).ToHashSet();
                 await view.OpenServerStartCommand.ExecuteAsync(group);
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
                 group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == SharedName);
                 await view.StartOnServerCommand.ExecuteAsync(group);
-                sharedPane = group.Sessions.Single(session => session.Handle.PaneId != paneId).Handle.PaneId;
+                sharedPane = group.Sessions.Single(session => !running.Contains(session.Handle.PaneId)).Handle.PaneId;
             });
             var secondAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
                 setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = SharedProject, profile = "Echo" }));
