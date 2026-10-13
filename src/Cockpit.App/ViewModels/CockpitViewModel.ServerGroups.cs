@@ -26,6 +26,7 @@ public partial class CockpitViewModel
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
     private Func<ServerAdminViewModel, Task>? _showServerAdmin;
+    private IPluginProviderConfigViews? _providerConfigViews;
 
     public ObservableCollection<ServerGroupViewModel> ServerGroups { get; } = [];
 
@@ -406,7 +407,7 @@ public partial class CockpitViewModel
         var plugins = group.Server.Plugins;
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count)
         {
-            Profiles = new ServerProfilesViewModel(group.Server.Profiles),
+            Profiles = new ServerProfilesViewModel(group.Server.Profiles, _providerConfigViews),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && _ServerSettingsFor(row) is not null,
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, row),

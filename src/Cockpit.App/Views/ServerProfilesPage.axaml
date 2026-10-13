@@ -73,6 +73,7 @@
                     <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                Text="Configured on the server: sign it in there, or mount its credentials as a container secret."/>
                 </StackPanel>
+                <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding HasPluginConfigView}"/>
                 <views:ServerProfileEditor DataContext="{Binding Editor}"/>
 
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">

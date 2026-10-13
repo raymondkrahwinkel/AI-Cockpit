@@ -176,7 +176,11 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/Keyed", """{"model":"other","apiKey":"{secret}"}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "Provider credentials never cross this connection.", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}","isSecret":true}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude","settings":{"configJson":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude","settings":{"configJson":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        // AC-1534: a plugin profile's key goes to the server and never back; sent back masked it stays, but not to another host.
+        { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://inference.example/v1\",\"model\":\"other\"}"}""", "admin", HttpStatusCode.OK, "", "\"hasApiKey\":true", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://elsewhere.example/v1\"}"}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"executablePath\":\"/tmp/{secret}\"}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"executablePath":"/tmp/{secret}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"BASH_ENV","value":"/tmp/{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
@@ -222,6 +226,7 @@ public sealed class BackendApiDoorTests
         var answer = await door.SendAsync(new HttpMethod(method), target, bearers[credential], body?.Replace("{secret}", operate.Secret, StringComparison.Ordinal));
         var keys = await verifier.ListAsync();
         var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
+        var plugged = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == "Plugged");
         var audit = await File.ReadAllTextAsync(door.AuditPath);
 
         Assert.Equal(expected, answer.Status);
@@ -244,6 +249,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => entry.Key.Label == "laptop").Key.EffectiveScope());
         Assert.Equal(("qwen", _Door.ProfileSecret), (ProfileModel.Of(keyed), (keyed.ProviderConfig as LmStudioConfig)?.ApiKey));
         Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
+        Assert.Contains(_Door.ProfileSecret, (plugged.ProviderConfig as PluginProviderConfig)?.ConfigJson, StringComparison.Ordinal);
     }
 
     // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
@@ -838,6 +844,8 @@ public sealed class BackendApiDoorTests
                 },
                 // AC-1475 (Codex): what a copy into the assistant's slot refuses, as a PATCH does.
                 new SessionProfile("Pathed", new ClaudeConfig("/fake/.claude", "/opt/claude")),
+                // AC-1534: a plugin profile with its key in its own config.
+                new SessionProfile("Plugged", new PluginProviderConfig("door-openai", $$"""{"apiKey":"{{ProfileSecret}}","baseUrl":"https://inference.example/v1","model":"m"}""")),
                 new SessionProfile("Preloaded", new LmStudioConfig("http://127.0.0.1:1234", "qwen", "")) { EnvironmentVariables = [new("LD_PRELOAD", "/tmp/preload.so")] },
             ]);
             services.AddSingleton<ISessionProfileStore>(Profiles);

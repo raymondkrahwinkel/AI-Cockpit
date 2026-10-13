@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -27,7 +28,19 @@ internal static class ProfileEndpoints
 
     private const string EnvironmentRefusal = "That environment variable changes how the server loads programs, so a profile cannot set it over this connection.";
 
-    private static readonly string[] CredentialFields = ["apiKey", "configJson"];
+    // AC-1534: what a set secret in a plugin profile's config reads as over this connection; sent back, it keeps the key.
+    internal const string KeptSecret = "(set on the server)";
+
+    private const string KeyAgainRefusal = "Enter the key again: this change sends it to a different address.";
+
+    // AC-1534: a plugin profile's `configJson` may carry its key to the server (Raymond, 2026-10-13: the server's state
+    // holds it in the clear, as it holds the rest); it is write-only, so no answer, audit line or log names it.
+    private static readonly string[] CredentialFields = ["apiKey"];
+
+    // The fields of a plugin's config whose change sends a key the server keeps somewhere else (AC-1484's host pin).
+    private static readonly string[] AddressWords = ["url", "host", "endpoint"];
+
+    private static SecretFields Secrets => SecretKeyHolder.Shared.Fields;
 
     // AC-1473 (Codex): a variable named like a credential is one, whatever it is marked; B4 lets none cross.
     private static readonly string[] CredentialWords = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH"];
@@ -61,7 +74,9 @@ internal static class ProfileEndpoints
         {
             var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
             var signIns = health();
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile))) }, ConnectKeyEndpoints.Json);
+            // AC-1534: the providers a new profile can name, also one no profile uses yet.
+            var providers = services.GetService<IPluginProviderRegistry>()?.Registrations.Select(registration => registration.ProviderId) ?? [];
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile))), providers }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -153,7 +168,7 @@ internal static class ProfileEndpoints
         async Task<IResult> _ChangeAsync<T>(HttpRequest request, CancellationToken cancellationToken, Func<T, IReadOnlyList<SessionProfile>, (IReadOnlyList<SessionProfile>? Next, IResult Answer)> change)
             where T : class
         {
-            var (body, refused) = await ReadBodyAsync<T>(request, "A profile names only label, provider, settings, model, permissionMode, mcpServers, environment and delegation.", cancellationToken).ConfigureAwait(false);
+            var (body, refused) = await ReadBodyAsync<T>(request, "A profile names only label, provider, settings, model, permissionMode, mcpServers, environment, delegation and configJson.", cancellationToken).ConfigureAwait(false);
             if (body is null)
             {
                 return refused;
@@ -299,11 +314,124 @@ internal static class ProfileEndpoints
             [.. (profile.EnvironmentVariables ?? []).Select(variable => _IsHidden(variable)
                 ? new RemoteProfileVariable(variable.Key, null, true)
                 : new RemoteProfileVariable(variable.Key, variable.Value))],
-            profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 },
+            profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } || (profile.ProviderConfig is PluginProviderConfig held && _HoldsSecret(_ParseObject(held.ConfigJson))),
             profile.ProviderConfig is PluginProviderConfig,
             health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
-            known.Count > 0 ? known : null);
+            known.Count > 0 ? known : null,
+            _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null);
     }
+
+    // AC-1534: the config with every secret string that is set read as KeptSecret, so the provider's own view opens
+    // with its key field filled (its check passes) and says only that one is set.
+    internal static string Redacted(string configJson)
+    {
+        var config = _ParseObject(configJson) ?? [];
+        _Mask(config);
+        return config.ToJsonString();
+    }
+
+    // The config the change names, where a secret that still reads KeptSecret, or that it leaves out, stays as the server
+    // holds it; an empty one clears it. Kept, it may not follow a changed address: that needs the key again, or an
+    // admin key could send the stored one to a host of its own.
+    // ponytail: only top-level secrets are kept; a nested one comes back as KeptSecret. Upgrade when a provider nests one.
+    internal static (string? Config, IResult Refusal) MergeConfig(string stored, string incoming)
+    {
+        if (_ParseObject(incoming) is not { } next)
+        {
+            return (null, _Invalid("configJson must hold a JSON object."));
+        }
+
+        if (_FilledNames(next).Any(name => string.Equals(name, "executablePath", StringComparison.OrdinalIgnoreCase)))
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal));
+        }
+
+        var held = _ParseObject(stored) ?? [];
+        var kept = false;
+        foreach (var (name, value) in held)
+        {
+            if (Secrets.IsSecret(name) && _IsFilled(value) && (!next.ContainsKey(name) || _IsKept(next[name])))
+            {
+                next[name] = value?.DeepClone();
+                kept = true;
+            }
+        }
+
+        // One that reads KeptSecret with nothing behind it is not a key.
+        foreach (var name in next.Where(property => _IsKept(property.Value)).Select(property => property.Key).ToList())
+        {
+            next[name] = "";
+        }
+
+        var addresses = held.Select(property => property.Key).Concat(next.Select(property => property.Key))
+            .Where(name => AddressWords.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)));
+        if (kept && addresses.Any(name => !JsonNode.DeepEquals(held[name], next[name])))
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "key_required", KeyAgainRefusal));
+        }
+
+        return (next.ToJsonString(), Results.Empty);
+    }
+
+    // Case-insensitive, as the providers read their own config.
+    private static JsonObject? _ParseObject(string json)
+    {
+        try
+        {
+            return JsonNode.Parse(json, new JsonNodeOptions { PropertyNameCaseInsensitive = true }) as JsonObject;
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static bool _IsFilled(JsonNode? value) => value is JsonValue text && text.TryGetValue<string>(out var content) && content.Length > 0;
+
+    private static bool _IsKept(JsonNode? value) => value is JsonValue text && text.TryGetValue<string>(out var content) && content == KeptSecret;
+
+    private static void _Mask(JsonNode? node)
+    {
+        if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                _Mask(item);
+            }
+        }
+        else if (node is JsonObject config)
+        {
+            foreach (var (name, value) in config.ToList())
+            {
+                if (Secrets.IsSecret(name) && _IsFilled(value))
+                {
+                    config[name] = KeptSecret;
+                }
+                else
+                {
+                    _Mask(value);
+                }
+            }
+        }
+    }
+
+    private static bool _HoldsSecret(JsonNode? node) => node switch
+    {
+        JsonArray array => array.Any(_HoldsSecret),
+        JsonObject config => config.Any(property => (Secrets.IsSecret(property.Key) && _IsFilled(property.Value)) || _HoldsSecret(property.Value)),
+        _ => false,
+    };
+
+    private static IEnumerable<string> _FilledNames(JsonNode? node) => node switch
+    {
+        JsonArray array => array.SelectMany(_FilledNames),
+        JsonObject config => config.SelectMany(property => _IsFilled(property.Value) ? [property.Key] : _FilledNames(property.Value)),
+        _ => [],
+    };
+
+    // The Claude provider's config names its config directory and program on the server (AC-1464), so it stays there.
+    private static PluginProviderConfig? _TakesConfig(SessionProfile profile) =>
+        profile.ProviderConfig is PluginProviderConfig { ProviderId: not ClaudePluginProfile.ProviderId } plugin ? plugin : null;
 
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.
     internal static (SessionProfile? Profile, IResult Refusal) Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
@@ -316,6 +444,22 @@ internal static class ProfileEndpoints
         }
 
         var changed = profile;
+        if (patch.ConfigJson is { } configJson)
+        {
+            if (_TakesConfig(profile) is not { } plugin)
+            {
+                return (null, _Invalid("Only a plugin provider's profile takes a configJson."));
+            }
+
+            var (merged, refusal) = MergeConfig(plugin.ConfigJson, configJson);
+            if (merged is null)
+            {
+                return (null, refusal);
+            }
+
+            changed = changed with { ProviderConfig = plugin with { ConfigJson = merged } };
+        }
+
         if (patch.Model is { } model)
         {
             changed = changed.ProviderConfig switch
