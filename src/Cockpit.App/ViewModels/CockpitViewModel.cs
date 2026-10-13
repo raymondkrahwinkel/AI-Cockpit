@@ -22,6 +22,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
@@ -7845,10 +7846,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        if (e.PropertyName == nameof(SessionPanelViewModel.SessionStatus))
-        {
-            _ = RecordConversationAsync(session, closed: false);
-        }
 
         // AC-1305: this is the one place every pane's `PendingConsent` lands, whoever set it — the routing below,
         // the close side, or the assistant host denying a card on teardown. Above the assistant's return, because
@@ -8760,7 +8757,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel,
             state?.ProviderId, state?.ConversationId, state?.ConversationState ?? SessionConversationIdState.Unknown,
             now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
-            ReferenceEquals(session, _assistantSession), null));
+            ReferenceEquals(session, _assistantSession), session is SessionViewModel
+                ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl")
+                : null));
     }
 
     // Held so the things that must reach it despite it being in neither collection can — consent routing

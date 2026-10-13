@@ -14,14 +14,26 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     private static readonly JsonSerializerOptions SerializerOptions = new() { Converters = { new JsonStringEnumConverter() } };
     private readonly string _path;
     private readonly ILogger<ConversationIndexStore> _logger;
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     public ConversationIndexStore(ILogger<ConversationIndexStore> logger) : this(CockpitConfigPath.Conversations, logger) { }
     internal ConversationIndexStore(string path, ILogger<ConversationIndexStore> logger) => (_path, _logger) = (path, logger);
 
     public async Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            var existing = (await LoadAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(item => item.PaneId == record.PaneId);
+            record = record with
+            {
+                StartedAt = existing?.StartedAt ?? record.StartedAt,
+                ProviderId = record.ProviderId ?? existing?.ProviderId,
+                ConversationId = record.ConversationId ?? existing?.ConversationId,
+                ConversationState = record.ConversationState == SessionConversationIdState.Unknown && existing is not null
+                    ? existing.ConversationState : record.ConversationState,
+                TranscriptPath = record.TranscriptPath ?? existing?.TranscriptPath,
+            };
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) CockpitConfigPath.EnsurePrivateDirectory(directory);
             await using var stream = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.Read);
@@ -29,6 +41,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             await writer.WriteLineAsync(JsonSerializer.Serialize(record, SerializerOptions).AsMemory(), cancellationToken);
         }
         catch (Exception exception) { _logger.LogWarning(exception, "Could not append conversation index at {Path}.", _path); }
+        finally { _writeGate.Release(); }
     }
 
     public async Task<IReadOnlyList<ConversationRecord>> LoadAsync(CancellationToken cancellationToken = default)
