@@ -459,6 +459,12 @@ public partial class CockpitView : UserControl
         SimpleChatHost.Content = cockpit.SimpleStandShowsTheAssistantInTheMainColumn
             ? cockpit.CreateSimpleViewChatView?.Invoke()
             : null;
+
+        // AC-1528: under Home the host is hidden and never attaches the view, and attaching is what starts the assistant.
+        if (cockpit.SimpleStandShowsTheStartScreen && SimpleChatHost.Content is Control { DataContext: AssistantChatViewModel chat })
+        {
+            _ = chat.EnsureOpenedAsync();
+        }
     }
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins

@@ -16,6 +16,9 @@ public sealed class LastOpenedConverter : IValueConverter
             return "Not opened yet";
         }
 
+        // AC-1528: Home's "Waiting for you" says "Started …" in the same words.
+        var verb = parameter as string ?? "Opened";
+
         // No conversion to local time first: subtracting two DateTimeOffsets compares the instants they stand for,
         // whatever offsets they carry, so a project opened on a machine an hour away still reads its true age.
         var elapsed = DateTimeOffset.Now - openedAt;
@@ -24,22 +27,22 @@ public sealed class LastOpenedConverter : IValueConverter
         // negative age: "opened -3 days ago" is nonsense the operator would have to interpret.
         if (elapsed < TimeSpan.FromMinutes(1))
         {
-            return "Opened just now";
+            return $"{verb} just now";
         }
 
         if (elapsed < TimeSpan.FromHours(1))
         {
-            return $"Opened {(int)elapsed.TotalMinutes} min ago";
+            return $"{verb} {(int)elapsed.TotalMinutes} min ago";
         }
 
         if (elapsed < TimeSpan.FromDays(1))
         {
             var hours = (int)elapsed.TotalHours;
-            return hours == 1 ? "Opened 1 hour ago" : $"Opened {hours} hours ago";
+            return hours == 1 ? $"{verb} 1 hour ago" : $"{verb} {hours} hours ago";
         }
 
         var days = (int)elapsed.TotalDays;
-        return days == 1 ? "Opened yesterday" : $"Opened {days} days ago";
+        return days == 1 ? $"{verb} yesterday" : $"{verb} {days} days ago";
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

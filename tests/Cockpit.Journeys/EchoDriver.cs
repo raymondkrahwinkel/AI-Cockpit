@@ -41,7 +41,11 @@ public sealed class EchoDriver : ISessionDriver
 
     public SynchronizationContext? ContextAtSend { get; private set; }
 
-    public SessionCapabilities Capabilities => new(false, false, false, false, false, false, false, false);
+    // AC-1528: what the last message carried besides its text.
+    public IReadOnlyList<ImageAttachment> ImagesAtSend { get; private set; } = [];
+
+    // AC-1528: it takes images, so a journey can see one go along with a message.
+    public SessionCapabilities Capabilities => new(false, false, false, false, false, SupportsVision: true);
 
     public string? SessionId => "echo-conversation";
 
@@ -80,6 +84,7 @@ public sealed class EchoDriver : ISessionDriver
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
         ContextAtSend = SynchronizationContext.Current;
+        ImagesAtSend = images ?? [];
         return _prompts.Writer.WriteAsync(text, cancellationToken).AsTask();
     }
 

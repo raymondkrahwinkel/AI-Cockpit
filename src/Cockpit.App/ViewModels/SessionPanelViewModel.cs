@@ -20,7 +20,7 @@ namespace Cockpit.App.ViewModels;
 
 // The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal): the sidebar/overview
 // title, selection, coarse status, and profile label, plus disposal.
-public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
+public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable, ISimpleComposerTarget
 {
     // Running token/cost total for the session (#8), folded from each completed turn's result usage.
     private protected readonly SessionUsageMeter _usage = new();
@@ -347,6 +347,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     protected virtual void OnShownInSimpleStandChanged()
     {
     }
+
+    // AC-1528: Home's "Waiting for you" says when a conversation was started.
+    public DateTimeOffset StartedAt => _startedAt;
 
     // AC-1529: the Simple header's stand, in plain words rather than `SessionStatusLabel`'s.
     public string SimpleStatusLabel => SessionStatus switch

@@ -1129,6 +1129,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         SimpleSelectedSession = null;
         SimplePage = SimplePage.Home;
+        _simpleHome?.Refresh();
     }
 
     [RelayCommand]
@@ -1217,6 +1218,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // which sessions have a request open, which one is in view, and which ones were waved away.
     private void _RefreshSimpleConsentAlerts()
     {
+        _RefreshSimpleHome();
         var inView = _SimpleViewSession;
         var waiting = _ConsentPanes()
             .Where(pane => pane.PendingConsent is { } consent
@@ -7857,6 +7859,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (e.PropertyName == nameof(SessionPanelViewModel.PendingConsent))
         {
             _RefreshSimpleConsentAlerts();
+        }
+        else if (e.PropertyName is nameof(SessionPanelViewModel.SessionStatus) or nameof(SessionPanelViewModel.ProjectId))
+        {
+            _RefreshSimpleHome();
         }
 
         // The assistant's session feeds this handler only for status plumbing (AC-543), never for the

@@ -377,24 +377,20 @@ internal static class Screenshotter
 
         // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
-        // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
-        // question only stands there while no conversation does, which every other Simple scene has.
-        ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
+        // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
+        ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
         ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
         // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
         ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
-        // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
-        // for this one, and the second place the starting-point gallery is drawn.
-        ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
-        // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
-        // composer that says what to do first rather than inviting a message that cannot go anywhere.
-        ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
-        // AC-1321: the node while a paired controller holds the line — the takeover notice where the off notice
-        // stands, and no button, since nothing here ends it.
-        ["simple-view-start-screen-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, controlled: true) },
+        // AC-488: Home on a cockpit that has no projects yet, the second place the starting-point gallery is drawn.
+        ["simple-view-home-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome(withProjects: false) },
+        // AC-1316: the assistant's own conversation with it switched off — the reason where its rows would stand.
+        ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
+        // AC-1321: the node while a paired controller holds the line — the takeover notice, and no button, since nothing here ends it.
+        ["simple-view-assistant-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(controlled: true) },
         // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
-        ["simple-view-start-screen-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
+        ["simple-view-assistant-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2640,26 +2636,39 @@ internal static class Screenshotter
         return cockpit;
     }
 
-    // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
-    // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
-    // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false, string? failedToStart = null)
+    // AC-1528: Home on a fixed morning for a fixed name, one conversation waiting and one working, as in the mockup.
+    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true)
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.SimpleHome.FirstName = "Raymond";
+        cockpit.SimpleHome.Now = () => new DateTime(2026, 10, 13, 9, 0, 0);
+        cockpit.VoiceEnabled = true;
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+            var working = _Named(cockpit, "kind→staging");
+            working.ProjectId = cockpit.Projects.Projects[0].Id;
+            working.SessionStatus = SessionStatus.Busy;
+            _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Publish three pages", "publish website/pages", dangerous: false);
+        }
+
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        return cockpit;
+    }
+
+    // AC-1316/AC-1321: the assistant's own conversation in the column with nothing said in it, where its notice stands.
+    private static ViewModels.CockpitViewModel _SimpleStandAssistant(bool assistantOff = false, bool controlled = false, string? failedToStart = null)
     {
         // Off means no session either: the host never starts one it is not allowed to. A failed start leaves none too.
         var cockpit = _SimpleStand(withAssistant: !assistantOff && failedToStart is null, assistantOff, failedToStart);
+        cockpit.AssistantChat!.Session?.Transcript.Clear();
         if (controlled)
         {
             cockpit.ActiveController = new ActiveController("LAPTOP", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero));
         }
 
-        // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
-        // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.
-        if (withProjects)
-        {
-            cockpit.Projects.StageDesignSample();
-        }
-
-        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
+        cockpit.SimplePage = ViewModels.SimplePage.Conversation;
         return cockpit;
     }
 
