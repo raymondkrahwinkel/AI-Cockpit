@@ -40,11 +40,11 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
         });
 
         // AC-1524: a terminal route the profile can default to, so a journey can show a host without a terminal runs
-        // that profile as SDK. The factory is never called there: a backend has no pane to host a TUI in.
+        // that profile as SDK. The provider is built to answer "is there a route", but never asked to launch.
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId,
             "Echo",
-            _ => throw new NotSupportedException("The echo provider has no TUI to run."),
+            _ => new EchoTtyProvider(),
             []));
     }
 
@@ -58,6 +58,12 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
     public void Dispose()
     {
     }
+}
+
+internal sealed class EchoTtyProvider : IPluginTtyProvider
+{
+    public PluginTtyLaunchSpec BuildLaunch(PluginTtyLaunchContext context) =>
+        throw new NotSupportedException("The echo provider has no TUI to run.");
 }
 
 // AC-1457: a sign-in with one step that waits for any text and then gives the sign-in back, so a journey can play a
