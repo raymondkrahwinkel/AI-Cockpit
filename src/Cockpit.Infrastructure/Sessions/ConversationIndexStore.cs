@@ -20,16 +20,17 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     private static readonly JsonSerializerOptions SerializerOptions = new() { Converters = { new JsonStringEnumConverter() } };
     private readonly string _path;
     private readonly IProjectStore? _projects;
+    private readonly SessionTranscriptLog? _transcripts;
     private readonly ILogger<ConversationIndexStore> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, SessionStateRecord> _sessionFacts = new(StringComparer.Ordinal);
     private Dictionary<string, ConversationRecord>? _latest;
 
-    public ConversationIndexStore(SessionStateRecorder recorder, IProjectStore projects, ILogger<ConversationIndexStore> logger)
-        : this(CockpitConfigPath.Conversations, logger, projects) => recorder.Recorded += RecordSessionState;
+    public ConversationIndexStore(SessionStateRecorder recorder, IProjectStore projects, SessionTranscriptLog transcripts, ILogger<ConversationIndexStore> logger)
+        : this(CockpitConfigPath.Conversations, logger, projects, transcripts) => recorder.Recorded += RecordSessionState;
 
-    internal ConversationIndexStore(string path, ILogger<ConversationIndexStore> logger, IProjectStore? projects = null) =>
-        (_path, _logger, _projects) = (path, logger, projects);
+    internal ConversationIndexStore(string path, ILogger<ConversationIndexStore> logger, IProjectStore? projects = null, SessionTranscriptLog? transcripts = null) =>
+        (_path, _logger, _projects, _transcripts) = (path, logger, projects, transcripts);
 
     public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>
         _WriteAsync(record.PaneId, existing => _WithSessionFacts(record with
@@ -185,8 +186,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
 
     private ConversationRecord _AssistantRow(SessionStateRecord state) => new(
         state.PaneId, AssistantProfileSlot.DisplayName, null, null, null, null, null, SessionConversationIdState.Unknown,
-        state.RecordedAt, state.RecordedAt, null, null, false, true,
-        Path.Combine(Path.GetDirectoryName(_path) ?? string.Empty, "transcripts", state.PaneId + ".jsonl"));
+        state.RecordedAt, state.RecordedAt, null, null, false, true, _transcripts?.LogPath(state.PaneId));
 
     private static string? _Fragment(string? source, string needle)
     {

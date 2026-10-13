@@ -102,16 +102,24 @@ public sealed class SessionJourney
                 return done;
             }
 
+            HeadlessAvalonia.Run(() => after.Cockpit.SimpleView = true);
             Assert.True(await ReopenAsync());
             var reopened = Assert.IsType<SessionViewModel>(Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList())));
+            Assert.Equal((reopened, SimplePage.Conversation), HeadlessAvalonia.Run(() => (after.Cockpit.SimpleSelectedSession, after.Cockpit.SimplePage)));
             Assert.Equal((project.Id, JourneyHost.EchoProfile), (reopened.ProjectId, reopened.ActiveProfileLabel));
             Assert.Equal(SessionResume.BySessionId("echo-conversation"), Assert.Single(after.Drivers.Made).Resume);
             await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(reopened.Transcript, () => reopened.Transcript.Any(row => row.Text == "echo: history")));
 
-            HeadlessAvalonia.Run(() => after.Cockpit.SelectedSession = null);
+            HeadlessAvalonia.Run(() => (after.Cockpit.SimpleView, after.Cockpit.SelectedSession) = (false, null));
             Assert.True(await ReopenAsync());
             Assert.Same(reopened, Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList())));
             Assert.Same(reopened, HeadlessAvalonia.Run(() => after.Cockpit.SelectedSession));
+
+            HeadlessAvalonia.Run(() => after.Cockpit.SimpleView = true);
+            HeadlessAvalonia.Run(() => after.Cockpit.ShowSimpleStartScreenCommand.Execute(null));
+            Assert.Equal(SimplePage.Home, HeadlessAvalonia.Run(() => after.Cockpit.SimplePage));
+            Assert.True(await ReopenAsync());
+            Assert.Equal((reopened, SimplePage.Conversation), HeadlessAvalonia.Run(() => (after.Cockpit.SimpleSelectedSession, after.Cockpit.SimplePage)));
         }
         finally
         {

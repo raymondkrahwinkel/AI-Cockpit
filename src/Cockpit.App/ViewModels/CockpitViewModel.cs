@@ -8750,6 +8750,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-1531: what the pane knows of its conversation; profile, provider, place and conversation id the index takes from
     // the session-state recorder. A plain terminal never persisted a pane, and a pane on a server is not this machine's.
+    // The transcript path is spelled out here because its owner (`SessionTranscriptLog.LogPath`) is internal to Infrastructure.
     private Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
     {
         if (_conversationIndex is null || !session.HasPersistedPane || session.IsRemote)
@@ -8771,14 +8772,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } open)
         {
-            SelectedSession = open;
+            _SelectInTheActiveStand(open);
             return new ConversationReopenResult(true);
         }
 
         if (record.IsAssistant)
         {
-            SimpleSelectedSession = null;
-            return _assistantSession is null ? new ConversationReopenResult(false, "The assistant is not running.") : new ConversationReopenResult(true);
+            if (_assistantSession is null)
+            {
+                return new ConversationReopenResult(false, "The assistant is not running.");
+            }
+
+            // The panels stand docks the assistant beside every pane; only the Simple stand has to be told to show it.
+            if (SimpleView)
+            {
+                SimpleSelectedSession = _assistantSession;
+            }
+
+            return new ConversationReopenResult(true);
         }
 
         if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is not { } launcher)
@@ -8795,7 +8806,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await launcher.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } started)
+        {
+            _SelectInTheActiveStand(started);
+        }
+
         return new ConversationReopenResult(true);
+    }
+
+    // Each stand keeps its own selection (AC-1301); the Simple one also turns its page to the conversation.
+    private void _SelectInTheActiveStand(SessionPanelViewModel session)
+    {
+        if (SimpleView)
+        {
+            SimpleSelectedSession = session;
+        }
+        else
+        {
+            SelectedSession = session;
+        }
     }
 
     // Held so the things that must reach it despite it being in neither collection can — consent routing
