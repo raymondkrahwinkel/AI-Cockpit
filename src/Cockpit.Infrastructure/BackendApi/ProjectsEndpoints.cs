@@ -40,6 +40,9 @@ internal static partial class ProjectsEndpoints
 
     private const string BindTool = "api:bind_shared_project";
 
+    // _ClaimCloneAsync answers a refusal or a parsed URL, never neither.
+    private const string NeitherClaimNorRefusal = "A clone claim came back with neither a URL to clone nor a refusal.";
+
     // What a clone that is still running, done or failed reported last, by id, for a client that missed its event.
     private static readonly ConcurrentDictionary<string, CloneState> Clones = new(StringComparer.Ordinal);
 
@@ -74,7 +77,7 @@ internal static partial class ProjectsEndpoints
             var (refusal, parsed, branch, target) = await _ClaimCloneAsync(services, caller, CloneTool, body.RepoUrl, body.Branch, cancellationToken).ConfigureAwait(false);
             if (parsed is null)
             {
-                return refusal!;
+                return refusal ?? throw new UnreachableException(NeitherClaimNorRefusal);
             }
 
             var name = HealthEndpoints.Clean(body.Name).Trim() is { Length: > 0 } given ? given : parsed.Segments[^1];
@@ -163,7 +166,7 @@ internal static partial class ProjectsEndpoints
             var (refusal, parsed, branch, target) = await _ClaimCloneAsync(services, caller, BindTool, composition.GitUrl, body.Branch, cancellationToken).ConfigureAwait(false);
             if (parsed is null)
             {
-                return refusal!;
+                return refusal ?? throw new UnreachableException(NeitherClaimNorRefusal);
             }
 
             var name = HealthEndpoints.Clean(composition.Name).Trim() is { Length: > 0 } clean ? clean : parsed.Segments[^1];
@@ -282,11 +285,14 @@ internal static partial class ProjectsEndpoints
     private static async Task _CloneAsync(
         IServiceProvider services, NodeCaller caller, string tool, string id, string name, string remoteUrl, string branch, string target, Func<IProjectEditor, string, Task> addProject)
     {
+        // Fire-and-forget (AC-1472): everything that can throw sits inside the try, the logger lookup too, so every
+        // end lands as "cloned" or "failed" in Clones and the folder claim is always let go.
         var started = Stopwatch.GetTimestamp();
-        var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints));
+        ILogger? logger = null;
         CloneState outcome;
         try
         {
+            logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints));
             var clone = await services.GetRequiredService<IRepositoryCloneManager>().CloneAsync(remoteUrl, allowedProtocols: _Protocols()).ConfigureAwait(false);
             if (branch.Length > 0)
             {
