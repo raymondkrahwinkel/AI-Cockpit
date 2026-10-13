@@ -25,10 +25,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
     private readonly IServerProjects? _serverProjects;
+    private readonly Func<int>? _runningSessions;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null)
     {
+        _runningSessions = runningSessions;
         _serverProjects = serverProjects;
         Server = server;
         KeyLabel = keyLabel;
@@ -82,6 +84,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isBusy;
+
+    // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
+    [ObservableProperty]
+    private bool _needsRestart;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
@@ -256,19 +262,30 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private void ToggleIssuedSecret() => IsIssuedSecretShown = !IsIssuedSecretShown;
 
+    // AC-1525: enabling shows the consent for the bytes the server hashed, and the server pins only those.
     [RelayCommand]
     private Task TogglePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
     {
-        if (_plugins is null || row.PinnedSha256 is null)
+        if (_plugins is null)
         {
             return;
         }
 
-        await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.PinnedSha256);
+        if (!row.Enabled && (_dialogService is null || !await _dialogService.ShowPluginConsentAsync(new PluginConsentInfo(row.Name, row.Version, row.Author, "", row.Sha256))))
+        {
+            return;
+        }
+
+        await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
         row.Enabled = !row.Enabled;
         row.Refresh();
-        Status = "This change takes effect after the server restarts.";
+        _ChangedPlugins();
     });
+
+    // AC-1525: the server stops as on a SIGTERM and its supervisor starts it again; its running sessions stop with it,
+    // so they are counted first, the way "Stop on server" asks once (AC-1456).
+    [RelayCommand]
+    private Task RestartServerAsync() => _RunAsync(async () => await _RestartServerAsync());
 
     [RelayCommand]
     private Task InstallPluginAsync() => _RunAsync(async () =>
@@ -286,13 +303,32 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        var manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))]);
+        PluginManagerViewModel? manager = null;
+        manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))], Server, _plugins is IServerRestart ? new ServerRestartService(async () =>
+        {
+            // Only reachable from the dialog this manager opened, so it is set by then.
+            if (manager is null)
+            {
+                return;
+            }
+
+            try
+            {
+                var restarted = await _RestartServerAsync();
+                manager.NeedsRestart = !restarted;
+                manager.StatusMessage = restarted ? Status : manager.StatusMessage;
+            }
+            catch (Exception exception)
+            {
+                manager.StatusMessage = exception.Message;
+            }
+        }) : null);
         await manager.LoadAsync();
         await _dialogService.ShowPluginStoreDialogAsync(manager);
         await _LoadPluginsAsync();
         if (manager.NeedsRestart)
         {
-            Status = "This change takes effect after the server restarts.";
+            _ChangedPlugins();
         }
     });
 
@@ -311,7 +347,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         await _plugins.RemoveAsync(row.FolderId);
         Plugins.Remove(row);
         OnPropertyChanged(nameof(PluginsCount));
-        Status = "This change takes effect after the server restarts.";
+        _ChangedPlugins();
     });
 
     // Done forgets the key: after this nothing in the cockpit holds it.
@@ -349,6 +385,37 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         {
             Audit.Add(new AuditRowViewModel(entry, labels, _time));
         }
+    }
+
+    private void _ChangedPlugins()
+    {
+        NeedsRestart = _plugins is IServerRestart;
+        Status = "This change takes effect after the server restarts.";
+    }
+
+    // False when the operator kept the sessions running.
+    private async Task<bool> _RestartServerAsync()
+    {
+        if (_plugins is not IServerRestart server)
+        {
+            return false;
+        }
+
+        var running = _runningSessions?.Invoke() ?? 0;
+        if (running > 0 && (_dialogService is null || !await _dialogService.ShowConfirmationDialogAsync(
+            $"Restart {Server}",
+            running == 1
+                ? $"1 session is running on {Server}. Restarting the server stops it; this cockpit stays open."
+                : $"{running} sessions are running on {Server}. Restarting the server stops them; this cockpit stays open.",
+            "Restart server")))
+        {
+            return false;
+        }
+
+        await server.RestartAsync();
+        NeedsRestart = false;
+        Status = $"{Server} is restarting; it reconnects when it is back.";
+        return true;
     }
 
     private async Task _LoadPluginsAsync()
@@ -479,7 +546,10 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
 
     public string Version { get; } = plugin.Discovered.Manifest.Version;
 
-    public string? PinnedSha256 { get; } = plugin.Registration?.PinnedSha256;
+    public string? Author { get; } = plugin.Discovered.Manifest.Author;
+
+    // AC-1525: the server's own hash of the bytes on its disk, which the consent shows and the server pins.
+    public string Sha256 { get; } = plugin.Discovered.Sha256;
 
     public bool HasSettings { get; set; }
 

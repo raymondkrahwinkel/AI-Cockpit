@@ -118,6 +118,7 @@ public sealed class CockpitBackend
             services.AddSingleton<IPresenceDetector, AwayPresenceDetector>();
             // AC-1467: and nobody sees its sessions, so it says what the desktop's view model would have said.
             services.AddSingleton<IHostedService, SessionAttentionNotifications>();
+            services.AddSingleton<ServerRestartSignal>();
         }
 
         frontend?.Invoke(services);

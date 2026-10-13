@@ -26,10 +26,10 @@
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
-                <Button Grid.Column="0" Content="Restart the cockpit now" Classes="Accent" HorizontalAlignment="Left"
+                <Button Grid.Column="0" Content="{Binding Manager.RestartLabel}" Classes="Accent" HorizontalAlignment="Left"
                         Command="{Binding Manager.RestartNowCommand}"
                         IsVisible="{Binding Manager.NeedsRestart}"
-                        ToolTip.Tip="Restarts the cockpit for you — applies the plugin change(s) above without closing and relaunching it yourself."/>
+                        ToolTip.Tip="{Binding Manager.RestartTip}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{Binding Manager.StatusMessage}" VerticalAlignment="Center" FontSize="11"
                                MaxWidth="420" TextTrimming="CharacterEllipsis"

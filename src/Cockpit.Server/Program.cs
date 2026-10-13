@@ -74,8 +74,10 @@ internal static class Program
         logger.LogInformation(
             "Cockpit.Server running; UI assemblies loaded: {UiAssemblies}.", uiAssemblies.Count == 0 ? "none" : string.Join(", ", uiAssemblies));
 
-        await stopRequested.Task;
-        logger.LogInformation("Stop requested; stopping within {Budget}.", stopBudget);
+        // AC-1525: an admin's restart takes the same stop; the supervisor brings the server back.
+        var restart = backend.Services.GetRequiredService<ServerRestartSignal>().Requested;
+        await Task.WhenAny(stopRequested.Task, restart);
+        logger.LogInformation("{Request} requested; stopping within {Budget}.", restart.IsCompleted ? "Restart" : "Stop", stopBudget);
         await backend.StopAsync(stopBudget);
         logger.LogInformation("Cockpit.Server stopped.");
         return 0;

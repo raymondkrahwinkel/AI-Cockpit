@@ -29,6 +29,7 @@ using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Events;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
@@ -109,6 +110,13 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        // AC-1525 criteria 2 and 3: the server pins only the bytes it hashed itself, and an operate key neither switches a
+        // plugin nor restarts the server.
+        { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true,"sha256":"fresh-hash"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true,"sha256":"other-hash"}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/enabled", """{"enabled":true,"sha256":"other-hash"}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/server/restart", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         // AC-1511: a plugin's own view reaches its backend part here, admin only; the audit names plugin and action, never the payload.
@@ -217,15 +225,15 @@ public sealed class BackendApiDoorTests
         Assert.False(audit.Contains(operate.Secret, StringComparison.Ordinal) || audit.Contains(_Door.ProfileSecret, StringComparison.Ordinal), "The audit holds a secret.");
         Assert.False(answer.Body.Contains("password", StringComparison.Ordinal) || answer.Body.Contains("query-token", StringComparison.Ordinal) || answer.Body.Contains("\"token\"", StringComparison.Ordinal), "The answer repeated a store credential it was given.");
         Assert.DoesNotContain("folderPath", answer.Body, StringComparison.Ordinal);
-        Assert.DoesNotContain("sha256", answer.Body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("C:\\\\server", answer.Body, StringComparison.Ordinal);
-        Assert.DoesNotContain("private-hash", answer.Body, StringComparison.Ordinal);
         Assert.False((await File.ReadAllTextAsync(door.AuditPath)).Contains(operate.Secret, StringComparison.Ordinal), "The audit repeated a full key it was given.");
         Assert.Contains(listed, answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("project-outside", answer.Body, StringComparison.Ordinal);
         Assert.Empty(_Names(JsonNode.Parse(answer.Body), "count", "total", "path", "defaultProfile"));
         Assert.DoesNotContain(door.ProjectEditor.ReceivedCalls(), call => call.GetMethodInfo().Name != nameof(IProjectEditor.FindProjectAsync));
         Assert.DoesNotContain(door.Clones.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(IRepositoryCloneManager.CloneAsync));
+        Assert.DoesNotContain(door.Plugins.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(IPluginAdministration.SetEnabledAsync));
+        Assert.False(door.Restart.Requested.IsCompleted, "The server restarted.");
         Assert.Equal(4, keys.Count(entry => entry.Key.IsUsableAt(DateTimeOffset.UtcNow)));
         Assert.Equal(ConnectKeyScope.Default, keys.Single(entry => entry.Key.Label == "laptop").Key.EffectiveScope());
         Assert.Equal(("qwen", _Door.ProfileSecret), (ProfileModel.Of(keyed), (keyed.ProviderConfig as LmStudioConfig)?.ApiKey));
@@ -686,6 +694,12 @@ public sealed class BackendApiDoorTests
                     null,
                     null,
                     null),
+                new InstalledPlugin(
+                    new DiscoveredPlugin("C:\\server\\plugins\\fresh", "fresh", new PluginManifest("fresh", "Fresh", "1.0.0", null, 0, null, null, null, null), "fresh-hash", PluginLoadDecision.NeedsConsent),
+                    null,
+                    null,
+                    null,
+                    null),
             ]));
             Plugins.FetchStoreIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(new PluginStoreFetchResult(true, null, new PluginStoreIndex("Store", []), null)));
         }
@@ -744,6 +758,8 @@ public sealed class BackendApiDoorTests
 
         public IPluginStoreConfigStore PluginStores { get; } = Substitute.For<IPluginStoreConfigStore>();
 
+        public ServerRestartSignal Restart { get; } = new();
+
         public string NodeBase { get; private set; } = "";
 
         public string LoopbackBase { get; private set; } = "";
@@ -782,6 +798,7 @@ public sealed class BackendApiDoorTests
             var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
             channels.Handle("private", "connect", (_, _) => Task.FromResult(JsonDocument.Parse("""{"connected":true}""").RootElement));
             services.AddSingleton(channels);
+            services.AddSingleton(Restart);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = ProjectEditor;

@@ -26,7 +26,8 @@ internal static class PluginEndpoints
         {
             var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:list_plugins", cancellationToken).ConfigureAwait(false);
-            return Results.Json(installed.Select(PluginListEntry.From), ConnectKeyEndpoints.Json);
+            var loaded = services.GetService<PluginManager>()?.Loaded;
+            return Results.Json(installed.Select(plugin => PluginListEntry.From(plugin, loaded)), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
         api.MapGet("/plugins/store", async (CancellationToken cancellationToken) =>
@@ -75,24 +76,29 @@ internal static class PluginEndpoints
             return Results.Json(PluginInstallResponse.From(result, install.Version), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
+        // AC-1525: the client names the bytes its operator consented to; the server pins them only when they are the bytes
+        // it computed itself. Without a sha256 only a registered plugin is switched, on its own pin.
         api.MapPut("/plugins/{folderId}/enabled", async (string folderId, HttpRequest request, CancellationToken cancellationToken) =>
         {
-            if (await _TryReadEnabledAsync(request, cancellationToken).ConfigureAwait(false) is not { } enabled)
+            if (await _TryReadEnabledAsync(request, cancellationToken).ConfigureAwait(false) is not { } body)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
             }
 
+            var (enabled, consented) = body;
             var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
             var plugin = installed.FirstOrDefault(candidate => string.Equals(candidate.Discovered.FolderId, folderId, StringComparison.Ordinal));
-            if (plugin?.Registration?.PinnedSha256 is not { } sha256)
+            var pin = consented is null
+                ? plugin?.Registration?.PinnedSha256
+                : string.Equals(consented, plugin?.Discovered.Sha256, StringComparison.OrdinalIgnoreCase) ? plugin?.Discovered.Sha256 : null;
+            if (pin is null)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
             }
 
-            await plugins().SetEnabledAsync(folderId, enabled, sha256, cancellationToken).ConfigureAwait(false);
-            await _AuditAsync(services, "api:set_plugin_enabled", cancellationToken).ConfigureAwait(false);
+            await plugins().SetEnabledAsync(folderId, enabled, pin, cancellationToken).ConfigureAwait(false);
             return Results.Json(new { takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
-        }).RequireAdmin();
+        }).RequireAdmin().Audited("set_plugin_enabled", services);
 
         api.MapDelete("/plugins/{folderId}", async (string folderId, CancellationToken cancellationToken) =>
         {
@@ -193,18 +199,26 @@ internal static class PluginEndpoints
         }
     }
 
-    private static async Task<bool?> _TryReadEnabledAsync(HttpRequest request, CancellationToken cancellationToken)
+    private static async Task<(bool Enabled, string? Sha256)?> _TryReadEnabledAsync(HttpRequest request, CancellationToken cancellationToken)
     {
         try
         {
             using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
             var root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Object
-                && root.EnumerateObject().All(property => property.Name == "enabled")
-                && root.TryGetProperty("enabled", out var enabled)
-                && enabled.ValueKind is JsonValueKind.True or JsonValueKind.False
-                ? enabled.GetBoolean()
-                : null;
+            if (root.ValueKind != JsonValueKind.Object
+                || root.EnumerateObject().Any(property => property.Name is not ("enabled" or "sha256"))
+                || !root.TryGetProperty("enabled", out var enabled)
+                || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return null;
+            }
+
+            if (!root.TryGetProperty("sha256", out var sha256))
+            {
+                return (enabled.GetBoolean(), null);
+            }
+
+            return sha256.ValueKind == JsonValueKind.String && sha256.GetString() is { Length: > 0 } value ? (enabled.GetBoolean(), value) : null;
         }
         catch (JsonException)
         {
@@ -228,22 +242,51 @@ internal static class PluginEndpoints
 
     private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version);
 
-    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error)
+    // AC-1525: a plugin installed here is live only after the server restarts, and its consent step needs the folder and the
+    // bytes the server computed.
+    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, bool TakesEffectAfterServerRestarts)
     {
         public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
-            new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : "The server could not install the plugin.");
+            new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : "The server could not install the plugin.", result.FolderId, result.Sha256, result.IsSuccess);
     }
 
-    private sealed record PluginListEntry(string FolderId, string Id, string Name, string Version, bool Enabled, string? AvailableUpdate, bool TakesEffectAfterServerRestarts)
+    // AC-1525: what the consent dialog shows, the server's own hash of the bytes, and whether this run already reflects the
+    // decision on disk. The folder's path on the server stays here (AC-1474).
+    private sealed record PluginListEntry(
+        string FolderId,
+        string Id,
+        string Name,
+        string Version,
+        bool Enabled,
+        string? AvailableUpdate,
+        bool TakesEffectAfterServerRestarts,
+        PluginLoadDecision Decision,
+        string Sha256,
+        string? PinnedSha256,
+        string? Author,
+        string? Description,
+        string? MinHostVersion)
     {
-        public static PluginListEntry From(InstalledPlugin plugin) => new(
-            plugin.Discovered.FolderId,
-            plugin.Discovered.Manifest.Id,
-            plugin.Discovered.Manifest.Name,
-            plugin.Discovered.Manifest.Version,
-            plugin.Registration?.Enabled ?? false,
-            null,
-            false);
+        public static PluginListEntry From(InstalledPlugin plugin, IReadOnlyList<DiscoveredPlugin>? loaded)
+        {
+            var discovered = plugin.Discovered;
+            var isLoaded = loaded?.Any(candidate => string.Equals(candidate.FolderId, discovered.FolderId, StringComparison.Ordinal)
+                && string.Equals(candidate.Sha256, discovered.Sha256, StringComparison.OrdinalIgnoreCase)) ?? false;
+            return new(
+                discovered.FolderId,
+                discovered.Manifest.Id,
+                discovered.Manifest.Name,
+                discovered.Manifest.Version,
+                plugin.Registration?.Enabled ?? false,
+                null,
+                isLoaded != (discovered.Decision == PluginLoadDecision.Load),
+                discovered.Decision,
+                discovered.Sha256,
+                plugin.Registration?.PinnedSha256,
+                discovered.Manifest.Author,
+                discovered.Manifest.Description,
+                discovered.Manifest.MinHostVersion);
+        }
     }
 
     private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
