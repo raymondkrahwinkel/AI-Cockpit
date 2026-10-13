@@ -1294,7 +1294,7 @@ public class AssistantSessionHostTests
 
         var second = _ReplacementOf(host, first);
         var divider = Assert.Single(second.Transcript, entry => entry.IsDivider);
-        Assert.Equal("Conversation cleared — a new one starts here", divider.Text);
+        Assert.Equal("The earlier conversation was cleared — this conversation starts here", divider.Text);
 
         // Exactly once: `_StartAsync` is the only place that archives, and a clear must not add a second archive path.
         transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());

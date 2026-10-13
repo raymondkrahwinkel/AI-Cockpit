@@ -124,8 +124,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private bool _IsAwaitingPermission(string toolUseId) =>
         Transcript.LastOrDefault(t => t.ToolUseId == toolUseId)?.IsPendingPermission ?? false;
 
-    // The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active.
-    public string ActiveToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+    // The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active; at Simple the
+    // header's plain words instead (AC-1533).
+    public string ActiveToolActivityLabel => _ShownReadingLevel == ReadingLevel.Simple ? SimpleActivityLabel : _CurrentActiveToolCall()?.Label ?? string.Empty;
 
     // While that call is paused on a permission prompt this reads "waiting for permission" instead: the tool is not
     // running, it is blocked on the operator, and a still-climbing number under a "running" label would misreport a
@@ -182,8 +183,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? PlainStep.Describe(row.ToolName, row.InputJson, WorkingDirectory).Running + "…"
             : string.Empty;
 
-    // AC-1530: how a step's folder, a made file or Open folder reaches the system; a test hands in its own.
-    internal Func<string, bool> OpenPath { get; set; } = ExternalLink.TryOpenWithSystemApp;
+    public override string? DetailsPermissionMode => SelectedPermissionMode.Value;
+
+    public override string? DetailsModel => SelectedModel.Label;
+
+    // The SDK route always meters, so a conversation that has not cost anything yet reads $0.00 rather than unmeasured.
+    public override double? DetailsCostUsd => _usage.TotalCostUsd;
 
     public override bool ShowsSimpleStop => IsBusy;
 
@@ -673,6 +678,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
         RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
+        OnPropertyChanged(nameof(ActiveToolActivityLabel));
     }
 
     // Assigns the session's reading level to each row as it arrives, watches a tool row for a permission decision
@@ -1028,7 +1034,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         try
         {
             var restored = TranscriptSnapshot.Restore(recorded);
-            foreach (var entry in restored)
+            foreach (var entry in _WithTurnResults(restored))
             {
                 Transcript.Add(entry);
             }
@@ -1040,6 +1046,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         finally
         {
             _replayingRecordedTranscript = false;
+        }
+    }
+
+    // AC-1533: a replay runs no turn end and the log holds no green block, so each turn's block is built again here —
+    // not for a turn whose failure row says it failed, as live; a turn broken off by Stop leaves no row to tell by.
+    private IEnumerable<TranscriptEntryViewModel> _WithTurnResults(IEnumerable<TranscriptEntryViewModel> rows)
+    {
+        var turn = new List<TranscriptEntryViewModel>();
+        foreach (var row in rows.Append(null))
+        {
+            if ((row is null || row.IsUserRow) && !turn.Exists(entry => entry.ShowsFailureCard) && TurnResult.From(turn, WorkingDirectory) is { } result)
+            {
+                yield return new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result };
+            }
+
+            if (row is null || row.IsUserRow)
+            {
+                turn.Clear();
+            }
+
+            if (row is not null)
+            {
+                turn.Add(row);
+                yield return row;
+            }
         }
     }
 
@@ -1734,7 +1765,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ResetForNewConversation();
 
         Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.Divider, "Context cleared — a new conversation starts here"));
+            TranscriptEntryKind.Divider, "The earlier conversation was cleared — this conversation starts here"));
 
         // The live selections rather than the launch values: a session whose model or reading level was switched
         // mid-flight carries on as the operator last left it. Pre-approved tools ride along too, so clearing the

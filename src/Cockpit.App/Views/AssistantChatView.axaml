@@ -125,7 +125,10 @@
                          conversation" row sits under it instead of being its own button. Not a MenuFlyout
                          (rejected as B1): the spawn log is a whole panel, not a command, so it cannot be a
                          MenuItem without inventing a submenu-hosts-a-panel trick this project has no precedent for. -->
+                    <!-- AC-1533: in the Simple stand ⋯ is Details; the spawn log and export stay Panels'. -->
+                    <controls:ConversationDetailsButton Grid.Column="4" Margin="0,0,4,0" IsVisible="{Binding IsInSimpleStand}"/>
                     <Button x:Name="HistoryButton" Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            IsVisible="{Binding !IsInSimpleStand}"
                             ToolTip.Tip="History and export">
                         <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
                         <Button.Flyout>

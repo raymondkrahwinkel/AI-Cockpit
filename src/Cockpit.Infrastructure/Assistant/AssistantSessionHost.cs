@@ -257,7 +257,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             replaceALiveInstance: true,
             startFresh: true,
             cancellationToken,
-            startFreshBecause: "Conversation cleared — a new one starts here");
+            startFreshBecause: "The earlier conversation was cleared — this conversation starts here");
 
     // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
     // percentage, not a token count, since the provider reports fill and knows the window.

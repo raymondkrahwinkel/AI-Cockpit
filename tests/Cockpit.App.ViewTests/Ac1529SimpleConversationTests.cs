@@ -42,11 +42,11 @@ public sealed class Ac1529SimpleConversationTests
         Assert.Equal(expected, session.SimpleStatusLabel);
     });
 
-    // Criterion 3, on the `simple-view` scene (the assistant docked beside a picked agent, with a consent bypass on):
-    // no orange line in the Simple stand, docked or in its column — and back in Panels' own window it stands again.
-    // Takes over Ac1303's `WithTheAssistantDocked_EachColumnHasItsOwnComposer`: the two composers are checked here.
+    // Criteria 3 and 4 on the `simple-view` scene (the assistant docked beside a picked agent, a consent bypass on): no
+    // orange line in the Simple stand while Panels' window keeps it, and a terminal gets the same header. AC-1533: the
+    // assistant's Details name the bypass instead, a terminal's offer no Start over; `ATerminal_GetsTheSameHeader…` folded in.
     [Fact]
-    public void TheAssistant_LeavesTheOrangeLineToPanels() => HeadlessAvalonia.Run(() =>
+    public void TheAssistant_LeavesTheOrangeLineToPanels_AndATerminalGetsTheSameHeader() => HeadlessAvalonia.Run(() =>
     {
         var window = Screenshotter.ShowScene("simple-view");
         var loose = new Window { Width = 420, Height = 520 };
@@ -69,6 +69,32 @@ public sealed class Ac1529SimpleConversationTests
             window.UpdateLayout();
             Assert.True(chat.IsSimpleViewHost);
             Assert.False(_Notice(window).IsEffectivelyVisible);
+            Assert.EndsWith("Some actions you allowed in Settings also run without asking you first.", chat.Details()!.AllowedTo);
+
+            var terminal = new TtyViewModel { Title = "month-end run", ActiveProfileLabel = "personal", ProviderBadge = "CLAUDE", SessionStatus = SessionStatus.Busy };
+            cockpit.Sessions.Add(terminal);
+            cockpit.SimpleSelectedSession = terminal;
+            window.UpdateLayout();
+
+            Assert.True(cockpit.SimpleStandDocksTheAssistant);
+            Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
+            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
+            var view = window.GetVisualDescendants().OfType<TtyView>().Single(v => v.IsEffectivelyVisible);
+            Assert.Same(terminal, header.DataContext);
+            var shown = header.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+            Assert.Equal(["month-end run", "CLAUDE", "personal", "Busy"], shown);
+            Assert.True(header.TranslatePoint(default, window)!.Value.Y < view.TranslatePoint(default, window)!.Value.Y);
+            Assert.False(view.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "HeaderPanel").IsEffectivelyVisible);
+            var details = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetailsButton");
+            details.Flyout!.ShowAt(details);
+            Assert.False(((Control)((Flyout)details.Flyout).Content!).GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetailsStartOver").IsEffectivelyEnabled);
+            details.Flyout.Hide();
+
+            cockpit.SimpleSelectedSession = null;
+
+            Assert.False(cockpit.SimpleStandDocksTheAssistant);
+            Assert.True(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
+            Assert.False(terminal.IsPaneVisible);
 
             cockpit.ShowPanelsViewCommand.Execute(null);
             loose.Content = new AssistantChatView { DataContext = chat };
@@ -83,42 +109,17 @@ public sealed class Ac1529SimpleConversationTests
         }
     });
 
-    // Criterion 4: a terminal picked in the rail gets the same header (title, labels, stand) with its terminal under
-    // it. Takes over Ac1303's `PickingAnAgent_PutsItInTheMainColumn_AndTheAssistantInTheDock`, both ways round.
-    [Fact]
-    public void ATerminal_GetsTheSameHeader_OverItsTerminal() => HeadlessAvalonia.Run(() =>
-    {
-        var window = Screenshotter.ShowScene("simple-view");
-        try
-        {
-            var cockpit = (CockpitViewModel)window.DataContext!;
-            var terminal = new TtyViewModel { Title = "month-end run", ActiveProfileLabel = "personal", ProviderBadge = "CLAUDE", SessionStatus = SessionStatus.Busy };
-            cockpit.Sessions.Add(terminal);
-
-            cockpit.SimpleSelectedSession = terminal;
-            window.UpdateLayout();
-
-            Assert.True(cockpit.SimpleStandDocksTheAssistant);
-            Assert.False(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
-            var view = window.GetVisualDescendants().OfType<TtyView>().Single(v => v.IsEffectivelyVisible);
-            Assert.Same(terminal, header.DataContext);
-            var shown = header.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
-            Assert.Equal(["month-end run", "CLAUDE", "personal", "Busy"], shown);
-            Assert.True(header.TranslatePoint(default, window)!.Value.Y < view.TranslatePoint(default, window)!.Value.Y);
-            Assert.False(view.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "HeaderPanel").IsEffectivelyVisible);
-
-            cockpit.SimpleSelectedSession = null;
-
-            Assert.False(cockpit.SimpleStandDocksTheAssistant);
-            Assert.True(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-            Assert.False(terminal.IsPaneVisible);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
+    // AC-1533 criteria 1 and 2: ⋯ → Details say what a conversation may do in plain words, never the mode's own name,
+    // and with Cockpit's consent bypass on they add what that lets through — where the orange line used to say it.
+    [Theory]
+    [InlineData("default", false, "Asks before changing files or running commands.")]
+    [InlineData("acceptEdits", false, "Reads and changes files in this folder without asking first; asks before running commands.")]
+    [InlineData("plan", false, "Only reads and plans; changes nothing.")]
+    [InlineData("bypassPermissions", false, "Does everything without asking first.")]
+    [InlineData("dontAsk", false, "(dontAsk)")]
+    [InlineData("default", true, "Asks before changing files or running commands. Some actions you allowed in Settings also run without asking you first.")]
+    public void TheDetails_SayWhatItMayDo_InPlainWords(string mode, bool consentBypass, string expected) =>
+        Assert.Equal(expected, ConversationDetails.Allowed(mode, consentBypass));
 
     private static Button _Notice(Window window) =>
         window.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "ConsentBypassNotice"
