@@ -8778,7 +8778,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (record.IsAssistant)
         {
             SimpleSelectedSession = null;
-            return new ConversationReopenResult(_assistantSession is not null);
+            return _assistantSession is null ? new ConversationReopenResult(false, "The assistant is not running.") : new ConversationReopenResult(true);
         }
 
         if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is not { } launcher)
