@@ -19,3 +19,5 @@ public sealed record ConversationRecord(
     string? TranscriptPath);
 
 public sealed record ConversationSearchResult(ConversationRecord Record, string? Fragment);
+
+public sealed record ConversationReopenResult(bool Reopened, string? Reason = null);

@@ -22,7 +22,6 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Configuration;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
@@ -132,6 +131,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly IConversationIndex? _conversationIndex;
+    private readonly ISessionProfileStore? _conversationProfiles;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
@@ -3297,6 +3297,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
         _conversationIndex = conversationIndex;
+        _conversationProfiles = sessionProfileStore;
         _sessionRestorePlanner = sessionRestorePlanner;
         _worktreeReconcileGate = worktreeReconcileGate;
         _logger = logger;
@@ -8760,6 +8761,42 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ReferenceEquals(session, _assistantSession), session is SessionViewModel
                 ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl")
                 : null));
+    }
+
+    public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
+    {
+        if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } open)
+        {
+            SelectedSession = open;
+            return new(true);
+        }
+
+        if (_conversationProfiles is null || _sessionLauncher?.Invoke() is not { } launcher)
+        {
+            return new(false, "Conversation restore is unavailable.");
+        }
+
+        var pane = new WorkspacePane(record.PaneId, PaneKind.AiSession)
+        {
+            ProfileId = record.ProfileId, WorkingDirectory = record.WorkingDirectory, Title = record.Title,
+            ProjectId = record.ProjectId, SessionKind = PaneSessionKind.Sdk, StartedByTheAssistant = record.StartedByTheAssistant,
+        };
+        var state = new SessionStateRecord(record.PaneId, record.ProfileId, record.ProviderId, record.ConversationId,
+            record.ConversationState, record.WorkingDirectory, null, null, null, record.LastActivityAt);
+        var plan = await new SessionRestorePlanner(_conversationProfiles).ComposeAsync(pane, state, cancellationToken);
+        if (plan.Availability != SessionRestoreAvailability.Known || record.ConversationId is not { Length: > 0 })
+        {
+            return new(false, plan.Explanation);
+        }
+
+        var workspace = Workspaces.EnsureSessionWorkspace();
+        if (_BuildRestoreLaunchResult(plan, SessionResume.BySessionId(record.ConversationId)) is not { } launch)
+        {
+            return new(false, plan.Explanation);
+        }
+
+        await launcher.StartSessionAsync(_RequestOf(launch, workspace));
+        return new(true);
     }
 
     // Held so the things that must reach it despite it being in neither collection can — consent routing
