@@ -54,6 +54,15 @@ public interface ICockpitUiHost
     void OnSettingsSaved(Action callback);
 
     /// <summary>
+    /// Registers the view an admin opens from Admin → Plugins → Settings for a server this plugin is installed on
+    /// (AC-1511). <paramref name="createView"/> gets a channel to this plugin's backend part on that server, not the
+    /// one in this window's own process; it carries invokes only. Default no-op, so existing hosts keep compiling.
+    /// </summary>
+    void AddServerSettings(Func<IPluginUiChannel, Control> createView)
+    {
+    }
+
+    /// <summary>
     /// Adds a launcher button to the left menu; clicking runs <paramref name="onInvoke"/>.
     /// </summary>
     void AddSideMenuButton(string title, Action onInvoke);

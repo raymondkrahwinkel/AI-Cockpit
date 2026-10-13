@@ -5,6 +5,7 @@ using System.Collections.Specialized;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions.UI;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -382,6 +383,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the left-menu button's, a plugin dialog's — or by the plugin itself.
     public Dictionary<string, PluginSettingsRegistration> PluginSettings { get; } = [];
 
+    // AC-1511: the views plugins offer for a server they are installed on, keyed like PluginSettings and opened from
+    // Admin → Plugins on that server with a channel to the plugin's backend part there.
+    public Dictionary<string, (string PluginName, Func<IPluginUiChannel, Control> CreateView)> PluginServerSettings { get; } = [];
+
     // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run
     // once the host has performed that plugin's staged write (AC-1004).
     private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
@@ -684,6 +689,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PluginSettings[pluginId] = new PluginSettingsRegistration(pluginId, pluginName, createView, category);
 
     public bool HasPluginSettings(string pluginId) => PluginSettings.ContainsKey(pluginId);
+
+    void IPluginContributionSink.AddPluginServerSettings(string pluginId, string pluginName, Func<IPluginUiChannel, Control> createView) =>
+        PluginServerSettings[pluginId] = (pluginName, createView);
 
     // There is no standalone settings window for a plugin any more: this deep-links into Options on that plugin's own
     // sidebar row instead, the same shared Save/Close transaction every other category uses, so a change saved through

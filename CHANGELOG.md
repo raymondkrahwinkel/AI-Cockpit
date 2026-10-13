@@ -45,6 +45,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: `Cockpit --remote <server>` opens a separate window on one connected server, with its sessions, panes, Health
   and Admin. It keeps no state of its own on this machine, starts no local backend, and leaves the global hotkeys to
   the local cockpit.
+- added: Depot connects with an installation token, as well as through the browser. On a server, where there is no
+  browser, open **Admin → Plugins → Depot → Settings**, give the Depot address and a token you made in Depot under
+  Account, and the server signs in. The token works once and is never stored; a token Depot refuses leaves no
+  connection behind.
+- added: a plugin can offer its own settings for a server in **Admin → Plugins**; what it changes happens on the
+  server, and the audit names the plugin and the action, never what was sent.
 
 ### Fixed
 

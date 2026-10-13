@@ -58,7 +58,12 @@ public sealed class ServerPluginsPage : UserControl
             state.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.State)) { Source = row });
             var enable = new Button { Content = "Enable / disable", Command = admin.TogglePluginCommand, CommandParameter = row };
             var remove = new Button { Content = "Remove", Command = admin.RemovePluginCommand, CommandParameter = row };
-            var actions = new StackPanel { Children = { enable } };
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { enable } };
+            if (row.HasSettings)
+            {
+                actions.Children.Insert(0, new Button { Content = "Settings", Command = admin.OpenPluginSettingsCommand, CommandParameter = row });
+            }
+
             Grid.SetColumn(actions, 1);
             var removal = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Children = { remove } };
             Grid.SetColumn(removal, 2);

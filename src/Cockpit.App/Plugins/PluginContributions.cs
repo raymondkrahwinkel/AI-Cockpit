@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Plugins;
@@ -95,6 +96,14 @@ public interface IPluginContributionSink
     /// </summary>
     void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView, string? category) =>
         AddPluginSettings(pluginId, pluginName, createView);
+
+    /// <summary>
+    /// Registers <paramref name="pluginId"/>'s view for a server it is installed on (AC-1511), opened from Admin →
+    /// Plugins with a channel to the plugin's backend part on that server. Default no-op for test fakes.
+    /// </summary>
+    void AddPluginServerSettings(string pluginId, string pluginName, Func<IPluginUiChannel, Control> createView)
+    {
+    }
 
     /// <summary>
     /// Whether <paramref name="pluginId"/> registered a settings view — what the gears (left menu, dialog chrome) ask before offering to open one.

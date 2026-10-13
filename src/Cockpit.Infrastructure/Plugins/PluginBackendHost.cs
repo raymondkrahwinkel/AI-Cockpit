@@ -555,6 +555,23 @@ public class PluginBackendHost(
         }
     }
 
+    // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin
+    // hands over the grant's parameters and gets an outcome back, never a token.
+    public async Task<PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(
+        string name,
+        string grantType,
+        IReadOnlyDictionary<string, string> parameters,
+        CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<McpOAuthGrantRedeemer>() is not { } redeemer
+            || await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false) is not { } server)
+        {
+            return PluginMcpSignInOutcome.Unavailable;
+        }
+
+        return await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
+    }
+
     // Calls a tool on this plugin's own MCP server via `IMcpToolInvoker` (AC-502), never opening a browser
     // or exposing the bearer token. Accepts any `name` known to the registry or a plugin's `GetMcpServers`
     // (AC-504); AC-499 scopes the invoker's own caller fallback list to this plugin's contributions only.

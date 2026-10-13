@@ -36,6 +36,12 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
     /// <summary>The client id every dynamic client registration against this fixture is issued.</summary>
     public const string ClientId = "test-client";
 
+    /// <summary>
+    /// AC-1511: the one installation token the install-token grant accepts, once and only from client <c>depot</c>,
+    /// as Depot's DEP-264 grant does.
+    /// </summary>
+    public const string InstallToken = "test-install-token";
+
     private readonly WebApplication _app;
     private readonly string?[] _lastRequestedScopeHolder;
     private readonly int[] _refreshFailuresHolder;
@@ -105,6 +111,7 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
         var refreshFailureStatusHolder = new int[1];
         var refreshAttemptsHolder = new int[1];
         var scopeByCode = new ConcurrentDictionary<string, string>();
+        var installTokenUsed = new int[1];
 
         // Registered before any Map* call, exactly like InProcessMcpHttpServer's delay middleware — that ordering is
         // what puts this ahead of endpoint routing, so it sees (and can gate) the /mcp requests below.
@@ -179,6 +186,13 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
         app.MapPost("/connect/token", async (HttpContext context) =>
         {
             var form = await context.Request.ReadFormAsync();
+
+            if (form["grant_type"] == "urn:depot:grant-type:install_token")
+            {
+                return form["client_id"] == "depot" && form["install_token"] == InstallToken && Interlocked.Exchange(ref installTokenUsed[0], 1) == 0
+                    ? Results.Json(new { access_token = AccessToken, token_type = "Bearer", expires_in = 3600, refresh_token = RefreshToken, scope = "depot" })
+                    : Results.BadRequest(new { error = "invalid_grant" });
+            }
 
             // AC4: proves the refresh grant this ticket exists to make possible actually works end to end, not just
             // that a refresh token gets stored. A real authorization server would reject an unrecognised or expired

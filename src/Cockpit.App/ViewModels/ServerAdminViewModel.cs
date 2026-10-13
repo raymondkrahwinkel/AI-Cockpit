@@ -54,6 +54,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1475: the Assistant page, when this dialog was given the server's assistant.
     public ServerAssistantViewModel? Assistant { get; init; }
 
+    // AC-1511: whether a plugin offers its own view for this server, and what opens it. That view comes from the
+    // plugin installed here, in this window, and reaches the plugin's backend part on the server.
+    public Func<ServerPluginRowViewModel, bool> HasPluginSettings { get; init; } = _ => false;
+
+    public Func<ServerPluginRowViewModel, Task>? OpenPluginSettings { get; init; }
+
     public ObservableCollection<ConnectKeyRowViewModel> Keys { get; } = [];
 
     public ObservableCollection<LockoutRowViewModel> Lockouts { get; } = [];
@@ -291,6 +297,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     });
 
     [RelayCommand]
+    private Task OpenPluginSettingsAsync(ServerPluginRowViewModel row) =>
+        _RunAsync(() => OpenPluginSettings?.Invoke(row) ?? Task.CompletedTask);
+
+    [RelayCommand]
     private Task RemovePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
     {
         if (_plugins is null)
@@ -351,7 +361,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         Plugins.Clear();
         foreach (var plugin in await _plugins.GetInstalledAsync())
         {
-            Plugins.Add(new ServerPluginRowViewModel(plugin));
+            var row = new ServerPluginRowViewModel(plugin);
+            row.HasSettings = HasPluginSettings(row);
+            Plugins.Add(row);
         }
 
         OnPropertyChanged(nameof(PluginsCount));
@@ -468,6 +480,8 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
     public string Version { get; } = plugin.Discovered.Manifest.Version;
 
     public string? PinnedSha256 { get; } = plugin.Registration?.PinnedSha256;
+
+    public bool HasSettings { get; set; }
 
     [ObservableProperty]
     private bool _enabled = plugin.Registration?.Enabled ?? false;

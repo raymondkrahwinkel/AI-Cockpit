@@ -145,7 +145,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
-| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync` |
+| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
@@ -348,6 +348,18 @@ renews itself (`RenewingLogin`), is a plain `Login`, an `ApiKey` or an `ApiKeyFr
 Answer from what the provider's own CLI reports about its login, never from a credential's contents, from the same cache
 as `IsLoggedIn`, and say `Unknown` for anything not measured: the host then claims nothing. A plugin that sets it also
 sets `minHostVersion` 0.83.0.
+
+`SignInMcpServerWithGrantAsync(name, grantType, parameters)` (AC-1511, host 0.92.0, SDK 3.7.0) signs in to an MCP server
+the plugin contributed without a browser: the host redeems the grant at the token endpoint the server's OAuth metadata
+names and keeps the tokens where `SignInMcpServerAsync` keeps them. The plugin passes only the grant's own parameters
+(for example a one-time installation token and the `client_id` the server wants) and gets back a
+`PluginMcpSignInOutcome`, never a token; `Declined` means the server refused the grant. On a server, where no browser
+exists, this is the only sign-in there is. A plugin that calls it sets `minHostVersion` 0.92.0.
+
+The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
+registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
+channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
+(admin keys only); it carries invokes, not events, and its audit line names the plugin and the action, never the payload.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:

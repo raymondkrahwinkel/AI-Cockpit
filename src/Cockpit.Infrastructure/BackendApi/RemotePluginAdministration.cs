@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
@@ -5,7 +6,7 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1474: the remote side treats PluginStoreConfig.Location only as the opaque server store id.
-internal sealed class RemotePluginAdministration(BackendApiClient client) : IPluginAdministration, IPluginStoreCatalog
+internal sealed class RemotePluginAdministration(BackendApiClient client) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -43,6 +44,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
     {
         await client.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
+
+    public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+        client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
 
     private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error);
 

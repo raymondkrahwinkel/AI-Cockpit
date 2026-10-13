@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -110,6 +111,10 @@ public sealed class BackendApiDoorTests
         { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        // AC-1511: a plugin's own view reaches its backend part here, admin only; the audit names plugin and action, never the payload.
+        { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "admin", HttpStatusCode.OK, "", "\"connected\":true", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/channel/elsewhere", """{"token":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_action", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -673,7 +678,7 @@ public sealed class BackendApiDoorTests
             };
             PluginStores.LoadAsync().Returns(Task.FromResult<IReadOnlyList<PluginStoreConfig>>(
                 [PluginStoreConfig.Remote("https://user:password@store.example/index.json?access_token=query-token", "store-token")]));
-            Plugins.GetInstalledAsync().Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>(
+            Plugins.GetInstalledAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<InstalledPlugin>>(
             [
                 new InstalledPlugin(
                     new DiscoveredPlugin("C:\\server\\plugins\\private", "private", new PluginManifest("private", "Private", "1.0.0", null, 0, null, null, null, null), "private-hash", PluginLoadDecision.Load),
@@ -774,6 +779,9 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(Providers);
             services.AddSingleton(Plugins);
             services.AddSingleton(PluginStores);
+            var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+            channels.Handle("private", "connect", (_, _) => Task.FromResult(JsonDocument.Parse("""{"connected":true}""").RootElement));
+            services.AddSingleton(channels);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = ProjectEditor;

@@ -1,6 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
+using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
@@ -399,10 +403,13 @@ public partial class CockpitViewModel
         }
 
         var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, group.Server.Plugins, group.Server.Projects, dialogService: _dialogService)
+        var plugins = group.Server.Plugins;
+        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService)
         {
             Profiles = new ServerProfilesViewModel(group.Server.Profiles),
             Assistant = assistant,
+            HasPluginSettings = row => plugins is IPluginChannelRelay && _ServerSettingsFor(row) is not null,
+            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, row),
         };
 
         // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
@@ -412,6 +419,24 @@ public partial class CockpitViewModel
             group.Health.IsOpen = true;
         });
         await show(admin);
+    }
+
+    // AC-1511: the view the plugin installed here offers for a server, keyed like its own settings.
+    private (string PluginName, Func<IPluginUiChannel, Control> CreateView)? _ServerSettingsFor(ServerPluginRowViewModel row) =>
+        PluginServerSettings.TryGetValue(row.Id, out var byId) ? byId
+        : PluginServerSettings.TryGetValue(row.FolderId, out var byFolder) ? byFolder
+        : null;
+
+    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server.
+    private Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, ServerPluginRowViewModel row)
+    {
+        if (_dialogService is null || plugins is not IPluginChannelRelay relay || _ServerSettingsFor(row) is not { } settings)
+        {
+            return Task.CompletedTask;
+        }
+
+        var channel = new RemotePluginUiChannel(relay, row.FolderId);
+        return _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
     }
 
     [RelayCommand]

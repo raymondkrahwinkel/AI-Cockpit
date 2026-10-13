@@ -15,6 +15,8 @@ public sealed class DepotUi : ICockpitPluginUi
     {
         var settings = new DepotSettings(host.Storage);
         host.AddSettings(() => new DepotSettingsControl(host, settings));
+        // AC-1511: Admin → Plugins → Depot → Settings on a server, whose backend part this channel reaches.
+        host.AddServerSettings(channel => new DepotServerSettingsControl(channel));
         host.Channel.Subscribe(DepotChannel.OpenSettings, evt => Dispatcher.UIThread.Post(() => _ = host.ShowSettingsAsync()));
         // AC-784: same global-toolbar route the Kubernetes plugin uses (AC-91) — the project editor's own
         // "Servers…" button above still opens settings the same way it always has.
