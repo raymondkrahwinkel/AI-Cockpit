@@ -74,7 +74,8 @@ internal sealed class SessionLiveStateFold
             // AC-531: the background tasks deliberately outlive the turn.
             case TurnCompleted turn:
                 _ClearActiveToolCalls();
-                _hasCompletedATurn = true;
+                // AC-1529: a turn broken off by Stop did not finish, so the session stands Idle, not Done.
+                _hasCompletedATurn = !interruptRequested;
                 _lastTurnFailed = false;
                 _usage = _usage.Add(turn.Usage, turn.TotalCostUsd);
                 return (new SessionTurnEnd(

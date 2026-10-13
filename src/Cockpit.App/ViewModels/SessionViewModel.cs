@@ -173,12 +173,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
         OnPropertyChanged(nameof(ActiveToolActivityAgeText));
         OnPropertyChanged(nameof(ShowThinkingIndicator));
+        OnPropertyChanged(nameof(SimpleStatusLabel));
     }
+
+    // AC-1530 turns this into plain words; until then the header reads the same label the composer band shows.
+    protected override string SimpleActivityLabel => ActiveToolActivityLabel;
+
+    public override bool ShowsSimpleStop => IsBusy;
+
+    public override System.Windows.Input.ICommand SimpleStopCommand => StopCommand;
 
     private void _OnHostBusyChanged()
     {
         OnPropertyChanged(nameof(ShowThinkingIndicator));
         OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(ShowsSimpleStop));
         CompactCommand.NotifyCanExecuteChanged();
     }
 
@@ -621,13 +630,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
     // plain-language promise) (AC-105, AC-536).
-    protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
+    protected override bool SuppressCostMeter => _ShownReadingLevel == ReadingLevel.Simple;
 
     // Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.
-    public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
+    public override bool ShowKindChip => _ShownReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
 
-    partial void OnReadingLevelChanged(ReadingLevel value)
+    // AC-1529: the Simple stand reads every conversation at Simple without touching the level Panels shows.
+    private ReadingLevel _ShownReadingLevel => IsShownInSimpleStand ? ReadingLevel.Simple : ReadingLevel;
+
+    partial void OnReadingLevelChanged(ReadingLevel value) => _ApplyShownReadingLevel();
+
+    protected override void OnShownInSimpleStandChanged() => _ApplyShownReadingLevel();
+
+    private void _ApplyShownReadingLevel()
     {
+        var value = _ShownReadingLevel;
         // The level lives on the session, but each transcript row renders itself from its own copy — push the new
         // level down, re-fold the Focus groups for it, and re-announce the header figures the level shows or hides.
         _suspendVisibleSync = true;
@@ -663,7 +680,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 _RegisterRow(entry);
                 entry.Session = this;
-                entry.ReadingLevel = ReadingLevel;
+                entry.ReadingLevel = _ShownReadingLevel;
                 entry.PropertyChanged += _OnEntryPropertyChanged;
                 _RecordRow(entry);
             }
@@ -1049,7 +1066,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // is simply un-grouped (AC-138).
     private void _RecomputeReadingGroups()
     {
-        if (ReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel != ReadingLevel.Focus)
         {
             foreach (var entry in Transcript)
             {
@@ -1072,7 +1089,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        if (ReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel != ReadingLevel.Focus)
         {
             for (var index = low; index <= high; index++)
             {

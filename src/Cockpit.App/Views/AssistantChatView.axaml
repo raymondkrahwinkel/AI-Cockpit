@@ -66,6 +66,10 @@
         <Style Selector="TextBlock#StartingPointsHeading">
             <Setter Property="IsVisible" Value="False"/>
         </Style>
+        <!-- AC-1529: the Simple stand's column reads as one document of about 720px, as a picked session does. -->
+        <Style Selector="Border#ComposerBorder.simpleColumn, ItemsControl#TranscriptItems.simpleColumn">
+            <Setter Property="MaxWidth" Value="720"/>
+        </Style>
         <Style Selector="Border#ComposerBorder.offer">
             <Setter Property="Width" Value="720"/>
             <Setter Property="Padding" Value="12,10,10,10"/>
@@ -123,9 +127,16 @@
                              where "some of these were never shown to you" has to be legible. Says that it is on,
                              not which sources — that list is Options', and a header is not a settings page.
                              AC-1316: said in the operator's terms, and a button onto that page rather than a route to walk. -->
-                        <Button x:Name="ConsentBypassNotice" Classes="Subtle" Padding="0" IsVisible="{Binding ConsentBypassActive}"
+                        <!-- AC-1529: not in the Simple stand, where the rights are ⋯ → Details (AC-1533). -->
+                        <Button x:Name="ConsentBypassNotice" Classes="Subtle" Padding="0"
                                 Command="{Binding Cockpit.OpenAssistantOptionsCommand}"
                                 ToolTip.Tip="For the sources ticked in Options → Assistant, the assistant skips Cockpit's consent card. Every skipped card is still written to the consent trail. Click to change it.">
+                            <Button.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="ConsentBypassActive"/>
+                                    <Binding Path="!IsInSimpleStand"/>
+                                </MultiBinding>
+                            </Button.IsVisible>
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
                                                             VerticalAlignment="Center"
@@ -293,7 +304,15 @@
                  usage pill aside — same WrapPanel/340px-MinWidth precedent as the warning bar's own button row
                  further down ("T2's narrow-window layout"). -->
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
-                <Border ClipToBounds="True"
+                <!-- AC-1529: usage is ⋯ → Details in the Simple stand (AC-1533). -->
+                <Panel>
+                <Panel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding ElementName="UsagePill" Path="IsVisible"/>
+                        <Binding Path="!IsInSimpleStand"/>
+                    </MultiBinding>
+                </Panel.IsVisible>
+                <Border x:Name="UsagePill" ClipToBounds="True"
                         Background="{DynamicResource CockpitSecondaryBgBrush}"
                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitPillRadius}"
@@ -359,6 +378,7 @@
                         </Button>
                     </StackPanel>
                 </Border>
+                </Panel>
 
                 <!-- AC-776 Deel 1: session-status pill, same shape as the usage pill above — same
                      CockpitSecondaryBgBrush/CockpitHairlineBrush/CockpitPillRadius, 1px dividers between segments —
@@ -552,7 +572,7 @@
                  the code-behind swaps it on ShowsStartOffer. Never a second box to keep in step. -->
             <ContentControl x:Name="BottomComposerHost" DockPanel.Dock="Bottom">
             <Border x:Name="ComposerBorder" Padding="10,6,10,10" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
-                    Classes.offer="{Binding ShowsStartOffer}">
+                    Classes.offer="{Binding ShowsStartOffer}" Classes.simpleColumn="{Binding IsSimpleViewHost}">
                 <StackPanel Spacing="6">
                     <!-- Progress, read straight off the session the same way SessionView.axaml reads it. The window
                          is a narrower frame on the same SDK view, so it owes the operator the same answer to "is it
@@ -981,7 +1001,8 @@
                      viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
                      TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
                      by that name. -->
-                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}">
+                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}"
+                              Classes.simpleColumn="{Binding IsSimpleViewHost}">
                     <ItemsControl.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
                             <Binding Path="HasMessages"/>

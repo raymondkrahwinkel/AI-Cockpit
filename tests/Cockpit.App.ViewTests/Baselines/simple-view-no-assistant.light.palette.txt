@@ -14,6 +14,7 @@
 #FF7C8391  CockpitTextFaintColor
 #FFA35F02  CockpitStatusWaitingColor
 #FFD5DAE3  CockpitHairlineColor
+#FFD7E3F7  CockpitUserBubbleColor
 #FFDDE2EB  CockpitSecondaryBgColor
 #FFE4E7EE  CockpitHairlineSoftColor
 #FFEDEFF5  CockpitInsetBgColor
@@ -26,4 +27,5 @@ radius  20,20,20,20
 radius  3,3,3,3
 radius  5,5,5,5
 radius  6,6,6,6
+radius  7,7,7,7
 radius  9,9,9,9

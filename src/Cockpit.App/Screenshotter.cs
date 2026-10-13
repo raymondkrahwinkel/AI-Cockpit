@@ -382,6 +382,8 @@ internal static class Screenshotter
         ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
         ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
+        // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
+        ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
         // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
         // for this one, and the second place the starting-point gallery is drawn.
         ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
@@ -2666,6 +2668,21 @@ internal static class Screenshotter
         var cockpit = _SimpleStand(withAssistant: true);
         cockpit.Projects.StageDesignSample();
         cockpit.ShowSimpleProjectsCommand.Execute(null);
+        return cockpit;
+    }
+
+    private static ViewModels.CockpitViewModel _SimpleStandConversation()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.Projects.StageDesignSample();
+        var picked = (ViewModels.SessionViewModel)_Named(cockpit, "kind→staging");
+        picked.ProjectId = cockpit.Projects.Projects[0].Id;
+        picked.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.UserText, "Can you bring staging in line with kind, and tell me what stands out?"));
+        picked.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "Traefik on staging is two minor versions behind. **The configuration** differs in three places — I am writing them down now."));
+        picked.SessionStatus = SessionStatus.Busy;
+        picked.IsBusy = true;
         return cockpit;
     }
 
