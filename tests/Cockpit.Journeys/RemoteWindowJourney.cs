@@ -28,7 +28,7 @@ public sealed class RemoteWindowJourney
         var damagedRoot = Directory.CreateDirectory(Path.Combine(root, "damaged")).FullName;
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(Path.Combine(root, "server"), 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(Path.Combine(root, "server"), 0, root, "http://127.0.0.1:9/webhook", withTtyProfile: false);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), Path.Combine(root, "server"), ServerJourney._Secret(root, "connect-key", key));
         var previousRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);

@@ -113,9 +113,11 @@ public sealed class ServerJourney
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(paneId, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var cli = int.Parse(Regex.Match(answer.Data.GetRawText(), @"\(cli (\d+)\)").Groups[1].Value);
 
-            var refusedTty = await Assert.ThrowsAsync<BackendApiException>(() => admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Terminal" }));
-            Assert.Equal(HttpStatusCode.Conflict, refusedTty.Status);
-            Assert.Contains("TTY session", refusedTty.Description, StringComparison.Ordinal);
+            // AC-1524: a host without a terminal runs the profile that defaults to TTY as the SDK session it can make.
+            var ttyStarted = await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "EchoTty", prompt = "tty" });
+            var ttyPaneId = ttyStarted["paneId"]?.GetValue<string>() ?? "";
+            await admin.StreamEventsAsync(0, timeout.Token)
+                .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(ttyPaneId, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: tty", StringComparison.Ordinal), timeout.Token);
 
             // AC-1467: the finished hello session is said once, and a session stopped on a permission once too.
             await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "ask" });
@@ -222,7 +224,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, plain credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTerminalProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -238,7 +240,7 @@ public sealed class ServerJourney
             await services.GetRequiredService<ISessionProfileStore>().SaveAsync(
             [
                 new SessionProfile("Echo", new PluginProviderConfig("echo-provider.echo", "{}")) { DefaultKind = ProfileSessionKind.Sdk },
-                .. withTerminalProfile ? [new SessionProfile("Terminal", new ClaudeConfig(Path.Combine(stateRoot, ".claude"))) { DefaultKind = ProfileSessionKind.Tty }] : Array.Empty<SessionProfile>(),
+                .. withTtyProfile ? [new SessionProfile("EchoTty", new PluginProviderConfig("echo-provider.echo", "{}")) { DefaultKind = ProfileSessionKind.Tty }] : Array.Empty<SessionProfile>(),
                 new SessionProfile("EchoSignIn", new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, SignedInFile) }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
                 new SessionProfile(NeverSignedIn, new PluginProviderConfig("echo-provider.echo", new JsonObject { ["signedInFile"] = Path.Combine(root, "echo-never-signed-in") }.ToJsonString())) { DefaultKind = ProfileSessionKind.Sdk },
             ]);

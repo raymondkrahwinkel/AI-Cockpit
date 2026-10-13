@@ -28,7 +28,7 @@ public sealed class SessionLauncher(
 
     public bool CanCloseWorkspace(string workspaceId) => desks.CanCloseWorkspace(workspaceId);
 
-    public bool ProfileHasTtyRoute(SessionProfile profile) => TtyRoute.Exists(profile, ttyProviders);
+    public bool ProfileHasTtyRoute(SessionProfile profile) => hosting.CanHost(PaneSessionKind.Tty) && TtyRoute.Exists(profile, ttyProviders);
 
     public Task<Project?> FindProjectByIdAsync(string projectId) => composer.FindProjectAsync(projectId);
 
@@ -41,10 +41,17 @@ public sealed class SessionLauncher(
         request = await composer.ComposeAsync(request).ConfigureAwait(false);
         var profile = request.Profile;
         var kind = request.Kind ?? PaneSessionKind.Sdk;
+        if (kind == PaneSessionKind.Tty && !hosting.CanHost(PaneSessionKind.Tty))
+        {
+            // AC-1524: a host without a terminal has no TTY route, so whatever asked for one (the profile's default
+            // included) runs as the SDK session the host can make. Decided here so every caller follows it.
+            kind = PaneSessionKind.Sdk;
+            request = request with { Kind = kind };
+        }
+
         if (!hosting.CanHost(kind))
         {
-            // A host that runs no sessions at all starts nothing; one that runs them but no terminal says why.
-            return kind == PaneSessionKind.Tty && hosting.CanHost(PaneSessionKind.Sdk) ? throw new TtyLaunchRefusedException(profile.Label) : null;
+            return null;
         }
 
         // AC-410: a pane a restart brought back is registered, recorded and waiting; naming it starts that one.

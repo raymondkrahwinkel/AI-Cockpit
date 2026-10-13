@@ -38,6 +38,14 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             CredentialKind = _ => PluginCredentialKind.RenewingLogin,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),
         });
+
+        // AC-1524: a terminal route the profile can default to, so a journey can show a host without a terminal runs
+        // that profile as SDK. The factory is never called there: a backend has no pane to host a TUI in.
+        host.AddTtyProvider(new TtyProviderRegistration(
+            ProviderId,
+            "Echo",
+            _ => throw new NotSupportedException("The echo provider has no TUI to run."),
+            []));
     }
 
     // AC-1357: a sign-in a journey can take away and give back — signed in while the file the config names exists.
