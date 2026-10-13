@@ -42,11 +42,13 @@ public class McpOAuthGrantRedeemerTests
             return;
         }
 
-        Assert.Equal((InProcessOAuthMcpServer.AccessToken, InProcessOAuthMcpServer.RefreshToken), (stored?.AccessToken, stored?.RefreshToken));
-        Assert.Equal(("depot", depot.BaseUrl, depot.Url), (stored?.ClientId, stored?.AuthorizationServer, stored?.ResourceUrl));
+        Assert.NotNull(stored);
+        var kept = stored;
+        Assert.Equal((InProcessOAuthMcpServer.AccessToken, InProcessOAuthMcpServer.RefreshToken), (kept.AccessToken, kept.RefreshToken));
+        Assert.Equal(("depot", depot.BaseUrl, depot.Url), (kept.ClientId, kept.AuthorizationServer, kept.ResourceUrl));
 
         // What makes it a sign-in rather than an hour of access: the SDK renews it later with the client it was kept for.
-        await store.SaveAsync("depot-1", server.Name, stored! with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5) });
+        await store.SaveAsync("depot-1", server.Name, kept with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5) });
         var coordinator = new McpOAuthCoordinator(store, new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store), NullLogger<McpOAuthCoordinator>.Instance);
         var renewed = await coordinator.AcquireAsync(server, interactive: false);
         Assert.Equal((McpAuthState.Authorized, InProcessOAuthMcpServer.RenewedAccessToken), (renewed.State, renewed.AccessToken));

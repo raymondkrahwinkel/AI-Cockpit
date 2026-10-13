@@ -128,7 +128,9 @@ public class DepotPluginTests
         using var plugin = new DepotPlugin();
         plugin.Initialize(host);
 
-        var answer = await handler!(
+        Assert.NotNull(handler);
+        var connect = handler;
+        var answer = await connect(
             JsonSerializer.SerializeToElement(new DepotInstallTokenRequest(new DepotConnectionPayload("", "Work", "https://depot.example.com/mcp"), token), DepotChannel.Json),
             CancellationToken.None);
 
