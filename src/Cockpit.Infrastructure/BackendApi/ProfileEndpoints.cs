@@ -330,10 +330,9 @@ internal static class ProfileEndpoints
         return config.ToJsonString();
     }
 
-    // The config the change names, where a secret that still reads KeptSecret, or that it leaves out, stays as the server
-    // holds it; an empty one clears it. Kept, it may not follow a changed address: that needs the key again, or an
-    // admin key could send the stored one to a host of its own.
-    // ponytail: only top-level secrets are kept; a nested one comes back as KeptSecret. Upgrade when a provider nests one.
+    // A secret that reads KeptSecret, or is left out, stays as stored; empty clears it. A kept one never follows a changed
+    // address, or an admin key could send it to a host of its own. ponytail: top-level secrets only; upgrade when a
+    // provider nests one.
     internal static (string? Config, IResult Refusal) MergeConfig(string stored, string incoming)
     {
         if (_ParseObject(incoming) is not { } next)

@@ -8,10 +8,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// AC-1473 (F5.6b3): Options › Profiles on a server. A save sends the fields the editor changed, never the profile or
-// the list read back: neither holds the server's secrets, so writing them back would wipe those. AC-1534: a plugin
-// provider's profile opens in that provider's own view, as Manage profiles opens it here; the server sends its config
-// with every set secret masked, and keeps the key wherever the view sends the mask back.
+// AC-1473 (F5.6b3): Options › Profiles on a server. A save sends only the fields the editor changed, since what it read
+// holds no secrets. AC-1534: a plugin profile opens in its provider's own view, as Manage profiles does; the server
+// masks the set secrets in that config and keeps the key wherever the mask comes back.
 public sealed partial class ServerProfilesViewModel(IServerProfiles profiles, IPluginProviderConfigViews? configViews = null) : ObservableObject
 {
     private ServerProfileRowViewModel? _editing;
