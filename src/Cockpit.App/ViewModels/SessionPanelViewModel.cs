@@ -369,6 +369,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     public virtual System.Windows.Input.ICommand? SimpleStopCommand => null;
 
+    // AC-1533: ⋯ → Details reads these. A TTY session's are its launch values; the SDK session's are the live ones.
+    public virtual string? DetailsPermissionMode => LaunchResult?.Mode.Value;
+
+    public virtual string? DetailsModel => LaunchResult?.Model.Label;
+
+    public virtual double? DetailsCostUsd => HasUsage ? _usage.TotalCostUsd : null;
+
+    // AC-1533: Start over is turn-time, so only a route whose turn the host owns has one (AC-294).
+    public virtual Func<Task>? StartOver => null;
+
+    // AC-1530/AC-1533: how a step's folder, a made file or Open folder reaches the system; a test hands in its own.
+    internal Func<string, bool> OpenPath { get; set; } = ExternalLink.TryOpenWithSystemApp;
+
     // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
     // selected in single-pane mode (#24 / Zoom).
     [ObservableProperty]

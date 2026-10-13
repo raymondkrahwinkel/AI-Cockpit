@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 
 namespace Cockpit.App.Controls;
@@ -24,4 +26,10 @@ public partial class SimpleConversationHeader : UserControl
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    private void _OnRenameKeyDown(object? sender, KeyEventArgs e) => InlineRename.OnKeyDown(sender, e);
+
+    private void _OnRenameLostFocus(object? sender, RoutedEventArgs e) => InlineRename.OnLostFocus(sender, e);
+
+    private void _OnRenameAttached(object? sender, VisualTreeAttachmentEventArgs e) => InlineRename.OnAttached(sender, e);
 }

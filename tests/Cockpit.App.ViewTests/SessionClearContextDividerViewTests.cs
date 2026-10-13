@@ -14,7 +14,7 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class SessionClearContextDividerViewTests
 {
-    private const string Label = "Context cleared — a new conversation starts here";
+    private const string Label = "The earlier conversation was cleared — this conversation starts here";
 
     [Fact]
     public void TheContextClearedDivider_RendersAsARuleAcrossTheTranscript() => HeadlessAvalonia.Run(() =>

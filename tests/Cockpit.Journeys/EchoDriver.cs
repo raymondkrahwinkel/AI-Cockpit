@@ -22,6 +22,9 @@ public sealed class EchoDriver : ISessionDriver
     // Three reads, then four writes of which the last fails; the first write stays open until `FinishWriting`.
     public const string WorkingPrompt = "work";
 
+    // What an echoed turn reports it cost, so the meter has something to show (AC-1533).
+    public const double Cost = 0.38;
+
     public static readonly string[] Written = ["Kwartaaloverzicht-Q3.xlsx", "Toelichting-Q3.docx", "Facturen-Q3.csv", "Kapot.txt"];
 
     private readonly Channel<string> _prompts = Channel.CreateUnbounded<string>();
@@ -140,7 +143,7 @@ public sealed class EchoDriver : ISessionDriver
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {echoed}" };
             yield return new TurnCompleted
             {
-                SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {echoed}", IsError = fails,
+                SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {echoed}", IsError = fails, TotalCostUsd = Cost, NumTurns = 1,
             };
             _answered.TrySetResult();
         }

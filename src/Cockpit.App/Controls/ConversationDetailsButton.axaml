@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.ConversationDetailsButton">
+
+    <!-- AC-1533 (mockup simple-view-conversation-details.png): model, cost and rights live here, not in the header. -->
+    <Button x:Name="DetailsButton" Classes="Subtle Compact" VerticalAlignment="Center" ToolTip.Tip="Details of this conversation">
+        <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
+        <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight" Opening="_OnOpening">
+                <StackPanel x:Name="DetailsPanel" x:DataType="vm:ConversationDetails" Width="320" Spacing="0">
+                    <TextBlock Text="DETAILS OF THIS CONVERSATION" FontSize="10.5" FontWeight="SemiBold" Margin="12,10,12,8"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="12,0,12,10">
+                        <Grid.Styles>
+                            <Style Selector="TextBlock">
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Margin" Value="0,0,0,8"/>
+                            </Style>
+                        </Grid.Styles>
+                        <TextBlock Text="Works in" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Project}" Margin="0" IsVisible="{Binding Project, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            <TextBlock x:Name="DetailsFolder" Text="{Binding Folder}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" Text="Allowed to" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock x:Name="DetailsAllowedTo" Grid.Row="1" Grid.Column="1" Text="{Binding AllowedTo}"/>
+                        <TextBlock Grid.Row="2" Text="Cost" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock x:Name="DetailsCost" Grid.Row="2" Grid.Column="1" Text="{Binding Cost}"/>
+                        <TextBlock Grid.Row="3" Text="Model" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock x:Name="DetailsModel" Grid.Row="3" Grid.Column="1" Text="{Binding Model}"/>
+                    </Grid>
+                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+                    <StackPanel Margin="4,6">
+                        <StackPanel.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                <Setter Property="Padding" Value="8,7"/>
+                            </Style>
+                        </StackPanel.Styles>
+                        <Button x:Name="DetailsOpenFolder" Classes="Subtle" Command="{Binding OpenFolderCommand}" Click="_OnAction">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15"/>
+                                <TextBlock Text="Open folder"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="DetailsRename" Classes="Subtle" Command="{Binding RenameCommand}" Click="_OnAction"
+                                IsVisible="{Binding CanRename}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <materialIcons:MaterialIcon Kind="PencilOutline" Width="15" Height="15"/>
+                                <TextBlock Text="Rename"/>
+                            </StackPanel>
+                        </Button>
+                        <!-- No confirmation: trust comes from calm, not from extra clicks (AC-1526). -->
+                        <Button x:Name="DetailsStartOver" Classes="Subtle" Command="{Binding StartOverCommand}" Click="_OnAction"
+                                IsEnabled="{Binding CanStartOver}"
+                                ToolTip.Tip="Forgets this conversation and starts a new one here; what was said stays readable above">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <materialIcons:MaterialIcon Kind="Broom" Width="15" Height="15"/>
+                                <TextBlock Text="Start over"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Flyout>
+        </Button.Flyout>
+    </Button>
+</UserControl>

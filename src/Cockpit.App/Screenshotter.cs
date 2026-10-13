@@ -389,6 +389,8 @@ internal static class Screenshotter
         ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
         // AC-1321: the node while a paired controller holds the line — the takeover notice, and no button, since nothing here ends it.
         ["simple-view-assistant-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(controlled: true) },
+        // AC-1533: the same conversation with ⋯ → Details open — where it works, what it may do, its cost and model.
+        ["simple-view-conversation-details"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
         ["simple-view-assistant-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
@@ -772,6 +774,7 @@ internal static class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
         // on Height alone to make it fit.
@@ -821,9 +824,9 @@ internal static class Screenshotter
         }
     }
 
-    private static void _OpenFlyout(Window window, string buttonName)
+    private static void _OpenFlyout(Control root, string buttonName)
     {
-        var button = _Named<Button>(window, buttonName);
+        var button = root.GetVisualDescendants().OfType<Button>().First(control => control.Name == buttonName && control.IsEffectivelyVisible);
         button.Flyout?.ShowAt(button);
     }
 
@@ -2680,13 +2683,19 @@ internal static class Screenshotter
         return cockpit;
     }
 
-    private static ViewModels.CockpitViewModel _SimpleStandConversation()
+    private static ViewModels.CockpitViewModel _SimpleStandConversation(bool withCost = false)
     {
         var cockpit = _SimpleStand(withAssistant: true);
         cockpit.Projects.StageDesignSample();
         var picked = (ViewModels.SessionViewModel)_Named(cockpit, "kind→staging");
         picked.ProjectId = cockpit.Projects.Projects[0].Id;
         picked.WorkingDirectory = Path.Combine(Path.GetTempPath(), "infra");
+        if (withCost)
+        {
+            picked.SelectedModel = SessionOptionCatalog.ModelForValue("opus");
+            picked.Apply(new TurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, TotalCostUsd = 0.38, NumTurns = 1 });
+        }
+
         picked.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.UserText, "Can you bring staging in line with kind, and tell me what stands out?"));
         // AC-1530: three reads in one folder fold to one step, each write is a step of its own, then the green block.

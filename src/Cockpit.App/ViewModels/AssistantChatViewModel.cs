@@ -410,6 +410,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             return;
         }
 
+        await _StartOverAsync();
+    }
+
+    private async Task _StartOverAsync()
+    {
         if (Session is { IsBusy: true })
         {
             await StopAsync();
@@ -417,6 +422,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         await _host.ClearConversationAsync();
     }
+
+    // AC-1533: ⋯ → Details in the Simple stand. Start over asks nothing first (AC-1526's hard limit); the assistant
+    // header carries no title of its own to rename.
+    internal ConversationDetails? Details() => Session is { } session
+        ? new ConversationDetails(session, project: null, ConsentBypassActive, canRename: false, _StartOverAsync)
+        : null;
 
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the
     // session's own composer, which this window does not show — so it is moved into the box that is on screen.

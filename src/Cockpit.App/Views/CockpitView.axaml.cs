@@ -1528,65 +1528,9 @@ public partial class CockpitView : UserControl
             .FirstOrDefault(box => box.Name == "InputBox")?.Focus();
     }
 
-    // Inline rename: Enter commits, Escape cancels; losing focus commits an in-progress rename.
-    private void OnRenameBoxKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (sender is not TextBox { DataContext: SessionPanelViewModel session })
-        {
-            return;
-        }
+    private void OnRenameBoxKeyDown(object? sender, KeyEventArgs e) => InlineRename.OnKeyDown(sender, e);
 
-        if (e.Key == Key.Enter)
-        {
-            session.CommitRename();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            session.CancelRename();
-            e.Handled = true;
-        }
-    }
+    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e) => InlineRename.OnLostFocus(sender, e);
 
-    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e)
-    {
-        if (sender is TextBox { DataContext: SessionPanelViewModel session } && session.IsRenaming)
-        {
-            session.CommitRename();
-        }
-    }
-
-    // The rename box attaches once when its row is built; focus + select it whenever the row enters rename
-    // mode (IsVisible toggling alone does not re-fire attach), and unsubscribe when the row goes away.
-    private void OnRenameBoxAttached(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        if (sender is not TextBox { DataContext: SessionPanelViewModel session } box)
-        {
-            return;
-        }
-
-        void OnSessionPropertyChanged(object? s, PropertyChangedEventArgs args)
-        {
-            if (args.PropertyName == nameof(SessionPanelViewModel.IsRenaming) && session.IsRenaming)
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    box.Focus();
-                    box.SelectAll();
-                });
-            }
-        }
-
-        session.PropertyChanged += OnSessionPropertyChanged;
-        box.DetachedFromVisualTree += (_, _) => session.PropertyChanged -= OnSessionPropertyChanged;
-
-        if (session.IsRenaming)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                box.Focus();
-                box.SelectAll();
-            });
-        }
-    }
+    private void OnRenameBoxAttached(object? sender, VisualTreeAttachmentEventArgs e) => InlineRename.OnAttached(sender, e);
 }
