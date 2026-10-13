@@ -6,11 +6,13 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Clones;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Worktrees;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -27,10 +29,19 @@ internal static partial class ProjectsEndpoints
 {
     public const string EventKind = "project";
 
+    public const string NoRepository = "This Depot project names no repository, so there is nothing to clone on the server.";
+
     public const string CredentialsRefused = "A repository URL cannot carry a user name, secret or token. Use the server's own git credentials.";
 
     // AC-1472: off unless set to 1. A file:// clone would copy any folder `agent` can read into /work; a journey sets it.
     public const string AllowFileClonesVariable = "COCKPIT_ALLOW_FILE_CLONES";
+
+    private const string CloneTool = "api:clone_project";
+
+    private const string BindTool = "api:bind_shared_project";
+
+    // _ClaimCloneAsync answers a refusal or a parsed URL, never neither.
+    private const string NeitherClaimNorRefusal = "A clone claim came back with neither a URL to clone nor a refusal.";
 
     // What a clone that is still running, done or failed reported last, by id, for a client that missed its event.
     private static readonly ConcurrentDictionary<string, CloneState> Clones = new(StringComparer.Ordinal);
@@ -60,52 +71,113 @@ internal static partial class ProjectsEndpoints
             var caller = _Caller();
             if (string.IsNullOrWhiteSpace(body.RepoUrl))
             {
-                return await _RefuseAsync(services, caller, "api:clone_project", "repoUrl is required.").ConfigureAwait(false);
+                return await _RefuseAsync(services, caller, CloneTool, "repoUrl is required.").ConfigureAwait(false);
             }
 
-            // Before anything parses it, so no message built from it can carry the secret.
-            if (GitCloneUrl.CarriesCredentials(body.RepoUrl))
+            var (refusal, parsed, branch, target) = await _ClaimCloneAsync(services, caller, CloneTool, body.RepoUrl, body.Branch, cancellationToken).ConfigureAwait(false);
+            if (parsed is null)
             {
-                return await _RefuseAsync(services, caller, "api:clone_project", CredentialsRefused).ConfigureAwait(false);
-            }
-
-            if (!_IsAllowedTransport(body.RepoUrl.Trim()))
-            {
-                return await _RefuseAsync(services, caller, "api:clone_project", "The server clones over https or ssh only.").ConfigureAwait(false);
-            }
-
-            GitCloneUrl parsed;
-            try
-            {
-                parsed = GitCloneUrl.Parse(body.RepoUrl);
-            }
-            catch (FormatException exception)
-            {
-                return await _RefuseAsync(services, caller, "api:clone_project", exception.Message).ConfigureAwait(false);
-            }
-
-            var branch = body.Branch?.Trim() ?? "";
-            if (branch.Length > 0 && !_Branch().IsMatch(branch))
-            {
-                return await _RefuseAsync(services, caller, "api:clone_project", "That is not a branch name.").ConfigureAwait(false);
-            }
-
-            // A folder already there, or one a clone is writing now, is another project's checkout, which a switch to
-            // this branch would move under it. The claim is taken first, so two requests at once cannot both pass.
-            var clones = services.GetRequiredService<IRepositoryCloneManager>();
-            var target = clones.BuildClonePath(await clones.GetEffectiveClonesRootAsync(cancellationToken).ConfigureAwait(false), parsed.RemoteUrl) ?? "";
-            if (target.Length == 0 || !InFlight.TryAdd(target, 0) || _ReleaseIfPresent(target))
-            {
-                await _AuditAsync(services, caller, "api:clone_project", "refused", null, CancellationToken.None).ConfigureAwait(false);
-                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "already_cloned", $"{parsed.Slug} is already cloned on this server, or being cloned now.");
+                return refusal ?? throw new UnreachableException(NeitherClaimNorRefusal);
             }
 
             var name = HealthEndpoints.Clean(body.Name).Trim() is { Length: > 0 } given ? given : parsed.Segments[^1];
             var id = Guid.NewGuid().ToString("n");
             Clones[id] = new CloneState(id, name, "running");
-            await _AuditAsync(services, caller, "api:clone_project", "called", name, CancellationToken.None).ConfigureAwait(false);
-            _ = _CloneAsync(services, caller, id, name, parsed.RemoteUrl, branch, target);
+            await _AuditAsync(services, caller, CloneTool, "called", name, CancellationToken.None).ConfigureAwait(false);
+            _ = _CloneAsync(services, caller, CloneTool, id, name, parsed.RemoteUrl, branch, target, (editor, path) => editor.AddNewProjectAsync(new Project(id, name)
+            {
+                SourceDirectories = [new ProjectRepository(path)],
+                GitUrl = parsed.RemoteUrl,
+            }));
             return Results.Json(new { id, name }, statusCode: StatusCodes.Status202Accepted);
+        }).RequireAdmin();
+
+        // AC-1514: what the server's own sources (Depot, as on the desktop) share and it has not added yet, without the
+        // bound and hidden ones. A source that failed is one row with its reason, as the Projects page shows it.
+        api.MapGet("/projects/shared", async (CancellationToken cancellationToken) =>
+        {
+            var sources = await services.GetRequiredService<IAssistantReadGateway>().ListSharedProjectsAsync().ConfigureAwait(false);
+            await _AuditAsync(services, _Caller(), "api:list_shared_projects", "called", null, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new
+            {
+                sources = sources.Select(source => new
+                {
+                    name = source.SourceName,
+                    error = source.Succeeded ? null : source.Error,
+                    projects = source.Projects.Select(project => new { id = project.Id, name = project.Name, description = project.Description }),
+                }),
+            });
+        }).RequireAdmin();
+
+        // AC-1514: "Add to my projects…" on the server. The definition's repository is cloned through the same checks,
+        // claim and clone as POST /projects, then stored bound, so memory, MCP choice and behaviour come with it. Rows
+        // only a machine can fill stay empty, as an empty box in the dialog does, and the answer names them.
+        api.MapPost("/projects/shared", async (BindSharedProjectBody body, CancellationToken cancellationToken) =>
+        {
+            var caller = _Caller();
+            var sharedId = body.SharedProjectId?.Trim() ?? "";
+            var profileLabel = body.Profile?.Trim() ?? "";
+            if (sharedId.Length == 0 || profileLabel.Length == 0)
+            {
+                return await _RefuseAsync(services, caller, BindTool, "sharedProjectId and profile are required.").ConfigureAwait(false);
+            }
+
+            var profile = (await services.GetRequiredService<ISessionProfileStore>().LoadAsync(cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault(candidate => string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
+            if (profile is null)
+            {
+                return await _RefuseAsync(services, caller, BindTool, "This server has no profile by that name.").ConfigureAwait(false);
+            }
+
+            // The id says which connection it came from, as on the desktop (AssistantAgentGateway.BindSharedProjectAsync).
+            var source = services.GetRequiredService<ISharedProjectSourceRegistry>().Sources
+                .FirstOrDefault(candidate => sharedId.StartsWith(candidate.Key + ":", StringComparison.Ordinal));
+            if (source is null)
+            {
+                await _AuditAsync(services, caller, BindTool, "not found", null, cancellationToken).ConfigureAwait(false);
+                return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_shared_project", "No connection on this server offers a project with that id.");
+            }
+
+            var (boundIds, hiddenIds) = SharedProjectSourceLister.VisibilityFilterIds(
+                await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken).ConfigureAwait(false));
+            if (boundIds.Contains(sharedId))
+            {
+                await _AuditAsync(services, caller, BindTool, "refused", null, cancellationToken).ConfigureAwait(false);
+                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "already_added", "That project is already added on this server.");
+            }
+
+            if (hiddenIds.Contains(sharedId))
+            {
+                return await _RefuseAsync(services, caller, BindTool, "That project is hidden on this server, so it is not on offer here.").ConfigureAwait(false);
+            }
+
+            var (composition, error) = await SharedProjectBindings.ReadAsync(sharedId, source, cancellationToken).ConfigureAwait(false);
+            if (composition is null)
+            {
+                return await _RefuseAsync(services, caller, BindTool, error ?? "Could not read this project's definition.").ConfigureAwait(false);
+            }
+
+            if (string.IsNullOrWhiteSpace(composition.GitUrl))
+            {
+                return await _RefuseAsync(services, caller, BindTool, NoRepository).ConfigureAwait(false);
+            }
+
+            // Someone else wrote this URL, so it passes every check a typed one does, the credential check first.
+            var (refusal, parsed, branch, target) = await _ClaimCloneAsync(services, caller, BindTool, composition.GitUrl, body.Branch, cancellationToken).ConfigureAwait(false);
+            if (parsed is null)
+            {
+                return refusal ?? throw new UnreachableException(NeitherClaimNorRefusal);
+            }
+
+            var name = HealthEndpoints.Clean(composition.Name).Trim() is { Length: > 0 } clean ? clean : parsed.Segments[^1];
+            var id = Guid.NewGuid().ToString("n");
+            Clones[id] = new CloneState(id, name, "running");
+            await _AuditAsync(services, caller, BindTool, "called", name, CancellationToken.None).ConfigureAwait(false);
+            _ = _CloneAsync(services, caller, BindTool, id, name, parsed.RemoteUrl, branch, target, (editor, path) =>
+                editor.AddBoundProjectAsync(composition.ToProject(path, parsed.RemoteUrl, profile.Label, composition.BehaviorPrompt, []) with { Id = id }));
+            return Results.Json(
+                new { id, name, unboundResources = composition.MachineRows.Select(row => row.DisplayLabel) },
+                statusCode: StatusCodes.Status202Accepted);
         }).RequireAdmin();
 
         // Read by a client whose stream was down while the clone ended; a server restarted since knows no clone.
@@ -164,26 +236,70 @@ internal static partial class ProjectsEndpoints
         }).RequireAdmin();
     }
 
+    // The URL checks and the folder claim every clone passes, whoever wrote the URL: a refusal, or what to clone where.
+    private static async Task<(IResult? Refusal, GitCloneUrl? Parsed, string Branch, string Target)> _ClaimCloneAsync(
+        IServiceProvider services, NodeCaller caller, string tool, string repoUrl, string? branchText, CancellationToken cancellationToken)
+    {
+        // Before anything parses it, so no message built from it can carry the secret.
+        if (GitCloneUrl.CarriesCredentials(repoUrl))
+        {
+            return (await _RefuseAsync(services, caller, tool, CredentialsRefused).ConfigureAwait(false), null, "", "");
+        }
+
+        if (!_IsAllowedTransport(repoUrl.Trim()))
+        {
+            return (await _RefuseAsync(services, caller, tool, "The server clones over https or ssh only.").ConfigureAwait(false), null, "", "");
+        }
+
+        GitCloneUrl parsed;
+        try
+        {
+            parsed = GitCloneUrl.Parse(repoUrl);
+        }
+        catch (FormatException exception)
+        {
+            return (await _RefuseAsync(services, caller, tool, exception.Message).ConfigureAwait(false), null, "", "");
+        }
+
+        var branch = branchText?.Trim() ?? "";
+        if (branch.Length > 0 && !_Branch().IsMatch(branch))
+        {
+            return (await _RefuseAsync(services, caller, tool, "That is not a branch name.").ConfigureAwait(false), null, "", "");
+        }
+
+        // A folder already there, or one a clone is writing now, is another project's checkout, which a switch to
+        // this branch would move under it. The claim is taken first, so two requests at once cannot both pass.
+        var clones = services.GetRequiredService<IRepositoryCloneManager>();
+        var target = clones.BuildClonePath(await clones.GetEffectiveClonesRootAsync(cancellationToken).ConfigureAwait(false), parsed.RemoteUrl) ?? "";
+        if (target.Length == 0 || !InFlight.TryAdd(target, 0) || _ReleaseIfPresent(target))
+        {
+            await _AuditAsync(services, caller, tool, "refused", null, CancellationToken.None).ConfigureAwait(false);
+            return (BackendApiRoutes.Error(StatusCodes.Status409Conflict, "already_cloned", $"{parsed.Slug} is already cloned on this server, or being cloned now."), null, "", "");
+        }
+
+        return (null, parsed, branch, target);
+    }
+
     // Clone, switch to the branch, add the project, then tell the stream, which always hears an end: a failure adds
     // nothing and says why. The server's own messages never hold a credential: a URL carrying one never got this far.
-    private static async Task _CloneAsync(IServiceProvider services, NodeCaller caller, string id, string name, string remoteUrl, string branch, string target)
+    private static async Task _CloneAsync(
+        IServiceProvider services, NodeCaller caller, string tool, string id, string name, string remoteUrl, string branch, string target, Func<IProjectEditor, string, Task> addProject)
     {
+        // Fire-and-forget (AC-1472): everything that can throw sits inside the try, the logger lookup too, so every
+        // end lands as "cloned" or "failed" in Clones and the folder claim is always let go.
         var started = Stopwatch.GetTimestamp();
-        var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints));
+        ILogger? logger = null;
         CloneState outcome;
         try
         {
+            logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(ProjectsEndpoints));
             var clone = await services.GetRequiredService<IRepositoryCloneManager>().CloneAsync(remoteUrl, allowedProtocols: _Protocols()).ConfigureAwait(false);
             if (branch.Length > 0)
             {
                 await GitCli.RunCheckedAsync(clone.Path, ["switch", branch], CancellationToken.None, GitEnvironment.NonInteractive).ConfigureAwait(false);
             }
 
-            await services.GetRequiredService<IProjectEditor>().AddNewProjectAsync(new Project(id, name)
-            {
-                SourceDirectories = [new ProjectRepository(clone.Path)],
-                GitUrl = remoteUrl,
-            }).ConfigureAwait(false);
+            await addProject(services.GetRequiredService<IProjectEditor>(), clone.Path).ConfigureAwait(false);
             outcome = new CloneState(id, name, "cloned", clone.Path, _SizeOf(clone.Path), Stopwatch.GetElapsedTime(started).TotalSeconds);
         }
         catch (Exception exception)
@@ -208,7 +324,7 @@ internal static partial class ProjectsEndpoints
 
         try
         {
-            await _AuditAsync(services, caller, "api:clone_project", outcome.State == "cloned" ? "cloned" : "clone failed", name, CancellationToken.None).ConfigureAwait(false);
+            await _AuditAsync(services, caller, tool, outcome.State == "cloned" ? "cloned" : "clone failed", name, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -297,5 +413,7 @@ internal sealed record CloneState(
     [property: JsonPropertyName("error")] string? Error = null);
 
 internal sealed record CloneProjectBody(string? RepoUrl, string? Branch, string? Name);
+
+internal sealed record BindSharedProjectBody(string? SharedProjectId, string? Profile, string? Branch);
 
 internal sealed record UpdateProjectBody(string? Name, string? Description, string? DefaultProfile);

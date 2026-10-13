@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
@@ -31,7 +32,8 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
         Changed?.Invoke();
     }
 
-    // Shared projects and Depot sync belong to this cockpit's own list; a server's has neither.
+    // A server's shared projects are offered on its Admin page (ListSharedAsync), not merged into this list, and Depot
+    // sync runs on the server itself.
     public Task RefreshSharedProjectsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task SyncNowAsync(string projectId) => Task.CompletedTask;
@@ -80,6 +82,31 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     public async Task<ServerProjectClone> CloneAsync(string repoUrl, string branch, string name, CancellationToken cancellationToken = default)
     {
         var accepted = await client.SendAsync<JsonElement>(HttpMethod.Post, "api/v1/projects", new { repoUrl, branch, name }, cancellationToken).ConfigureAwait(false);
+        return await _ClonedAsync(accepted, name, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedAsync(CancellationToken cancellationToken = default)
+    {
+        var list = await client.GetAsync<RemoteSharedList>("api/v1/projects/shared", cancellationToken).ConfigureAwait(false);
+        return
+        [
+            .. list.Sources.Select(source => new AssistantSharedProjectSourceRow(
+                source.Name,
+                source.Error is null,
+                source.Error,
+                [.. source.Projects.Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, null))])),
+        ];
+    }
+
+    // AC-1514: the clone's end arrives as any clone's does, on the stream as a `project` event.
+    public async Task<ServerProjectClone> BindSharedAsync(string sharedProjectId, string profile, CancellationToken cancellationToken = default)
+    {
+        var accepted = await client.SendAsync<JsonElement>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId, profile }, cancellationToken).ConfigureAwait(false);
+        return await _ClonedAsync(accepted, _Text(accepted, "name") ?? sharedProjectId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ServerProjectClone> _ClonedAsync(JsonElement accepted, string name, CancellationToken cancellationToken)
+    {
         var id = accepted.GetProperty("id").GetString() ?? throw new JsonException("The server accepted a clone without an id.");
         JsonElement outcome;
         try
@@ -154,6 +181,12 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     private static string? _Text(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }
+
+internal sealed record RemoteSharedList(IReadOnlyList<RemoteSharedSource> Sources);
+
+internal sealed record RemoteSharedSource(string Name, string? Error, IReadOnlyList<RemoteSharedRow> Projects);
+
+internal sealed record RemoteSharedRow(string Id, string Name, string? Description = null);
 
 internal sealed record RemoteProjectList(IReadOnlyList<RemoteProjectRow> Projects);
 

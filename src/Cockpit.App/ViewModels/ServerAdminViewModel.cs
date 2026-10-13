@@ -163,6 +163,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             {
                 await serverProjects.LoadAsync();
                 _ShowProjects();
+                await _LoadSharedAsync(serverProjects);
             }
         });
     }

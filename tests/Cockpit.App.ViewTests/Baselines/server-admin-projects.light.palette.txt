@@ -5,6 +5,7 @@
 
 #142B7546  CockpitStatusDoneChipTintColor
 #182563EB  CockpitCategoryTintBlueColor
+#CC000000  off-palette
 #FF000000  off-palette
 #FF161920  CockpitTextPrimaryColor
 #FF2563EB  CockpitAccentColor

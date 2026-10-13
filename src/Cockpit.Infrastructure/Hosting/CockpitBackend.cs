@@ -568,7 +568,7 @@ public sealed class CockpitBackend
         services.AddSingleton<ISessionHosting, BackendSessionHosting>();
         services.AddSingleton<IAssistantSessionFactory, BackendAssistantSessions>();
         services.AddSingleton<ISessionLauncher, SessionLauncher>();
-        services.AddSingleton<IProjectComposer, NoProjectComposer>();
+        services.AddSingleton<IProjectComposer, BackendProjectComposer>();
         services.AddSingleton<IAssistantConversation, HostAssistantConversation>();
         services.AddSingleton<IExternalLinkOpener, NoBrowserLinkOpener>();
         services.AddSingleton<IUiHitchProbe, NoUiHitchProbe>();

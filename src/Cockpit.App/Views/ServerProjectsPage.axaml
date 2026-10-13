@@ -45,6 +45,50 @@
             </StackPanel>
         </Border>
 
+        <!-- AC-1514: "From Depot", what the server's own sources share, added as the desktop's "Add to my projects…" does:
+             the server clones the repository the definition names, and memory, MCP choice and behaviour come with it. -->
+        <Border Padding="14,12" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1" Margin="0,4,0,0"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
+            <StackPanel Spacing="8">
+                <DockPanel>
+                    <ComboBox DockPanel.Dock="Right" MinWidth="180" ItemsSource="{Binding SharedProfiles}" SelectedItem="{Binding SharedProfile}"
+                              ToolTip.Tip="The server profile the project's sessions run under."/>
+                    <TextBlock Classes="optionsSectionHeader" Text="FROM DEPOT" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding SharedNotices}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl ItemsSource="{Binding SharedProjects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ServerSharedProjectRowViewModel">
+                            <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" Padding="0,7">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Classes="Subtle Compact" VerticalAlignment="Center"
+                                            Content="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedLabel}"
+                                            Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <StackPanel Margin="0,0,8,0">
+                                        <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding Name, Mode=OneWay}"/>
+                                            <Run Text="{Binding SourceName, Mode=OneWay, StringFormat=' · {0}'}" FontWeight="Normal" FontSize="12"
+                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Description}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
         <Border Padding="14,12" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1" Margin="0,4,0,0"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
             <StackPanel Spacing="8">

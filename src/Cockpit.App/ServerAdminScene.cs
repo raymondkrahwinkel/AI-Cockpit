@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
@@ -202,6 +203,21 @@ internal static class ServerAdminScene
             _projects.Add(new Project("cockpit", name) { SourceDirectories = [new ProjectRepository(path)] });
             return Task.FromResult(new ServerProjectClone("cockpit", name, path, 412L << 20, TimeSpan.FromSeconds(108), null));
         }
+
+        // AC-1514: "From Depot" with two projects one connection shares, and a second connection that is signed out.
+        public Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AssistantSharedProjectSourceRow>>(
+            [
+                new("Depot — Work", true, null,
+                [
+                    new("depot-work:handbook", "Handbook", "The team's onboarding and runbooks.", null),
+                    new("depot-work:eveworkbench", "EVE Workbench", null, null),
+                ]),
+                new("Depot — Personal", false, "Not signed in to depot.example.", []),
+            ]);
+
+        public Task<ServerProjectClone> BindSharedAsync(string sharedProjectId, string profile, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     // The mockup's four profiles; the OpenRouter key is a secret variable, so no value of it exists on this side.

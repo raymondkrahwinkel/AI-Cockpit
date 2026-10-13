@@ -57,8 +57,9 @@ internal sealed class HostAssistantConversation(IAssistantSessionHost host) : IA
     public Task<bool> ShowQuestionAsync(string question, string inputJson) => Task.FromResult(false);
 }
 
-// The project dialogs compose a project, and there are none here (AC-1435), so composing refuses with the reason.
-internal sealed class NoProjectComposer : IProjectComposer
+// A shared project composes without a dialog (AC-1514), as on the desktop. "New project" is the dialog's own, and there
+// is none here (AC-1435), so that one refuses with the reason.
+internal sealed class BackendProjectComposer : IProjectComposer
 {
     internal const string Refusal = "This cockpit runs without its project dialogs, and composing a project goes through them.";
 
@@ -69,7 +70,7 @@ internal sealed class NoProjectComposer : IProjectComposer
         string profileLabel,
         IReadOnlyList<string>? resourceReferences,
         CancellationToken cancellationToken) =>
-        Task.FromResult<(Project?, string?)>((null, Refusal));
+        SharedProjectBindings.ComposeAsync(sharedProjectId, source, sourceDirectory, profileLabel, resourceReferences, cancellationToken);
 
     public Task<(Project? Project, string? Refusal)> ComposeNewProjectAsync(
         string name,

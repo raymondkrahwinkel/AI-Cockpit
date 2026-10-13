@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.EchoProvider;
@@ -46,7 +47,16 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             "Echo",
             _ => new EchoTtyProvider(),
             []));
+
+        // AC-1514: a shared-project source as a Depot connection registers one, so a journey adds a shared project on a
+        // server without a Depot. Only where the variable names the repository its one definition points at.
+        if (Environment.GetEnvironmentVariable(SharedRepositoryVariable) is { Length: > 0 } repository)
+        {
+            host.AddSharedProjectSource(new EchoSharedProjectSource(repository));
+        }
     }
+
+    public const string SharedRepositoryVariable = "COCKPIT_ECHO_SHARED_REPOSITORY";
 
     // AC-1357: a sign-in a journey can take away and give back — signed in while the file the config names exists.
     // A config without `signedInFile` is always signed in.
@@ -58,6 +68,40 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
     public void Dispose()
     {
     }
+}
+
+// AC-1514: one shared definition that names a repository, an MCP choice and a behaviour, as a Depot project would.
+internal sealed class EchoSharedProjectSource(string repository) : ISharedProjectSource
+{
+    public const string ProjectId = "echo-shared:journey";
+
+    public string Key => "echo-shared";
+
+    public string SourceName => "Echo shared";
+
+    public bool CanPublish => false;
+
+    public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(SharedProjectListResult.Success([new SharedProject(ProjectId, "journey-shared")]));
+
+    public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
+        Task.FromResult(id == ProjectId
+            ? SharedProjectBindingResult.Success(new SharedProjectBinding("journey-shared")
+            {
+                GitUrl = repository,
+                BehaviorPrompt = "Answer in echoes.",
+                EnabledMcpServerNames = ["cockpit-sessions"],
+            })
+            : SharedProjectBindingResult.Failed("No such shared project."));
+
+    public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
+        Task.FromResult(SharedProjectWriteBackResult.Failed("The echo source is read-only."));
+
+    public Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(SharedProjectPublishTargetListResult.Failed("The echo source does not publish."));
+
+    public Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken) =>
+        Task.FromResult(SharedProjectPublishResult.Failed("The echo source does not publish."));
 }
 
 internal sealed class EchoTtyProvider : IPluginTtyProvider

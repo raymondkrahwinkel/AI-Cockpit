@@ -16,7 +16,10 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
@@ -36,6 +39,11 @@ public sealed class RemoteAdminJourney
 
     private const string StorePlugin = "echo-provider";
 
+    // AC-1514: the echo fixture's one shared definition (Cockpit.Plugin.EchoProvider's EchoSharedProjectSource).
+    private const string SharedProject = "echo-shared:journey";
+
+    private const string SharedName = "journey-shared";
+
     // Admin → Connect keys → issue; the new key connects; revoke; the revoked key is refused; a locked-out address is
     // lifted. AC-1472: Projects clones a bare repository; it is in GET /projects and "+ Start on", and a session runs in
     // it. Each step is in the Audit log with the key that called as its actor, never the node tools' identity.
@@ -54,13 +62,17 @@ public sealed class RemoteAdminJourney
         await _GitAsync(work, "add", "README.md");
         await _GitAsync(work, "-c", "user.name=journey", "-c", "user.email=journey@example.invalid", "commit", "-m", "first");
         await _GitAsync(work, "push", origin, "main");
+        // AC-1514: the repository the echo fixture's shared definition names, its own so the clone above does not claim it.
+        var shared = Path.Combine(root, "shared.git");
+        await _GitAsync(root, "clone", "--bare", origin, shared);
         // AC-1525: one door port across the restart, as a container keeps its own. The door listens on every address one
         // above the pairing port, so that is the port found free.
         var port = _FreeDoorPort();
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
-            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile, new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1" });
+            ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,
+            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1", ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri });
         var run = startServer();
         try
         {
@@ -312,6 +324,35 @@ public sealed class RemoteAdminJourney
                 await view.StartOnServerCommand.ExecuteAsync(group);
                 paneId = group.Sessions.Single(session => session.Handle.PaneId != storePane).Handle.PaneId;
             });
+
+            // AC-1514: From Depot offers the fixture source's project; "Add on" clones the repository its definition names
+            // and stores it bound, it leaves the list, a second add is refused, and "+ Start on" starts a session in it.
+            var sharedOffered = new List<string>();
+            var sharedResult = "";
+            var sharedAfter = new List<string>();
+            var sharedPane = "";
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
+                admin.SharedProfile = "Echo";
+                await admin.AddSharedCommand.ExecuteAsync(admin.SharedProjects.Single(project => project.Id == SharedProject));
+                sharedResult = admin.CloneResult;
+                sharedAfter = [.. admin.SharedProjects.Select(project => project.Id)];
+
+                var group = view.ServerGroups[0];
+                var running = group.Sessions.Select(session => session.Handle.PaneId).ToHashSet();
+                await view.OpenServerStartCommand.ExecuteAsync(group);
+                group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
+                group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == SharedName);
+                await view.StartOnServerCommand.ExecuteAsync(group);
+                sharedPane = group.Sessions.Single(session => !running.Contains(session.Handle.PaneId)).Handle.PaneId;
+            });
+            var secondAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
+                setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = SharedProject, profile = "Echo" }));
+            var bound = (await new ProjectStore(CockpitConfigPath.For(stateRoot)).LoadAsync()).Projects.Single(project => project.Name == SharedName);
+            var sharedFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
+                .Select(line => JsonNode.Parse(line))
+                .Last(record => record?["PaneId"]?.GetValue<string>() == sharedPane)?["WorkingDirectory"]?.GetValue<string>();
             var listed = (await setup.GetAsync<JsonObject>("api/v1/projects"))["projects"]?.AsArray().Single(project => project?["name"]?.GetValue<string>() == Project);
             var clonePath = listed?["path"]?.GetValue<string>() ?? "";
             var sessionFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
@@ -388,6 +429,15 @@ public sealed class RemoteAdminJourney
             Assert.Contains(Project, offered);
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
+            Assert.Contains(SharedProject, sharedOffered);
+            Assert.StartsWith($"Cloned into {bound.SourceDirectory} · ", sharedResult, StringComparison.Ordinal);
+            Assert.DoesNotContain(SharedProject, sharedAfter);
+            Assert.Equal(HttpStatusCode.Conflict, secondAdd.Status);
+            Assert.Equal(new ProjectResource(SharedProject, ProjectResourceRole.Memory), bound.Resources[0]);
+            Assert.Equal(new[] { "cockpit-sessions" }, bound.McpOverlay.EnabledServerNames);
+            Assert.Equal(("Answer in echoes.", "Echo"), (bound.BehaviorPrompt, bound.DefaultProfileLabel));
+            Assert.True(File.Exists(Path.Combine(bound.SourceDirectory ?? "", "README.md")), "The shared project's clone holds no checkout.");
+            Assert.Equal(bound.SourceDirectory, sharedFolder);
             Assert.Equal("", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
             Assert.Equal(("Running", ""), assistantState);
