@@ -30,7 +30,7 @@ public sealed class RemoteSessionJourney
         var stateRoot = Path.Combine(root, "state");
         var scratch = Directory.CreateDirectory(Path.Combine(root, "scratch")).FullName;
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook");
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"),
             stateRoot,
@@ -101,7 +101,7 @@ public sealed class RemoteSessionJourney
                 await Until.Holds(group, () => group.IsConnected);
 
                 await view.OpenServerStartCommand.ExecuteAsync(group);
-                group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
+                group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "EchoTty");
                 Assert.Null(group.Start.SelectedProject);
                 group.Start.Prompt = "working-directory";
                 await view.StartOnServerCommand.ExecuteAsync(group);
@@ -303,7 +303,7 @@ public sealed class RemoteSessionJourney
         var root = Directory.CreateTempSubdirectory("journey-remote-").FullName;
         var stateRoot = Path.Combine(root, "state");
         var key = "ck_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTerminalProfile: false);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, 0, root, "http://127.0.0.1:9/webhook", withTtyProfile: false);
         var run = ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, ServerJourney._Secret(root, "connect-key", key));
         try
