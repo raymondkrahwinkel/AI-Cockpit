@@ -235,6 +235,9 @@ internal static class ServerAdminScene
         public Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RemoteProfile>>(Listed);
 
+        public Task<IReadOnlyList<string>> ListProvidersAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([.. Listed.Select(profile => profile.Provider).Distinct()]);
+
         public Task<RemoteProfile> CreateAsync(RemoteNewProfile profile, CancellationToken cancellationToken = default) =>
             Task.FromResult(_Profile(profile.Label, profile.Provider, profile.Settings?.Model, null, null, []));
 

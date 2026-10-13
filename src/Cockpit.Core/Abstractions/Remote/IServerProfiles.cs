@@ -14,6 +14,11 @@ public interface IServerProfiles
     Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The provider ids a new profile on the server can name (AC-1534); empty from a server that predates the list.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListProvidersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Makes a profile on the server. Throws <see cref="ArgumentException"/> with the server's reason when it refuses.
     /// </summary>
     Task<RemoteProfile> CreateAsync(RemoteNewProfile profile, CancellationToken cancellationToken = default);

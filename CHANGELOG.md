@@ -35,6 +35,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: **From Depot** on a server's Admin → Projects. It lists the Depot projects the server's own connection
   shares; **Add on <server>** clones the repository the project names and adds it as on the desktop, with its memory,
   MCP choice and behaviour. A project whose definition names no repository, or a URL carrying credentials, is refused.
+- added: Admin → Profiles on a server opens a plugin provider's own settings, as Manage profiles does on the desktop,
+  so a profile on, say, an OpenAI-compatible provider gets its base URL, model and API key from here. The key goes to
+  the server and never comes back: the server only says that one is set. Saving with it left as is keeps it, and
+  changing the base URL then asks for the key again. A new profile can now also pick a provider that has no profile
+  yet. The provider's UI part must be installed on this desktop too.
 - added: a **What's new** button on the update banner. It lists the changelog entries between the build you are on
   and the one on offer, so you can see what an update brings before you install it. When GitHub cannot be reached
   it says so, and updating still works.

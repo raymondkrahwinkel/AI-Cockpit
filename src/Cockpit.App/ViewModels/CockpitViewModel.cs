@@ -3200,9 +3200,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1456: the connect servers as session-list groups, and the pane that reads one of their sessions.
         IRemoteServers? remoteServers = null,
         Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null,
-        IServerSignIns? serverSignIns = null)
+        IServerSignIns? serverSignIns = null,
+        // AC-1534: the providers' own profile views, so Admin › Profiles on a server opens the one this laptop shows.
+        IPluginProviderConfigViews? providerConfigViews = null)
     {
         _settingsWriteBatch = settingsWriteBatch;
+        _providerConfigViews = providerConfigViews;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);

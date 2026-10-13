@@ -146,10 +146,11 @@ internal sealed class EchoLoginFlow(string? signedInFile) : ILoginFlow
 
 internal sealed class EchoDriverFactory : IPluginSessionDriverFactory
 {
-    public IPluginSessionDriver Create(string configJson) => new EchoSessionDriver();
+    public IPluginSessionDriver Create(string configJson) => new EchoSessionDriver(configJson);
 }
 
-internal sealed class EchoSessionDriver : IPluginSessionDriver
+// AC-1534: "config" answers with the base URL the profile's config names and whether it holds a key, never the key.
+internal sealed class EchoSessionDriver(string configJson) : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private Process? _child;
@@ -200,7 +201,12 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
             return Task.CompletedTask;
         }
 
-        var echoed = text == "working-directory" ? _workingDirectory : text;
+        var echoed = text switch
+        {
+            "working-directory" => _workingDirectory,
+            "config" => _Config(),
+            _ => text,
+        };
         var answer = _model is null ? $"echo: {echoed} (cli {_child?.Id})" : $"echo: {echoed} (cli {_child?.Id}) · model {_model}";
         _events.Publish(new PluginAssistantTextDelta { SessionId = SessionId, BlockIndex = 0, Text = answer });
         _events.Publish(new PluginTurnCompleted { SessionId = SessionId, Subtype = "success", Result = answer, IsError = false });
@@ -208,6 +214,13 @@ internal sealed class EchoSessionDriver : IPluginSessionDriver
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    private string _Config()
+    {
+        var config = JsonNode.Parse(configJson);
+        var key = config?["apiKey"]?.GetValue<string>() is { Length: > 0 } ? "set" : "none";
+        return $"base {config?["baseUrl"]?.GetValue<string>()} · key {key}";
+    }
 
     private int _asked;
 

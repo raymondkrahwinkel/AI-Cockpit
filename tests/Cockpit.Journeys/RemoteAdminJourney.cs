@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -20,6 +21,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
@@ -208,6 +210,54 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
+            // AC-1534: Admin → Profiles makes a profile on the fresh provider in that provider's own view, key included. No
+            // answer, audit line or server log holds the key; a save that leaves it masked keeps it, one that moves the
+            // base URL with it masked is refused, and a session on the profile reaches the provider with the key set.
+            var providerKey = $"journey-provider-{Guid.NewGuid():N}";
+            cockpit.Services.GetRequiredService<IPluginProviderConfigViews>().Register("echo-provider.echo", config => new _EchoConfigView(config));
+            var (madeStatus, keptStatus, movedStatus) = ("", "", "");
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
+                await page.LoadCommand.ExecuteAsync(null);
+                page.StartNewCommand.Execute(null);
+                page.EditorLabel = "Echo keyed";
+                page.EditorProvider = "echo-provider.echo";
+                var made = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
+                (made.BaseUrl.Text, made.ApiKey.Text) = ("https://inference.example/v1", providerKey);
+                await page.SaveEditorCommand.ExecuteAsync(null);
+                madeStatus = page.Status;
+
+                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
+                await page.SaveEditorCommand.ExecuteAsync(null);
+                keptStatus = page.Status;
+
+                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
+                var moved = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
+                moved.BaseUrl.Text = "https://elsewhere.example/v1";
+                await page.SaveEditorCommand.ExecuteAsync(null);
+                movedStatus = page.Status;
+                page.CancelEditorCommand.Execute(null);
+            });
+            var listedProfiles = (await setup.GetAsync<JsonObject>("api/v1/profiles")).ToJsonString();
+            var (keyedAnswer, keyedPane) = ("", "");
+            using (var keyedSession = new CancellationTokenSource(Until.Ceiling))
+            {
+                var keyedStarted = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo keyed", prompt = "config" });
+                keyedPane = keyedStarted["paneId"]?.GetValue<string>() ?? "";
+                var answered = await setup.StreamEventsAsync(0, keyedSession.Token)
+                    .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(keyedPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: base", StringComparison.Ordinal), keyedSession.Token);
+                keyedAnswer = answered.Data.GetRawText();
+            }
+
+            Assert.Equal(("", "", "Enter the key again: this change sends it to a different address."), (madeStatus, keptStatus, movedStatus));
+            Assert.Contains("echo: base https://inference.example/v1", keyedAnswer, StringComparison.Ordinal);
+            Assert.Contains("key set", keyedAnswer, StringComparison.Ordinal);
+            Assert.Contains("\"hasApiKey\":true", listedProfiles, StringComparison.Ordinal);
+            Assert.False(listedProfiles.Contains(providerKey, StringComparison.Ordinal), "GET /profiles returned the provider key.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(providerKey, StringComparison.Ordinal), "The audit holds the provider key.");
+            Assert.False(run.Output.Contains(providerKey, StringComparison.Ordinal), "The server log holds the provider key.");
+
             await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
@@ -322,7 +372,7 @@ public sealed class RemoteAdminJourney
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
                 group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == Project);
                 await view.StartOnServerCommand.ExecuteAsync(group);
-                paneId = group.Sessions.Single(session => session.Handle.PaneId != storePane).Handle.PaneId;
+                paneId = group.Sessions.Single(session => session.Handle.PaneId != storePane && session.Handle.PaneId != keyedPane).Handle.PaneId;
             });
 
             // AC-1514: From Depot offers the fixture source's project; "Add on" clones the repository its definition names
@@ -558,6 +608,31 @@ public sealed class RemoteAdminJourney
             {
                 return port;
             }
+        }
+    }
+
+    // AC-1534: a provider's own profile view, as a plugin's UI part registers one: base URL and key. It opens every echo
+    // profile, the keyless ones of the steps after it too.
+    private sealed class _EchoConfigView : IPluginProviderConfigView
+    {
+        public _EchoConfigView(string? configJson)
+        {
+            var config = configJson is null ? null : JsonNode.Parse(configJson);
+            BaseUrl.Text = config?["baseUrl"]?.GetValue<string>();
+            ApiKey.Text = config?["apiKey"]?.GetValue<string>();
+            View = new StackPanel { Children = { BaseUrl, ApiKey } };
+        }
+
+        public TextBox BaseUrl { get; } = new();
+
+        public TextBox ApiKey { get; } = new() { PasswordChar = '*' };
+
+        public Control View { get; }
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = new JsonObject { ["baseUrl"] = BaseUrl.Text ?? "", ["apiKey"] = ApiKey.Text ?? "" }.ToJsonString();
+            return true;
         }
     }
 }

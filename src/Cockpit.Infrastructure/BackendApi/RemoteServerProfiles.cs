@@ -12,6 +12,9 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
     public async Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
         (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Profiles;
 
+    public async Task<IReadOnlyList<string>> ListProvidersAsync(CancellationToken cancellationToken = default) =>
+        (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Providers ?? [];
+
     public Task<RemoteProfile> CreateAsync(RemoteNewProfile profile, CancellationToken cancellationToken = default) =>
         _CallAsync<RemoteProfile>(HttpMethod.Post, "api/v1/profiles", profile, cancellationToken);
 
@@ -54,5 +57,5 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
         }
     }
 
-    private sealed record RemoteProfileList(IReadOnlyList<RemoteProfile> Profiles);
+    private sealed record RemoteProfileList(IReadOnlyList<RemoteProfile> Profiles, IReadOnlyList<string>? Providers = null);
 }
