@@ -15,7 +15,9 @@
     <!-- Moves in step with Cockpit.Plugins.Abstractions: the same version, whose major is the contract. The
          AssemblyVersion stays fixed like the SDK's, so a plugin built against a later minor still binds to the
          host's copy. -->
-    <Version>3.2.0</Version>
+    <!-- 3.3.0 (AC-1511): ICockpitUiHost.AddServerSettings (default no-op), a view for a server the plugin is installed
+         on, with a channel to its backend part there. A plugin that calls it sets minHostVersion 0.92.0. -->
+    <Version>3.3.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

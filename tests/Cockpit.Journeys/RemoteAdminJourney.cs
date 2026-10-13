@@ -4,7 +4,10 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
@@ -13,6 +16,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
 
@@ -143,6 +147,41 @@ public sealed class RemoteAdminJourney
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == "journey-store-plugin");
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == "journey-store-plugin");
+
+            // AC-1511: Admin → Plugins → Depot → Settings opens Depot's own view for the server. An installation token signs
+            // the server's connection in at a fake Depot without a browser; the same token again is refused and adds nothing.
+            var installToken = $"journey-install-{Guid.NewGuid():N}";
+            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
+            var depotUrl = depot.BaseUrl.TrimEnd('/');
+            var depotOpened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watchDepot = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+            {
+                if (window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "Installation token"))
+                {
+                    depotOpened.TrySetResult(window);
+                }
+            });
+            var depotHasSettings = false;
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                var depotRow = admin.Plugins.Single(plugin => plugin.Id == "depot");
+                depotHasSettings = depotRow.HasSettings;
+                _ = admin.OpenPluginSettingsCommand.ExecuteAsync(depotRow);
+                return Task.CompletedTask;
+            });
+            var depotWindow = await depotOpened.Task.WaitAsync(Until.Ceiling);
+            var signedIn = "";
+            var reused = "";
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                signedIn = await _ConnectDepotAsync(depotWindow, "Work", depotUrl, installToken);
+                reused = await _ConnectDepotAsync(depotWindow, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
+                depotWindow.Close();
+            });
+            var serverState = "";
+            await Until.ReloadHolds(
+                async () => serverState = await File.ReadAllTextAsync(Path.Combine(stateRoot, "cockpit.json")),
+                () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal) && !serverState.Contains("localhost", StringComparison.Ordinal));
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -301,6 +340,13 @@ public sealed class RemoteAdminJourney
             Assert.Equal(("Running", ""), assistantState);
             Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
             Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
+            Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
+            Assert.Equal(("Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account."), (signedIn, reused));
+            Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
+            var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
+            Assert.False(
+                new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
+                "The installation token is in the server's state, its output or its audit.");
         }
         finally
         {
@@ -312,6 +358,54 @@ public sealed class RemoteAdminJourney
             run.Process.Dispose();
             JourneyHost.RemoveStateRoot(root);
         }
+    }
+
+    // Depot as the server reaches it (AC-1511, DEP-264 not yet rolled out): its OAuth metadata and a token endpoint that
+    // redeems one installation token once, for Depot's own client.
+    private static RequestDelegate _FakeDepot(string installToken)
+    {
+        var redeemed = 0;
+        return async context =>
+        {
+            var origin = $"{context.Request.Scheme}://{context.Request.Host}";
+            switch (context.Request.Path.Value)
+            {
+                case "/.well-known/oauth-protected-resource":
+                    await context.Response.WriteAsJsonAsync(new { resource = $"{origin}/mcp", authorization_servers = new[] { origin } });
+                    return;
+                case "/.well-known/oauth-authorization-server":
+                    await context.Response.WriteAsJsonAsync(new { issuer = origin, token_endpoint = $"{origin}/connect/token" });
+                    return;
+                case "/connect/token":
+                    var form = await context.Request.ReadFormAsync();
+                    if (form["grant_type"] == "urn:depot:grant-type:install_token" && form["client_id"] == "depot"
+                        && form["install_token"] == installToken && Interlocked.Exchange(ref redeemed, 1) == 0)
+                    {
+                        await context.Response.WriteAsJsonAsync(new { access_token = "journey-access", token_type = "Bearer", expires_in = 3600, refresh_token = "journey-refresh", scope = "depot" });
+                        return;
+                    }
+
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsJsonAsync(new { error = "invalid_grant" });
+                    return;
+                default:
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+            }
+        };
+    }
+
+    // Fills Depot's server view and presses Connect, returning the sentence it answers with.
+    private static async Task<string> _ConnectDepotAsync(Window window, string name, string url, string installToken)
+    {
+        var view = window.GetLogicalDescendants().OfType<UserControl>().First(control => control.GetType().Name == "DepotServerSettingsControl");
+        var boxes = view.GetLogicalDescendants().OfType<TextBox>().ToList();
+        (boxes[0].Text, boxes[1].Text, boxes[2].Text) = (name, url, installToken);
+        var status = view.GetLogicalDescendants().OfType<TextBlock>().Last();
+        var before = status.Text;
+        view.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Connect")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Until.Holds(status, () => status.Text is { Length: > 0 } text && text != before && text != "Connecting…");
+        return status.Text ?? "";
     }
 
     private static async Task _GitAsync(string directory, params string[] arguments)

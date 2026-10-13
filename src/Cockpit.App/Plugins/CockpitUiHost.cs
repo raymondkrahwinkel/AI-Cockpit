@@ -58,6 +58,9 @@ internal sealed class CockpitUiHost(
     public void OnSettingsSaved(Action callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);
 
+    public void AddServerSettings(Func<IPluginUiChannel, Control> createView) =>
+        contributionSink.AddPluginServerSettings(pluginId, pluginName, createView);
+
     public void AddSideMenuButton(string title, Action onInvoke) =>
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 

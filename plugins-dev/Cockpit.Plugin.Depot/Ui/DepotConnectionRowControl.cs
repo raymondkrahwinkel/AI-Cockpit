@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -45,6 +47,8 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly TextBox _url;
     private readonly TextBlock _authStatus;
     private readonly Button _signIn;
+    private readonly TextBox _token;
+    private readonly Button _signInWithToken;
     private bool _isBusy;
 
     public event Action? RemoveRequested;
@@ -79,6 +83,16 @@ internal sealed class DepotConnectionRowControl : UserControl
         ToolTip.SetTip(_signIn, "Signing in opens Depot's sign-in page in your default browser.");
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
 
+        // AC-1511: the second way in, beside the browser — an installation token made in Depot under Account. It is
+        // handed to the backend part once and cleared from the box; nothing in this plugin keeps it.
+        _token = new TextBox { PasswordChar = '•', PlaceholderText = "Installation token (instead of the browser)" };
+        _signInWithToken = new Button { Content = "Sign in with token", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        _signInWithToken.Click += async (_, _) => await SignInWithTokenAsync().ConfigureAwait(true);
+        var tokenRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(_signInWithToken, 1);
+        tokenRow.Children.Add(_token);
+        tokenRow.Children.Add(_signInWithToken);
+
         var remove = new Button { Content = "Remove connection", Margin = new Thickness(0, 4, 0, 0) };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
 
@@ -103,6 +117,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         panel.Children.Add(_Hint("Instance URL — with or without a trailing /mcp, both work"));
         panel.Children.Add(_url);
         panel.Children.Add(signInRow);
+        panel.Children.Add(tokenRow);
         panel.Children.Add(remove);
 
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
@@ -224,6 +239,67 @@ internal sealed class DepotConnectionRowControl : UserControl
             // save/sign-in round trip must not let this overwrite the outcome that round trip just produced with
             // a re-derived validation message.
             _signIn.IsEnabled = _ContentValidationReason() is null && !_isBusy;
+        }
+    }
+
+    // AC-1511: the same save the browser route starts with, then the backend part redeems the token for this
+    // connection. Its answer is the sentence shown, so the desktop and a server's view say the same thing.
+    public async Task SignInWithTokenAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (_ContentValidationReason() is { } invalidReason)
+        {
+            _authStatus.Text = invalidReason;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_token.Text))
+        {
+            _authStatus.Text = "Paste an installation token first — make one in Depot under Account.";
+            return;
+        }
+
+        _isBusy = true;
+        _signIn.IsEnabled = false;
+        _signInWithToken.IsEnabled = false;
+        _authStatus.Text = "Saving…";
+        var token = _token.Text.Trim();
+        _token.Text = string.Empty;
+        try
+        {
+            var (saved, failureReason) = _saveAll();
+            if (!saved)
+            {
+                _authStatus.Text = failureReason is { } reason
+                    ? $"Couldn't save — {reason}"
+                    : "Couldn't save these connections — sign-in was not attempted.";
+                return;
+            }
+
+            _authStatus.Text = "Signing in…";
+            var registration = ToRegistration();
+            var answer = await _host.Channel.InvokeAsync(
+                DepotChannel.ConnectWithInstallToken,
+                JsonSerializer.SerializeToElement(
+                    new DepotInstallTokenRequest(new DepotConnectionPayload(registration.Id, registration.Name, registration.Url), token),
+                    DepotChannel.Json)).ConfigureAwait(true);
+            var result = answer.Deserialize<DepotInstallTokenAnswer>(DepotChannel.Json);
+            _authStatus.Text = result?.Message ?? "Sign-in didn't complete — see the log, or try again.";
+            if (result?.Success == true)
+            {
+                _storedName = registration.McpServerName;
+                _storedUrl = registration.Url;
+            }
+        }
+        finally
+        {
+            _isBusy = false;
+            _signIn.IsEnabled = _ContentValidationReason() is null;
+            _signInWithToken.IsEnabled = true;
         }
     }
 

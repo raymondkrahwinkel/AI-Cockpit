@@ -254,6 +254,26 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
 
     /// <summary>
+    /// Signs in to the MCP server this plugin contributed under <paramref name="name"/> without a browser
+    /// (AC-1511): the host redeems a grant of <paramref name="grantType"/> with <paramref name="parameters"/> at the
+    /// token endpoint the server's own OAuth metadata names, and keeps the tokens it gets where
+    /// <see cref="SignInMcpServerAsync"/> keeps them.
+    /// </summary>
+    /// <remarks>
+    /// For a one-time credential the server issued for exactly this, such as an installation token. Never returns a
+    /// bearer token (Iron Law #8), only whether the server accepted the grant:
+    /// <see cref="Mcp.PluginMcpSignInOutcome.Declined"/> when it refused it. A <c>client_id</c> in
+    /// <paramref name="parameters"/> is the client the tokens are kept for. Default
+    /// <see cref="Mcp.PluginMcpSignInOutcome.Unavailable"/> so existing implementations keep compiling untouched.
+    /// </remarks>
+    Task<Mcp.PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(
+        string name,
+        string grantType,
+        IReadOnlyDictionary<string, string> parameters,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.

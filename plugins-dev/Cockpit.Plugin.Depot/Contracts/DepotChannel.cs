@@ -15,6 +15,11 @@ internal static class DepotChannel
     // Event, payload ignored: the backend part asks the UI part to open this plugin's settings.
     public const string OpenSettings = "open-settings";
 
+    // AC-1511. Payload: DepotInstallTokenRequest. Adds the connection, or updates the one with its id or URL, through
+    // the same write SaveConnections does, then signs it in by redeeming the installation token at Depot — no
+    // browser, which a server does not have. A token Depot refuses changes nothing. Answers a DepotInstallTokenAnswer.
+    public const string ConnectWithInstallToken = "connect-with-install-token";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
@@ -27,3 +32,13 @@ internal sealed record DepotConnectionPayload(string Id, string Name, string Url
 internal sealed record DepotSaveConnectionsRequest(IReadOnlyList<DepotConnectionPayload> Connections);
 
 internal sealed record DepotSaveConnectionsAnswer(bool Success);
+
+// The token is a credential: the generated ToString would print it into any log line or exception that names the
+// request, so it is masked here.
+internal sealed record DepotInstallTokenRequest(DepotConnectionPayload Connection, string Token)
+{
+    public override string ToString() => $"{nameof(DepotInstallTokenRequest)} {{ Connection = {Connection}, Token = *** }}";
+}
+
+// `Message` is the sentence for the operator, the same in the desktop's row and the server's view.
+internal sealed record DepotInstallTokenAnswer(bool Success, string Message);

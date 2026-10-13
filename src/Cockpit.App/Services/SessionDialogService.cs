@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -545,6 +546,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         await _ShowSurfaceAsync((typeof(ServerAdminViewModel), viewModel.Server), owner, () => OptionsDialog.ForServer(viewModel));
+    }
+
+    // AC-1511: one per plugin and server, the title naming both.
+    public async Task ShowServerPluginSettingsAsync(string title, Func<Control> createView)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return;
+        }
+
+        await _ShowSurfaceAsync((typeof(ServerPluginRowViewModel), title), owner, () =>
+        {
+            var window = new Window { Width = 560, Height = 460, CanResize = true, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = createView() };
+            CockpitWindowChrome.Apply(window, title);
+            return window;
+        });
     }
 
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)

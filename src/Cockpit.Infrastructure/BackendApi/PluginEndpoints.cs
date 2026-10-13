@@ -8,6 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Channels;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -103,13 +106,55 @@ internal static class PluginEndpoints
             await _AuditAsync(services, "api:remove_plugin", cancellationToken).ConfigureAwait(false);
             return Results.Json(new { takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
+
+        // AC-1511: the view a plugin offers an admin of this server reaches the plugin's backend part here. The JSON
+        // goes to the handler as it came and the answer back as it went; the payload can hold a credential, so the
+        // audit names the plugin and the action, and no log line or error answer carries any of it.
+        api.MapPost("/plugins/{folderId}/channel/{action}", async (string folderId, string action, HttpRequest request, CancellationToken cancellationToken) =>
+        {
+            var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
+            var plugin = installed.FirstOrDefault(candidate => string.Equals(candidate.Discovered.FolderId, folderId, StringComparison.Ordinal));
+            if (plugin is null || services.GetService<PluginChannelHub>() is not { } channels)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
+            }
+
+            var pluginId = plugin.Discovered.Manifest.Id;
+            JsonElement payload;
+            try
+            {
+                using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
+                payload = document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
+            }
+
+            await _AuditAsync(services, "api:plugin_channel", cancellationToken, $"{pluginId}/{action}").ConfigureAwait(false);
+            try
+            {
+                return Results.Json(await channels.InvokeAsync(pluginId, action, payload, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json);
+            }
+            catch (PluginChannelUnknownActionException)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_action", "That plugin offers no such action on the server.");
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The type only: a handler's message may quote what it was given.
+                services.GetService<ILoggerFactory>()?.CreateLogger(nameof(PluginEndpoints))
+                    .LogWarning("Plugin {PluginId}'s channel action {Action} failed: {Failure}.", pluginId, action, exception.GetType().Name);
+                return BackendApiRoutes.Error(StatusCodes.Status500InternalServerError, "plugin_failed", "The plugin could not handle that request.");
+            }
+        }).RequireAdmin();
     }
 
-    private static async Task _AuditAsync(IServiceProvider services, string action, CancellationToken cancellationToken)
+    private static async Task _AuditAsync(IServiceProvider services, string action, CancellationToken cancellationToken, string? subject = null)
     {
         if (services.GetService<NodeAccessAuditLog>() is { } audit && McpRequestContext.CurrentNodeCaller is { } caller)
         {
-            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, action, "called"), cancellationToken).ConfigureAwait(false);
+            await audit.RecordAsync(NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, action, "called", subject), cancellationToken).ConfigureAwait(false);
         }
     }
 

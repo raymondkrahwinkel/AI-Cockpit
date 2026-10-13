@@ -24,6 +24,13 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
     private readonly List<IDisposable> _handlers = [];
 
+    // DEP-264: the grant Depot redeems an installation token with, accepted only from its own built-in client.
+    private const string InstallTokenGrant = "urn:depot:grant-type:install_token";
+
+    private const string DepotClientId = "depot";
+
+    internal const string InvalidInstallTokenMessage = "That installation token is not valid any more. Make a new one in Depot under Account.";
+
     public PluginMetadata Metadata { get; } = new(
         Id: "depot",
         DisplayName: "Depot",
@@ -49,6 +56,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         // project-memory-source/shared-project-source/MCP registries directly.
         _handlers.Add(host.Channel.Handle(DepotChannel.SaveConnections, (payload, cancellationToken) =>
             _SaveConnectionsAsync(host, settings, payload, cancellationToken)));
+        _handlers.Add(host.Channel.Handle(DepotChannel.ConnectWithInstallToken, (payload, cancellationToken) =>
+            _ConnectWithInstallTokenAsync(host, settings, payload, cancellationToken)));
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -101,8 +110,75 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         var request = payload.Deserialize<DepotSaveConnectionsRequest>(DepotChannel.Json)
             ?? throw new ArgumentException("The request names no connections.", nameof(payload));
 
+        await _WriteConnectionsAsync(
+            host,
+            settings,
+            [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))],
+            cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
+    }
+
+    // AC-1511: a connection signed in with an installation token instead of a browser — the only way on a server.
+    // The connection is written first, since the host finds the server to redeem at under its registered name; a
+    // token Depot refuses puts the list back as it was, so it never leaves a connection that cannot sign in.
+    private static async Task<JsonElement> _ConnectWithInstallTokenAsync(
+        ICockpitHost host, DepotSettings settings, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = payload.Deserialize<DepotInstallTokenRequest>(DepotChannel.Json)
+            ?? throw new ArgumentException("The request names no connection.", nameof(payload));
+        var name = request.Connection.Name.Trim();
+        var url = DepotUrlNormalizer.Normalize(request.Connection.Url);
+        if (name.Length == 0
+            || !Uri.TryCreate(url, UriKind.Absolute, out var address)
+            || (address.Scheme != Uri.UriSchemeHttp && address.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(request.Token))
+        {
+            return _InstallTokenAnswer(false, "Enter a name, the Depot address and an installation token.");
+        }
+
         var before = settings.Connections;
-        var after = request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url)).ToList();
+        var existing = before.FirstOrDefault(connection => !string.IsNullOrEmpty(request.Connection.Id) && connection.Id == request.Connection.Id)
+            ?? before.FirstOrDefault(connection => string.Equals(connection.Url, url, StringComparison.OrdinalIgnoreCase));
+        if (before.Any(connection => connection != existing && string.Equals(connection.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return _InstallTokenAnswer(false, $"\"{name}\" is already the name of another connection. Choose another name.");
+        }
+
+        var id = existing?.Id ?? (string.IsNullOrWhiteSpace(request.Connection.Id) ? Guid.NewGuid().ToString("n") : request.Connection.Id);
+        var connection = new DepotConnectionRegistration(id, name, url);
+        await _WriteConnectionsAsync(
+            host,
+            settings,
+            existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
+            cancellationToken).ConfigureAwait(false);
+
+        var outcome = await host.SignInMcpServerWithGrantAsync(
+            connection.McpServerName,
+            InstallTokenGrant,
+            new Dictionary<string, string> { ["install_token"] = request.Token, ["client_id"] = DepotClientId },
+            cancellationToken).ConfigureAwait(false);
+        if (outcome == PluginMcpSignInOutcome.Authorized)
+        {
+            return _InstallTokenAnswer(true, "Signed in.");
+        }
+
+        await _WriteConnectionsAsync(host, settings, before, cancellationToken).ConfigureAwait(false);
+        return _InstallTokenAnswer(false, outcome switch
+        {
+            PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
+            PluginMcpSignInOutcome.Unreachable => $"Couldn't reach {url} to sign in. Check the address and try again.",
+            _ => "Signing in with an installation token isn't available on this Cockpit.",
+        });
+    }
+
+    private static JsonElement _InstallTokenAnswer(bool success, string message) =>
+        JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
+
+    // The write both channel actions share: storage first, then the registries diffed against what was there.
+    private static async Task _WriteConnectionsAsync(
+        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after, CancellationToken cancellationToken)
+    {
+        var before = settings.Connections;
 
         // The connection list itself is a plain storage write — the same slice the UI part's own Storage shares
         // (ICockpitUiHost's own remarks) — done here, before the sync below, so a row's Sign-in (which runs right
@@ -124,8 +200,6 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             cancellationToken.ThrowIfCancellationRequested();
             await host.RemoveMcpServer(orphanedName).ConfigureAwait(false);
         }
-
-        return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
     // The live-refresh half of AC-501: a connection's memory source used to be registered once at Initialize and

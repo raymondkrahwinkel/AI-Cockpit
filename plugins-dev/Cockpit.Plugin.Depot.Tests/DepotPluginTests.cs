@@ -1,7 +1,10 @@
 extern alias UiAsm;
 
+using System.Text.Json;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
@@ -104,6 +107,37 @@ public class DepotPluginTests
 
         Assert.Equal("https://host.example.com/depot/mcp", server.Url);
         Assert.Equal("https://host.example.com", server.OAuthAuthority);
+    }
+
+    // AC-1511, layer 2: a connection signed in with an installation token. The grant goes to the host with Depot's own
+    // client, the operator reads one sentence per outcome, and a token Depot refuses leaves no connection behind.
+    [Theory]
+    [InlineData(PluginMcpSignInOutcome.Authorized, "Signed in.", 1)]
+    [InlineData(PluginMcpSignInOutcome.Declined, DepotPlugin.InvalidInstallTokenMessage, 0)]
+    [InlineData(PluginMcpSignInOutcome.Unreachable, "Couldn't reach https://depot.example.com to sign in. Check the address and try again.", 0)]
+    public async Task ConnectWithInstallToken_RedeemsTheTokenWithDepotsClient_AndARefusedTokenLeavesNoConnection(
+        PluginMcpSignInOutcome outcome, string message, int connections)
+    {
+        const string token = "install-token-under-test";
+        var host = _HostWithConnections();
+        Func<JsonElement, CancellationToken, Task<JsonElement>>? handler = null;
+        host.Channel.Handle(DepotChannel.ConnectWithInstallToken, Arg.Do<Func<JsonElement, CancellationToken, Task<JsonElement>>>(handle => handler = handle));
+        IReadOnlyDictionary<string, string>? grant = null;
+        host.SignInMcpServerWithGrantAsync("Depot: Work", "urn:depot:grant-type:install_token", Arg.Do<IReadOnlyDictionary<string, string>>(parameters => grant = parameters), Arg.Any<CancellationToken>())
+            .Returns(outcome);
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        Assert.NotNull(handler);
+        var connect = handler;
+        var answer = await connect(
+            JsonSerializer.SerializeToElement(new DepotInstallTokenRequest(new DepotConnectionPayload("", "Work", "https://depot.example.com/mcp"), token), DepotChannel.Json),
+            CancellationToken.None);
+
+        Assert.Equal(message, answer.Deserialize<DepotInstallTokenAnswer>(DepotChannel.Json)?.Message);
+        Assert.Equal(new Dictionary<string, string> { ["install_token"] = token, ["client_id"] = "depot" }, grant);
+        Assert.Equal(connections, new Settings.DepotSettings(host.Storage).Connections.Count(connection => connection.Url == "https://depot.example.com"));
+        Assert.False(answer.GetRawText().Contains(token, StringComparison.Ordinal), "The answer repeats the installation token.");
     }
 
     // AC-504 criterion 7 (regression): a scheme belonging to a different memory source (a project's Folder row,
