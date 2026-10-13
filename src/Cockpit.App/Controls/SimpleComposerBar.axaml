@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.SimpleComposerBar"
+             x:Name="Root"
+             x:DataType="controls:SimpleComposerBar">
+
+    <!-- AC-1528 (mockups simple-view-home-en / simple-view-conversation): the row under the Simple composer's box. -->
+    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+        <Button x:Name="ProjectChip" Classes="Subtle" Padding="10,4" VerticalAlignment="Center"
+                CornerRadius="{StaticResource CockpitPillRadius}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                IsHitTestVisible="{Binding #Root.CanChooseProject}" Click="_OnProjectChipClick"
+                ToolTip.Tip="Where this conversation works">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <materialIcons:MaterialIcon Kind="FolderOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                <TextBlock x:Name="ProjectChipLabel" Text="{Binding #Root.ProjectLabel}" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
+                <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12" VerticalAlignment="Center"
+                                            IsVisible="{Binding #Root.CanChooseProject}"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+        </Button>
+        <Button x:Name="AttachButton" Grid.Column="1" Classes="Subtle" Padding="7" Margin="8,0,0,0"
+                VerticalAlignment="Center" Click="_OnAttachClick"
+                ToolTip.Tip="Attach a file — an image goes along, any other file as its full path">
+            <materialIcons:MaterialIcon Kind="Paperclip" Width="15" Height="15"/>
+        </Button>
+        <Button x:Name="MicButton" Grid.Column="3" Classes="Subtle" Padding="7" VerticalAlignment="Center"
+                IsVisible="{Binding #Root.Target.VoiceEnabled, FallbackValue=False}"
+                ToolTip.Tip="Hold to dictate into this box">
+            <materialIcons:MaterialIcon Kind="MicrophoneOutline" Width="15" Height="15"/>
+        </Button>
+    </Grid>
+</UserControl>

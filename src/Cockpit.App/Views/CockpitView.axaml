@@ -2080,11 +2080,18 @@
                  agent and it steps aside for that agent's own pane, which is drawn by the session grid behind
                  this, and moves to the dock rail on the right.
                  AC-1316: it holds the column before the assistant has started too, and with it switched off —
-                 the chat view says so itself, and typing is what starts it. The start offer ("which project",
-                 AC-1304) is the empty state of that conversation, drawn in AssistantChatView; there is no
-                 screen in front of it any more. -->
-            <ContentControl Grid.Row="1" x:Name="SimpleChatHost"
-                            IsVisible="{Binding SimpleStandShowsTheAssistantInTheMainColumn}"/>
+                 the chat view says so itself, and typing is what starts it.
+                 AC-1528: hidden under Home, which is not the assistant. -->
+            <ContentControl Grid.Row="1" x:Name="SimpleChatHost">
+                <ContentControl.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SimpleStandShowsTheAssistantInTheMainColumn"/>
+                        <Binding Path="!SimpleStandShowsTheStartScreen"/>
+                    </MultiBinding>
+                </ContentControl.IsVisible>
+            </ContentControl>
+
+            <views:SimpleHomeView Grid.Row="1" x:Name="SimpleHomePage" IsVisible="{Binding SimpleStandShowsTheStartScreen}"/>
 
             <!-- AC-1527: the Simple stand's Projects page — the overview's own cards (`ProjectCategoryGroups`), whose
                  Start is the dialog-free quick start, so a click lands in the new conversation. -->
@@ -2143,10 +2150,16 @@
                  stack scrolls rather than pushing the one underneath off the window.
                  AC-1303: it used to hang inside the Simple stand's own root, which is what kept it off the panels
                  stand; that root is gone, so it now says which stand it belongs to itself. -->
-            <ScrollViewer Grid.Row="1" Classes="consentAlerts" IsVisible="{Binding SimpleView}"
-                          Classes.open="{Binding HasSimpleConsentAlerts}"
+            <!-- AC-1528: not over Home, whose "Waiting for you" already names every one of them. -->
+            <ScrollViewer Grid.Row="1" Classes="consentAlerts" Classes.open="{Binding HasSimpleConsentAlerts}"
                           HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
                           MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SimpleView"/>
+                        <Binding Path="!SimpleStandShowsTheStartScreen"/>
+                    </MultiBinding>
+                </ScrollViewer.IsVisible>
                 <ItemsControl ItemsSource="{Binding SimpleConsentAlerts}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>

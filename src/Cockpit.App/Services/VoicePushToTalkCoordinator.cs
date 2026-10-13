@@ -21,6 +21,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     // Whether the hold in progress actually opened a microphone — see `HandleHoldStarted`.
     private bool _isRecording;
 
+    // AC-1528: where the hold in progress dictates into, kept so the release lands where the press did.
+    private ISimpleComposerTarget? _holdTarget;
+
     public VoicePushToTalkCoordinator(
         GlobalHotkeyCoordinator hotkeys,
         CockpitViewModel cockpit,
@@ -33,6 +36,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
         _logger = logger;
+        _cockpit.SimpleHome.UseDictation(pushToTalk, overlayCoordinator);
 
         // Subscribed once, for the life of the app: the hotkey coordinator re-arms in place rather than handing
         // out a new event source, so there is no re-subscription here to accidentally do twice and double every
@@ -83,11 +87,14 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
 
         var session = _cockpit.SelectedSession;
-        var capturing = session?.BeginVoiceHold() ?? false;
+
+        // AC-1528: Home's box is the one on screen there, whatever the panels stand has selected.
+        _holdTarget = _cockpit.SimpleStandShowsTheStartScreen ? _cockpit.SimpleHome : session;
+        var capturing = _holdTarget?.BeginVoiceHold() ?? false;
 
         // Resolved before the pill is shown, not after: it used to flip to "Listening" unconditionally, leaving an
         // operator holding the key over an empty cockpit watching a flat waveform with no idea why nothing came out.
-        var blocked = capturing ? null : _WhyNothingIsBeingRecorded(session);
+        var blocked = capturing ? null : _WhyNothingIsBeingRecorded(_holdTarget);
         _isRecording = blocked is null;
 
         // Only what this coordinator alone knows. A hold that did start says "Listening" from the session itself
@@ -118,7 +125,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     // AC-1013: why a hold is not recording, in words for the pill, or null. A declined hold with no reason here
     // means `PushToTalkHoldGuard` already has one running and that pill must be left alone — it is NOT OS key-repeat
     // (both hotkey backends collapse a hold to a single edge, so repeat cannot reach this coordinator).
-    private static string? _WhyNothingIsBeingRecorded(SessionPanelViewModel? session) => session switch
+    private static string? _WhyNothingIsBeingRecorded(ISimpleComposerTarget? target) => target switch
     {
         null => "No session selected",
         { VoiceEnabled: false } => "Voice is off for this session",
@@ -140,17 +147,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             return;
         }
 
-        var session = _cockpit.SelectedSession;
-        if (session is null)
-        {
-            // Nothing to report the release to — the session went away while the key was held.
-            _overlayCoordinator.SetPushToTalk(null);
-            return;
-        }
-
         // AC-557: what the hold is doing from here is the session's own report (`EndVoiceHoldAsync`), because the
         // in-window F9 handlers end their hold through that same method. The pill is deliberately not taken down
         // here any more — it used to be, unconditionally, hiding a failed/empty dictation's explanation instantly.
-        await session.EndVoiceHoldAsync();
+        await _holdTarget!.EndVoiceHoldAsync();
     }
 }

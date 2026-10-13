@@ -412,6 +412,18 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- AC-1528: Home's chip, paperclip and mic under a Simple conversation, the chip read-only. -->
+                <controls:SimpleComposerBar DockPanel.Dock="Bottom" Margin="0,8,0,0" Target="{Binding}"
+                                            IsVisible="{Binding IsShownInSimpleStand}">
+                    <controls:SimpleComposerBar.ProjectLabel>
+                        <MultiBinding Converter="{x:Static conv:ProjectNameConverter.Instance}" TargetNullValue="No project or folder">
+                            <Binding Path="ProjectId"/>
+                            <Binding Path="$parent[views:CockpitView].((vm:CockpitViewModel)DataContext).Projects.Projects"/>
+                            <Binding Path="WorkingDirectory"/>
+                        </MultiBinding>
+                    </controls:SimpleComposerBar.ProjectLabel>
+                </controls:SimpleComposerBar>
+
                 <!-- Send stays enabled while busy (T8): a send mid-turn queues the message rather than
                      being blocked. CanSend gates on there being text/an image, so it is not a dead control. -->
                 <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"

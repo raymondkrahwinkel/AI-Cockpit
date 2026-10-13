@@ -77,13 +77,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
     // down here: undocking would pop the conversation out and leave the column it fills empty.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowsStartOffer))]
     private bool _isSimpleViewHost;
-
-    // AC-1316: whether the start offer — the project cards, or the starting points on an empty cockpit — stands in
-    // the transcript's place. Only in the Simple stand's column: the window and the dock keep their plain empty
-    // state. The cockpit answers when (AC-1304's three doors); this only says which host draws it.
-    public bool ShowsStartOffer => IsSimpleViewHost && (_cockpit?.SimpleStandShowsTheStartScreen ?? false);
 
     // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
     public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
@@ -236,11 +230,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is null or nameof(CockpitViewModel.SimpleStandShowsTheStartScreen))
-        {
-            OnPropertyChanged(nameof(ShowsStartOffer));
-        }
-
         if (e.PropertyName is null or nameof(CockpitViewModel.SimpleView))
         {
             OnPropertyChanged(nameof(IsInSimpleStand));
@@ -369,12 +358,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
 
         InputText = string.Empty;
-
-        // AC-1316: typing is the answer to the question the start screen asks, the same as picking a card.
-        if (_cockpit is not null && IsSimpleViewHost)
-        {
-            _cockpit.SimplePage = SimplePage.Conversation;
-        }
 
         // Goes through the host, not Session.SendCommand: Session can still be null here (nothing typed yet since
         // this instance came up), and the host's SendAsync is what performs the lazy start — the first message

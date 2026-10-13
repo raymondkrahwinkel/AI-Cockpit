@@ -124,7 +124,6 @@ public partial class AssistantChatView : UserControl
             _attachedViewModel = vm;
             vm.PropertyChanged += _OnViewModelPropertyChanged;
             _AttachTranscript(vm.Session);
-            _HostComposer(inOffer: vm.ShowsStartOffer);
 
             // Criterion 1: opening the chip is the "operator handling" allowed to lazily start the assistant.
             // EnsureOpenedAsync only ever attaches to (or restarts) the host's own standing session — it never
@@ -364,35 +363,9 @@ public partial class AssistantChatView : UserControl
             return;
         }
 
-        switch (e.PropertyName)
+        if (e.PropertyName == nameof(AssistantChatViewModel.Session))
         {
-            case nameof(AssistantChatViewModel.Session):
-                _AttachTranscript(vm.Session);
-                break;
-            case nameof(AssistantChatViewModel.ShowsStartOffer):
-                _HostComposer(inOffer: vm.ShowsStartOffer);
-                break;
-        }
-    }
-
-    // AC-1316: the one composer, re-hosted — at the head of the start offer while that stands, at the foot of the
-    // column otherwise. The old host lets go first: a control may have only one visual parent. Focus goes with it,
-    // so the first message sent from the offer leaves the caret in the box where it lands.
-    private void _HostComposer(bool inOffer)
-    {
-        var target = inOffer ? OfferComposerHost : BottomComposerHost;
-        if (ReferenceEquals(target.Content, ComposerBorder))
-        {
-            return;
-        }
-
-        var hadFocus = InputBox.IsFocused;
-        BottomComposerHost.Content = null;
-        OfferComposerHost.Content = null;
-        target.Content = ComposerBorder;
-        if (hadFocus)
-        {
-            Dispatcher.UIThread.Post(() => InputBox.Focus());
+            _AttachTranscript(vm.Session);
         }
     }
 
