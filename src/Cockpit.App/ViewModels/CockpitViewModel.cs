@@ -130,6 +130,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Func<string, bool> _tryOpenExternalLink = ExternalLink.TryOpen;
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
+    private readonly IConversationIndex? _conversationIndex;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
@@ -3154,6 +3155,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IClaimCollisionMonitor? claimCollisionMonitor = null,
         ISessionStateCache? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
+        IConversationIndex? conversationIndex = null,
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeReconcileGate? worktreeReconcileGate = null,
         ILogger<CockpitViewModel>? logger = null,
@@ -3293,6 +3295,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
+        _conversationIndex = conversationIndex;
         _sessionRestorePlanner = sessionRestorePlanner;
         _worktreeReconcileGate = worktreeReconcileGate;
         _logger = logger;
@@ -6145,6 +6148,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.HasPersistedPane = true;
             pane = pane with { Title = session.Title, NameIsChosen = !session.HasGeneratedName };
+            _ = RecordConversationAsync(session, closed: false);
         }
 
         return Workspaces.AddPaneAsync(workspaceId, pane);
@@ -7278,6 +7282,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _ = Workspaces.RenamePaneAsync(session.WorkspaceId, session.PaneId, session.Title, !session.HasGeneratedName);
+        _ = RecordConversationAsync(session, closed: false);
     }
 
     // `workspaceId` is set directly rather than through `Workspaces`' `EnsureSessionWorkspace`, which would switch the
@@ -7882,6 +7887,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var previous = _lastStatus.GetValueOrDefault(session, SessionStatus.Idle);
         _lastStatus[session] = session.SessionStatus;
+
+        // Damped to where a turn settles: one index row per turn rather than one per flicker through Busy.
+        if (session.SessionStatus is not (SessionStatus.Busy or SessionStatus.WorkingBackground))
+        {
+            _ = RecordConversationAsync(session, closed: false);
+        }
 
         if (session.SessionStatus == SessionStatus.NeedsAttention && previous != SessionStatus.NeedsAttention)
         {
@@ -8641,6 +8652,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        await RecordConversationAsync(session, closed: true);
+
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnSessionCloseRequested;
         session.RestoreDecided -= OnSessionRestoreDecided;
@@ -8732,6 +8745,85 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (Sessions.Count == 0)
         {
             IsZoomed = false;
+        }
+    }
+
+    // AC-1531: what the pane knows of its conversation; profile, provider, place and conversation id the index takes from
+    // the session-state recorder. A plain terminal never persisted a pane, and a pane on a server is not this machine's.
+    // The transcript path is spelled out here because its owner (`SessionTranscriptLog.LogPath`) is internal to Infrastructure.
+    private Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
+    {
+        if (_conversationIndex is null || !session.HasPersistedPane || session.IsRemote)
+        {
+            return Task.CompletedTask;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        return _conversationIndex.RecordAsync(new ConversationRecord(
+            session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel, null, null,
+            SessionConversationIdState.Unknown, now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
+            IsAssistant: false,
+            session is SessionViewModel ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl") : null));
+    }
+
+    // AC-1531: a conversation from the index back on screen — the open pane or the assistant selected, otherwise a new pane
+    // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused with the planner's reason.
+    public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
+    {
+        if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } open)
+        {
+            _SelectInTheActiveStand(open);
+            return new ConversationReopenResult(true);
+        }
+
+        if (record.IsAssistant)
+        {
+            if (_assistantSession is null)
+            {
+                return new ConversationReopenResult(false, "The assistant is not running.");
+            }
+
+            // The panels stand docks the assistant beside every pane; only the Simple stand has to be told to show it.
+            if (SimpleView)
+            {
+                SimpleSelectedSession = _assistantSession;
+            }
+
+            return new ConversationReopenResult(true);
+        }
+
+        if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is not { } launcher)
+        {
+            return new ConversationReopenResult(false, "Conversations cannot be reopened here.");
+        }
+
+        var plan = await _sessionRestorePlanner.ComposeAsync(record, cancellationToken);
+        if (plan.Availability != SessionRestoreAvailability.Known
+            || record.ConversationId is not { Length: > 0 } conversationId
+            || _BuildRestoreLaunchResult(plan, SessionResume.BySessionId(conversationId)) is not { } launch)
+        {
+            return new ConversationReopenResult(false, plan.Explanation);
+        }
+
+        await launcher.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } started)
+        {
+            _SelectInTheActiveStand(started);
+        }
+
+        return new ConversationReopenResult(true);
+    }
+
+    // Each stand keeps its own selection (AC-1301); the Simple one also turns its page to the conversation.
+    private void _SelectInTheActiveStand(SessionPanelViewModel session)
+    {
+        if (SimpleView)
+        {
+            SimpleSelectedSession = session;
+        }
+        else
+        {
+            SelectedSession = session;
         }
     }
 

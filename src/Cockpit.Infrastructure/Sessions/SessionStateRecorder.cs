@@ -22,6 +22,9 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private Task<bool>? _seedTask;
 
+    // AC-1531: each state written, in call order, for the conversation index that keeps it after the pane is gone.
+    public event Action<SessionStateRecord>? Recorded;
+
     public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger)
     {
         _store = store;
@@ -141,6 +144,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
             }
 
             await _store.RecordAsync(updated, cancellationToken).ConfigureAwait(false);
+            Recorded?.Invoke(updated);
         }
         finally
         {

@@ -51,6 +51,7 @@ public sealed class JourneyHost : IAsyncDisposable
         _loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CollectingLoggerProvider(_log)));
         Drivers = new EchoDriverFactory(Driver);
         Backend = build(_loggerFactory, Drivers);
+        Drivers.Conversations = Services.GetService<ISessionConversationSink>();
     }
 
     public string StateRoot { get; }

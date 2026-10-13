@@ -1791,10 +1791,10 @@ internal static class Screenshotter
             Title = "personal - 3",
         };
 
-        var plan = new Services.SessionRestorePlan(
+        var plan = new SessionRestorePlan(
             pane,
             Profile: null,
-            degraded ? Services.SessionRestoreAvailability.Gone : Services.SessionRestoreAvailability.Known,
+            degraded ? SessionRestoreAvailability.Gone : SessionRestoreAvailability.Known,
             degraded ? "Claude no longer has this conversation: No conversation found with session ID: 9f2c1b40." : string.Empty);
 
         // SessionView for the resumable case and TtyView for the degraded one, so the two scenes between them

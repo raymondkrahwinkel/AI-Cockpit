@@ -1,15 +1,29 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Core.Sessions;
 
 // What a saved AI-session pane can be restored with (AC-410) — the answers `CockpitViewModel.RestoreSessionPanesAsync`
 // needs before it materializes a panel, reached without starting anything. Modelled on `ProjectQuickStart`:
 // this only answers "with what"; the cockpit's own launch path still owns actually starting a session.
 public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISingletonService
 {
+    // AC-1531: a closed conversation from the index, with the same reasons as a saved pane. Only an SDK pane keeps a transcript.
+    public Task<SessionRestorePlan> ComposeAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>
+        ComposeAsync(
+            new WorkspacePane(record.PaneId, PaneKind.AiSession)
+            {
+                Title = record.Title,
+                ProjectId = record.ProjectId,
+                ProfileId = record.ProfileId,
+                WorkingDirectory = record.WorkingDirectory,
+                SessionKind = record.TranscriptPath is null ? PaneSessionKind.Tty : PaneSessionKind.Sdk,
+                StartedByTheAssistant = record.StartedByTheAssistant,
+            },
+            new SessionStateRecord(record.PaneId, record.ProfileId, record.ProviderId, record.ConversationId, record.ConversationState, record.WorkingDirectory, null, null, null, record.LastActivityAt),
+            cancellationToken);
+
     // AC-1013: Builds the plan for one saved pane; `state` may be null (pane persisted right before a
     // crash) and a missing profile degrades the plan rather than throwing, matching
     // `ProjectQuickStart.ComposeAsync`'s treatment of an unresolvable config as not a crash.

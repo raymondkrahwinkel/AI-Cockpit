@@ -60,6 +60,9 @@ internal static class CockpitConfigPath
     // snapshot because rewriting a whole transcript per row measured at 618x write amplification.
     public static string TranscriptsRoot => Path.Combine(Root, "transcripts");
 
+    // ponytail: retain all conversations until measured state-root growth calls for a cleanup policy.
+    public static string Conversations => Path.Combine(Root, "conversations.jsonl");
+
     // AC-792: this machine's node TLS certificate, written via `CreatePrivateFile` like every other
     // credential. Persists across restarts on purpose — a controller pins its fingerprint at pairing
     // time, so a fresh certificate each launch would break the node's own pairing.
