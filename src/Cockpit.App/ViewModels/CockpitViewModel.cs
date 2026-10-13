@@ -8779,9 +8779,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // AC-1531: a conversation from the index back on screen — the open pane or the assistant selected, otherwise a new pane
-    // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused with the planner's reason.
+    // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused for `ConversationRefusalAsync`'s reason.
     public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (await ConversationRefusalAsync(record, cancellationToken) is { } refusal)
+        {
+            return new ConversationReopenResult(false, refusal);
+        }
+
         if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } open)
         {
             _SelectInTheActiveStand(open);
@@ -8790,11 +8795,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         if (record.IsAssistant)
         {
-            if (_assistantSession is null)
-            {
-                return new ConversationReopenResult(false, "The assistant is not running.");
-            }
-
             // The panels stand docks the assistant beside every pane; only the Simple stand has to be told to show it.
             if (SimpleView)
             {
@@ -8804,26 +8804,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return new ConversationReopenResult(true);
         }
 
-        if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is not { } launcher)
-        {
-            return new ConversationReopenResult(false, "Conversations cannot be reopened here.");
-        }
-
-        var plan = await _sessionRestorePlanner.ComposeAsync(record, cancellationToken);
-        if (plan.Availability != SessionRestoreAvailability.Known
-            || record.ConversationId is not { Length: > 0 } conversationId
-            || _BuildRestoreLaunchResult(plan, SessionResume.BySessionId(conversationId)) is not { } launch)
+        var plan = await _sessionRestorePlanner!.ComposeAsync(record, cancellationToken);
+        if (_BuildRestoreLaunchResult(plan, SessionResume.BySessionId(record.ConversationId!)) is not { } launch)
         {
             return new ConversationReopenResult(false, plan.Explanation);
         }
 
-        await launcher.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
         if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } started)
         {
             _SelectInTheActiveStand(started);
         }
 
         return new ConversationReopenResult(true);
+    }
+
+    private EarlierConversationsViewModel? _earlierConversations;
+
+    // AC-1532: the Simple stand's Earlier conversations sheet, opened from Home and from a conversation's header.
+    public EarlierConversationsViewModel EarlierConversations => _earlierConversations ??= new(this, _conversationIndex);
+
+    // AC-1532: why a conversation cannot be brought back, or null when it can — the one answer Continue and Reopen share.
+    internal async Task<string?> ConversationRefusalAsync(ConversationRecord record, CancellationToken cancellationToken = default)
+    {
+        if (Sessions.Any(session => session.PaneId == record.PaneId))
+        {
+            return null;
+        }
+
+        if (record.IsAssistant)
+        {
+            return _assistantSession is null ? "The assistant is not running." : null;
+        }
+
+        if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is null)
+        {
+            return "Conversations cannot be reopened here.";
+        }
+
+        var plan = await _sessionRestorePlanner.ComposeAsync(record, cancellationToken);
+        return plan.Availability == SessionRestoreAvailability.Known && record.ConversationId is { Length: > 0 } ? null : plan.Explanation;
     }
 
     // Each stand keeps its own selection (AC-1301); the Simple one also turns its page to the conversation.

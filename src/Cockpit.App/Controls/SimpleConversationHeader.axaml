@@ -22,6 +22,14 @@
                     <TextBlock Text="Stop" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
+            <Button x:Name="SimpleEarlierButton" DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,6" Margin="8,0,0,0"
+                    Command="{Binding $parent[controls:SimpleConversationHeader].EarlierCommand}"
+                    ToolTip.Tip="Earlier conversations — find one and continue it">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="History" Width="14" Height="14" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SimpleEarlierLabel" Text="Earlier conversations" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,8,0"
                         IsVisible="{Binding $parent[controls:SimpleConversationHeader].ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <materialIcons:MaterialIcon Kind="FolderOutline" Width="15" Height="15" VerticalAlignment="Center"

@@ -379,6 +379,8 @@ internal static class Screenshotter
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
+        // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
+        ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
         ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
         // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
@@ -2716,6 +2718,51 @@ internal static class Screenshotter
         picked.SessionStatus = SessionStatus.Busy;
         picked.IsBusy = true;
         return cockpit;
+    }
+
+    // AC-1532: the sheet over Home, searched for "jansen", a row of each period and the assistant's own conversation.
+    private static ViewModels.CockpitViewModel _SimpleStandHistory()
+    {
+        var cockpit = _SimpleStandHome();
+        var now = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(2));
+        ConversationSearchResult Row(string title, string folder, string profile, TimeSpan ago, string status, string? fragment, bool assistant = false) => new(
+            new ConversationRecord(Guid.NewGuid().ToString("N"), title, null, Path.Combine(Path.GetTempPath(), folder), profile, "claude", "c", SessionConversationIdState.Known,
+                now - ago, now - ago, status, now - ago, false, assistant, null),
+            fragment);
+        var sheet = cockpit.EarlierConversations;
+        sheet.Now = () => now;
+        sheet.Index = new _FixtureConversations(
+        [
+            Row("Q3 report", "Finance", "personal", TimeSpan.FromMinutes(20), "Busy", "…three large invoices to Jansen in September"),
+            Row("Quote for Jansen", "Sales", "default", TimeSpan.FromHours(21.5), "Done", "Done · Quote-Jansen-2026-10.docx created in Sales"),
+            Row("Assistant", "", "work", TimeSpan.FromDays(6), "Idle", "You: \"when does the quote for Jansen have to go out?\"", assistant: true),
+            Row("Update customer details", "Sales", "default", TimeSpan.FromDays(20), "Done", "Done · address of Jansen B.V. updated in Customers.xlsx"),
+            Row("Website copy", "Website", "default", TimeSpan.FromDays(2), "NeedsAttention", "Three pages ready to publish"),
+        ]);
+        sheet.OpenCommand.Execute(null);
+        sheet.SearchText = "jansen";
+
+        // A scene has no restore planner, so it draws every row as one Continue can bring back.
+        for (var index = 0; index < sheet.Rows.Count; index++)
+        {
+            sheet.Rows[index] = sheet.Rows[index] with { Refusal = null };
+        }
+
+        sheet.Selected = sheet.Rows[1];
+        return cockpit;
+    }
+
+    // The scene's index: fixture rows filtered by the term the way the real one is, never the operator's own file.
+    private sealed class _FixtureConversations(IReadOnlyList<ConversationSearchResult> rows) : IConversationIndex
+    {
+        public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<ConversationRecord>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationRecord>>([.. rows.Select(row => row.Record)]);
+
+        public Task<IReadOnlyList<ConversationSearchResult>> SearchAsync(string text, string? projectId = null, DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationSearchResult>>(
+                [.. rows.Where(row => $"{row.Record.Title} {row.Fragment}".Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))]);
     }
 
     private static ViewModels.SessionPanelViewModel _Named(ViewModels.CockpitViewModel cockpit, string title) =>

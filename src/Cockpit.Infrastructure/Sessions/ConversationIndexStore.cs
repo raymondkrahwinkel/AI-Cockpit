@@ -207,11 +207,36 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
 
         try
         {
-            return _Fragment(await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false), needle);
+            foreach (var line in await File.ReadAllLinesAsync(path, cancellationToken).ConfigureAwait(false))
+            {
+                if (_Fragment(_SaidOn(line), needle) is { } fragment)
+                {
+                    return fragment;
+                }
+            }
+
+            return null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(exception, "Could not search the transcript at {Path}.", path);
+            return null;
+        }
+    }
+
+    // AC-1532: what a transcript row says, so the fragment the sheet shows is words and not the row's JSON.
+    private static string? _SaidOn(string line)
+    {
+        try
+        {
+            using var row = JsonDocument.Parse(line);
+            return row.RootElement.ValueKind == JsonValueKind.Object
+                && row.RootElement.TryGetProperty("Text", out var text) && text.ValueKind == JsonValueKind.String
+                ? text.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
             return null;
         }
     }

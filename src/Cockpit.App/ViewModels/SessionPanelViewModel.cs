@@ -1817,7 +1817,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Theme brush resource key for the status dot — resolved in the view via a converter. AC-1311: Failed shares
     // the waiting brush deliberately — it sits in the same needs-eyes-on-it class as NeedsAttention (see
     // `RequestsAttention`), and that grouping is the point: a crashed session must stand out, not read as idle.
-    public string SessionStatusBrushKey => SessionStatus switch
+    public string SessionStatusBrushKey => BrushKeyOf(SessionStatus);
+
+    internal static string BrushKeyOf(SessionStatus status) => status switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
