@@ -1,4 +1,4 @@
-namespace Cockpit.App.Services;
+namespace Cockpit.Core.Sessions;
 
 // How confidently a restored AI-session pane (AC-410) could pick up its earlier conversation — what
 // `SessionRestorePlanner` answers before anything is minted. Every value still lets the pane come

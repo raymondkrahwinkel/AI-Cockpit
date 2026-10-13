@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Journeys;
 
@@ -45,6 +46,11 @@ public sealed class EchoDriver : ISessionDriver
 
     public SessionResume? Resume { get; private set; }
 
+    // Where a plugin driver's adapter reports the conversation id; this driver sits below that adapter, so it reports itself.
+    public ISessionConversationSink? Conversations { get; set; }
+
+    private string? _paneId;
+
     public IAsyncEnumerable<SessionEvent> Events => _EchoAsync();
 
     public Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
@@ -53,6 +59,7 @@ public sealed class EchoDriver : ISessionDriver
         WorkingDirectory = workingDirectory;
         PermissionMode = permissionMode;
         Resume = resume;
+        _paneId = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
         if (_wedged)
         {
             Child = Process.Start(OperatingSystem.IsWindows()
@@ -101,6 +108,11 @@ public sealed class EchoDriver : ISessionDriver
 
             var fails = prompt == FailingPrompt;
             var echoed = prompt == "working-directory" ? WorkingDirectory : prompt;
+            if (_paneId is not null)
+            {
+                Conversations?.Report(_paneId, SessionConversationId.Known(SessionId!));
+            }
+
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {echoed}" };
             yield return new TurnCompleted
             {
@@ -119,6 +131,8 @@ public sealed class EchoDriverFactory(EchoDriver first) : ISessionDriverFactory
     // What every driver after the first is.
     public Func<EchoDriver> Next { get; set; } = () => new EchoDriver();
 
+    public ISessionConversationSink? Conversations { get; set; }
+
     public IReadOnlyList<EchoDriver> Made
     {
         get
@@ -135,6 +149,7 @@ public sealed class EchoDriverFactory(EchoDriver first) : ISessionDriverFactory
         lock (_made)
         {
             var driver = _made.Count == 0 ? first : Next();
+            driver.Conversations = Conversations;
             _made.Add(driver);
             return driver;
         }

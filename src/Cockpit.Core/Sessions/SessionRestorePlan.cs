@@ -1,8 +1,7 @@
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.Core.Sessions;
 
 // AC-1013 (was AC-410): what a saved AI-session pane can be restored with — resolved profile, resume
 // confidence, and banner explanation — composed by SessionRestorePlanner and consumed by the restore-offer

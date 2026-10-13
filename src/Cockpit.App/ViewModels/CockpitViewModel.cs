@@ -131,8 +131,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly IConversationIndex? _conversationIndex;
-    internal bool HasConversationIndex => _conversationIndex is not null;
-    private readonly ISessionProfileStore? _conversationProfiles;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
@@ -3298,7 +3296,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
         _conversationIndex = conversationIndex;
-        _conversationProfiles = sessionProfileStore;
         _sessionRestorePlanner = sessionRestorePlanner;
         _worktreeReconcileGate = worktreeReconcileGate;
         _logger = logger;
@@ -6151,6 +6148,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.HasPersistedPane = true;
             pane = pane with { Title = session.Title, NameIsChosen = !session.HasGeneratedName };
+            _ = RecordConversationAsync(session, closed: false);
         }
 
         return Workspaces.AddPaneAsync(workspaceId, pane);
@@ -7271,7 +7269,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator?.Enroll(session.PaneId);
 
         Sessions.Add(session);
-        _ = RecordConversationAsync(session, closed: false);
     }
 
     // Guarded on HasPersistedPane, which PersistLaunchedPaneAsync/_AttachRestoredSession set synchronously before
@@ -7848,7 +7845,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-
         // AC-1305: this is the one place every pane's `PendingConsent` lands, whoever set it — the routing below,
         // the close side, or the assistant host denying a card on teardown. Above the assistant's return, because
         // the assistant asks for consent like any other session.
@@ -7891,6 +7887,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var previous = _lastStatus.GetValueOrDefault(session, SessionStatus.Idle);
         _lastStatus[session] = session.SessionStatus;
+
+        // Damped to where a turn settles: one index row per turn rather than one per flicker through Busy.
+        if (session.SessionStatus is not (SessionStatus.Busy or SessionStatus.WorkingBackground))
+        {
+            _ = RecordConversationAsync(session, closed: false);
+        }
 
         if (session.SessionStatus == SessionStatus.NeedsAttention && previous != SessionStatus.NeedsAttention)
         {
@@ -8746,58 +8748,54 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    private async Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
+    // AC-1531: what the pane knows of its conversation; profile, provider, place and conversation id the index takes from
+    // the session-state recorder. A plain terminal never persisted a pane, and a pane on a server is not this machine's.
+    private Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
     {
-        if (_conversationIndex is null || session.IsRemote)
+        if (_conversationIndex is null || !session.HasPersistedPane || session.IsRemote)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var state = _sessionStateStore is null ? null : (await _sessionStateStore.LoadAsync()).FirstOrDefault(item => item.PaneId == session.PaneId);
         var now = DateTimeOffset.UtcNow;
-        await _conversationIndex.RecordAsync(new ConversationRecord(
-            session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel,
-            state?.ProviderId, state?.ConversationId, state?.ConversationState ?? SessionConversationIdState.Unknown,
-            now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
-            ReferenceEquals(session, _assistantSession), session is SessionViewModel
-                ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl")
-                : null));
+        return _conversationIndex.RecordAsync(new ConversationRecord(
+            session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel, null, null,
+            SessionConversationIdState.Unknown, now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
+            IsAssistant: false,
+            session is SessionViewModel ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl") : null));
     }
 
+    // AC-1531: a conversation from the index back on screen — the open pane or the assistant selected, otherwise a new pane
+    // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused with the planner's reason.
     public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
         if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } open)
         {
             SelectedSession = open;
-            return new(true);
+            return new ConversationReopenResult(true);
         }
 
-        if (_conversationProfiles is null || _sessionLauncher?.Invoke() is not { } launcher)
+        if (record.IsAssistant)
         {
-            return new(false, "Conversation restore is unavailable.");
+            SimpleSelectedSession = null;
+            return new ConversationReopenResult(_assistantSession is not null);
         }
 
-        var pane = new WorkspacePane(record.PaneId, PaneKind.AiSession)
+        if (_sessionRestorePlanner is null || _sessionLauncher?.Invoke() is not { } launcher)
         {
-            ProfileId = record.ProfileId, WorkingDirectory = record.WorkingDirectory, Title = record.Title,
-            ProjectId = record.ProjectId, SessionKind = PaneSessionKind.Sdk, StartedByTheAssistant = record.StartedByTheAssistant,
-        };
-        var state = new SessionStateRecord(record.PaneId, record.ProfileId, record.ProviderId, record.ConversationId,
-            record.ConversationState, record.WorkingDirectory, null, null, null, record.LastActivityAt);
-        var plan = await new SessionRestorePlanner(_conversationProfiles).ComposeAsync(pane, state, cancellationToken);
-        if (plan.Availability != SessionRestoreAvailability.Known || record.ConversationId is not { Length: > 0 })
-        {
-            return new(false, plan.Explanation);
+            return new ConversationReopenResult(false, "Conversations cannot be reopened here.");
         }
 
-        var workspace = Workspaces.EnsureSessionWorkspace();
-        if (_BuildRestoreLaunchResult(plan, SessionResume.BySessionId(record.ConversationId)) is not { } launch)
+        var plan = await _sessionRestorePlanner.ComposeAsync(record, cancellationToken);
+        if (plan.Availability != SessionRestoreAvailability.Known
+            || record.ConversationId is not { Length: > 0 } conversationId
+            || _BuildRestoreLaunchResult(plan, SessionResume.BySessionId(conversationId)) is not { } launch)
         {
-            return new(false, plan.Explanation);
+            return new ConversationReopenResult(false, plan.Explanation);
         }
 
-        await launcher.StartSessionAsync(_RequestOf(launch, workspace) with { PaneId = record.PaneId });
-        return new(true);
+        await launcher.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        return new ConversationReopenResult(true);
     }
 
     // Held so the things that must reach it despite it being in neither collection can — consent routing
