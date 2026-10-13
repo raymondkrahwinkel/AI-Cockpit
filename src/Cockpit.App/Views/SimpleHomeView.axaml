@@ -66,8 +66,14 @@
                 </StackPanel>
             </Border>
 
-            <!-- AC-1532 puts "Earlier conversations" here, right under the box. -->
-            <Panel x:Name="EarlierConversationsSlot" Margin="0,10,0,0" HorizontalAlignment="Right"/>
+            <!-- AC-1532: secondary to Send — outlined, no accent fill. -->
+            <Button x:Name="HomeEarlierConversations" Margin="0,10,0,0" HorizontalAlignment="Right" Height="34" Padding="14,0"
+                    VerticalContentAlignment="Center" Command="{Binding EarlierConversations.OpenCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="History" Width="16" Height="16" VerticalAlignment="Center"/>
+                    <TextBlock Text="Earlier conversations" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
 
             <StackPanel x:Name="WaitingForYou" Margin="0,22,0,0" Spacing="8" IsVisible="{Binding HasSimpleWaitingForYou}">
                 <TextBlock Text="Waiting for you" FontSize="14" FontWeight="SemiBold"/>

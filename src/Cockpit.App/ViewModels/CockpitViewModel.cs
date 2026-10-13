@@ -8826,6 +8826,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return new ConversationReopenResult(true);
     }
 
+    private EarlierConversationsViewModel? _earlierConversations;
+
+    // AC-1532: the Simple stand's Earlier conversations sheet, opened from Home and from a conversation's header.
+    public EarlierConversationsViewModel EarlierConversations => _earlierConversations ??= new(this, _conversationIndex);
+
+    // AC-1532: why Continue cannot bring this conversation back, asked before it is offered; null when it can.
+    internal async Task<string?> ConversationRefusalAsync(ConversationRecord record)
+    {
+        if (Sessions.Any(session => session.PaneId == record.PaneId))
+        {
+            return null;
+        }
+
+        if (record.IsAssistant)
+        {
+            return _assistantSession is null ? "The assistant is not running." : null;
+        }
+
+        if (_sessionRestorePlanner is null)
+        {
+            return "Conversations cannot be reopened here.";
+        }
+
+        var plan = await _sessionRestorePlanner.ComposeAsync(record);
+        return plan.Availability == SessionRestoreAvailability.Known && record.ConversationId is { Length: > 0 } ? null : plan.Explanation;
+    }
+
     // Each stand keeps its own selection (AC-1301); the Simple one also turns its page to the conversation.
     private void _SelectInTheActiveStand(SessionPanelViewModel session)
     {

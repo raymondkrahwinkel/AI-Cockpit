@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -20,12 +21,31 @@ public partial class SimpleConversationHeader : UserControl
         set => SetValue(ProjectNameProperty, value);
     }
 
+    // AC-1532: opens Earlier conversations, which the cockpit owns and a session does not.
+    public static readonly StyledProperty<ICommand?> EarlierCommandProperty =
+        AvaloniaProperty.Register<SimpleConversationHeader, ICommand?>(nameof(EarlierCommand));
+
+    public ICommand? EarlierCommand
+    {
+        get => GetValue(EarlierCommandProperty);
+        set => SetValue(EarlierCommandProperty, value);
+    }
+
     public SimpleConversationHeader()
     {
         InitializeComponent();
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    // AC-1532: below this width Earlier conversations keeps only its icon, so the title and the stand keep their room.
+    private const double EarlierLabelMinWidth = 760;
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        this.FindControl<TextBlock>("SimpleEarlierLabel")!.IsVisible = e.NewSize.Width >= EarlierLabelMinWidth;
+    }
 
     private void _OnRenameKeyDown(object? sender, KeyEventArgs e) => InlineRename.OnKeyDown(sender, e);
 
