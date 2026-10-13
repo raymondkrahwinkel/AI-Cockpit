@@ -8,154 +8,148 @@
              x:Class="Cockpit.App.Controls.SessionHeaderBar"
              x:DataType="vm:SessionPanelViewModel">
 
-    <!-- AC-37 identity strip, shared by every session kind. AC-103: the right cluster (cwd · branch · token
-         meter · usage pill) docks right so its full width is always reserved, and the activity in the left
-         fill-Grid is the star that gives way with an ellipsis when the pane is narrow. The earlier single Grid
-         put all of it in Auto columns that cannot shrink, so a narrow pane pushed the usage pill past the bar's
-         right edge — over the pane's docked live-controls — instead of trimming the activity. -->
+    <!-- AC-37 identity strip, shared by every session kind. One DockPanel, measured in document order, each child
+         getting only what the ones before it left: the right-hand items (usage pill, branch, claim, isolated, cwd —
+         outermost first) take their width, then the dot and the title group, and the activity fill comes last. So a
+         narrow pane trims the activity first (AC-103), then the title with an ellipsis, and only then runs the
+         right-hand chips out of room — clipped in their own slot, never painted over a neighbour. The earlier
+         left-hand Grid kept the title in an Auto column that cannot shrink, so a narrow pane drew the title and the
+         kind chip over the "⑂ isolated" and claim chips. -->
     <DockPanel>
 
-        <!-- Right cluster: docked first, so DockPanel reserves its full width before the fill region gets the
-             rest; the pill therefore stays fully visible and only the activity column below trims. -->
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
+             session has data for (each coloured by its own severity, amber/red on its threshold), the segments
+             butting together with a thin divider between them, and the chevron glued on as the final segment.
+             Which metrics show is a global Options preference; empty (no space taken) when none applies. -->
+        <Border DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
+                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitPillRadius}"
+                IsVisible="{Binding HasUsagePillRegion}">
+            <StackPanel Orientation="Horizontal">
+                <ItemsControl ItemsSource="{Binding UsagePillItems}" VerticalAlignment="Stretch">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:UsagePillItem">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- Divider between adjacent segments; the first segment carries none. -->
+                                <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
+                                        IsVisible="{Binding ShowLeadingDivider}"/>
+                                <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                           ToolTip.Tip="{Binding Tooltip}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-            <!-- cwd as an icon; profile + full path on hover, freeing the path's width. -->
-            <materialIcons:MaterialIcon Kind="FolderOutline" Width="14" Height="14"
-                                        VerticalAlignment="Center" Margin="8,0,0,0"
-                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                        IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                <ToolTip.Tip>
-                    <MultiBinding StringFormat="{}{0} · {1}">
-                        <Binding Path="ActiveProfileLabel"/>
-                        <Binding Path="WorkingDirectory"/>
-                    </MultiBinding>
-                </ToolTip.Tip>
-            </materialIcons:MaterialIcon>
+                <!-- Chevron as the final segment: opens the detail flyout (ctx plus each rate window with its
+                     reset time) — the thing the compact segments cannot say. Its divider shows only when a
+                     metric segment precedes it. -->
+                <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
+                        IsVisible="{Binding ShowChevronDivider}"/>
+                <Button VerticalAlignment="Stretch" Padding="6,2"
+                        MinWidth="0" MinHeight="0"
+                        Background="Transparent" BorderThickness="0"
+                        IsVisible="{Binding HasUsagePill}"
+                        ToolTip.Tip="{Binding LimitsTooltip}">
+                    <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <Button.Flyout>
+                        <Flyout Placement="Bottom">
+                            <StackPanel Spacing="8" MinWidth="210" Margin="4">
+                                <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" Threshold="{Binding ContextThreshold}" FontSize="10" Height="14"
+                                                   StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                <ItemsControl ItemsSource="{Binding RateLimits}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                            <StackPanel Spacing="1" Margin="0,4,0,0">
+                                                <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
+                                                                   StretchTrack="True" HorizontalAlignment="Stretch"/>
+                                                <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                           FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                           IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <!-- AC-549: a window ticked in Options that this provider does not report says
+                                     so here. The pill stays empty (AC-530 criterion 5 — an unknown window must
+                                     not be drawn as 0%), but silence in both places reads as a broken setting. -->
+                                <TextBlock Text="{Binding UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
+                                           Margin="0,4,0,0"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Border>
 
-            <!-- Worktree mode chip: reads "isolated", not the branch name. The live branch is the GitStatus pill's
-                 job, so this never duplicates it or goes stale after a checkout; the worktree's own branch stays in
-                 the tooltip as the host-side fallback for when that plugin is off or hidden (a plain terminal pane).
-                 Soft purple, apart from the grey kind chip and the status colours. -->
-            <Border Classes="tag" Background="{DynamicResource CockpitIsolatedBadgeBgBrush}" Margin="8,0,0,0"
-                    IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                <ToolTip.Tip>
-                    <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                               Text="{Binding WorktreeBranch, StringFormat='Isolated git worktree on branch ‘{0}’. A private copy: commits here stay on this branch until you merge or discard it, leaving your main checkout untouched.'}"/>
-                </ToolTip.Tip>
-                <TextBlock Text="⑂ isolated" FontSize="10" Foreground="{DynamicResource CockpitIsolatedBadgeTextBrush}"/>
-            </Border>
+        <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content (the badge trims its own long
+             branch names), clipped to whatever room is left so it never renders onto the pill beside it. Hidden on
+             a plain terminal pane (AC-25), where a plugin session indicator has nothing to say; takes no space when
+             none contributes. -->
+        <controls:PluginSessionHeaderHost DockPanel.Dock="Right" Margin="8,0,0,0" ClipToBounds="True"
+                                          IsVisible="{Binding ShowPluginHeaderItems}"/>
 
-            <!-- AC-439 cross-desk claim collision chip: another agent, on a different workspace the operator can see
-                 but this session cannot, has claimed a resource that canonicalizes to the same physical thing. This
-                 is never surfaced to the agent itself — only here, to the operator watching both desks. Disappears
-                 on its own the next time the check runs after either claim is released (no dismiss action). -->
-            <Border Classes="tag" Background="{DynamicResource CockpitStatusWaitingBrush}" Margin="8,0,0,0"
-                    IsVisible="{Binding HasClaimCollision}">
-                <ToolTip.Tip>
-                    <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                               Text="A resource this session has claimed is also claimed by an agent on a different workspace. Neither agent can see the other — claims are private to a desk — so this is shown to you here rather than to either of them. It clears on its own once one side releases the claim."/>
-                </ToolTip.Tip>
-                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{DynamicResource CockpitTextOnStatusBrush}"/>
-            </Border>
+        <!-- AC-439 cross-desk claim collision chip: another agent, on a different workspace the operator can see
+             but this session cannot, has claimed a resource that canonicalizes to the same physical thing. This
+             is never surfaced to the agent itself — only here, to the operator watching both desks. Disappears
+             on its own the next time the check runs after either claim is released (no dismiss action). -->
+        <Border DockPanel.Dock="Right" Classes="tag" Background="{DynamicResource CockpitStatusWaitingBrush}"
+                Margin="8,0,0,0" ClipToBounds="True"
+                IsVisible="{Binding HasClaimCollision}">
+            <ToolTip.Tip>
+                <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                           Text="A resource this session has claimed is also claimed by an agent on a different workspace. Neither agent can see the other — claims are private to a desk — so this is shown to you here rather than to either of them. It clears on its own once one side releases the claim."/>
+            </ToolTip.Tip>
+            <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{DynamicResource CockpitTextOnStatusBrush}"/>
+        </Border>
 
-            <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content so it never renders past a
-                 fixed cap onto the pill beside it (the badge trims its own long branch names). Hidden on a plain
-                 terminal pane (AC-25), where a plugin session indicator has nothing to say; takes no space when
-                 none contributes. -->
-            <controls:PluginSessionHeaderHost Margin="8,0,0,0"
-                                              IsVisible="{Binding ShowPluginHeaderItems}"/>
+        <!-- Worktree mode chip: reads "isolated", not the branch name. The live branch is the GitStatus pill's
+             job, so this never duplicates it or goes stale after a checkout; the worktree's own branch stays in
+             the tooltip as the host-side fallback for when that plugin is off or hidden (a plain terminal pane).
+             Soft purple, apart from the grey kind chip and the status colours. -->
+        <Border DockPanel.Dock="Right" Classes="tag" Background="{DynamicResource CockpitIsolatedBadgeBgBrush}"
+                Margin="8,0,0,0" ClipToBounds="True"
+                IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <ToolTip.Tip>
+                <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                           Text="{Binding WorktreeBranch, StringFormat='Isolated git worktree on branch ‘{0}’. A private copy: commits here stay on this branch until you merge or discard it, leaving your main checkout untouched.'}"/>
+            </ToolTip.Tip>
+            <TextBlock Text="⑂ isolated" FontSize="10" Foreground="{DynamicResource CockpitIsolatedBadgeTextBrush}"/>
+        </Border>
 
-            <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
-                 session has data for (each coloured by its own severity, amber/red on its threshold), the segments
-                 butting together with a thin divider between them, and the chevron glued on as the final segment.
-                 Which metrics show is a global Options preference; empty (no space taken) when none applies. -->
-            <Border VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
-                    Background="{DynamicResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CockpitPillRadius}"
-                    IsVisible="{Binding HasUsagePillRegion}">
-                <StackPanel Orientation="Horizontal">
-                    <ItemsControl ItemsSource="{Binding UsagePillItems}" VerticalAlignment="Stretch">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:UsagePillItem">
-                                <StackPanel Orientation="Horizontal">
-                                    <!-- Divider between adjacent segments; the first segment carries none. -->
-                                    <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                            IsVisible="{Binding ShowLeadingDivider}"/>
-                                    <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
-                                               VerticalAlignment="Center"
-                                               Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                               ToolTip.Tip="{Binding Tooltip}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+        <!-- cwd as an icon; profile + full path on hover, freeing the path's width. -->
+        <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="FolderOutline" Width="14" Height="14"
+                                    VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
+                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                    IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <ToolTip.Tip>
+                <MultiBinding StringFormat="{}{0} · {1}">
+                    <Binding Path="ActiveProfileLabel"/>
+                    <Binding Path="WorkingDirectory"/>
+                </MultiBinding>
+            </ToolTip.Tip>
+        </materialIcons:MaterialIcon>
 
-                    <!-- Chevron as the final segment: opens the detail flyout (ctx plus each rate window with its
-                         reset time) — the thing the compact segments cannot say. Its divider shows only when a
-                         metric segment precedes it. -->
-                    <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                            IsVisible="{Binding ShowChevronDivider}"/>
-                    <Button VerticalAlignment="Stretch" Padding="6,2"
-                            MinWidth="0" MinHeight="0"
-                            Background="Transparent" BorderThickness="0"
-                            IsVisible="{Binding HasUsagePill}"
-                            ToolTip.Tip="{Binding LimitsTooltip}">
-                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        <Button.Flyout>
-                            <Flyout Placement="Bottom">
-                                <StackPanel Spacing="8" MinWidth="210" Margin="4">
-                                    <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" Threshold="{Binding ContextThreshold}" FontSize="10" Height="14"
-                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                    <ItemsControl ItemsSource="{Binding RateLimits}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                                <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
-                                                                       StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                                    <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                               FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                               IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <!-- AC-549: a window ticked in Options that this provider does not report says
-                                         so here. The pill stays empty (AC-530 criterion 5 — an unknown window must
-                                         not be drawn as 0%), but silence in both places reads as a broken setting. -->
-                                    <TextBlock Text="{Binding UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
-                                               Margin="0,4,0,0"
-                                               Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                               IsVisible="{Binding UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                </StackPanel>
-            </Border>
-        </StackPanel>
+        <!-- Status as a colour, not a word: the dot carries running/waiting/done/background at a glance. -->
+        <Ellipse DockPanel.Dock="Left" Width="8" Height="8" VerticalAlignment="Center"
+                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
 
-        <!-- Left fill region: status dot · name · kind chip · activity. Activity (Col 3, star) is the one that
-             trims with an ellipsis when space runs out; the dot, name and kind chip keep their place. -->
-        <Grid ColumnDefinitions="Auto,Auto,Auto,*">
-
-            <!-- Status as a colour, not a word: the dot carries running/waiting/done/background at a glance. -->
-            <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
-                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-
-            <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
-                       VerticalAlignment="Center" Margin="7,0,0,0"
-                       TextTrimming="CharacterEllipsis" MaxWidth="220"
-                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+        <!-- Title and its chips: the chips dock right inside this group so the title is what trims when it is short of
+             room; sized to its content, so on a wide pane the chips sit right after the title as before. -->
+        <DockPanel DockPanel.Dock="Left" ClipToBounds="True">
 
             <!-- Kind chip (TTY / SDK / provider tag); hidden when the session reports none. Its hover content is a slot
                  (KindChipTooltip) each view fills — the SDK header its connected-tools card, the TTY header its
@@ -166,7 +160,7 @@
                  repo today ("Gemini (OpenAI-compatible)", 26 characters) while still bounding an unbounded plugin
                  string, so a plugin author's long name cannot widen the header (AC-537 AC6, pinned by
                  SessionHeaderKindChipWidthTests). -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
             <Border x:Name="KindChip" Classes="tag" Margin="7,0,0,0"
                     IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
@@ -189,21 +183,26 @@
             </Border>
             </StackPanel>
 
-            <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status.
-                 AC-563: the session's MCP servers hover here, by name — the number in the text below is the count
-                 of that same list, so the two cannot disagree. The tip hangs on the column, not on either
-                 TextBlock: an agent's set_status swaps which of the two is shown, and a tip on the text would go
-                 with it — leaving the list unreachable exactly while a session is working. Background="Transparent"
-                 because a Panel with no brush is not hit-testable, so the hover would never fire. -->
-            <Panel x:Name="ActivityColumn" Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0"
-                   Background="Transparent" ToolTip.Tip="{Binding McpServersTooltip}">
-                <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                           IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                           IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
-            </Panel>
-        </Grid>
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                       VerticalAlignment="Center" Margin="7,0,0,0"
+                       TextTrimming="CharacterEllipsis" MaxWidth="220"
+                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+        </DockPanel>
+
+        <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status.
+             AC-563: the session's MCP servers hover here, by name — the number in the text below is the count
+             of that same list, so the two cannot disagree. The tip hangs on the column, not on either
+             TextBlock: an agent's set_status swaps which of the two is shown, and a tip on the text would go
+             with it — leaving the list unreachable exactly while a session is working. Background="Transparent"
+             because a Panel with no brush is not hit-testable, so the hover would never fire. -->
+        <Panel x:Name="ActivityColumn" VerticalAlignment="Center" Margin="8,0,0,0"
+               Background="Transparent" ToolTip.Tip="{Binding McpServersTooltip}">
+            <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+        </Panel>
     </DockPanel>
 </UserControl>

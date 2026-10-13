@@ -448,6 +448,8 @@ internal static class Screenshotter
         // low (merely limits it) — stacked, blocking line first, each with its own Dismiss. A single-warning
         // scene cannot show criterion 9's ordering; this is the shape that used to collapse to one visible line.
         ["session-warnings-stacked"] = (width, height) => new Window { Width = width, Height = height, Content = _StackedWarningsSession() },
+        // A narrow pane with everything on the header at once: render at --size 720x400 and 520x400.
+        ["session-header-crowded"] = (width, height) => new Window { Width = width, Height = height, Content = _CrowdedHeaderSession() },
         ["session-settings-flyout"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: true) },
         ["session-settings-flyout-no-live-controls"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: false) },
         // AC-563, staged open by the Hovers table below. See _McpHeader for why each of these four is its own.
@@ -1957,6 +1959,35 @@ internal static class Screenshotter
                 new PluginUsageReading("weekly", 95, DateTimeOffset.Now.AddDays(3)),
             ]);
         viewModel.ReportMemoryAgainstCap((long)(Cap * 1.12));
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    private static SessionView _CrowdedHeaderSession()
+    {
+        const long Cap = 8L * 1024 * 1024 * 1024;
+        var viewModel = new SessionViewModel
+        {
+            Title = "MA Terra College layout prod → acceptance migration",
+            MemoryCapBytes = Cap,
+            WorktreeBranch = "feature/ma-68-mcp-templates",
+            KindLabel = "Claude",
+            HasClaimCollision = true,
+        };
+
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
+        viewModel.ApplyUsage(
+            [
+                new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, 80) { Description = "Context window" },
+                new PluginUsageSignal("five_hour", "5h", PluginUsageSignalKind.Allowance, 90) { Description = "Session (5 hours)" },
+                new PluginUsageSignal("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" },
+            ],
+            [
+                new PluginUsageReading("context", 19, null),
+                new PluginUsageReading("five_hour", 15, null),
+                new PluginUsageReading("weekly", 25, null),
+            ]);
+        viewModel.ReportMemoryAgainstCap((long)(Cap * 1.45));
 
         return new SessionView { DataContext = viewModel };
     }

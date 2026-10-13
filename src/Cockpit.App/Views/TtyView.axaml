@@ -90,12 +90,14 @@
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <materialIcons:MaterialIcon Kind="GaugeFull" Width="15" Height="15"
+                            <!-- The text wraps in what the buttons leave; a StackPanel gave it infinite width, under them. -->
+                            <DockPanel VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="GaugeFull" Width="15" Height="15"
+                                                            Margin="0,0,6,0" VerticalAlignment="Top"
                                                             Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
-                                <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12"
+                                <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
-                            </StackPanel>
+                            </DockPanel>
                         </DockPanel>
                     </Border>
                 </DataTemplate>
