@@ -176,8 +176,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(SimpleStatusLabel));
     }
 
-    // AC-1530 turns this into plain words; until then the header reads the same label the composer band shows.
-    protected override string SimpleActivityLabel => ActiveToolActivityLabel;
+    // AC-1530: the step the turn is on, in the same plain words as its row ("Creating report.docx…").
+    protected override string SimpleActivityLabel =>
+        _CurrentActiveToolCall() is { } call && Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId) is { } row
+            ? PlainStep.Describe(row.ToolName, row.InputJson, WorkingDirectory).Running + "…"
+            : string.Empty;
+
+    // AC-1530: how a step's folder, a made file or Open folder reaches the system; a test hands in its own.
+    internal Func<string, bool> OpenPath { get; set; } = ExternalLink.TryOpenWithSystemApp;
 
     public override bool ShowsSimpleStop => IsBusy;
 
@@ -984,7 +990,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1377: a row this pane formed or changed itself goes to the host, which holds the transcript and writes it.
     private void _RecordRow(TranscriptEntryViewModel entry)
     {
-        if (!_replayingRecordedTranscript && !_applyingHostRow)
+        if (!_replayingRecordedTranscript && !_applyingHostRow && entry.Kind != TranscriptEntryKind.TurnResult)
         {
             _control.RecordRow(TranscriptSnapshot.Capture(entry));
         }
@@ -1062,11 +1068,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the sidebar until someone has actually been back to it.
     public bool HasPendingPermission => Transcript.Any(entry => entry.IsPendingPermission);
 
-    // Only Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row
-    // is simply un-grouped (AC-138).
+    // Focus folds runs of auto tools and Simple runs of reads in one folder (AC-1530); Developer shows every row.
     private void _RecomputeReadingGroups()
     {
-        if (_ShownReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel == ReadingLevel.Developer)
         {
             foreach (var entry in Transcript)
             {
@@ -1089,7 +1094,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        if (_ShownReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel == ReadingLevel.Developer)
         {
             for (var index = low; index <= high; index++)
             {
@@ -1099,12 +1104,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        while (low > 0 && Transcript[low - 1].IsAutoTool)
+        while (low > 0 && _RunKey(Transcript[low - 1]) is not null)
         {
             low--;
         }
 
-        while (high + 1 < Transcript.Count && Transcript[high + 1].IsAutoTool)
+        while (high + 1 < Transcript.Count && _RunKey(Transcript[high + 1]) is not null)
         {
             high++;
         }
@@ -1119,7 +1124,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var index = start;
         while (index <= end)
         {
-            if (!Transcript[index].IsAutoTool)
+            var key = _RunKey(Transcript[index]);
+            if (key is null)
             {
                 _ClearGroup(Transcript[index]);
                 index++;
@@ -1127,7 +1133,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             var runStart = index;
-            while (index <= end && Transcript[index].IsAutoTool)
+            while (index <= end && _RunKey(Transcript[index]) == key)
             {
                 index++;
             }
@@ -1158,6 +1164,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
     }
+
+    // What a row folds with at the shown level: any auto tool call at Focus, a read from the same folder at Simple.
+    private string? _RunKey(TranscriptEntryViewModel entry) => !entry.IsAutoTool ? null
+        : _ShownReadingLevel == ReadingLevel.Focus ? string.Empty
+        : entry.ToolName == "Read" && PlainStep.FileOf(entry.ToolName, entry.InputJson) is { } file ? Path.GetDirectoryName(file) ?? string.Empty
+        : null;
 
     private static void _ClearGroup(TranscriptEntryViewModel entry)
     {
@@ -2746,6 +2758,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Explanation = _DegradedTurnExplanation(end, restoredOffer.State?.WorkingDirectory),
                 };
             }
+        }
+
+        if (!end.IsError && TurnResult.From(Transcript.Reverse().TakeWhile(row => !row.IsUserRow).Reverse(), WorkingDirectory) is { } result)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
         _FlushPendingProseForReadAloud();

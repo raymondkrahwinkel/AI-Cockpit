@@ -62,23 +62,17 @@ public class PlainToolRequestTests
         Assert.Equal("Delete /etc/passwd", PlainToolRequest.Describe("Bash", """{"command":"rm /etc/passwd"}""")?.Sentence);
     }
 
-    [Fact]
-    public void Describe_ListsTheFilesTheCallNames()
+    [Theory]
+    [InlineData("mv KPN.pdf Vattenfall.pdf ./archive/2026-06/", new[] { "KPN.pdf", "Vattenfall.pdf" })]
+    // `mkdir` names a folder that does not exist yet — listing it under "the files this touches" would be a
+    // claim about something that is not there.
+    [InlineData("mkdir ./archive/2026-07/", new string[0])]
+    public void Describe_ListsTheFilesTheCallNames(string command, string[] expected)
     {
-        var request = PlainToolRequest.Describe("Bash", """{"command":"mv KPN.pdf Vattenfall.pdf ./archive/2026-06/"}""");
-
-        Assert.Equal(["KPN.pdf", "Vattenfall.pdf"], request?.Paths);
-    }
-
-    [Fact]
-    public void Describe_ListsNoFilesForACallThatTouchesNone()
-    {
-        // `mkdir` names a folder that does not exist yet — listing it under "the files this touches" would be a
-        // claim about something that is not there.
-        var request = PlainToolRequest.Describe("Bash", """{"command":"mkdir ./archive/2026-07/"}""");
+        var request = PlainToolRequest.Describe("Bash", $$"""{"command":"{{command}}"}""");
 
         Assert.NotNull(request);
-        Assert.Empty(request.Paths);
+        Assert.Equal(expected, request.Paths);
     }
 
     [Theory]

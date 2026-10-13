@@ -205,6 +205,76 @@ public sealed class SessionJourney
         });
     }
 
+    // AC-1530 criteria 1-3: in the Simple stand three reads in one folder are one step whose folder opens, the header
+    // says which file a running Write is creating, and the turn ends in a green block of the three files it made, the
+    // failed fourth left out; each file and Open folder open through the pane. A turn that wrote nothing has no block.
+    [Fact]
+    public async Task InTheSimpleStand_ATurnReadsAsSteps_AndEndsWithTheFilesItMade()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var folder = cockpit.Driver.WorkingDirectory!;
+        var opened = new List<string>();
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            window.Width = 1280;
+            window.Height = 800;
+            session.OpenPath = path =>
+            {
+                opened.Add(path);
+                return true;
+            };
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            session.InputText = "hello";
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            Assert.DoesNotContain(session.Transcript, row => row.TurnResult is not null);
+
+            session.InputText = EchoDriver.WorkingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SimpleStatusLabel == "Busy · Creating Kwartaaloverzicht-Q3.xlsx…");
+            window.UpdateLayout();
+            var view = window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible);
+            var steps = view.GetVisualDescendants().OfType<StackPanel>().Where(p => p.Name == "PlainStepLine" && p.IsEffectivelyVisible).ToList();
+            Assert.Equal(
+                ["✓ Read 3 files in Facturen › 2026-Q3", "◷ Creating Kwartaaloverzicht-Q3.xlsx in Rapportages › 2026 …"],
+                steps.Select(_Spoken));
+            var stepFolder = steps[0].GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StepFolderButton");
+            stepFolder.Command!.Execute(stepFolder.CommandParameter);
+            Assert.Equal([Path.Combine(folder, "Facturen", "2026-Q3")], opened);
+
+            cockpit.Driver.FinishWriting();
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            window.UpdateLayout();
+            var block = view.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "TurnResultBlock" && b.IsEffectivelyVisible);
+            Assert.Contains("Done · 3 files created", block.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            var files = block.GetVisualDescendants().OfType<Button>().Where(b => b.Name != "OpenResultFolderButton").ToList();
+            Assert.Equal(EchoDriver.Written[..3].Select(name => $"{name} Rapportages › 2026"), files.Select(_Spoken));
+            var openFolder = block.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "OpenResultFolderButton");
+            openFolder.Command!.Execute(openFolder.CommandParameter);
+            files[1].Command!.Execute(files[1].CommandParameter);
+        });
+
+        var made = Path.Combine(folder, "Rapportages", "2026");
+        Assert.Equal([Path.Combine(folder, "Facturen", "2026-Q3"), made, Path.Combine(made, EchoDriver.Written[1])], opened);
+    }
+
+    // What a step line or a file button puts on screen: a step's ✓ or clock, then its visible words.
+    private static string _Spoken(Control line) => string.Join(' ', line.GetVisualDescendants()
+        .Select(part => part switch
+        {
+            Material.Icons.Avalonia.MaterialIcon { Kind: Material.Icons.MaterialIconKind.Check } => "✓",
+            Material.Icons.Avalonia.MaterialIcon { Kind: Material.Icons.MaterialIconKind.ClockOutline } => "◷",
+            TextBlock text when text.IsEffectivelyVisible => text.Text,
+            _ => null,
+        })
+        .Where(word => !string.IsNullOrEmpty(word)));
+
     private static async Task<string> _RepositoryAsync(string folder)
     {
         Directory.CreateDirectory(folder);
