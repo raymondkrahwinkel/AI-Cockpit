@@ -1,5 +1,7 @@
 # AI-Cockpit
 
+CI draait alleen op PR naar staging en bij een release; de poort voor main is scripts/local-gate.sh
+
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache_2.0_%2B_Commons_Clause-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC.svg)](https://avaloniaui.net/)
