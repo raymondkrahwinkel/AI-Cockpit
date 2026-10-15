@@ -2715,6 +2715,7 @@ internal static class Screenshotter
         picked.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Traefik on staging is two minor versions behind. **The configuration** differs in three places — I am writing them down now."));
         picked.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_running", ToolName = "Write", InputJson = System.Text.Json.JsonSerializer.Serialize(new { file_path = Path.Combine(picked.WorkingDirectory, "notes", "staging", "summary.md") }) });
+        picked.Apply(new BackgroundTasksChanged { SessionId = "s1", Tasks = [new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Checking the Traefik values")] });
         picked.SessionStatus = SessionStatus.Busy;
         picked.IsBusy = true;
         return cockpit;
