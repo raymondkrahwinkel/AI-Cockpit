@@ -27,7 +27,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         var notification = new NotificationAction(host);
         _engine = new ScheduleEngine(
             new TaskStore(host.Storage),
-            new MarkStore(host.Storage),
+            new MarkStore(host.Cache),
             new RunStore(host.Cache, TimeProvider.System),
             notification.RunAsync,
             () => settings.MaxConcurrentRuns,

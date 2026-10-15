@@ -8,12 +8,14 @@ internal sealed class EngineHealth(TimeProvider time, TimeSpan tick) : IPluginHe
 {
     private long _lastBeat = time.GetUtcNow().UtcTicks;
     private int _unusable;
+    private int _isTaskListReadable = 1;
 
     public string Name => "schedules-engine";
 
-    public void Beat(int unusableTasks)
+    public void Beat(int unusableTasks, bool isTaskListReadable)
     {
         Interlocked.Exchange(ref _unusable, unusableTasks);
+        Interlocked.Exchange(ref _isTaskListReadable, isTaskListReadable ? 1 : 0);
         Interlocked.Exchange(ref _lastBeat, time.GetUtcNow().UtcTicks);
     }
 
@@ -28,6 +30,12 @@ internal sealed class EngineHealth(TimeProvider time, TimeSpan tick) : IPluginHe
             rows.Add(new($"{unusable} enabled task(s) with an unreadable schedule or time zone", PluginHealthStatus.Failed));
         }
 
-        return new PluginHealthReport(ticking && unusable == 0, rows);
+        var isReadable = Volatile.Read(ref _isTaskListReadable) == 1;
+        if (!isReadable)
+        {
+            rows.Add(new("The stored task list cannot be read; no task fires", PluginHealthStatus.Failed));
+        }
+
+        return new PluginHealthReport(ticking && unusable == 0 && isReadable, rows);
     }
 }

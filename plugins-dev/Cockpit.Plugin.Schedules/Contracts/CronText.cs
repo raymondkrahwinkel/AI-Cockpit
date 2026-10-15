@@ -132,7 +132,7 @@ public static partial class CronText
     private static string _JoinDays(IReadOnlyList<string> days) =>
         days.Count == 1 ? days[0] : $"{string.Join(", ", days.Take(days.Count - 1))} and {days[^1]}";
 
-    [GeneratedRegex(@"^(\d)#([1-4])$")]
+    [GeneratedRegex(@"^([0-6])#([1-4])$")]
     private static partial Regex NthWeekday();
 
     [GeneratedRegex(@"^every ([1-9]|[1-5]\d) minutes$", RegexOptions.IgnoreCase)]

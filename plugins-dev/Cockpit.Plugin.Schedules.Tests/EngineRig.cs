@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Schedules.Tests;
 // when it ran and does whatever the test hands it.
 internal sealed class EngineRig(DateTimeOffset start)
 {
-    private readonly InMemoryPluginStorage _storage = new();
+    public InMemoryPluginStorage Storage { get; } = new();
 
     public TestClock Clock { get; } = new(start);
 
@@ -17,7 +17,7 @@ internal sealed class EngineRig(DateTimeOffset start)
 
     public int MaxConcurrentRuns { get; set; } = 2;
 
-    public IReadOnlyList<RunRecord> History => new RunStore(_storage, Clock).Load();
+    public IReadOnlyList<RunRecord> History => new RunStore(Storage, Clock).Load();
 
     public static ScheduledTask NewTask(string schedule, MissedRunPolicy missedRuns = MissedRunPolicy.RunOnceWhenBack, string id = "stand-up", string zone = "Europe/Amsterdam") => new()
     {
@@ -32,14 +32,16 @@ internal sealed class EngineRig(DateTimeOffset start)
 
     public void Add(params ScheduledTask[] tasks)
     {
-        var store = new TaskStore(_storage);
-        store.Save([.. store.Load(), .. tasks]);
+        var store = new TaskStore(Storage);
+        store.Save([.. store.Load() ?? [], .. tasks]);
     }
 
+    public void Replace(params ScheduledTask[] tasks) => new TaskStore(Storage).Save(tasks);
+
     public ScheduleEngine Start() => new(
-        new TaskStore(_storage),
-        new MarkStore(_storage),
-        new RunStore(_storage, Clock),
+        new TaskStore(Storage),
+        new MarkStore(Storage),
+        new RunStore(Storage, Clock),
         (task, _) =>
         {
             lock (Executed)

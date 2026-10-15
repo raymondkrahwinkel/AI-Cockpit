@@ -58,10 +58,12 @@ internal sealed class ScheduleEngine : IDisposable
         var now = _time.GetUtcNow();
         var started = new List<Task>();
         var unusable = 0;
+        var tasks = _tasks.Load();
 
         lock (_tickGate)
         {
-            foreach (var task in _tasks.Load().Where(task => task.IsEnabled))
+            var armed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var task in (tasks ?? []).Where(task => task.IsEnabled))
             {
                 if (!TimeZoneInfo.TryFindSystemTimeZoneById(task.TimeZone, out var zone)
                     || TaskSchedule.TryParse(task.Schedule, zone) is not { } schedule)
@@ -70,15 +72,30 @@ internal sealed class ScheduleEngine : IDisposable
                     continue;
                 }
 
-                if (_Due(task, schedule, zone, now) is { } run)
+                try
                 {
-                    started.Add(run);
+                    armed.Add(task.Id);
+                    if (_Due(task, schedule, zone, now) is { } run)
+                    {
+                        started.Add(run);
+                    }
                 }
+                catch (Exception)
+                {
+                    // One task's storage failure must not stop the others; health counts it.
+                    unusable++;
+                }
+            }
+
+            // A task off, gone or unreadable loses its mark, so the time it was away is not owed when it returns.
+            if (tasks is not null)
+            {
+                _marks.Retain(armed);
             }
         }
 
         // Last, so a tick that throws part-way never counts as one that ran.
-        Health.Beat(unusable);
+        Health.Beat(unusable, isTaskListReadable: tasks is not null);
         return Task.WhenAll(started);
     }
 
@@ -98,21 +115,22 @@ internal sealed class ScheduleEngine : IDisposable
 
     private Task? _Due(ScheduledTask task, TaskSchedule schedule, TimeZoneInfo zone, DateTimeOffset now)
     {
-        // A task seen for the first time starts counting now: armed at 09:05, it does not owe the 09:00 slot.
-        if (_marks.For(task.Id) is not { } mark)
+        // A task seen for the first time, or with a new schedule, starts counting now: armed at 09:05, it does not
+        // owe the 09:00 slot.
+        if (_marks.For(task.Id) is not { } mark || mark.Schedule != task.Schedule || mark.TimeZone != task.TimeZone)
         {
-            _marks.Set(task.Id, now);
+            _marks.Set(task.Id, new TaskMark(now, task.Schedule, task.TimeZone));
             return null;
         }
 
-        var slots = schedule.Slots(mark, now, zone).ToList();
+        var slots = schedule.Slots(mark.At, now, zone).ToList();
         if (slots.Count == 0)
         {
             return null;
         }
 
         var slot = slots[^1];
-        _marks.Set(task.Id, slot);
+        _marks.Set(task.Id, mark with { At = slot });
 
         // The newest slot is always less than one period old, or the next one would be here too: the plan's limit
         // on a catch-up's age holds by construction. A one-off has no next slot and may always catch up.
@@ -153,7 +171,20 @@ internal sealed class ScheduleEngine : IDisposable
         }
 
         var record = _Record(task, slot, trigger, RunOutcome.Running, now);
-        _runs.Add(record);
+        try
+        {
+            _runs.Add(record);
+        }
+        catch (Exception)
+        {
+            lock (_runGate)
+            {
+                _busy.Remove(task.Id);
+            }
+
+            throw;
+        }
+
         return _RunAsync(task, record);
     }
 
@@ -195,33 +226,32 @@ internal sealed class ScheduleEngine : IDisposable
 
     private Task _AcquireSlotAsync()
     {
+        var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_runGate)
         {
-            if (_active < _maxConcurrentRuns())
-            {
-                _active++;
-                return Task.CompletedTask;
-            }
-
-            var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _waiting.Enqueue(waiter);
-            return waiter.Task;
+            _Pump();
         }
+
+        return waiter.Task;
     }
 
-    // A waiting run takes the slot over as it is; only with nobody waiting does the count go down.
     private void _ReleaseSlot()
     {
         lock (_runGate)
         {
-            if (_waiting.TryDequeue(out var next))
-            {
-                next.SetResult();
-            }
-            else
-            {
-                _active--;
-            }
+            _active--;
+            _Pump();
+        }
+    }
+
+    // First come, first served, against the maximum as it reads now, on every acquire and every release.
+    private void _Pump()
+    {
+        while (_active < _maxConcurrentRuns() && _waiting.TryDequeue(out var next))
+        {
+            _active++;
+            next.SetResult();
         }
     }
 

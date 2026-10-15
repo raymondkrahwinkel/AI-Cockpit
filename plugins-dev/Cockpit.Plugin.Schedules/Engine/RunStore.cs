@@ -4,11 +4,13 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Schedules.Engine;
 
 // The run history, in the plugin cache (outside the backup): 30 days per task rather than Workflows' last twenty,
-// because the history per task is the point (plan §3). Output is capped per run, 256 KB counted in characters.
+// because the history per task is the point (plan §3). At most 1000 runs per task, so an every-minute task cannot
+// grow the shared cache file without bound; output is capped per run, 256 KB counted in characters.
 internal sealed class RunStore(IPluginCache cache, TimeProvider time)
 {
     public static readonly TimeSpan Keep = TimeSpan.FromDays(30);
     public const int MaxOutputChars = 256 * 1024;
+    public const int KeepPerTask = 1000;
     public const string Interrupted = "interrupted";
 
     private const string Key = "runs";
@@ -52,7 +54,8 @@ internal sealed class RunStore(IPluginCache cache, TimeProvider time)
             var runs = _Load();
             change(runs);
             var oldest = time.GetUtcNow() - Keep;
-            runs.RemoveAll(run => run.StartedAt < oldest);
+            var perTask = new Dictionary<string, int>(StringComparer.Ordinal);
+            runs.RemoveAll(run => run.StartedAt < oldest || (perTask[run.TaskId] = perTask.GetValueOrDefault(run.TaskId) + 1) > KeepPerTask);
             cache.Set(Key, StoreJson.Write(runs));
         }
     }

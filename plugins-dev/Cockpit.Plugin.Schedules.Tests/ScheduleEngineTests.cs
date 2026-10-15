@@ -184,7 +184,12 @@ public class ScheduleEngineTests
 
         rig.Clock.Now = Utc(10, 14, 0, 1, 10);
         var tick = engine.TickAsync();
-        var startedTogether = rig.Executed.Count;
+        int startedTogether;
+        lock (rig.Executed)
+        {
+            startedTogether = rig.Executed.Count;
+        }
+
         running[0].SetResult(new ActionResult(RunOutcome.Succeeded));
         await thirdStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         lock (running)
@@ -214,6 +219,42 @@ public class ScheduleEngineTests
         var health = engine.Health.Read();
         Assert.False(health.Healthy);
         Assert.Contains(health.Rows, row => row.Label == "2 enabled task(s) with an unreadable schedule or time zone");
+    }
+
+    [Fact]
+    public async Task ATaskSwitchedBackOnOrRescheduled_DoesNotOweTheTimeInBetween()
+    {
+        var rig = new EngineRig(Utc(10, 14, 6, 59, 30));
+        var task = EngineRig.NewTask("0 9 * * *");
+        rig.Add(task);
+        using var engine = rig.Start();
+        await engine.TickAsync();
+        await rig.WalkAsync(engine, Utc(10, 14, 7, 1));
+
+        rig.Replace(task with { IsEnabled = false });
+        await rig.WalkAsync(engine, Utc(10, 14, 7, 2));
+        rig.Clock.Now = Utc(10, 20, 8, 0);
+        rig.Replace(task);
+        await rig.WalkAsync(engine, Utc(10, 20, 8, 1));
+        rig.Replace(task with { Schedule = "0 * * * *" });
+        await rig.WalkAsync(engine, Utc(10, 20, 8, 2));
+
+        Assert.Single(rig.Executed);
+        Assert.Single(rig.History);
+    }
+
+    [Fact]
+    public async Task AStoredTaskListThatCannotBeRead_TurnsHealthRed()
+    {
+        var rig = new EngineRig(Utc(10, 14, 0, 0));
+        rig.Storage.Set("tasks", "[{\"Id\": 1}]");
+        using var engine = rig.Start();
+
+        await engine.TickAsync();
+
+        var health = engine.Health.Read();
+        Assert.False(health.Healthy);
+        Assert.Contains(health.Rows, row => row.Label == "The stored task list cannot be read; no task fires");
     }
 
     [Fact]
