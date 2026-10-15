@@ -334,7 +334,7 @@ public sealed class SessionJourney
     // AC-1533 follow-ups of AC-1529/AC-1530: in a narrow column the header trims its stand and keeps Stop and ⋯ whole
     // beside it, and the composer band names the running step in the same plain words as the stand.
     [Fact]
-    public async Task InTheSimpleStand_ANarrowColumnKeepsStopAndDetails_AndTheBandSpeaksPlainly()
+    public async Task InTheSimpleStand_ANarrowColumnKeepsStopAndDetails_TheComposerStaysSimple_AndBackgroundWorkShowsInTheHeader()
     {
         await using var cockpit = JourneyHost.Desktop();
         var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
@@ -361,6 +361,31 @@ public sealed class SessionJourney
             Assert.True(stand.TranslatePoint(new Point(stand.Bounds.Width, 0), header)!.Value.X <= stop.TranslatePoint(default, header)!.Value.X);
             Assert.True(details.TranslatePoint(new Point(details.Bounds.Width, 0), header)!.Value.X <= header.Bounds.Width);
             Assert.Equal("Creating Kwartaaloverzicht-Q3.xlsx…", session.ActiveToolActivityLabel);
+
+            // AC-1526 (AC-1529 decision 5): the composer is chip, paperclip, mic and Send under "Reply, or hold <key> to
+            // talk…"; Stop, Screenshot and Background stand down, and what runs in the background shows beside Stop.
+            await Until.Holds(session, () => session.HasBackgroundTasks);
+            window.UpdateLayout();
+            SessionView Pane() => window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible && v.DataContext == session);
+            Button Composer(string name) => Pane().GetVisualDescendants().OfType<Button>().Single(b => b.Name == name);
+            string[] composerOnly = ["BackgroundWorkButton", "ScreenshotButton", "ComposerStopButton"];
+            var view = Pane();
+            Assert.All(composerOnly, name => Assert.False(Composer(name).IsEffectivelyVisible, name));
+            var input = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "InputBox");
+            Assert.Equal($"Reply, or hold {cockpit.Cockpit.VoicePushToTalkKeyName} to talk…", input.PlaceholderText);
+            var inputRect = new Rect(input.TranslatePoint(default, view) ?? throw new InvalidOperationException("the input is not in the pane"), input.Bounds.Size);
+            Assert.All(view.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.FindAncestorOfType<TextBox>() is null),
+                button => Assert.False(inputRect.Intersects(new Rect(button.TranslatePoint(default, view) ?? default, button.Bounds.Size)), button.Name));
+            var background = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SimpleBackgroundButton");
+            Assert.True(background.IsEffectivelyVisible);
+            Assert.Contains("1", background.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            Assert.IsType<BackgroundWorkList>(((Flyout)background.Flyout!).Content);
+
+            cockpit.Cockpit.ShowPanelsViewCommand.Execute(null);
+            window.UpdateLayout();
+            Assert.All(composerOnly, name => Assert.True(Composer(name).IsEffectivelyVisible, name));
+            Assert.NotEqual(Pane().GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "InputBox").PlaceholderText, $"Reply, or hold {cockpit.Cockpit.VoicePushToTalkKeyName} to talk…");
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
 
             cockpit.Driver.FinishWriting();
             await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
