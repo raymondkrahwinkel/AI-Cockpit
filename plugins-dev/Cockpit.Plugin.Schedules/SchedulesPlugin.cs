@@ -34,6 +34,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
             TimeProvider.System);
 
         host.AddHealthSection(_engine.Health);
+        _ = typeof(Avalonia.Controls.Control).Name;
     }
 
     public void Dispose() => _engine?.Dispose();
