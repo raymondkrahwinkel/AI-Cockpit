@@ -90,7 +90,7 @@ internal sealed class ScheduleEngine : IDisposable
             // A task off, gone or unreadable loses its mark, so the time it was away is not owed when it returns.
             if (tasks is not null)
             {
-                _ = armed;
+                _marks.Retain(armed);
             }
         }
 
