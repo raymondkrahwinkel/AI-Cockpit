@@ -130,7 +130,6 @@ internal sealed class ScheduleEngine : IDisposable
         }
 
         var slot = slots[^1];
-        _marks.Set(task.Id, mark with { At = slot });
 
         // The newest slot is always less than one period old, or the next one would be here too: the plan's limit
         // on a catch-up's age holds by construction. A one-off has no next slot and may always catch up.
@@ -198,6 +197,7 @@ internal sealed class ScheduleEngine : IDisposable
             try
             {
                 var result = await _execute(task, CancellationToken.None);
+                _marks.Set(task.Id, new TaskMark(record.ScheduledFor ?? default, task.Schedule, task.TimeZone));
                 done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason };
             }
             catch (Exception exception)
