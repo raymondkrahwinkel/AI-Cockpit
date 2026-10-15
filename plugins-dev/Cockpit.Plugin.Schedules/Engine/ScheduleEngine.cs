@@ -120,6 +120,11 @@ internal sealed class ScheduleEngine : IDisposable
             ? RunTrigger.Schedule
             : task.MissedRuns == MissedRunPolicy.RunOnceWhenBack ? RunTrigger.CatchUp : null;
 
+        if (trigger == RunTrigger.CatchUp)
+        {
+            return Task.WhenAll(slots.Select(each => _Start(task, each, RunTrigger.CatchUp, now) ?? Task.CompletedTask));
+        }
+
         _RecordMissed(task, trigger is null ? slots : slots[..^1], now);
         return trigger is { } fired ? _Start(task, slot, fired, now) : null;
     }
