@@ -34,7 +34,7 @@ public sealed class PluginAssemblyBoundaryTests
             }
         }
 
-        Assert.Equal(33, manifests.Count);
+        Assert.Equal(34, manifests.Count);
 
         Assert.Empty(crossings);
     }

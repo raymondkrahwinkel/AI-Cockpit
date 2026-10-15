@@ -26,7 +26,7 @@ public sealed class StartupJourney
     private static readonly string[] Bundled =
     [
         "autopilot", "claude-provider", "clock", "depot", "example-companion-tool", "example-workspace", "fan-out", "git-status",
-        "transcript-search", "usage-trend",
+        "schedules", "transcript-search", "usage-trend",
     ];
 
     [Fact]

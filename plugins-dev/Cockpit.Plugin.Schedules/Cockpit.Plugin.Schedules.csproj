@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Schedules (AC-1539): scheduled tasks with their own engine, outside Workflows (AC-885). Built outside the main
+       solution like the other plugins, in Workflows' two-assembly layout (AC-1399): this backend part names no
+       Avalonia and holds the engine and the stores, so Cockpit.Server runs it; UI/ is the UI part. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="UI\Cockpit.Plugin.Schedules.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The next cron occurrence in a time zone, across daylight saving: MIT, no dependencies, ships in the plugin. -->
+    <PackageReference Include="Cronos" Version="0.13.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Schedules.Tests" />
+  </ItemGroup>
+
+</Project>
