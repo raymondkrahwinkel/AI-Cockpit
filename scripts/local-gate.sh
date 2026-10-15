@@ -38,7 +38,7 @@ while IFS= read -r plugin; do
   if [ -f "$test_project" ]; then
     dotnet test "$project" --configuration Release --no-build --logger "console;verbosity=minimal" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
   fi
-done < <(python3 -c 'import json,sys; print("\\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}")
+done < <(python3 -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}" | tr -d '\r')
 
 bash scripts/check-plugin-versions.test.sh
 bash scripts/check-plugin-abstractions-version.test.sh
