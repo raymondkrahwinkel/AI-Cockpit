@@ -47,8 +47,7 @@ public sealed class Ac1529SimpleConversationTests
 
     // Criteria 3 and 4 on the `simple-view` scene (the assistant docked beside a picked agent, a consent bypass on): no
     // orange line in the Simple stand while Panels' window keeps it, and a terminal gets the same header. AC-1533: the
-    // assistant's Details name the bypass instead, a terminal's offer no Start over; `ATerminal_GetsTheSameHeader…` folded in.
-    // AC-1526 eindcheck: in a column of ~220px the header paints nothing over anything else.
+    // assistant's Details name the bypass, a terminal's offer no Start over. AC-1526: at ~220px nothing paints over another.
     [Fact]
     public void TheAssistant_LeavesTheOrangeLineToPanels_AndATerminalGetsTheSameHeader_ThatHoldsInANarrowColumn() => HeadlessAvalonia.Run(() =>
     {
