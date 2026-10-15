@@ -2,9 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Schedules.Engine;
 
-// Per task, the last moment the engine has dealt with: a slot at or before it never fires again. In the plugin cache,
-// which the host writes to disk synchronously, so the mark is on disk before the action starts; settings storage
-// saves in the background, and a crash in between would replay the slot (plan §4 said Storage; this is why not).
+// Per task, the last moment dealt with; no slot at or before it fires again. In the cache: written synchronously, and
+// outside the backup on purpose, so a restore cannot put back an old mark and replay slots. A new machine or an
+// unreadable file loses the marks; that costs at most a skipped slot, never a double run (a task re-arms at "now").
 internal sealed class MarkStore(IPluginCache cache)
 {
     private const string Key = "marks";
