@@ -22,6 +22,30 @@
                     <TextBlock Text="Stop" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
+            <!-- AC-1526: the composer's Background button stands down in Simple, so what still runs after a turn shows
+                 here, beside Stop, and only while something does. A terminal reports no background work. -->
+            <ContentControl DockPanel.Dock="Right" VerticalAlignment="Center" Content="{Binding}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:SessionViewModel">
+                        <Button x:Name="SimpleBackgroundButton" Padding="10,6" Margin="8,0,0,0"
+                                IsVisible="{Binding HasBackgroundTasks}"
+                                ToolTip.Tip="Sub-agents and shells still running in the background">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="LayersOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding BackgroundTaskCount}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <controls:BackgroundWorkList/>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:SessionPanelViewModel">
+                        <Panel/>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
             <Button x:Name="SimpleEarlierButton" DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,6" Margin="8,0,0,0"
                     Command="{Binding $parent[controls:SimpleConversationHeader].EarlierCommand}"
                     ToolTip.Tip="Earlier conversations — find one and continue it">

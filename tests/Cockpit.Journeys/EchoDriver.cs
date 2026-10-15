@@ -160,7 +160,10 @@ public sealed class EchoDriver : ISessionDriver
             yield return new ToolUseRequested { SessionId = SessionId, ToolUseId = $"call-{i}", ToolName = tool, InputJson = JsonSerializer.Serialize(new { file_path = file }) };
             if (i == 3)
             {
+                // A sub-agent runs while the write waits, and is done by the time it goes on (AC-1526).
+                yield return new BackgroundTasksChanged { SessionId = SessionId, Tasks = [new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Checking the totals")] };
                 await _writing.Reader.ReadAsync(cancellationToken);
+                yield return new BackgroundTasksChanged { SessionId = SessionId, Tasks = [] };
             }
 
             yield return new ToolResult { SessionId = SessionId, ToolUseId = $"call-{i}", Content = "ok", IsError = i == calls.Count - 1 };
