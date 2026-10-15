@@ -152,16 +152,27 @@ public sealed class Ac1529SimpleConversationTests
         var width = control is TextBlock { TextTrimming: var trimming } text && trimming == TextTrimming.None
             ? Math.Max(text.Bounds.Width, text.TextLayout.WidthIncludingTrailingWhitespace)
             : control.Bounds.Width;
-        var rect = new Rect(control.TranslatePoint(default, root)!.Value, new Size(width, control.Bounds.Height));
+        var rect = new Rect(_Origin(control, root), new Size(width, control.Bounds.Height));
         for (var parent = control.GetVisualParent(); parent is not null && parent != root; parent = parent.GetVisualParent())
         {
             if (parent.ClipToBounds)
             {
-                rect = rect.Intersect(new Rect(parent.TranslatePoint(default, root)!.Value, parent.Bounds.Size));
+                rect = rect.Intersect(new Rect(_Origin(parent, root), parent.Bounds.Size));
             }
         }
 
         return rect;
+    }
+
+    private static Point _Origin(Visual visual, Visual root)
+    {
+        if (visual.TranslatePoint(default, root) is { } origin)
+        {
+            return origin;
+        }
+
+        Assert.Fail($"{visual.GetType().Name} is not in the header's visual tree, so where it paints cannot be measured.");
+        return default;
     }
 
     private static string _Describe(Control control) => control is TextBlock text ? $"\"{text.Text}\"" : control.GetType().Name;
