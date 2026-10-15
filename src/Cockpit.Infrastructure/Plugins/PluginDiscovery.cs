@@ -20,7 +20,8 @@ internal sealed class PluginDiscovery : ISingletonService
             return result;
         }
 
-        foreach (var folder in Directory.EnumerateDirectories(pluginsRoot))
+        // Ordinal, since the file system's order is not: plugins initialize, and register health sections, in this order.
+        foreach (var folder in Directory.EnumerateDirectories(pluginsRoot).Order(StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
