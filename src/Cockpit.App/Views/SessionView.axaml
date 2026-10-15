@@ -469,7 +469,7 @@
                      what still says so. Always shown, like Stop/Screenshot; only the badge and the pop-out's own
                      contents change with the count (AC-531 #2: no badge at all at zero, not a "0" one). The detail
                      lives in the pop-out itself, not a separate pane (Raymond, 2026-07-31). -->
-                <Button x:Name="BackgroundWorkButton" DockPanel.Dock="Left" Classes="Compact composerAction" VerticalAlignment="Bottom" IsVisible="{Binding !IsShownInSimpleStand}" Margin="0,0,8,0" Padding="8,6"
+                <Button x:Name="BackgroundWorkButton" DockPanel.Dock="Left" Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="0,0,8,0" Padding="8,6"
                         ToolTip.Tip="Sub-agents and shells still running in the background">
                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                         <TextBlock Text="Background" FontSize="12.5" VerticalAlignment="Center"/>
