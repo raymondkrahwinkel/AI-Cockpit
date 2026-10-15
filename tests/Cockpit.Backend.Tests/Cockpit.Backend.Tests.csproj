@@ -37,7 +37,7 @@
   <Import Project="..\..\src\BundledPlugins.targets" />
 
   <!-- AC-1403: every other in-repo plugin and the Avalonia fixture join them, so the backend's own first-run install
-       approves all 33 and BackendWithPluginsTests loads them without App. -->
+       approves all 34 and BackendWithPluginsTests loads them without App. -->
   <ItemGroup>
     <_InRepoPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
     <_InRepoPlugin Include="Depot" FolderId="depot" />

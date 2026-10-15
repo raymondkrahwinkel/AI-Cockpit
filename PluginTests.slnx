@@ -55,6 +55,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests/Cockpit.Plugin.OpencodeProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox/Cockpit.Plugin.Proxmox.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox.Tests/Cockpit.Plugin.Proxmox.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Schedules.Tests/Cockpit.Plugin.Schedules.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.SessionReview/Cockpit.Plugin.SessionReview.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.SessionReview.Tests/Cockpit.Plugin.SessionReview.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Slack/Cockpit.Plugin.Slack.csproj" />

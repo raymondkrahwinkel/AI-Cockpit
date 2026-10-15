@@ -71,6 +71,10 @@
     <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Depot\Cockpit.Plugin.Depot.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Schedules (AC-1539): bundled so scheduled tasks fire out of the box, on the desktop and on a headless server. -->
+    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Schedules\Cockpit.Plugin.Schedules.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <!-- AC-1390: the bundled plugins, by project folder and installed folder id. Each one's files are taken from its
@@ -94,6 +98,7 @@
     <BundledPlugin Include="FanOut" FolderId="fan-out" />
     <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
     <BundledPlugin Include="Depot" FolderId="depot" />
+    <BundledPlugin Include="Schedules" FolderId="schedules" />
   </ItemGroup>
 
   <!-- Resolved in a target, after the plugins are built: at evaluation time, and before ResolveProjectReferences,
