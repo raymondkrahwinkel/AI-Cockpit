@@ -174,13 +174,13 @@ public sealed class ServerJourney
 
             Assert.NotNull(afterRun["at"]);
 
-            // AC-1466: Docker's probe needs no key and hears only that the Workflows scheduler holds; the API does not
+            // AC-1466: Docker's probe needs no key and hears only that the plugin engines hold; the API does not
             // answer without one. Last before the stop, so this refusal counts toward no lockout a step above meets.
             using var anonymous = new HttpClient(new SocketsHttpHandler { SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = (_, _, _, _) => true } });
             var node = $"https://127.0.0.1:{_McpPort(run.Output)}";
             using var health = await anonymous.GetAsync($"{node}/healthz", timeout.Token);
             Assert.Equal(
-                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"workflows-scheduler","healthy":true},{"name":"workflows-runs","healthy":true}]}"""),
+                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"schedules-engine","healthy":true},{"name":"workflows-scheduler","healthy":true},{"name":"workflows-runs","healthy":true}]}"""),
                 (health.StatusCode, await health.Content.ReadAsStringAsync(timeout.Token)));
             using var whoami = await anonymous.GetAsync($"{node}/api/v1/whoami", timeout.Token);
             Assert.Equal(HttpStatusCode.Unauthorized, whoami.StatusCode);
