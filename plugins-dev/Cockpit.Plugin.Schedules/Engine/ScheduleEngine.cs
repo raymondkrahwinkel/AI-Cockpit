@@ -112,13 +112,17 @@ internal sealed class ScheduleEngine : IDisposable
         }
 
         var slot = slots[^1];
-        _marks.Set(task.Id, slot);
 
         // The newest slot is always less than one period old, or the next one would be here too: the plan's limit
         // on a catch-up's age holds by construction. A one-off has no next slot and may always catch up.
         RunTrigger? trigger = now - slot <= OnTimeWindow
             ? RunTrigger.Schedule
             : task.MissedRuns == MissedRunPolicy.RunOnceWhenBack ? RunTrigger.CatchUp : null;
+
+        if (trigger is null)
+        {
+            _marks.Set(task.Id, slot);
+        }
 
         _RecordMissed(task, trigger is null ? slots : slots[..^1], now);
         return trigger is { } fired ? _Start(task, slot, fired, now) : null;
@@ -167,6 +171,7 @@ internal sealed class ScheduleEngine : IDisposable
             try
             {
                 var result = await _execute(task, CancellationToken.None);
+                _marks.Set(task.Id, record.ScheduledFor ?? default);
                 done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason };
             }
             catch (Exception exception)
