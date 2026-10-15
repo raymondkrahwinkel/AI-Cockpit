@@ -56,8 +56,23 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
     public Task StopAsync(IHostedSession session) =>
         session is SessionPanelHandle handle ? UiThreadCall.RunAsync(() => cockpit().StopHostedAsync(handle)) : Task.CompletedTask;
 
+    // Called once the launch's worktree probe is done, which can be after teardown disposed the container while the
+    // dispatcher still drains (Program.TearDownCockpitAsync, JourneyHost.DisposeAsync): then there is nobody to tell.
     public void SessionStarted(string paneId, string? projectId, string? projectJobId) =>
-        Dispatcher.UIThread.Post(() => cockpit().NoteSessionStarted(paneId, projectId, projectJobId));
+        Dispatcher.UIThread.Post(() =>
+        {
+            CockpitViewModel desktop;
+            try
+            {
+                desktop = cockpit();
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+
+            desktop.NoteSessionStarted(paneId, projectId, projectJobId);
+        });
 
     // AC-1379: the assistant's host calls these on the UI thread, as it always called the cockpit, so they do not hop.
     public IAssistantSession? CreateAssistantSession() => cockpit().CreateAssistantHandle(AssistantIdentity.PaneId);

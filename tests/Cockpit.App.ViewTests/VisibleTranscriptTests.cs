@@ -96,8 +96,8 @@ public sealed class VisibleTranscriptTests
         Assert.Equal(vm.Transcript, vm.VisibleTranscript);
 
         vm.ReadingLevel = ReadingLevel.Simple;
-        // Simple hides auto tool calls outright and keeps prose; Thinking stays hidden below Developer.
-        Assert.Equal([vm.Transcript[0]], vm.VisibleTranscript);
+        // Simple shows each command as its own step (AC-1530) and keeps prose; Thinking stays hidden below Developer.
+        Assert.Equal(vm.Transcript.Where(row => !row.IsThinking), vm.VisibleTranscript);
 
         vm.ReadingLevel = ReadingLevel.Focus;
         Assert.Equal(2, vm.VisibleTranscript.Count);

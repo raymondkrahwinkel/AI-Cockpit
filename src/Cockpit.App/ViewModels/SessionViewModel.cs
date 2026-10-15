@@ -124,8 +124,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private bool _IsAwaitingPermission(string toolUseId) =>
         Transcript.LastOrDefault(t => t.ToolUseId == toolUseId)?.IsPendingPermission ?? false;
 
-    // The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active.
-    public string ActiveToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+    // The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active; at Simple the
+    // header's plain words instead (AC-1533).
+    public string ActiveToolActivityLabel => _ShownReadingLevel == ReadingLevel.Simple ? SimpleActivityLabel : _CurrentActiveToolCall()?.Label ?? string.Empty;
 
     // While that call is paused on a permission prompt this reads "waiting for permission" instead: the tool is not
     // running, it is blocked on the operator, and a still-climbing number under a "running" label would misreport a
@@ -173,12 +174,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
         OnPropertyChanged(nameof(ActiveToolActivityAgeText));
         OnPropertyChanged(nameof(ShowThinkingIndicator));
+        OnPropertyChanged(nameof(SimpleStatusLabel));
     }
+
+    // AC-1530: the step the turn is on, in the same plain words as its row ("Creating report.docx…").
+    protected override string SimpleActivityLabel =>
+        _CurrentActiveToolCall() is { } call && Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId) is { } row
+            ? PlainStep.Describe(row.ToolName, row.InputJson, WorkingDirectory).Running + "…"
+            : string.Empty;
+
+    public override string? DetailsPermissionMode => SelectedPermissionMode.Value;
+
+    public override string? DetailsModel => SelectedModel.Label;
+
+    // The SDK route always meters, so a conversation that has not cost anything yet reads $0.00 rather than unmeasured.
+    public override double? DetailsCostUsd => _usage.TotalCostUsd;
+
+    public override bool ShowsSimpleStop => IsBusy;
+
+    public override System.Windows.Input.ICommand SimpleStopCommand => StopCommand;
 
     private void _OnHostBusyChanged()
     {
         OnPropertyChanged(nameof(ShowThinkingIndicator));
         OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(ShowsSimpleStop));
         CompactCommand.NotifyCanExecuteChanged();
     }
 
@@ -621,13 +641,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
     // plain-language promise) (AC-105, AC-536).
-    protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
+    protected override bool SuppressCostMeter => _ShownReadingLevel == ReadingLevel.Simple;
 
     // Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.
-    public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
+    public override bool ShowKindChip => _ShownReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
 
-    partial void OnReadingLevelChanged(ReadingLevel value)
+    // AC-1529: the Simple stand reads every conversation at Simple without touching the level Panels shows.
+    private ReadingLevel _ShownReadingLevel => IsShownInSimpleStand ? ReadingLevel.Simple : ReadingLevel;
+
+    partial void OnReadingLevelChanged(ReadingLevel value) => _ApplyShownReadingLevel();
+
+    protected override void OnShownInSimpleStandChanged() => _ApplyShownReadingLevel();
+
+    private void _ApplyShownReadingLevel()
     {
+        var value = _ShownReadingLevel;
         // The level lives on the session, but each transcript row renders itself from its own copy — push the new
         // level down, re-fold the Focus groups for it, and re-announce the header figures the level shows or hides.
         _suspendVisibleSync = true;
@@ -650,6 +678,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
         RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
+        OnPropertyChanged(nameof(ActiveToolActivityLabel));
     }
 
     // Assigns the session's reading level to each row as it arrives, watches a tool row for a permission decision
@@ -663,7 +692,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 _RegisterRow(entry);
                 entry.Session = this;
-                entry.ReadingLevel = ReadingLevel;
+                entry.ReadingLevel = _ShownReadingLevel;
                 entry.PropertyChanged += _OnEntryPropertyChanged;
                 _RecordRow(entry);
             }
@@ -967,7 +996,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1377: a row this pane formed or changed itself goes to the host, which holds the transcript and writes it.
     private void _RecordRow(TranscriptEntryViewModel entry)
     {
-        if (!_replayingRecordedTranscript && !_applyingHostRow)
+        if (!_replayingRecordedTranscript && !_applyingHostRow && entry.Kind != TranscriptEntryKind.TurnResult)
         {
             _control.RecordRow(TranscriptSnapshot.Capture(entry));
         }
@@ -1005,7 +1034,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         try
         {
             var restored = TranscriptSnapshot.Restore(recorded);
-            foreach (var entry in restored)
+            foreach (var entry in _WithTurnResults(restored))
             {
                 Transcript.Add(entry);
             }
@@ -1017,6 +1046,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         finally
         {
             _replayingRecordedTranscript = false;
+        }
+    }
+
+    // AC-1533: a replay runs no turn end and the log holds no green block, so each turn's block is built again here —
+    // not for a turn whose failure row says it failed, as live; a turn broken off by Stop leaves no row to tell by.
+    private IEnumerable<TranscriptEntryViewModel> _WithTurnResults(IEnumerable<TranscriptEntryViewModel> rows)
+    {
+        var turn = new List<TranscriptEntryViewModel>();
+        foreach (var row in rows.Append(null))
+        {
+            if ((row is null || row.IsUserRow) && !turn.Exists(entry => entry.ShowsFailureCard) && TurnResult.From(turn, WorkingDirectory) is { } result)
+            {
+                yield return new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result };
+            }
+
+            if (row is null || row.IsUserRow)
+            {
+                turn.Clear();
+            }
+
+            if (row is not null)
+            {
+                turn.Add(row);
+                yield return row;
+            }
         }
     }
 
@@ -1045,11 +1099,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the sidebar until someone has actually been back to it.
     public bool HasPendingPermission => Transcript.Any(entry => entry.IsPendingPermission);
 
-    // Only Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row
-    // is simply un-grouped (AC-138).
+    // Focus folds runs of auto tools and Simple runs of reads in one folder (AC-1530); Developer shows every row.
     private void _RecomputeReadingGroups()
     {
-        if (ReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel == ReadingLevel.Developer)
         {
             foreach (var entry in Transcript)
             {
@@ -1072,7 +1125,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        if (ReadingLevel != ReadingLevel.Focus)
+        if (_ShownReadingLevel == ReadingLevel.Developer)
         {
             for (var index = low; index <= high; index++)
             {
@@ -1082,12 +1135,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        while (low > 0 && Transcript[low - 1].IsAutoTool)
+        while (low > 0 && _RunKey(Transcript[low - 1]) is not null)
         {
             low--;
         }
 
-        while (high + 1 < Transcript.Count && Transcript[high + 1].IsAutoTool)
+        while (high + 1 < Transcript.Count && _RunKey(Transcript[high + 1]) is not null)
         {
             high++;
         }
@@ -1102,7 +1155,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var index = start;
         while (index <= end)
         {
-            if (!Transcript[index].IsAutoTool)
+            var key = _RunKey(Transcript[index]);
+            if (key is null)
             {
                 _ClearGroup(Transcript[index]);
                 index++;
@@ -1110,7 +1164,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             var runStart = index;
-            while (index <= end && Transcript[index].IsAutoTool)
+            while (index <= end && _RunKey(Transcript[index]) == key)
             {
                 index++;
             }
@@ -1141,6 +1195,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
     }
+
+    // What a row folds with at the shown level: any auto tool call at Focus, a read from the same folder at Simple.
+    private string? _RunKey(TranscriptEntryViewModel entry) => !entry.IsAutoTool ? null
+        : _ShownReadingLevel == ReadingLevel.Focus ? string.Empty
+        : entry.ToolName == "Read" && PlainStep.FileOf(entry.ToolName, entry.InputJson) is { } file ? Path.GetDirectoryName(file) ?? string.Empty
+        : null;
 
     private static void _ClearGroup(TranscriptEntryViewModel entry)
     {
@@ -1705,7 +1765,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ResetForNewConversation();
 
         Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.Divider, "Context cleared — a new conversation starts here"));
+            TranscriptEntryKind.Divider, "The earlier conversation was cleared — this conversation starts here"));
 
         // The live selections rather than the launch values: a session whose model or reading level was switched
         // mid-flight carries on as the operator last left it. Pre-approved tools ride along too, so clearing the
@@ -2729,6 +2789,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Explanation = _DegradedTurnExplanation(end, restoredOffer.State?.WorkingDirectory),
                 };
             }
+        }
+
+        if (!end.IsError && TurnResult.From(Transcript.Reverse().TakeWhile(row => !row.IsUserRow).Reverse(), WorkingDirectory) is { } result)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
         _FlushPendingProseForReadAloud();

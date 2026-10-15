@@ -20,7 +20,7 @@ namespace Cockpit.App.ViewModels;
 
 // The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal): the sidebar/overview
 // title, selection, coarse status, and profile label, plus disposal.
-public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
+public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable, ISimpleComposerTarget
 {
     // Running token/cost total for the session (#8), folded from each completed turn's result usage.
     private protected readonly SessionUsageMeter _usage = new();
@@ -336,6 +336,48 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // mark whatever the panels grid has open. Set by `CockpitViewModel`, like `IsSelected`.
     [ObservableProperty]
     private bool _isSelectedInSimpleStand;
+
+    // AC-1529: on screen in the Simple stand — its own header, the reading column and `ReadingLevel.Simple` follow
+    // from this, while the session's own reading level stays what Panels shows. Set by `CockpitViewModel`.
+    [ObservableProperty]
+    private bool _isShownInSimpleStand;
+
+    partial void OnIsShownInSimpleStandChanged(bool value) => OnShownInSimpleStandChanged();
+
+    protected virtual void OnShownInSimpleStandChanged()
+    {
+    }
+
+    // AC-1528: Home's "Waiting for you" says when a conversation was started.
+    public DateTimeOffset StartedAt => _startedAt;
+
+    // AC-1529: the Simple header's stand, in plain words rather than `SessionStatusLabel`'s.
+    public string SimpleStatusLabel => SessionStatus switch
+    {
+        SessionStatus.Busy or SessionStatus.WorkingBackground =>
+            string.IsNullOrEmpty(SimpleActivityLabel) ? "Busy" : $"Busy · {SimpleActivityLabel}",
+        SessionStatus.NeedsAttention => "Waiting for you",
+        SessionStatus.Done => "Done",
+        SessionStatus.Failed => "Stopped with an error",
+        _ => "Idle",
+    };
+
+    protected virtual string SimpleActivityLabel => string.Empty;
+
+    // AC-1529: Stop in the Simple header. Only an SDK turn is the host's to break off (AC-294), so the base has none.
+    public virtual bool ShowsSimpleStop => false;
+
+    public virtual System.Windows.Input.ICommand? SimpleStopCommand => null;
+
+    // AC-1533: ⋯ → Details reads these. A TTY session's are its launch values; the SDK session's are the live ones.
+    public virtual string? DetailsPermissionMode => LaunchResult?.Mode.Value;
+
+    public virtual string? DetailsModel => LaunchResult?.Model.Label;
+
+    public virtual double? DetailsCostUsd => HasUsage ? _usage.TotalCostUsd : null;
+
+    // AC-1530/AC-1533: how a step's folder, a made file or Open folder reaches the system; a test hands in its own.
+    internal Func<string, bool> OpenPath { get; set; } = ExternalLink.TryOpenWithSystemApp;
 
     // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
     // selected in single-pane mode (#24 / Zoom).
@@ -1775,7 +1817,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Theme brush resource key for the status dot — resolved in the view via a converter. AC-1311: Failed shares
     // the waiting brush deliberately — it sits in the same needs-eyes-on-it class as NeedsAttention (see
     // `RequestsAttention`), and that grouping is the point: a crashed session must stand out, not read as idle.
-    public string SessionStatusBrushKey => SessionStatus switch
+    public string SessionStatusBrushKey => BrushKeyOf(SessionStatus);
+
+    internal static string BrushKeyOf(SessionStatus status) => status switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
@@ -1801,6 +1845,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         LastActivityUtc = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(SessionStatusLabel));
+        OnPropertyChanged(nameof(SimpleStatusLabel));
         OnPropertyChanged(nameof(SessionStatusBrushKey));
         OnPropertyChanged(nameof(RequiresCloseConfirmation));
         OnPropertyChanged(nameof(RequestsAttention));

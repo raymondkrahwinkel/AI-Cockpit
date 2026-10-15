@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -34,7 +35,7 @@ public class Ac1321TakeoverStateTests
     public async Task WithAnActiveController_TheNoticeNamesTheMachine_AndNoLocalTurnStarts(
         string starter, Func<AssistantSessionHost, ISessionDriver, Task> startATurn) => await HeadlessAvalonia.RunAsync(async () =>
     {
-        var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
+        var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
         try
         {
             var cockpit = (CockpitViewModel)window.DataContext!;
@@ -56,8 +57,8 @@ public class Ac1321TakeoverStateTests
             var notice = _Notice(window);
             Assert.NotNull(notice);
             Assert.Contains("LAPTOP", notice.Text);
-            Assert.Contains(notice.GetVisualAncestors(), a => a is ScrollViewer { Name: "StartOffer" });
-            Assert.False(_Named<Button>(window, "OpenAssistantOptionsButton").IsEffectivelyVisible, "nothing here ends a takeover, so no button");
+            Assert.Contains(notice.GetVisualAncestors(), a => a is AssistantChatView);
+            Assert.DoesNotContain(((Panel)notice.Parent!).Children, c => c is Button);
 
             await startATurn(host, driver);
             Assert.False(host.Session is { IsBusy: true }, $"{starter} started a turn under a controller");
@@ -92,7 +93,7 @@ public class Ac1321TakeoverStateTests
     [Fact]
     public async Task WhenTheControllerFallsSilent_TheAssistantIsBackWithinTheWindow() => await HeadlessAvalonia.RunAsync(async () =>
     {
-        var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
+        var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
         try
         {
             var cockpit = (CockpitViewModel)window.DataContext!;
@@ -134,7 +135,7 @@ public class Ac1321TakeoverStateTests
     public async Task WithTheAssistantSwitchedOff_AnActiveControllerStillShows_AndFallbackRestoresSwitchedOff() =>
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var window = Screenshotter.ShowScene("simple-view-start-screen-empty");
+            var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
             try
             {
                 var cockpit = (CockpitViewModel)window.DataContext!;
@@ -162,11 +163,11 @@ public class Ac1321TakeoverStateTests
         });
 
     // Criterion 3: which machine, since when (local clock, short), and that it comes back by itself — and once the
-    // conversation is back on screen, the same words in the composer, where the notice cannot cover the rows.
+    // conversation has rows, the same words in the composer, where the notice cannot cover them.
     [Fact]
     public void TheNoticeSaysWhichMachineSinceWhen_AndThatItComesBack() => HeadlessAvalonia.Run(() =>
     {
-        var window = Screenshotter.ShowScene("simple-view-start-screen");
+        var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
         try
         {
             var cockpit = (CockpitViewModel)window.DataContext!;
@@ -177,9 +178,8 @@ public class Ac1321TakeoverStateTests
 
             var expected = $"Controlled by LAPTOP since {Noon.ToLocalTime():HH:mm}. Your assistant here comes back by itself when that connection drops.";
             Assert.Equal(expected, _Notice(window)!.Text);
-            Assert.Equal("Waits for the controller to let go, or start on a project below.", _Named<TextBox>(window, "InputBox").PlaceholderText);
 
-            cockpit.SimpleStartScreenRequested = false;
+            cockpit.AssistantChat!.Session!.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "hello"));
             window.UpdateLayout();
 
             Assert.True(_Named<ItemsControl>(window, "TranscriptItems").IsEffectivelyVisible);

@@ -92,43 +92,6 @@ public sealed class SessionStateStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_HalfWrittenLastLine_SkipsItAndReturnsTheEarlierRecords()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(paneId: "pane-good", conversationId: "conv-good"));
-
-        // A crash mid-append: the line has no closing brace and no trailing newline, exactly what a write cut off
-        // partway through would leave.
-        await File.AppendAllTextAsync(_path, """{"PaneId":"pane-bad","ProfileId":"pers""");
-
-        var loaded = await store.LoadAsync();
-
-        var single = Assert.Single(loaded);
-        Assert.Equal("pane-good", single.PaneId);
-        Assert.Equal("conv-good", single.ConversationId);
-    }
-
-    [Fact]
-    public async Task CompactAsync_FoldsDuplicatesAndDropsPanesNotInTheKnownSet()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(paneId: "pane-keep", conversationId: "conv-1"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-keep", conversationId: "conv-2"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-gone", conversationId: "conv-x"));
-
-        await store.CompactAsync(new HashSet<string>(StringComparer.Ordinal) { "pane-keep" });
-
-        var loaded = await store.LoadAsync();
-        var single = Assert.Single(loaded);
-        Assert.Equal("pane-keep", single.PaneId);
-        Assert.Equal("conv-2", single.ConversationId);
-
-        // The file itself shrank to exactly one line — compaction rewrote it, not merely filtered on read.
-        var lines = (await File.ReadAllLinesAsync(_path)).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
-        Assert.Single(lines);
-    }
-
-    [Fact]
     public async Task LoadAsync_FileLockedExclusivelyByAnotherProcess_ReturnsEmptyRatherThanThrowing()
     {
         // The file exists and holds a valid record, but cannot be opened right now (a file lock, a permissions
@@ -174,29 +137,6 @@ public sealed class SessionStateStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task CompactAsync_WithoutARoster_FoldsDuplicatesAndDropsNothing()
-    {
-        // What the cockpit itself does at startup: it has no trustworthy list of panes that still exist, and the
-        // wrong reading of that silence — "then none of them do" — would empty the file on the first start after
-        // this store shipped. Folding without dropping is the only safe answer until panes are persisted.
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(paneId: "pane-1", conversationId: "conv-old"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-1", conversationId: "conv-new"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-2", conversationId: "conv-other"));
-
-        await store.CompactAsync();
-
-        var loaded = await store.LoadAsync();
-        Assert.Equal(2, loaded.Count);
-        Assert.Equal("conv-new", Assert.Single(loaded, record => record.PaneId == "pane-1").ConversationId);
-
-        // Read back on the file rather than through LoadAsync: the load folds duplicates anyway, so only the line
-        // count shows that compaction actually rewrote three records down to two.
-        var lines = (await File.ReadAllLinesAsync(_path)).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
-        Assert.Equal(2, lines.Count);
-    }
-
-    [Fact]
     public async Task CompactAsync_FileWhoseEveryLineIsUnreadable_LeavesItAloneRatherThanEmptyingIt()
     {
         // Found by running the real app against a hand-written state file (AC-410 live check): every line failed to
@@ -212,23 +152,46 @@ public sealed class SessionStateStoreTests : IDisposable
         Assert.Equal(before, await File.ReadAllTextAsync(_path));
     }
 
-    [Fact]
-    public async Task LoadAsync_LineWithoutAPaneId_SkipsThatLineAndKeepsTheRest()
+    // Two lines a crash or a hand edit leaves: one cut off mid-append at the end of the file, and valid JSON with no pane
+    // on it between two good ones. The serializer hands the latter back as a record with a null pane, and keying a
+    // dictionary on that null would throw the whole read away — the loss that skipping a bad line exists to prevent.
+    [Theory]
+    [InlineData("{\"PaneId\":\"pane-bad\",\"ProfileId\":\"pers", false)]
+    [InlineData("{\"ProfileId\":\"personal\"}\n", true)]
+    public async Task LoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKept(string badLine, bool aRecordFollows)
     {
-        // Valid JSON that simply has no pane on it — a hand edit of a file that sits next to cockpit.json, or a
-        // truncation that happens to land on a closing brace. The serializer hands such a line back as a record
-        // with a null pane rather than refusing it, and keying a dictionary on that null throws; unguarded, that
-        // throw escapes the read and turns one bad line into "there is no session state at all", which is exactly
-        // the loss that skipping a bad line exists to prevent.
         var store = CreateStore();
         await store.RecordAsync(CreateRecord(paneId: "pane-1", conversationId: "conv-1"));
-        await File.AppendAllTextAsync(_path, "{\"ProfileId\":\"personal\"}" + Environment.NewLine);
-        await store.RecordAsync(CreateRecord(paneId: "pane-2", conversationId: "conv-2"));
+        await File.AppendAllTextAsync(_path, badLine);
+        if (aRecordFollows)
+        {
+            await store.RecordAsync(CreateRecord(paneId: "pane-2", conversationId: "conv-2"));
+        }
 
         var loaded = await store.LoadAsync();
 
-        Assert.Equal(2, loaded.Count);
+        Assert.Equal(aRecordFollows ? ["pane-1", "pane-2"] : ["pane-1"], loaded.Select(record => record.PaneId).Order());
         Assert.Contains(loaded, record => record.PaneId == "pane-1" && record.ConversationId == "conv-1");
-        Assert.Contains(loaded, record => record.PaneId == "pane-2" && record.ConversationId == "conv-2");
+    }
+
+    // With a roster, a pane not on it is dropped; without one — what the cockpit has at startup — nothing is, since
+    // reading that silence as "then none of them exist" would empty the file. Either way duplicates fold, and the line
+    // count shows compaction rewrote the file rather than merely filtering on read.
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 2)]
+    public async Task CompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRoster(bool withRoster, int remaining)
+    {
+        var store = CreateStore();
+        await store.RecordAsync(CreateRecord(paneId: "pane-keep", conversationId: "conv-1"));
+        await store.RecordAsync(CreateRecord(paneId: "pane-keep", conversationId: "conv-2"));
+        await store.RecordAsync(CreateRecord(paneId: "pane-gone", conversationId: "conv-x"));
+
+        await store.CompactAsync(withRoster ? new HashSet<string>(StringComparer.Ordinal) { "pane-keep" } : null);
+
+        var loaded = await store.LoadAsync();
+        Assert.Equal(remaining, loaded.Count);
+        Assert.Equal("conv-2", Assert.Single(loaded, record => record.PaneId == "pane-keep").ConversationId);
+        Assert.Equal(remaining, (await File.ReadAllLinesAsync(_path)).Count(line => !string.IsNullOrWhiteSpace(line)));
     }
 }

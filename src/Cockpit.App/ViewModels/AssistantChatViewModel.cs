@@ -77,13 +77,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
     // down here: undocking would pop the conversation out and leave the column it fills empty.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowsStartOffer))]
     private bool _isSimpleViewHost;
 
-    // AC-1316: whether the start offer — the project cards, or the starting points on an empty cockpit — stands in
-    // the transcript's place. Only in the Simple stand's column: the window and the dock keep their plain empty
-    // state. The cockpit answers when (AC-1304's three doors); this only says which host draws it.
-    public bool ShowsStartOffer => IsSimpleViewHost && (_cockpit?.SimpleStandShowsTheStartScreen ?? false);
+    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
+    public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
 
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
     // model, and the transcript comes from the session: the scroll offset is the only thing a fresh view per host would
@@ -205,6 +202,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // on showing every live session for the badges and the `⋯` list.
     public ObservableCollection<SessionPanelViewModel> SessionsStartedByTheAssistant { get; } = new();
 
+    // AC-1528 criterion 8: the rest — what the operator started — so the Simple rail can find those again too.
+    public ObservableCollection<SessionPanelViewModel> SessionsStartedByYou { get; } = new();
+
+    public bool HasSessionsStartedByYou => SessionsStartedByYou.Count > 0;
+
     // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
     // usage pill's `HasUsagePillRegion`: a session badge must not disappear just because the assistant itself has
     // not reported usage yet.
@@ -228,9 +230,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is null or nameof(CockpitViewModel.SimpleStandShowsTheStartScreen))
+        if (e.PropertyName is null or nameof(CockpitViewModel.SimpleView))
         {
-            OnPropertyChanged(nameof(ShowsStartOffer));
+            OnPropertyChanged(nameof(IsInSimpleStand));
         }
 
         if (e.PropertyName is null or nameof(CockpitViewModel.ActiveController))
@@ -259,13 +261,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         LiveSessions.Clear();
         SessionsStartedByTheAssistant.Clear();
+        SessionsStartedByYou.Clear();
         foreach (var session in sessions)
         {
             LiveSessions.Add(session);
-            if (AssistantSessionOrigin.Resolve(session))
-            {
-                SessionsStartedByTheAssistant.Add(session);
-            }
+            (AssistantSessionOrigin.Resolve(session) ? SessionsStartedByTheAssistant : SessionsStartedByYou).Add(session);
         }
 
         DeskNameByPaneId = sessions.ToDictionary(
@@ -278,6 +278,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             StringComparer.Ordinal);
 
         OnPropertyChanged(nameof(HasLiveSessions));
+        OnPropertyChanged(nameof(HasSessionsStartedByYou));
     }
 
     // Never called from the constructor: a view model built to seed design-time/Screenshotter data must not reach out
@@ -358,12 +359,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         InputText = string.Empty;
 
-        // AC-1316: typing is the answer to the question the start screen asks, the same as picking a card.
-        if (_cockpit is not null)
-        {
-            _cockpit.SimpleStartScreenRequested = false;
-        }
-
         // Goes through the host, not Session.SendCommand: Session can still be null here (nothing typed yet since
         // this instance came up), and the host's SendAsync is what performs the lazy start — the first message
         // typed into an unstarted assistant is exactly what starts it (criterion 1).
@@ -422,6 +417,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         await _host.ClearConversationAsync();
     }
+
+    // AC-1533: ⋯ → Details in the Simple stand. Start over is the same confirmed clear as Panels'; the assistant
+    // header carries no title of its own to rename.
+    internal ConversationDetails? Details() => Session is { } session
+        ? new ConversationDetails(session, project: null, ConsentBypassActive, canRename: false, () => ClearConversationCommand.ExecuteAsync(null))
+        : null;
 
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the
     // session's own composer, which this window does not show — so it is moved into the box that is on screen.

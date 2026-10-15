@@ -1,32 +1,13 @@
-using Avalonia.Controls;
-using Avalonia.VisualTree;
-using Cockpit.App.Controls;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Audio;
-using Cockpit.Core.Abstractions.Layout;
-using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.Projects;
-using Cockpit.Core.Abstractions.SessionBehavior;
-using Cockpit.Core.Abstractions.Terminal;
-using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Layout;
-using Cockpit.Core.Notifications;
-using Cockpit.Core.Projects;
-using Cockpit.Core.SessionBehavior;
-using Cockpit.Core.Terminal;
-using Cockpit.Core.TranscriptDisplay;
-using Cockpit.Core.Voice;
 using NSubstitute;
 using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-1304: the cards are held against the objects the overview draws, so this cannot become a second projects list.
+// AC-1304: the three doors onto the start screen, which AC-1528 made Home.
 [Collection("avalonia")]
 public sealed class Ac1304StartScreenTests
 {
@@ -41,13 +22,10 @@ public sealed class Ac1304StartScreenTests
         var cockpit = _SimpleStand(withAssistant: true, assistant);
         var agent = cockpit.Sessions[0];
 
-        // Door 1: a first start with nothing picked and nothing said yet. AC-1316: the screen is the empty state
-        // of the assistant's own conversation, so it shows in that conversation rather than in front of it — and
-        // the first thing said is what takes it away.
+        // Door 1: a first start with nothing picked lands on Home (AC-1527). AC-1316: the screen is the empty state
+        // of the assistant's own conversation, so it shows in that conversation rather than in front of it.
         Assert.True(cockpit.SimpleStandShowsTheStartScreen);
         Assert.True(cockpit.SimpleStandShowsTheAssistantInTheMainColumn);
-        assistant.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "hi"));
-        Assert.False(cockpit.SimpleStandShowsTheStartScreen);
 
         // Door 2: "+ New session" while a conversation stands. It has to take the column off whatever held it,
         // or the question would be asked over the answer.
@@ -73,59 +51,6 @@ public sealed class Ac1304StartScreenTests
         Assert.True(cockpit.SimpleStandShowsTheStartScreen);
     }
 
-    // Criterion 1(b) and 3(a), against the real markup: the cards must be the overview's own card objects — a list
-    // built for this screen would be equal in content and a different set of instances — and the job button must
-    // reach the no-dialog command. Avalonia logs a binding landing on nothing, so that one is asserted by identity.
-    [Fact]
-    public void TheStartScreensCards_AreTheOverviewsOwnCards_AndAJobReachesTheNoDialogCommand() =>
-        HeadlessAvalonia.Run(() =>
-        {
-            var job = new ProjectJob("Process this month's invoices", "changes nothing · reports only");
-            var invoices = Project.Create("Invoices") with
-            {
-                Category = "Werk",
-                DefaultProfileLabel = "work",
-                Jobs = [job],
-            };
-            var store = Substitute.For<IProjectStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [invoices] });
-
-            var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = TestProjects.ViewModel(store, dialogs);
-            projects.LoadAsync().GetAwaiter().GetResult();
-
-            var cockpit = _Cockpit(dialogs, projects);
-            cockpit.SimpleView = true;
-            cockpit.Sessions.Clear();
-
-            // AC-1316: the cards are drawn inside the assistant's own conversation, which the column builds from
-            // this factory — the coordinator's shape, with a session that has not started yet.
-            var chat = _AssistantChat(cockpit, session: null);
-            cockpit.CreateSimpleViewChatView = () =>
-            {
-                chat.IsSimpleViewHost = true;
-                return new AssistantChatView { DataContext = chat };
-            };
-
-            var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 1100, Height = 900 };
-            window.Show();
-            window.UpdateLayout();
-
-            var drawn = view.GetVisualDescendants().OfType<ProjectCardView>().ToList();
-            var fromTheOverview = cockpit.Projects.ProjectCategoryGroups.SelectMany(group => group.Cards).ToList();
-            Assert.Equal(fromTheOverview, drawn.Select(card => card.DataContext));
-
-            var jobButton = drawn[0].GetVisualDescendants().OfType<Button>()
-                .First(button => button.Content is StackPanel panel
-                    && panel.Children.OfType<TextBlock>().Any(text => text.Text == job.Prompt));
-
-            Assert.Same(cockpit.StartProjectJobNowCommand, jobButton.Command);
-            Assert.Same(job, ((ProjectJobChoice?)jobButton.CommandParameter)?.Job);
-
-            window.Close();
-        });
-
     private static AssistantChatViewModel _AssistantChat(CockpitViewModel cockpit, SessionViewModel? session)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
@@ -145,36 +70,5 @@ public sealed class Ac1304StartScreenTests
         cockpit.AssistantChat = _AssistantChat(cockpit, withAssistant ? assistant ?? new SessionViewModel { Title = "Assistant" } : null);
 
         return cockpit;
-    }
-
-    private static CockpitViewModel _Cockpit(ISessionDialogService dialogs, ProjectsViewModel projects)
-    {
-        var notifications = Substitute.For<INotificationSettingsStore>();
-        notifications.LoadAsync().Returns(new NotificationSettings());
-        var transcripts = Substitute.For<ITranscriptDisplaySettingsStore>();
-        transcripts.LoadAsync().Returns(new TranscriptDisplaySettings());
-        var behavior = Substitute.For<ISessionBehaviorSettingsStore>();
-        behavior.LoadAsync().Returns(new SessionBehaviorSettings());
-        var layout = Substitute.For<ILayoutSettingsStore>();
-        layout.LoadAsync().Returns(new LayoutSettings());
-        var voice = Substitute.For<IVoiceSettingsStore>();
-        voice.LoadAsync().Returns(new VoiceSettings());
-        var terminals = Substitute.For<ITerminalSettingsStore>();
-        terminals.LoadAsync().Returns(new TerminalSettings());
-
-        return new CockpitViewModel(
-            () => new SessionViewModel(),
-            () => new TtyViewModel(),
-            dialogs,
-            Substitute.For<IAudioCaptureService>(),
-            Substitute.For<IAudioPlaybackService>(),
-            Substitute.For<IAttentionNotifier>(),
-            notifications,
-            transcripts,
-            behavior,
-            layout,
-            voice,
-            terminals,
-            projects: projects);
     }
 }

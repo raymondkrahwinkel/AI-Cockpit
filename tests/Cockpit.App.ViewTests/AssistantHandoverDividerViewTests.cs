@@ -68,7 +68,7 @@ public class AssistantHandoverDividerViewTests
     [Fact]
     public void TheClearDivider_RendersTheSameWay_AsTheHandoverDivider() => HeadlessAvalonia.Run(() =>
     {
-        const string clearLabel = "Conversation cleared — a new one starts here";
+        const string clearLabel = "The earlier conversation was cleared — this conversation starts here";
         var window = _ChatWindowShowing(_TranscriptEndingInADivider(clearLabel), width: 420);
 
         var labels = window.GetVisualDescendants()

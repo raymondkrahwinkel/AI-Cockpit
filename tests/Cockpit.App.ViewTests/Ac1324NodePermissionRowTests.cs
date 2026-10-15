@@ -29,7 +29,7 @@ public class Ac1324NodePermissionRowTests
         try
         {
             var cockpit = (CockpitViewModel)window.DataContext!;
-            cockpit.SimpleSelectedSession = null;
+            cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
             var client = Substitute.For<INodeSessionsClient>();
             var relay = new NodePermissionRelay(client, () => cockpit.AssistantChat?.Session);
             var conversation = cockpit.AssistantChat!.Session!;

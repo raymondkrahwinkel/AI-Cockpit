@@ -1,8 +1,15 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Journeys;
@@ -61,6 +68,70 @@ public sealed class SessionJourney
         Assert.Contains(session, HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList()));
     }
 
+    // J4: a closed conversation is still in the index after a restart, and reopens as one pane resuming it with its rows;
+    // reopened again while open, it is selected rather than started twice (AC-1531).
+    [Fact]
+    public async Task AClosedConversation_IsInTheIndexAfterARestart_AndReopensResumedInOnePane()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-conversation-{Guid.NewGuid():N}")).FullName;
+        try
+        {
+            Project project;
+            string title;
+            await using (var before = JourneyHost.Desktop(stateRoot: root))
+            {
+                project = await before.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(root, "project")).FullName);
+                await before.StartDesktopAsync();
+                var session = await before.StartSessionThroughTheDialogAsync(project);
+                title = session.Title;
+                await HeadlessAvalonia.RunAsync(async () =>
+                {
+                    session.InputText = "history";
+                    await session.SendCommand.ExecuteAsync(null);
+                    await Until.CollectionHolds(session.Transcript, () => session.Transcript.Any(row => row.Text == "echo: history"));
+                });
+                await HeadlessAvalonia.RunAsync(() => before.Cockpit.CloseSessionCommand.ExecuteAsync(session));
+            }
+
+            await using var after = JourneyHost.Desktop(stateRoot: root);
+            await after.StartDesktopAsync();
+            var record = Assert.Single(await after.Services.GetRequiredService<IConversationIndex>().LoadAsync());
+            Assert.Equal(
+                (title, project.Id, JourneyHost.EchoProfile, "claude", "echo-conversation", SessionConversationIdState.Known, "Done"),
+                (record.Title, record.ProjectId, record.ProfileId, record.ProviderId, record.ConversationId, record.ConversationState, record.LastStatus));
+            Assert.True(record.ClosedAt >= record.StartedAt);
+            async Task<bool> ReopenAsync()
+            {
+                var done = false;
+                await HeadlessAvalonia.RunAsync(async () => done = (await after.Cockpit.ReopenConversationAsync(record)).Reopened);
+                return done;
+            }
+
+            HeadlessAvalonia.Run(() => after.Cockpit.SimpleView = true);
+            Assert.True(await ReopenAsync());
+            var reopened = Assert.IsType<SessionViewModel>(Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList())));
+            Assert.Equal((reopened, SimplePage.Conversation), HeadlessAvalonia.Run(() => (after.Cockpit.SimpleSelectedSession, after.Cockpit.SimplePage)));
+            Assert.Equal((project.Id, JourneyHost.EchoProfile), (reopened.ProjectId, reopened.ActiveProfileLabel));
+            Assert.Equal(SessionResume.BySessionId("echo-conversation"), Assert.Single(after.Drivers.Made).Resume);
+            await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(reopened.Transcript, () => reopened.Transcript.Any(row => row.Text == "echo: history")));
+
+            HeadlessAvalonia.Run(() => (after.Cockpit.SimpleView, after.Cockpit.SelectedSession) = (false, null));
+            Assert.True(await ReopenAsync());
+            Assert.Same(reopened, Assert.Single(HeadlessAvalonia.Run(() => after.Cockpit.Sessions.ToList())));
+            Assert.Same(reopened, HeadlessAvalonia.Run(() => after.Cockpit.SelectedSession));
+
+            HeadlessAvalonia.Run(() => after.Cockpit.SimpleView = true);
+            HeadlessAvalonia.Run(() => after.Cockpit.ShowSimpleStartScreenCommand.Execute(null));
+            Assert.Equal(SimplePage.Home, HeadlessAvalonia.Run(() => after.Cockpit.SimplePage));
+            Assert.True(await ReopenAsync());
+            Assert.Equal((reopened, SimplePage.Conversation), HeadlessAvalonia.Run(() => (after.Cockpit.SimpleSelectedSession, after.Cockpit.SimplePage)));
+        }
+        finally
+        {
+            JourneyHost.RemoveStateRoot(root);
+        }
+    }
+
     // J3: in a project that is a git repository and isolates by default, the session runs in a worktree on a branch
     // of its own, and closing the pane takes both away again.
     [Fact]
@@ -85,6 +156,275 @@ public sealed class SessionJourney
     }
 
     // A repository with one commit, the least a worktree can branch from.
+    // AC-1529 criteria 1 and 2: picked in the Simple rail, the conversation reads "project › title" with its stand in
+    // plain words over a column of at most 720px; the header's Stop breaks the turn off and leaves Idle behind.
+    [Fact]
+    public async Task InTheSimpleStand_AConversationShowsWhereItIsAndHowItStands_AndItsStopEndsTheTurn()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            window.Width = 1280;
+            window.Height = 800;
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            window.UpdateLayout();
+
+            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
+            string?[] Shown(Control control) => control.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToArray();
+            Assert.Same(session, header.DataContext);
+            Assert.Contains(project.Name, Shown(header));
+            Assert.Contains(session.Title, Shown(header));
+            session.InputText = "hello";
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            Assert.Contains("Done", Shown(header));
+            window.UpdateLayout();
+            var column = window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible)
+                .GetVisualDescendants().OfType<Control>().Where(c => c.Name is "TranscriptScroll" or "ComposerBorder").ToList();
+            Assert.Equal(2, column.Count);
+            Assert.All(column, part => Assert.InRange(part.Bounds.Width, 1, 720));
+
+            var stop = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SimpleStopButton");
+            session.InputText = EchoDriver.WaitingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Busy);
+            window.UpdateLayout();
+            Assert.Contains("Busy", Shown(header));
+            Assert.True(stop.IsEffectivelyVisible);
+
+            stop.Command!.Execute(stop.CommandParameter);
+            await Until.Holds(session, () => !session.IsBusy && session.SessionStatus == SessionStatus.Idle);
+            window.UpdateLayout();
+            Assert.Contains("Idle", Shown(header));
+            Assert.False(stop.IsEffectivelyVisible);
+        });
+    }
+
+    // AC-1530 criteria 1-3: in the Simple stand three reads in one folder are one step whose folder opens, the header
+    // says which file a running Write is creating, and the turn ends in a green block of the three files it made, the
+    // failed fourth left out; each file and Open folder open through the pane. A turn that wrote nothing has no block.
+    [Fact]
+    public async Task InTheSimpleStand_ATurnReadsAsSteps_AndEndsWithTheFilesItMade()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var folder = cockpit.Driver.WorkingDirectory!;
+        var opened = new List<string>();
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            window.Width = 1280;
+            window.Height = 800;
+            session.OpenPath = path =>
+            {
+                opened.Add(path);
+                return true;
+            };
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            session.InputText = "hello";
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            Assert.DoesNotContain(session.Transcript, row => row.TurnResult is not null);
+
+            session.InputText = EchoDriver.WorkingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SimpleStatusLabel == "Busy · Creating Kwartaaloverzicht-Q3.xlsx…");
+            window.UpdateLayout();
+            var view = window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible);
+            var steps = view.GetVisualDescendants().OfType<StackPanel>().Where(p => p.Name == "PlainStepLine" && p.IsEffectivelyVisible).ToList();
+            Assert.Equal(
+                ["✓ Read 3 files in Facturen › 2026-Q3", "◷ Creating Kwartaaloverzicht-Q3.xlsx in Rapportages › 2026 …"],
+                steps.Select(_Spoken));
+            var stepFolder = steps[0].GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StepFolderButton");
+            stepFolder.Command!.Execute(stepFolder.CommandParameter);
+            Assert.Equal([Path.Combine(folder, "Facturen", "2026-Q3")], opened);
+
+            cockpit.Driver.FinishWriting();
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            window.UpdateLayout();
+            var block = view.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "TurnResultBlock" && b.IsEffectivelyVisible);
+            Assert.Contains("Done · 3 files created", block.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            var files = block.GetVisualDescendants().OfType<Button>().Where(b => b.Name != "OpenResultFolderButton").ToList();
+            Assert.Equal(EchoDriver.Written[..3].Select(name => $"{name} Rapportages › 2026"), files.Select(_Spoken));
+            var openFolder = block.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "OpenResultFolderButton");
+            openFolder.Command!.Execute(openFolder.CommandParameter);
+            files[1].Command!.Execute(files[1].CommandParameter);
+        });
+
+        var made = Path.Combine(folder, "Rapportages", "2026");
+        Assert.Equal([Path.Combine(folder, "Facturen", "2026-Q3"), made, Path.Combine(made, EchoDriver.Written[1])], opened);
+    }
+
+    // AC-1533 criteria 1, 3, 4 and 5: ⋯ says where it works (the worktree, not the project's folder), what it may do,
+    // its cost and model; Open folder opens the worktree, Rename lands in header and rail, and Start over asks Panels'
+    // confirmation first, then draws the divider and starts the cost at $0 in the same pane.
+    [Fact]
+    public async Task InTheSimpleStand_DetailsTellWhatAConversationIs_AndOpenRenameAndStartItOver()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var repository = await _RepositoryAsync(Path.Combine(cockpit.StateRoot, "repository"));
+        var project = await cockpit.SaveProfileAndProjectAsync(repository, isolateInWorktree: true);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var worktree = cockpit.Driver.WorkingDirectory!;
+        var opened = new List<string>();
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            session.OpenPath = path =>
+            {
+                opened.Add(path);
+                return true;
+            };
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            session.InputText = "hello";
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+            window.UpdateLayout();
+            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
+
+            Assert.Equal(
+                ["Works in", project.Name, worktree, "Allowed to", "Asks before changing files or running commands.", "Cost", "$0.38 so far", "Model", session.SelectedModel.Label],
+                _Details(header).Skip(1).Take(9));
+
+            _Press(header, "DetailsOpenFolder");
+            Assert.Equal([worktree], opened);
+
+            _Press(header, "DetailsRename");
+            window.UpdateLayout();
+            var box = header.GetVisualDescendants().OfType<TextBox>().Single(b => b.Name == "SimpleHeaderRename" && b.IsEffectivelyVisible);
+            box.Text = "Quarterly report";
+            box.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Enter });
+            window.UpdateLayout();
+            Assert.Contains("Quarterly report", header.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text));
+            Assert.Contains(window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.DataContext == session && b.FindAncestorOfType<ItemsControl>()?.Name?.StartsWith("SimpleRail") == true),
+                row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Quarterly report"));
+
+            var panes = cockpit.Cockpit.Sessions.ToList();
+            var asked = new TaskCompletionSource<ConfirmationDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((dialog, _) => asked.TrySetResult(dialog)))
+            {
+                _Press(header, "DetailsStartOver");
+                var confirmation = await asked.Task.WaitAsync(Until.Ceiling);
+                Assert.DoesNotContain(session.Transcript, row => row.IsDivider);
+                confirmation.Close(true);
+            }
+
+            await Until.Holds(session, () => session.Transcript.Any(row => row.IsDivider) && session.IsSessionReady);
+            window.UpdateLayout();
+            Assert.Equal("The earlier conversation was cleared — this conversation starts here", session.Transcript.Last(row => row.IsDivider).Text);
+            Assert.Contains("$0.00 so far", _Details(header));
+            Assert.Equal(panes, cockpit.Cockpit.Sessions);
+            Assert.Same(session, cockpit.Cockpit.SimpleSelectedSession);
+        });
+    }
+
+    // AC-1533 follow-ups of AC-1529/AC-1530: in a narrow column the header trims its stand and keeps Stop and ⋯ whole
+    // beside it, and the composer band names the running step in the same plain words as the stand.
+    [Fact]
+    public async Task InTheSimpleStand_ANarrowColumnKeepsStopAndDetails_TheComposerStaysSimple_AndBackgroundWorkShowsInTheHeader()
+    {
+        await using var cockpit = JourneyHost.Desktop();
+        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        await cockpit.StartDesktopAsync();
+        var session = await cockpit.StartSessionThroughTheDialogAsync(project);
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = cockpit.Window;
+            window.Width = 900;
+            window.Height = 700;
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+            cockpit.Cockpit.SelectSimpleSessionCommand.Execute(session);
+            session.InputText = EchoDriver.WorkingPrompt;
+            await session.SendCommand.ExecuteAsync(null);
+            await Until.Holds(session, () => session.SimpleStatusLabel == "Busy · Creating Kwartaaloverzicht-Q3.xlsx…");
+            window.UpdateLayout();
+
+            var header = window.GetVisualDescendants().OfType<SimpleConversationHeader>().Single(h => h.IsEffectivelyVisible);
+            var stand = header.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SimpleHeaderStand");
+            var stop = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SimpleStopButton");
+            var details = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetailsButton");
+            Assert.True(stop.IsEffectivelyVisible && details.IsEffectivelyVisible);
+            Assert.True(stand.TranslatePoint(new Point(stand.Bounds.Width, 0), header)!.Value.X <= stop.TranslatePoint(default, header)!.Value.X);
+            Assert.True(details.TranslatePoint(new Point(details.Bounds.Width, 0), header)!.Value.X <= header.Bounds.Width);
+            Assert.Equal("Creating Kwartaaloverzicht-Q3.xlsx…", session.ActiveToolActivityLabel);
+
+            // AC-1526 (AC-1529 decision 5): the composer is chip, paperclip, mic and Send under "Reply, or hold <key> to
+            // talk…"; Stop, Screenshot and Background stand down, and what runs in the background shows beside Stop.
+            await Until.Holds(session, () => session.HasBackgroundTasks);
+            window.UpdateLayout();
+            SessionView Pane() => window.GetVisualDescendants().OfType<SessionView>().Single(v => v.IsEffectivelyVisible && v.DataContext == session);
+            Button Composer(string name) => Pane().GetVisualDescendants().OfType<Button>().Single(b => b.Name == name);
+            string[] composerOnly = ["BackgroundWorkButton", "ScreenshotButton", "ComposerStopButton"];
+            var view = Pane();
+            Assert.All(composerOnly, name => Assert.False(Composer(name).IsEffectivelyVisible, name));
+            var input = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "InputBox");
+            Assert.Equal($"Reply, or hold {cockpit.Cockpit.VoicePushToTalkKeyName} to talk…", input.PlaceholderText);
+            var inputRect = new Rect(input.TranslatePoint(default, view) ?? throw new InvalidOperationException("the input is not in the pane"), input.Bounds.Size);
+            Assert.All(view.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.FindAncestorOfType<TextBox>() is null),
+                button => Assert.False(inputRect.Intersects(new Rect(button.TranslatePoint(default, view) ?? default, button.Bounds.Size)), button.Name));
+            var background = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SimpleBackgroundButton");
+            Assert.True(background.IsEffectivelyVisible);
+            Assert.Contains("1", background.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            Assert.IsType<BackgroundWorkList>(((Flyout)background.Flyout!).Content);
+
+            cockpit.Cockpit.ShowPanelsViewCommand.Execute(null);
+            window.UpdateLayout();
+            Assert.All(composerOnly, name => Assert.True(Composer(name).IsEffectivelyVisible, name));
+            Assert.NotEqual(Pane().GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "InputBox").PlaceholderText, $"Reply, or hold {cockpit.Cockpit.VoicePushToTalkKeyName} to talk…");
+            cockpit.Cockpit.ShowSimpleViewCommand.Execute(null);
+
+            cockpit.Driver.FinishWriting();
+            await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+        });
+    }
+
+    // Opens ⋯ in `header` and reads its popup top to bottom: the heading, then each label and value as they stand.
+    private static List<string?> _Details(SimpleConversationHeader header)
+    {
+        var button = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetailsButton");
+        button.Flyout!.ShowAt(button);
+        var panel = (StackPanel)((Flyout)button.Flyout).Content!;
+        panel.UpdateLayout();
+        var words = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is null).Select(t => t.Text).ToList();
+        button.Flyout.Hide();
+        return words;
+    }
+
+    private static void _Press(SimpleConversationHeader header, string name)
+    {
+        var button = header.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetailsButton");
+        button.Flyout!.ShowAt(button);
+        var action = ((Control)((Flyout)button.Flyout).Content!).GetVisualDescendants().OfType<Button>().Single(b => b.Name == name);
+        Assert.True(action.IsEffectivelyEnabled);
+        action.Command!.Execute(action.CommandParameter);
+        button.Flyout.Hide();
+    }
+
+    // What a step line or a file button puts on screen: a step's ✓ or clock, then its visible words.
+    private static string _Spoken(Control line) => string.Join(' ', line.GetVisualDescendants()
+        .Select(part => part switch
+        {
+            Material.Icons.Avalonia.MaterialIcon { Kind: Material.Icons.MaterialIconKind.Check } => "✓",
+            Material.Icons.Avalonia.MaterialIcon { Kind: Material.Icons.MaterialIconKind.ClockOutline } => "◷",
+            TextBlock text when text.IsEffectivelyVisible => text.Text,
+            _ => null,
+        })
+        .Where(word => !string.IsNullOrEmpty(word)));
+
     private static async Task<string> _RepositoryAsync(string folder)
     {
         Directory.CreateDirectory(folder);

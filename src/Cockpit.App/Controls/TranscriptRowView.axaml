@@ -43,6 +43,7 @@
             Classes.compact="{Binding $parent[controls:TranscriptRowView].Compact}"
             Classes.codeJoinedAbove="{Binding StartsInsideCodeBlock}"
             Classes.codeJoinedBelow="{Binding EndsInsideCodeBlock}"
+            Classes.plainStep="{Binding ShowPlainStep}"
             CornerRadius="{StaticResource CockpitControlRadius}"
             IsVisible="{Binding IsRowVisible}">
         <StackPanel Spacing="{Binding RowContentSpacing}">
@@ -197,6 +198,48 @@
               </ContentControl.DataTemplates>
             </ContentControl>
 
+            <!-- AC-1530: what a turn made or changed, at the Simple level — each file opens on a click, and Open
+                 folder opens the folder they share. -->
+            <ContentControl Content="{Binding TurnResultBranch}"
+                            IsVisible="{Binding TurnResultBranch, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <Border x:Name="TurnResultBlock" Classes="rowIndent" Padding="12,10" Margin="0,4"
+                    CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
+                    BorderBrush="{DynamicResource CockpitStatusDoneBrush}"
+                    Background="{DynamicResource CockpitStatusDoneChipTintBrush}">
+                <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <materialIcons:MaterialIcon Kind="CheckCircle" Width="15" Height="15" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding TurnResult.Title}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Margin="8,0" TextTrimming="CharacterEllipsis"/>
+                        <Button x:Name="OpenResultFolderButton" Grid.Column="2" Content="Open folder" Classes="Compact"
+                                Command="{Binding OpenPathCommand}" CommandParameter="{Binding TurnResult.Folder}"
+                                ToolTip.Tip="{Binding TurnResult.Folder}"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding TurnResult.Files}" Margin="17,0,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TurnResultFile">
+                                <Button Classes="Subtle" Padding="0,2" HorizontalAlignment="Left" ToolTip.Tip="{Binding Path}"
+                                        Command="{Binding $parent[ItemsControl].((vm:TranscriptEntryViewModel)DataContext).OpenPathCommand}"
+                                        CommandParameter="{Binding Path}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="13" Height="13"
+                                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding Name}"/>
+                                        <TextBlock Text="{Binding FolderLabel}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
+
             <!-- Assistant reply (T9 / look&feel pass): the model's avatar badge sits left,
                  with its name over the prose (MarkdownView — the cockpit's own themed
                  renderer, selectable text, clickable links). The per-reply actions
@@ -314,6 +357,23 @@
                         <TextBlock Text="{Binding GroupSummaryText}"/>
                     </StackPanel>
                 </Button>
+
+                <!-- AC-1530: at Simple an auto tool call is one step in plain words, ✓ once done and a clock while
+                     it runs; the folder it happened in is a link that opens it. -->
+                <StackPanel x:Name="PlainStepLine" IsVisible="{Binding ShowPlainStep}" Orientation="Horizontal" Spacing="5">
+                    <materialIcons:MaterialIcon Kind="{Binding StepIconKind}" Width="13" Height="13" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                    <TextBlock Text="{Binding StepText}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <Button x:Name="StepFolderButton" Classes="Subtle" Padding="0" VerticalAlignment="Center"
+                            IsVisible="{Binding StepFolderLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                            Command="{Binding OpenPathCommand}" CommandParameter="{Binding StepFolder}"
+                            ToolTip.Tip="{Binding StepFolder}">
+                        <TextBlock Text="{Binding StepFolderLabel}" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                    </Button>
+                    <TextBlock Text="{Binding StepTail}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
 
                 <!-- Plain-language consent line (AC-138 Simple): a tool call that asked for approval
                      stays visible at every level; in Simple it reads in human words ("✓ Changed a

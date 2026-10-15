@@ -1,0 +1,158 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.EarlierConversationsSheet"
+             x:DataType="vm:EarlierConversationsViewModel">
+
+    <UserControl.Styles>
+        <!-- The row draws its own fill, so the group header above it in the same item stays unfilled. -->
+        <Style Selector="ListBox.earlier ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      HorizontalContentAlignment="Stretch"/>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ListBox.earlier ListBoxItem:pointerover Border.earlierRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitGhostHoverBrush}"/>
+        </Style>
+        <Style Selector="ListBox.earlier ListBoxItem:selected Border.earlierRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+        </Style>
+        <Style Selector="ListBox.earlier Button.continue">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="ListBox.earlier ListBoxItem:pointerover Button.continue">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="ListBox.earlier ListBoxItem:selected Button.continue">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="Run.match">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentSelectionBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <Border x:Name="EarlierBackdrop" Background="{DynamicResource CockpitScrimBrush}" PointerPressed="_OnBackdropPressed"/>
+        <Border x:Name="EarlierSheet" MaxWidth="700" Margin="24,36" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                BorderThickness="1" CornerRadius="{StaticResource CockpitPanelRadius}" BoxShadow="0 12 40 0 #66000000">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="20,18,20,12" Spacing="12">
+                    <DockPanel>
+                        <Button x:Name="EarlierClose" DockPanel.Dock="Right" Classes="Subtle" Padding="6" VerticalAlignment="Top"
+                                Command="{Binding CloseCommand}" ToolTip.Tip="Close (Esc)">
+                            <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16"/>
+                        </Button>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Earlier conversations" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="Bring a conversation back — it picks up where it left off." FontSize="13"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBox x:Name="EarlierSearch" Text="{Binding SearchText}" Padding="8,8"
+                             PlaceholderText="Search what was said, a title or a project…">
+                        <TextBox.InnerLeftContent>
+                            <materialIcons:MaterialIcon Kind="Magnify" Width="16" Height="16" Margin="10,0,0,0"
+                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </TextBox.InnerLeftContent>
+                    </TextBox>
+                    <DockPanel>
+                        <TextBlock x:Name="EarlierFound" DockPanel.Dock="Right" Text="{Binding FoundLabel}" FontSize="12"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ComboBox x:Name="EarlierProjectFilter" ItemsSource="{Binding ProjectFilters}"
+                                      SelectedItem="{Binding ProjectFilter}" MinWidth="140"/>
+                            <ComboBox x:Name="EarlierDateFilter" ItemsSource="{Binding DateFilters}"
+                                      SelectedItem="{Binding DateFilter}" MinWidth="120"/>
+                        </StackPanel>
+                    </DockPanel>
+                </StackPanel>
+
+                <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                        Padding="20,10">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <materialIcons:MaterialIcon Kind="InformationOutline" Width="13" Height="13" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="Searches titles, what was said and project names. The assistant's conversations are in here too."
+                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
+                    <ListBox x:Name="EarlierRows" Classes="earlier" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}"
+                             Padding="12,4,12,8" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EarlierConversationRow">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding GroupHeader}"
+                                               FontSize="11" FontWeight="SemiBold" Margin="8,12,0,6"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding GroupHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    <Border Classes="earlierRow" Padding="8,7" BorderThickness="1" BorderBrush="Transparent"
+                                            CornerRadius="{StaticResource CockpitControlRadius}">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                         Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                                    <Run Text="{Binding Title.Before}"/><Run Classes="match" Text="{Binding Title.Match}"/><Run Text="{Binding Title.After}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                                        BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1"
+                                                        CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                                                        IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                    <TextBlock Text="{Binding ProviderBadge}" FontSize="9" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding Profile}" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                <Border x:Name="EarlierAssistantChip" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                                        CornerRadius="10" Padding="7,1" IsVisible="{Binding Record.IsAssistant}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <materialIcons:MaterialIcon Kind="Creation" Width="11" Height="11" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Assistant" FontSize="11.5" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                                        CornerRadius="10" Padding="7,1"
+                                                        IsVisible="{Binding Place, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <materialIcons:MaterialIcon Kind="FolderOutline" Width="11" Height="11" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding Place}" FontSize="11.5" VerticalAlignment="Center"
+                                                                   MaxWidth="140" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <TextBlock Text="{Binding DateLabel}" FontSize="11.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1" Margin="15,0,0,0" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                       IsVisible="{Binding Fragment, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                <Run Text="{Binding Fragment.Before, FallbackValue=''}"/><Run Classes="match" Text="{Binding Fragment.Match, FallbackValue=''}"/><Run Text="{Binding Fragment.After, FallbackValue=''}"/>
+                                            </TextBlock>
+                                            <Button Grid.Row="1" Grid.Column="1" Classes="Accent Compact continue"
+                                                    HorizontalAlignment="Right" Padding="14,2" Content="Continue"
+                                                    IsEnabled="{Binding CanContinue}" ToolTip.Tip="{Binding ContinueTip}" ToolTip.ShowOnDisabled="True"
+                                                    CommandParameter="{Binding}"
+                                                    Command="{Binding $parent[UserControl].((vm:EarlierConversationsViewModel)DataContext).ContinueCommand}"/>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </DockPanel>
+        </Border>
+    </Panel>
+</UserControl>

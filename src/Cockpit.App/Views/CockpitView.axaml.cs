@@ -43,6 +43,9 @@ public partial class CockpitView : UserControl
     // Reused for the dock rail's collapsed width too (AC-951): both are the same 40px tab strip.
     private const double CollapsedRailWidth = 40;
 
+    // AC-1527: the Simple rail's own width (the mockup's), so the panels sidebar's dragged width does not crop it.
+    private const double SimpleRailWidth = 240;
+
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
     private INotifyCollectionChanged? _observedSessions;
@@ -329,7 +332,7 @@ public partial class CockpitView : UserControl
         var collapsed = cockpit.SidebarCollapsed && !cockpit.SimpleView;
         var column = _SidebarColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
-        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
+        column.Width = new GridLength(cockpit.SimpleView ? SimpleRailWidth : collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
         PanelsRoot.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
     }
 
@@ -456,6 +459,12 @@ public partial class CockpitView : UserControl
         SimpleChatHost.Content = cockpit.SimpleStandShowsTheAssistantInTheMainColumn
             ? cockpit.CreateSimpleViewChatView?.Invoke()
             : null;
+
+        // AC-1528: under Home the host is hidden and never attaches the view, and attaching is what starts the assistant.
+        if (cockpit.SimpleStandShowsTheStartScreen && SimpleChatHost.Content is Control { DataContext: AssistantChatViewModel chat })
+        {
+            _ = chat.EnsureOpenedAsync();
+        }
     }
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins
@@ -1519,65 +1528,9 @@ public partial class CockpitView : UserControl
             .FirstOrDefault(box => box.Name == "InputBox")?.Focus();
     }
 
-    // Inline rename: Enter commits, Escape cancels; losing focus commits an in-progress rename.
-    private void OnRenameBoxKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (sender is not TextBox { DataContext: SessionPanelViewModel session })
-        {
-            return;
-        }
+    private void OnRenameBoxKeyDown(object? sender, KeyEventArgs e) => InlineRename.OnKeyDown(sender, e);
 
-        if (e.Key == Key.Enter)
-        {
-            session.CommitRename();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            session.CancelRename();
-            e.Handled = true;
-        }
-    }
+    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e) => InlineRename.OnLostFocus(sender, e);
 
-    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e)
-    {
-        if (sender is TextBox { DataContext: SessionPanelViewModel session } && session.IsRenaming)
-        {
-            session.CommitRename();
-        }
-    }
-
-    // The rename box attaches once when its row is built; focus + select it whenever the row enters rename
-    // mode (IsVisible toggling alone does not re-fire attach), and unsubscribe when the row goes away.
-    private void OnRenameBoxAttached(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        if (sender is not TextBox { DataContext: SessionPanelViewModel session } box)
-        {
-            return;
-        }
-
-        void OnSessionPropertyChanged(object? s, PropertyChangedEventArgs args)
-        {
-            if (args.PropertyName == nameof(SessionPanelViewModel.IsRenaming) && session.IsRenaming)
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    box.Focus();
-                    box.SelectAll();
-                });
-            }
-        }
-
-        session.PropertyChanged += OnSessionPropertyChanged;
-        box.DetachedFromVisualTree += (_, _) => session.PropertyChanged -= OnSessionPropertyChanged;
-
-        if (session.IsRenaming)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                box.Focus();
-                box.SelectAll();
-            });
-        }
-    }
+    private void OnRenameBoxAttached(object? sender, VisualTreeAttachmentEventArgs e) => InlineRename.OnAttached(sender, e);
 }

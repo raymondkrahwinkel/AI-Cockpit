@@ -377,20 +377,24 @@ internal static class Screenshotter
 
         // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
-        // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
-        // question only stands there while no conversation does, which every other Simple scene has.
-        ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
-        // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
-        // for this one, and the second place the starting-point gallery is drawn.
-        ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
-        // AC-1316: the same screen with the assistant switched off — the reason, the button onto Options, and a
-        // composer that says what to do first rather than inviting a message that cannot go anywhere.
-        ["simple-view-start-screen-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, assistantOff: true) },
-        // AC-1321: the node while a paired controller holds the line — the takeover notice where the off notice
-        // stands, and no button, since nothing here ends it.
-        ["simple-view-start-screen-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, controlled: true) },
+        // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
+        ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
+        // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
+        ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
+        // AC-1527: the stand's Projects page, reached through the rail's own entry.
+        ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
+        // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
+        ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
+        // AC-488: Home on a cockpit that has no projects yet, the second place the starting-point gallery is drawn.
+        ["simple-view-home-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome(withProjects: false) },
+        // AC-1316: the assistant's own conversation with it switched off — the reason where its rows would stand.
+        ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
+        // AC-1321: the node while a paired controller holds the line — the takeover notice, and no button, since nothing here ends it.
+        ["simple-view-assistant-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(controlled: true) },
+        // AC-1533: the same conversation with ⋯ → Details open — where it works, what it may do, its cost and model.
+        ["simple-view-conversation-details"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
-        ["simple-view-start-screen-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false, failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
+        ["simple-view-assistant-failed"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(failedToStart: "The assistant could not start: An error occurred trying to start process '/home/raymond/.local/bin/claude'. The system cannot find the file specified.") },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -774,6 +778,7 @@ internal static class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
         // on Height alone to make it fit.
@@ -823,9 +828,9 @@ internal static class Screenshotter
         }
     }
 
-    private static void _OpenFlyout(Window window, string buttonName)
+    private static void _OpenFlyout(Control root, string buttonName)
     {
-        var button = _Named<Button>(window, buttonName);
+        var button = root.GetVisualDescendants().OfType<Button>().First(control => control.Name == buttonName && control.IsEffectivelyVisible);
         button.Flyout?.ShowAt(button);
     }
 
@@ -1791,10 +1796,10 @@ internal static class Screenshotter
             Title = "personal - 3",
         };
 
-        var plan = new Services.SessionRestorePlan(
+        var plan = new SessionRestorePlan(
             pane,
             Profile: null,
-            degraded ? Services.SessionRestoreAvailability.Gone : Services.SessionRestoreAvailability.Known,
+            degraded ? SessionRestoreAvailability.Gone : SessionRestoreAvailability.Known,
             degraded ? "Claude no longer has this conversation: No conversation found with session ID: 9f2c1b40." : string.Empty);
 
         // SessionView for the resumable case and TtyView for the degraded one, so the two scenes between them
@@ -2641,15 +2646,15 @@ internal static class Screenshotter
     }
 
     // AC-1305: two of the rail's own sessions waiting for consent while the column draws the assistant. Built out
-    // of the real properties rather than a placed control, with nothing picked in the rail — which is the state the
-    // notification is for, and clearing the pick is also what recomputes the list.
+    // of the real properties rather than a placed control, with the assistant picked in the rail — which is the
+    // state the notification is for, and moving the pick is also what recomputes the list.
     private static ViewModels.CockpitViewModel _SimpleStandAwaitingConsent()
     {
         var cockpit = _SimpleStand(withAssistant: true);
         // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
         _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
         _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
-        cockpit.SimpleSelectedSession = null;
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
         return cockpit;
     }
 
@@ -2663,31 +2668,133 @@ internal static class Screenshotter
             new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
             new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
             _ => Task.FromResult(new NodePermissionAnswer(true))));
-        cockpit.SimpleSelectedSession = null;
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
         return cockpit;
     }
 
-    // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
-    // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
-    // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true, bool assistantOff = false, bool controlled = false, string? failedToStart = null)
+    // AC-1528: Home on a fixed morning for a fixed name, one conversation waiting and one working, as in the mockup.
+    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true)
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.SimpleHome.FirstName = "Raymond";
+        cockpit.SimpleHome.Now = () => new DateTime(2026, 10, 13, 9, 0, 0);
+        cockpit.VoiceEnabled = true;
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+            var working = _Named(cockpit, "kind→staging");
+            working.ProjectId = cockpit.Projects.Projects[0].Id;
+            working.SessionStatus = SessionStatus.Busy;
+            _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Publish three pages", "publish website/pages", dangerous: false);
+        }
+
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        return cockpit;
+    }
+
+    // AC-1316/AC-1321: the assistant's own conversation in the column with nothing said in it, where its notice stands.
+    private static ViewModels.CockpitViewModel _SimpleStandAssistant(bool assistantOff = false, bool controlled = false, string? failedToStart = null)
     {
         // Off means no session either: the host never starts one it is not allowed to. A failed start leaves none too.
         var cockpit = _SimpleStand(withAssistant: !assistantOff && failedToStart is null, assistantOff, failedToStart);
+        cockpit.AssistantChat!.Session?.Transcript.Clear();
         if (controlled)
         {
             cockpit.ActiveController = new ActiveController("LAPTOP", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero));
         }
 
-        // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
-        // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.
-        if (withProjects)
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
+        cockpit.SimplePage = ViewModels.SimplePage.Conversation;
+        return cockpit;
+    }
+
+    private static ViewModels.CockpitViewModel _SimpleStandProjects()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.Projects.StageDesignSample();
+        cockpit.ShowSimpleProjectsCommand.Execute(null);
+        return cockpit;
+    }
+
+    private static ViewModels.CockpitViewModel _SimpleStandConversation(bool withCost = false)
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.Projects.StageDesignSample();
+        var picked = (ViewModels.SessionViewModel)_Named(cockpit, "kind→staging");
+        picked.ProjectId = cockpit.Projects.Projects[0].Id;
+        picked.WorkingDirectory = Path.Combine(Path.GetTempPath(), "infra");
+        if (withCost)
         {
-            cockpit.Projects.StageDesignSample();
+            picked.SelectedModel = SessionOptionCatalog.ModelForValue("opus");
+            picked.Apply(new TurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, TotalCostUsd = 0.38, NumTurns = 1 });
         }
 
-        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        picked.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.UserText, "Can you bring staging in line with kind, and tell me what stands out?"));
+        // AC-1530: three reads in one folder fold to one step, each write is a step of its own, then the green block.
+        string[] steps = ["Read clusters/kind/traefik.yaml", "Read clusters/kind/ingress.yaml", "Read clusters/kind/values.yaml",
+            "Write notes/staging/differences.md", "Write notes/staging/upgrade-plan.md"];
+        foreach (var (step, index) in steps.Select((step, index) => (step, index)))
+        {
+            var (tool, file) = (step.Split(' ')[0], Path.Combine(picked.WorkingDirectory, step.Split(' ')[1]));
+            picked.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = $"toolu_{index}", ToolName = tool, InputJson = System.Text.Json.JsonSerializer.Serialize(new { file_path = file }) });
+            picked.Apply(new ToolResult { SessionId = "s1", ToolUseId = $"toolu_{index}", Content = "ok", IsError = false });
+        }
+
+        var result = TurnResult.From(picked.Transcript.Reverse().TakeWhile(row => !row.IsUserRow).Reverse(), picked.WorkingDirectory)!;
+        picked.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
+        picked.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "Traefik on staging is two minor versions behind. **The configuration** differs in three places — I am writing them down now."));
+        picked.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_running", ToolName = "Write", InputJson = System.Text.Json.JsonSerializer.Serialize(new { file_path = Path.Combine(picked.WorkingDirectory, "notes", "staging", "summary.md") }) });
+        picked.Apply(new BackgroundTasksChanged { SessionId = "s1", Tasks = [new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Checking the Traefik values")] });
+        picked.SessionStatus = SessionStatus.Busy;
+        picked.IsBusy = true;
         return cockpit;
+    }
+
+    // AC-1532: the sheet over Home, searched for "jansen", a row of each period and the assistant's own conversation.
+    private static ViewModels.CockpitViewModel _SimpleStandHistory()
+    {
+        var cockpit = _SimpleStandHome();
+        var now = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(2));
+        ConversationSearchResult Row(string title, string folder, string profile, TimeSpan ago, string status, string? fragment, bool assistant = false) => new(
+            new ConversationRecord(Guid.NewGuid().ToString("N"), title, null, Path.Combine(Path.GetTempPath(), folder), profile, "claude", "c", SessionConversationIdState.Known,
+                now - ago, now - ago, status, now - ago, false, assistant, null),
+            fragment);
+        var sheet = cockpit.EarlierConversations;
+        sheet.Now = () => now;
+        sheet.Index = new _FixtureConversations(
+        [
+            Row("Q3 report", "Finance", "personal", TimeSpan.FromMinutes(20), "Busy", "…three large invoices to Jansen in September"),
+            Row("Quote for Jansen", "Sales", "default", TimeSpan.FromHours(21.5), "Done", "Done · Quote-Jansen-2026-10.docx created in Sales"),
+            Row("Assistant", "", "work", TimeSpan.FromDays(6), "Idle", "You: \"when does the quote for Jansen have to go out?\"", assistant: true),
+            Row("Update customer details", "Sales", "default", TimeSpan.FromDays(20), "Done", "Done · address of Jansen B.V. updated in Customers.xlsx"),
+            Row("Website copy", "Website", "default", TimeSpan.FromDays(2), "NeedsAttention", "Three pages ready to publish"),
+        ]);
+        sheet.OpenCommand.Execute(null);
+        sheet.SearchText = "jansen";
+
+        // A scene has no restore planner, so it draws every row as one Continue can bring back.
+        for (var index = 0; index < sheet.Rows.Count; index++)
+        {
+            sheet.Rows[index] = sheet.Rows[index] with { Refusal = null };
+        }
+
+        sheet.Selected = sheet.Rows[1];
+        return cockpit;
+    }
+
+    // The scene's index: fixture rows filtered by the term the way the real one is, never the operator's own file.
+    private sealed class _FixtureConversations(IReadOnlyList<ConversationSearchResult> rows) : IConversationIndex
+    {
+        public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<ConversationRecord>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationRecord>>([.. rows.Select(row => row.Record)]);
+
+        public Task<IReadOnlyList<ConversationSearchResult>> SearchAsync(string text, string? projectId = null, DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationSearchResult>>(
+                [.. rows.Where(row => $"{row.Record.Title} {row.Fragment}".Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))]);
     }
 
     private static ViewModels.SessionPanelViewModel _Named(ViewModels.CockpitViewModel cockpit, string title) =>

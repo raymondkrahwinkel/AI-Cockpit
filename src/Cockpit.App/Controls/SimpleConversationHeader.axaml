@@ -1,0 +1,100 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.SimpleConversationHeader"
+             x:DataType="vm:SessionPanelViewModel">
+
+    <!-- AC-1529 (mockup simple-view-conversation.png): no usage pill, no Tune, no ctx-% — those are ⋯ → Details. -->
+    <Border Background="{DynamicResource CockpitChromeBgBrush}" Padding="20,10"
+            BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1">
+        <!-- AC-1533: a dock rather than a row, so a narrow column trims the title and the stand before Stop and ⋯. -->
+        <DockPanel>
+            <controls:ConversationDetailsButton x:Name="SimpleDetailsButton" DockPanel.Dock="Right" Margin="8,0,0,0"
+                                                ProjectName="{Binding $parent[controls:SimpleConversationHeader].ProjectName}"/>
+            <Button x:Name="SimpleStopButton" DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,6" Margin="8,0,0,0"
+                    IsVisible="{Binding ShowsSimpleStop}" Command="{Binding SimpleStopCommand}"
+                    ToolTip.Tip="Stop what it is doing now">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="StopCircleOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                    <TextBlock Text="Stop" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <!-- AC-1526: the composer's Background button stands down in Simple, so what still runs after a turn shows
+                 here, beside Stop, and only while something does. A terminal reports no background work. -->
+            <ContentControl DockPanel.Dock="Right" VerticalAlignment="Center" Content="{Binding}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:SessionViewModel">
+                        <Button x:Name="SimpleBackgroundButton" Padding="10,6" Margin="8,0,0,0"
+                                IsVisible="{Binding HasBackgroundTasks}"
+                                ToolTip.Tip="Sub-agents and shells still running in the background">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="LayersOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding BackgroundTaskCount}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <controls:BackgroundWorkList/>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:SessionPanelViewModel">
+                        <Panel/>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+            <Button x:Name="SimpleEarlierButton" DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,6" Margin="8,0,0,0"
+                    Command="{Binding $parent[controls:SimpleConversationHeader].EarlierCommand}"
+                    ToolTip.Tip="Earlier conversations — find one and continue it">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="History" Width="14" Height="14" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SimpleEarlierLabel" Text="Earlier conversations" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <!-- A narrow column (~220px) runs the identity out of room: it is clipped in its own slot, never drawn under
+                 Earlier, Stop and ⋯. -->
+            <DockPanel x:Name="SimpleHeaderIdentity" ClipToBounds="True">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,8,0"
+                            IsVisible="{Binding $parent[controls:SimpleConversationHeader].ProjectName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <materialIcons:MaterialIcon Kind="FolderOutline" Width="15" Height="15" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock x:Name="SimpleHeaderProject" VerticalAlignment="Center" MaxWidth="160" TextTrimming="CharacterEllipsis"
+                               Text="{Binding $parent[controls:SimpleConversationHeader].ProjectName}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <materialIcons:MaterialIcon Kind="ChevronRight" Width="14" Height="14" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+                <TextBlock x:Name="SimpleHeaderTitle" DockPanel.Dock="Left" Text="{Binding Title}" FontSize="15" FontWeight="SemiBold"
+                           VerticalAlignment="Center" MaxWidth="320" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
+                           IsVisible="{Binding !IsRenaming}"/>
+                <!-- AC-1533: Rename from ⋯ edits the title where it stands; the rail follows from the same `Title`. -->
+                <TextBox x:Name="SimpleHeaderRename" DockPanel.Dock="Left" Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
+                         Classes="Compact" MinWidth="160" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center"
+                         KeyDown="_OnRenameKeyDown" LostFocus="_OnRenameLostFocus" AttachedToVisualTree="_OnRenameAttached"/>
+                <!-- The tree's own labels (AC-1526 decision 2): the provider badge and the profile. -->
+                <Border DockPanel.Dock="Left" Background="{DynamicResource CockpitSecondaryBgBrush}" Margin="0,0,8,0"
+                        BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1"
+                        CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                        IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="{Binding ProviderBadge}" FontSize="9" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                </Border>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding ActiveProfileLabel}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <Border Padding="9,3" VerticalAlignment="Center" HorizontalAlignment="Left"
+                        CornerRadius="{StaticResource CockpitPillRadius}"
+                        BorderThickness="1" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}">
+                    <DockPanel>
+                        <Ellipse DockPanel.Dock="Left" Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0"
+                                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                        <TextBlock x:Name="SimpleHeaderStand" Text="{Binding SimpleStatusLabel}" FontSize="12"
+                                   VerticalAlignment="Center" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                </Border>
+            </DockPanel>
+        </DockPanel>
+    </Border>
+</UserControl>

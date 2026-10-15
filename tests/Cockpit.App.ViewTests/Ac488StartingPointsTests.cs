@@ -10,7 +10,7 @@ public sealed class Ac488StartingPointsTests
     // Both directions in one test — the claim is a swap, and an always-on gallery would pass the first half on its own.
     [Theory]
     [InlineData("projects-workspace-empty", "projects-workspace-cards")]
-    [InlineData("simple-view-start-screen-empty", "simple-view-start-screen")]
+    [InlineData("simple-view-home-empty", "simple-view-home")]
     public void TheGallery_StandsWhereThereAreNoProjects_AndStandsDownWhereThereAre(string empty, string filled)
     {
         Assert.True(_DrawsTheGallery(empty), $"{empty} draws the starting points");
