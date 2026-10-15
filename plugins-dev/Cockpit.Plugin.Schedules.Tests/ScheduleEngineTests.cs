@@ -125,6 +125,7 @@ public class ScheduleEngineTests
         rig.Clock.Now = Utc(10, 14, 7, 0, 20);
         _ = before.TickAsync();
         before.Dispose();
+        rig.Action = _ => Task.FromResult(new ActionResult(RunOutcome.Succeeded));
 
         using var after = rig.Start();
         await after.TickAsync();
