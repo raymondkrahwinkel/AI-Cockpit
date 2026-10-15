@@ -28,7 +28,7 @@
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="vm:SessionViewModel">
                         <Button x:Name="SimpleBackgroundButton" Padding="10,6" Margin="8,0,0,0"
-                                IsVisible="False"
+                                IsVisible="{Binding HasBackgroundTasks}"
                                 ToolTip.Tip="Sub-agents and shells still running in the background">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <materialIcons:MaterialIcon Kind="LayersOutline" Width="14" Height="14" VerticalAlignment="Center"/>
