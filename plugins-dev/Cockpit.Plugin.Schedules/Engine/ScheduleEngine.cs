@@ -105,7 +105,7 @@ internal sealed class ScheduleEngine : IDisposable
             return null;
         }
 
-        var slots = schedule.Slots(now - Tick, now, zone).ToList();
+        var slots = schedule.Slots(mark, now, zone).ToList();
         if (slots.Count == 0)
         {
             return null;
