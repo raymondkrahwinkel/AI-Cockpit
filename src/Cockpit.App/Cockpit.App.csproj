@@ -117,6 +117,7 @@
   <!-- AC-1392: the bundled plugins' build and copy, shared with Cockpit.Backend.Tests. -->
   <Import Project="..\BundledPlugins.targets" />
 
+  <!-- Depot is the one plugin that ships with the app because the first start depends on it; every other plugin comes from the store. -->
   <!-- A single-file build is one file, so the bundled plugins ride inside it: the same files are embedded as
        resources under their folder names, and BundledPluginResources unpacks them at startup. Only for single-file:
        a normal build keeps its folder, which is what a developer edits and rebuilds. -->
