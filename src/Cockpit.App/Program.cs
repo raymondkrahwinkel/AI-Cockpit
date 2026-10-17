@@ -28,8 +28,8 @@ sealed class Program
     // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
     public static IServiceProvider Services { get; internal set; } = null!;
 
-    // AC-1505: what `--provision` brought in, for the applier (DB-2.5b); a failure opens the wizard with its reason.
-    internal static ProvisioningOutcome? Provisioning { get; private set; }
+    // AC-1505: what `--provision` brought in and AC-1506 applied; a failure opens the wizard with its reason.
+    internal static ProvisioningOutcome? Provisioning { get; set; }
 
     // How long a restart-launched instance waits for the outgoing one to release the single-instance claim before
     // giving up. The outgoing side is hard-exited by the exit watchdog within a few seconds (bug #32), and the
@@ -109,7 +109,7 @@ sealed class Program
         // AC-1505: route D, before any plugin loads. A restart is the same run going on, so it does not fetch again.
         if (!restartHandoff && ProvisioningEntry.UrlFromArguments(args) is { } provisionUrl)
         {
-            Provisioning = ProvisioningEntry.RunAsync(
+            Provisioning = ProvisioningEntry.ProvisionAsync(
                 provisionUrl,
                 args.Contains(ProvisioningEntry.ReapplyArgument),
                 CockpitBuild.StateRoot,

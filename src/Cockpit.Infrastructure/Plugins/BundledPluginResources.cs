@@ -10,6 +10,13 @@ internal static class BundledPluginResources
     // Every embedded plugin file is named `bundled-plugins/&lt;id&gt;/&lt;file&gt;` — the folder layout, kept as a name.
     private const string Prefix = BundledPluginInstaller.BundledFolderName + "/";
 
+    // AC-1506: one embedded file as text, without unpacking the rest; null when this build does not embed it.
+    public static string? TryRead(string relativePath)
+    {
+        using var stream = (Assembly.GetEntryAssembly() ?? typeof(BundledPluginResources).Assembly).GetManifestResourceStream(Prefix + relativePath);
+        return stream is null ? null : new StreamReader(stream).ReadToEnd();
+    }
+
     // Unpacks the embedded plugins and returns the directory, or null when this build has none embedded.
     public static string? TryExtract()
     {

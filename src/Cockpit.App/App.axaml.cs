@@ -27,6 +27,7 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -659,9 +660,34 @@ public partial class App : Application
         // later launches perform only a small, non-writing config read.
         Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync().GetAwaiter().GetResult();
 
+        // AC-1506: provisioning's second phase, now that a connection's plugin can redeem the token. Not awaited here:
+        // a plugin's sign-in may need this thread. What is left for the operator to do arrives as one toast.
+        if (Program.Provisioning is { Failure: null } provisioning)
+        {
+            _ = _FinishProvisioningAsync(provisioning);
+        }
+
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+    }
+
+    private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)
+    {
+        var finished = await ProvisionManifestApplier.FinishAsync(
+            provisioning,
+            Program.Services.GetRequiredService<PluginChannelHub>(),
+            CockpitBuild.StateRoot,
+            Program.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Cockpit.Provisioning"));
+        Program.Provisioning = finished;
+        var open = finished.Report
+            .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.ConnectionSkipped)
+            .Select(line => line.Detail)
+            .ToList();
+        if (open.Count > 0)
+        {
+            Program.Services.GetRequiredService<IToastService>().Show($"This cockpit was set up for you. Still to do: {string.Join("; ", open)}.", ToastSeverity.Information);
+        }
     }
 
     private static void _RegisterInstalledTemplates(IWorkflowTemplateLibrary library, IWorkflowTemplateRegistry registry)

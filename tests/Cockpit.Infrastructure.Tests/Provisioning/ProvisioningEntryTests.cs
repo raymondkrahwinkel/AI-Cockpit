@@ -84,14 +84,20 @@ public sealed class ProvisioningEntryTests : IDisposable
             await _RunAsync(url, OrgManifest),
         };
 
+        // AC-1506: reading alone leaves the link usable; only the applier uses it up, once everything was applied.
+        ProvisioningEntry.UseUpToken(_stateRoot, outcomes[2]!.Token!);
+        outcomes.Add(await _RunAsync(url, OrgManifest));
+
         Assert.Contains("could not be fetched", outcomes[0]!.Failure);
         Assert.NotNull(outcomes[1]!.Manifest);
-        Assert.Contains("already been used", outcomes[2]!.Failure);
+        Assert.NotNull(outcomes[2]!.Manifest);
+        Assert.Contains("already been used", outcomes[3]!.Failure);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Token)));
         Assert.Contains(hash, await File.ReadAllTextAsync(Path.Combine(_stateRoot, "provision-tokens-used.txt")));
 
         var trail = _logs
             .Concat(outcomes.Select(outcome => outcome!.Failure ?? string.Empty))
+            .Concat(outcomes.Select(outcome => outcome!.ToString()))
             .Concat(ProvisioningEntry.RedactArguments(["--provision", url, "--safe-mode"]))
             .Concat(Directory.EnumerateFiles(_stateRoot, "*", SearchOption.AllDirectories).Select(File.ReadAllText));
         Assert.All(trail, line => Assert.DoesNotContain(Token, line));
