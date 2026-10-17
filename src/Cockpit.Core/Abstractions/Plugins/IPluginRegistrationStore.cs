@@ -31,6 +31,16 @@ public interface IPluginRegistrationStore
     Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar, CancellationToken cancellationToken = default) =>
         SaveMenuPreferenceAsync(folderId, menuOrder, hiddenInMenu, cancellationToken);
 
+    /// <summary>
+    /// AC-1500: records what the bundle expects at least (<paramref name="expectedMinVersion"/>, null clears it) for an installed plugin; a no-op when it is not registered. A default no-op, so existing fakes keep compiling.
+    /// </summary>
+    Task SetExpectedMinVersionAsync(string folderId, string? expectedMinVersion, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// AC-1500: records whether the operator deliberately installed a non-newest version; a no-op when the plugin is not registered.
+    /// </summary>
+    Task SetVersionChosenAsync(string folderId, bool versionChosen, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>

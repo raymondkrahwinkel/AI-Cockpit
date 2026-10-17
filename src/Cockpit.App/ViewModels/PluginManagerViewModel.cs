@@ -1113,7 +1113,23 @@ public partial class PluginManagerViewModel : ViewModelBase
             _pendingUpdateVersions[row.Id] = version.Version;
         }
 
+        // AC-1500: an older version picked on purpose is the one signal that silences the bundle-minimum notice; any other install clears it.
+        if (installResult is { IsSuccess: true, FolderId: { } installedFolderId } && _registrationStore is not null)
+        {
+            await _registrationStore.SetVersionChosenAsync(installedFolderId, explicitVersion is not null && explicitVersion.Version != row.LatestVersionEntry?.Version);
+        }
+
         return installResult.IsSuccess;
+    }
+
+    // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.
+    public async Task UpdateStorePluginAsync(string folderId)
+    {
+        await BrowseStoresAsync();
+        if (AvailablePlugins.FirstOrDefault(row => row.CanUpdate && PluginFolderName.Normalize(row.Id) == folderId) is { } row)
+        {
+            await InstallFromStoreAsync(row);
+        }
     }
 
     // A fresh install walks a needs-consent plugin into the consent step; an update (staged over an existing install)
