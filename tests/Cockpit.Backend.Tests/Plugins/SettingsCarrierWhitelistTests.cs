@@ -37,5 +37,13 @@ public class SettingsCarrierWhitelistTests
             }
             """;
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(blob)), blob);
+
+        // NeverCarried as an invariant: no carried path may sit on, under or over a machine-bound one.
+        Assert.Empty(SettingsCarrierWhitelist.Carried
+            .SelectMany(carried => SettingsCarrierWhitelist.NeverCarried, (carried, never) => (carried, never))
+            .Where(pair => _Covers(pair.carried, pair.never) || _Covers(pair.never, pair.carried)));
     }
+
+    private static bool _Covers(string path, string inner) =>
+        inner == path || inner.StartsWith(path + ".", StringComparison.Ordinal) || inner.StartsWith(path + "[]", StringComparison.Ordinal);
 }
