@@ -17,7 +17,8 @@ public sealed record PluginManifest(
     string? Author,
     IReadOnlyList<string>? SecretKeys = null,
     string? UiAssembly = null,
-    string? UiEntryType = null)
+    string? UiEntryType = null,
+    string? ExpectedMinVersion = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
@@ -96,7 +97,8 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "author"),
                 GetOptionalStrings(root, "secretKeys"),
                 uiAssembly,
-                uiEntryType);
+                uiEntryType,
+                GetOptionalString(root, "expectedMinVersion"));
             return true;
         }
     }

@@ -19,6 +19,11 @@ internal sealed class PluginRegistrationEntry
     // expressed a preference — see `ToDomain` for the one-time migration default that applies while null.
     public bool? PinnedToSidebar { get; set; }
 
+    // AC-1500: what this build's bundle expects at least (null for a plugin not in the bundle), and whether the operator chose an older version on purpose.
+    public string? ExpectedMinVersion { get; set; }
+
+    public bool VersionChosen { get; set; }
+
     // The plugin's own key/value storage (`Cockpit.Plugins.Abstractions.IPluginStorage`); values are JSON strings. Owned by the plugin, not the load decision.
     public Dictionary<string, string> Data { get; set; } = [];
 
@@ -29,9 +34,11 @@ internal sealed class PluginRegistrationEntry
         MenuOrder = registration.MenuOrder,
         HiddenInMenu = registration.HiddenInMenu,
         PinnedToSidebar = registration.PinnedToSidebar,
+        ExpectedMinVersion = registration.ExpectedMinVersion,
+        VersionChosen = registration.VersionChosen,
     };
 
     // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
     public PluginRegistration ToDomain() =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false);
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen);
 }
