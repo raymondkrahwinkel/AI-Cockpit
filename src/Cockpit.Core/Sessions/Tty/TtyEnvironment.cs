@@ -89,7 +89,8 @@ public static class TtyEnvironment
         || IsAnthropicCredentialMarker(key)
         || IsCockpitMcpKeyMarker(key)
         || IsCockpitPaneIdMarker(key)
-        || IsCockpitConnectKeyMarker(key);
+        || IsCockpitConnectKeyMarker(key)
+        || IsCockpitProvisionMarker(key);
 
     // True when the effective ctype locale is UTF-8. The C library resolves the ctype category as
     // `LC_ALL` (if set) else `LC_CTYPE` else `LANG`, so this checks them in that precedence
@@ -147,4 +148,9 @@ public static class TtyEnvironment
     public static bool IsCockpitConnectKeyMarker(string key) =>
         key.Equals("COCKPIT_CONNECT_KEY", StringComparison.OrdinalIgnoreCase)
         || key.Equals("COCKPIT_CONNECT_KEY_FILE", StringComparison.OrdinalIgnoreCase);
+
+    // True for the provisioning URL and the file naming it (AC-1505): the URL may carry a one-time installation token.
+    public static bool IsCockpitProvisionMarker(string key) =>
+        key.Equals("COCKPIT_PROVISION_URL", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("COCKPIT_PROVISION_URL_FILE", StringComparison.OrdinalIgnoreCase);
 }

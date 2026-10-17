@@ -188,9 +188,17 @@ public partial class App : Application
     private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
-        var viewModel = new FirstRunWizardViewModel(
-            [.. Program.Services.GetServices<IFirstRunWizardStep>()],
-            FirstRunWizardViewModel.EpicPlan);
+        IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
+
+        // AC-1505: a failed --provision lands on slot 10 with its reason, where AC-1504's choice step will stand.
+        int? startAtOrder = null;
+        if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<RestoreStep>().FirstOrDefault() is { } restoreStep)
+        {
+            restoreStep.ViewModel.Status = provisioningFailure;
+            startAtOrder = restoreStep.Order;
+        }
+
+        var viewModel = new FirstRunWizardViewModel(steps, FirstRunWizardViewModel.EpicPlan, startAtOrder);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
         var finished = false;
 
