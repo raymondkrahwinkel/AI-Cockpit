@@ -48,4 +48,21 @@
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->
   <Import Project="..\..\src\BundledPlugins.targets" />
 
+  <!-- The plugins the app no longer ships, installed beside the output so the startup journey still has a provider, workflow steps and autopilot to hold. -->
+  <ItemGroup>
+    <_StoreOnlyPlugin Include="Autopilot" FolderId="autopilot" />
+    <_StoreOnlyPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+    <_StoreOnlyPlugin Include="Clock" FolderId="clock" />
+    <_StoreOnlyPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
+    <_StoreOnlyPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
+    <_StoreOnlyPlugin Include="FanOut" FolderId="fan-out" />
+    <_StoreOnlyPlugin Include="GitStatus" FolderId="git-status" />
+    <_StoreOnlyPlugin Include="Schedules" FolderId="schedules" />
+    <_StoreOnlyPlugin Include="TranscriptSearch" FolderId="transcript-search" />
+    <_StoreOnlyPlugin Include="UsageTrend" FolderId="usage-trend" />
+    <BundledPlugin Include="@(_StoreOnlyPlugin)" />
+    <ProjectReference Include="@(_StoreOnlyPlugin->'$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.%(Identity)\Cockpit.Plugin.%(Identity).csproj')"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+
 </Project>

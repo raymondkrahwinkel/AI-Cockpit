@@ -32,13 +32,23 @@
     <Compile Include="..\Cockpit.Journeys\EchoDriver.cs" Link="EndToEnd\EchoDriver.cs" />
   </ItemGroup>
 
-  <!-- AC-1392: the nine bundled plugins beside the output, built but never referenced, so a backend without App can
-       be shown loading them from bundled-plugins the way the desktop does. -->
+  <!-- AC-1392: the bundled plugin beside the output, built but never referenced, so a backend without App can
+       be shown loading it from bundled-plugins the way the desktop does. -->
   <Import Project="..\..\src\BundledPlugins.targets" />
 
-  <!-- AC-1403: every other in-repo plugin and the Avalonia fixture join them, so the backend's own first-run install
+  <!-- AC-1403: every other in-repo plugin, also those the app no longer ships, and the Avalonia fixture join it, so the first-run install
        approves all 34 and BackendWithPluginsTests loads them without App. -->
   <ItemGroup>
+    <_InRepoPlugin Include="Autopilot" FolderId="autopilot" />
+    <_InRepoPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+    <_InRepoPlugin Include="Clock" FolderId="clock" />
+    <_InRepoPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
+    <_InRepoPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
+    <_InRepoPlugin Include="FanOut" FolderId="fan-out" />
+    <_InRepoPlugin Include="GitStatus" FolderId="git-status" />
+    <_InRepoPlugin Include="Schedules" FolderId="schedules" />
+    <_InRepoPlugin Include="TranscriptSearch" FolderId="transcript-search" />
+    <_InRepoPlugin Include="UsageTrend" FolderId="usage-trend" />
     <_InRepoPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
     <_InRepoPlugin Include="Depot" FolderId="depot" />
     <_InRepoPlugin Include="Diagram" FolderId="diagram" />
