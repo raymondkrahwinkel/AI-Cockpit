@@ -10,8 +10,10 @@ namespace Cockpit.Backend.Tests.Plugins;
 /// </summary>
 public class ProjectOwnershipRegistryTests
 {
+    // AC-604 acceptance criterion 4: an unclaimed project resolves null, not an empty dictionary — the editor
+    // reads null as "draw exactly as always", which an empty-but-non-null dictionary would not signal the same way.
     [Fact]
-    public void Register_TwoPluginsClaimingTheSameProject_KeepsTheFirst()
+    public void Register_TwoPluginsClaimingTheSameProject_KeepsTheFirst_AndAProjectNoOneClaimedResolvesNull()
     {
         var registry = new ProjectOwnershipRegistry();
 
@@ -20,6 +22,7 @@ public class ProjectOwnershipRegistryTests
 
         var resolved = registry.Resolve("proj-1");
         Assert.Equal("Depot — Work", resolved![HostProjectField.Name]!.SourceName);
+        Assert.Null(registry.Resolve("proj-vanished"));
     }
 
     [Fact]
@@ -28,17 +31,6 @@ public class ProjectOwnershipRegistryTests
         var registry = new ProjectOwnershipRegistry();
 
         Assert.False(registry.Register(new ProjectOwnershipRegistration("  ")));
-    }
-
-    [Fact]
-    public void Resolve_AProjectNoOneClaimed_IsNull()
-    {
-        // AC-604 acceptance criterion 4: an unclaimed project resolves null, not an empty dictionary — the editor
-        // reads null as "draw exactly as always", which an empty-but-non-null dictionary would not signal the same way.
-        var registry = new ProjectOwnershipRegistry();
-        registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work")));
-
-        Assert.Null(registry.Resolve("proj-vanished"));
     }
 
     [Fact]

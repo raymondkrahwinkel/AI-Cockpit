@@ -517,8 +517,11 @@
     <!-- 3.8.0 (AC-1501): IBackupTarget and BackupTargetEntry in Cockpit.Plugins.Abstractions.Backup, a place a backup
          is kept, written and read as a stream. No host method registers one yet, so no plugin raises minHostVersion
          for it. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.8.0</Version>
-    <AssemblyVersion>1.8.0.0</AssemblyVersion>
+    <!-- 3.9.0 (AC-540): ICockpitHost.AddSettingsCarrier (default no-op) and SettingsCarrierRegistration, a place the
+         cockpit's portable settings are kept as an opaque blob. No in-repo plugin calls it yet, so no plugin raises
+         minHostVersion for it. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.9.0</Version>
+    <AssemblyVersion>1.9.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>

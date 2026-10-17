@@ -119,6 +119,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
+| `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -324,6 +325,7 @@ public interface ICockpitHost
     Task<bool> SetSessionNameAsync(string paneId, string name);                  // default false
     Task SuggestSessionName(string paneId, string name);                         // default no-op
     void AddHealthSection(IPluginHealthSection section);                         // default no-op
+    void AddSettingsCarrier(SettingsCarrierRegistration registration);          // default no-op
 }
 ```
 

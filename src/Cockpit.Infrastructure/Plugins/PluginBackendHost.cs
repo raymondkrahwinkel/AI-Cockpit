@@ -28,6 +28,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -246,6 +247,9 @@ public class PluginBackendHost(
 
     public void AddHealthSection(IPluginHealthSection section) =>
         services.GetRequiredService<PluginHealthSections>().Add(pluginId, section);
+
+    public void AddSettingsCarrier(SettingsCarrierRegistration registration) =>
+        services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {

@@ -62,6 +62,17 @@ public class ArchitectureTests
         Assert.Empty(carriers.Concat(assemblies).Distinct().Order());
     }
 
+    // AC-540 acceptance 4: the settings hand-over path names no carrier. Pinned on the files named after it, not on the
+    // word across the assemblies, where "Depot" already stands on purpose (CockpitBrand.DepotUrl and more).
+    [Fact]
+    public void TheSettingsCarrierPath_NamesNoParticularCarrier()
+    {
+        var path = Directory.GetFiles(Path.Combine(_RepositoryRoot(), "src"), "*SettingsCarrier*.cs", SearchOption.AllDirectories);
+
+        Assert.True(path.Length >= 3, string.Join(", ", path));
+        Assert.Empty(path.Where(file => File.ReadAllText(file).Contains("depot", StringComparison.OrdinalIgnoreCase)).Select(Path.GetFileName));
+    }
+
     private static IEnumerable<Type> _SignatureTypes(MemberInfo member) => member switch
     {
         FieldInfo field => [field.FieldType],
