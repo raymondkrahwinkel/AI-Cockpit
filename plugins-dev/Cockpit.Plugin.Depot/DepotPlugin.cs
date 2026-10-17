@@ -59,6 +59,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _handlers.Add(host.Channel.Handle(DepotChannel.ConnectWithInstallToken, (payload, cancellationToken) =>
             _ConnectWithInstallTokenAsync(host, settings, payload, cancellationToken)));
 
+        // AC-1568: the file browser's Depot calls, one handler per action.
+        var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
+        _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Read, browser.ReadAsync);
+        _HandleBrowser(host, DepotBrowserChannel.DownloadUrl, browser.DownloadUrlAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Share, browser.ShareAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Unshare, browser.UnshareAsync);
+
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
         host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily(DepotMemorySource.Scheme, "Depot")
@@ -90,6 +99,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         // locking across calls, so parallel calls would race on the same stale snapshot and drop a connection.
         _ = _ReclaimPushedMcpServersSequentiallyAsync(host, settings.Connections);
     }
+
+    private void _HandleBrowser<T>(
+        ICockpitHost host, string action, Func<DepotBrowserRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotBrowserRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
 
     private static async Task _ReclaimPushedMcpServersSequentiallyAsync(ICockpitHost host, IReadOnlyList<DepotConnectionRegistration> connections)
     {
