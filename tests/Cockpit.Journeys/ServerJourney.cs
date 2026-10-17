@@ -180,7 +180,7 @@ public sealed class ServerJourney
             var node = $"https://127.0.0.1:{_McpPort(run.Output)}";
             using var health = await anonymous.GetAsync($"{node}/healthz", timeout.Token);
             Assert.Equal(
-                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"workflows-scheduler","healthy":true},{"name":"workflows-runs","healthy":true}]}"""),
+                (HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"schedules-engine","healthy":true},{"name":"workflows-scheduler","healthy":true},{"name":"workflows-runs","healthy":true}]}"""),
                 (health.StatusCode, await health.Content.ReadAsStringAsync(timeout.Token)));
             using var whoami = await anonymous.GetAsync($"{node}/api/v1/whoami", timeout.Token);
             Assert.Equal(HttpStatusCode.Unauthorized, whoami.StatusCode);

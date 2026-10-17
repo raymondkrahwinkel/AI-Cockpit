@@ -57,7 +57,6 @@
     <_StoreOnlyPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
     <_StoreOnlyPlugin Include="FanOut" FolderId="fan-out" />
     <_StoreOnlyPlugin Include="GitStatus" FolderId="git-status" />
-    <_StoreOnlyPlugin Include="Schedules" FolderId="schedules" />
     <_StoreOnlyPlugin Include="TranscriptSearch" FolderId="transcript-search" />
     <_StoreOnlyPlugin Include="UsageTrend" FolderId="usage-trend" />
     <BundledPlugin Include="@(_StoreOnlyPlugin)" />
