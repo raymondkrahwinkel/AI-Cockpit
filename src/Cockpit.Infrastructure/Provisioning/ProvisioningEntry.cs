@@ -8,7 +8,18 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Provisioning;
 
 // A validated manifest for the applier (DB-2.5b), or why there is none. `Failure` never carries the one-time token.
-public sealed record ProvisioningOutcome(ProvisionManifest? Manifest, IReadOnlyList<ProvisionNote> Skipped, string? Failure);
+// `Report` is what the applier did with it, line by line (manifest-v1 §4.4), in the reader's note shape.
+public sealed record ProvisioningOutcome(ProvisionManifest? Manifest, IReadOnlyList<ProvisionNote> Skipped, string? Failure, ProvisionToken? Token = null)
+{
+    public IReadOnlyList<ProvisionNote> Report { get; init; } = [];
+}
+
+// AC-1506: the URL's one-time token, held in memory between reading and applying. Printed as its hash only, so a
+// log line or exception that names the outcome never carries it.
+public sealed record ProvisionToken(string Value, string Hash)
+{
+    public override string ToString() => $"{nameof(ProvisionToken)} {{ Hash = {Hash} }}";
+}
 
 // AC-1505 (DB-2.5a): route D's way in, before plugins load. Fetches a manifest over HTTPS only and hands back the
 // validated object. The URL's one-time token is kept in memory, never shown, and stored only as a hash once used.
@@ -51,6 +62,15 @@ public static class ProvisioningEntry
     public static IEnumerable<string> RedactArguments(IReadOnlyList<string> args) =>
         args.Select((arg, index) => index > 0 && args[index - 1] == Argument ? Redact(arg) : arg);
 
+    // AC-1506: reading, then the applier's first phase. Both run before any plugin loads.
+    public static async Task<ProvisioningOutcome?> ProvisionAsync(string url, bool reapply, string stateRoot, ILogger logger, CancellationToken cancellationToken = default)
+    {
+        var read = await RunAsync(url, reapply, stateRoot, logger, cancellationToken: cancellationToken);
+        return read is { Manifest: not null, Failure: null }
+            ? await ProvisionManifestApplier.ApplyAsync(read, stateRoot, logger, cancellationToken)
+            : read;
+    }
+
     // Null when there is nothing to do: the state root is already set up and no reapply was asked for.
     public static async Task<ProvisioningOutcome?> RunAsync(
         string url,
@@ -67,7 +87,7 @@ public static class ProvisioningEntry
             return null;
         }
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !_Trusted(uri))
         {
             return _Failed(logger, $"Provisioning needs an https:// address, and {source} is not one, so nothing was fetched.");
         }
@@ -75,8 +95,7 @@ public static class ProvisioningEntry
         var token = HttpUtility.ParseQueryString(uri.Query)[TokenParameter];
         var tokenHash = string.IsNullOrEmpty(token) ? null : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         var usedTokensPath = Path.Combine(stateRoot, UsedTokensFile);
-        var usedTokens = File.Exists(usedTokensPath) ? await File.ReadAllLinesAsync(usedTokensPath, cancellationToken) : [];
-        if (tokenHash is not null && usedTokens.Contains(tokenHash))
+        if (tokenHash is not null && File.Exists(usedTokensPath) && (await File.ReadAllLinesAsync(usedTokensPath, cancellationToken)).Contains(tokenHash))
         {
             return _Failed(logger, $"The provisioning link for {source} has already been used. Ask for a new one.");
         }
@@ -91,7 +110,7 @@ public static class ProvisioningEntry
             request.Headers.Accept.ParseAdd("application/vnd.cockpit.provision+json; v=1");
             request.Headers.Accept.ParseAdd("application/json; q=0.9");
             using var response = await client.SendAsync(request, cancellationToken);
-            if ((response.RequestMessage?.RequestUri ?? uri).Scheme != Uri.UriSchemeHttps)
+            if (!_Trusted(response.RequestMessage?.RequestUri ?? uri))
             {
                 return _Failed(logger, $"{source} redirected away from https, so the manifest was not read.");
             }
@@ -124,14 +143,24 @@ public static class ProvisioningEntry
             logger.LogWarning("Provisioning from {Source}: {Path} was skipped ({Reason}): {Detail}", source, note.Path, note.Reason, note.Detail);
         }
 
-        if (tokenHash is not null)
-        {
-            CockpitConfigPath.WriteAllTextPrivate(usedTokensPath, string.Join('\n', usedTokens.Append(tokenHash)) + "\n");
-        }
-
+        // AC-1506: not used up here. The applier does that once everything was applied, so a failed apply leaves the link usable.
         logger.LogInformation("Provisioning manifest {ManifestId} revision {Revision} from {Source} is valid.", read.Manifest!.ManifestId, read.Manifest.Revision, source);
-        return new(read.Manifest, read.Skipped, null);
+        return new(read.Manifest, read.Skipped, null, tokenHash is null ? null : new ProvisionToken(token!, tokenHash));
     }
+
+    // Records the token's hash, so the same link is refused from now on. Server-side it is one-time anyway (DEP-264).
+    public static void UseUpToken(string stateRoot, ProvisionToken token)
+    {
+        var usedTokensPath = Path.Combine(stateRoot, UsedTokensFile);
+        var usedTokens = File.Exists(usedTokensPath) ? File.ReadAllLines(usedTokensPath) : [];
+        if (!usedTokens.Contains(token.Hash))
+        {
+            CockpitConfigPath.WriteAllTextPrivate(usedTokensPath, string.Join('\n', usedTokens.Append(token.Hash)) + "\n");
+        }
+    }
+
+    // https, or http to this machine for a test server (manifest-v1 §5.2).
+    private static bool _Trusted(Uri uri) => uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback);
 
     // A network error may quote the address it tried; only the redacted form of it leaves this method.
     private static string _Scrub(string message, Uri uri, string? token)

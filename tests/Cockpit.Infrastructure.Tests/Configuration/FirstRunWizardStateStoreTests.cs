@@ -25,30 +25,23 @@ public sealed class FirstRunWizardStateStoreTests : IDisposable
 
     // The marker's whole life in one exercise: absent before the wizard ever ran, carrying the version once it has,
     // and — the point of AC-509 — keeping the latest rather than collapsing to a flag a second run cannot move.
+    // Marking it leaves a sibling section intact (AC-1506 folded that second test in here).
     [Fact]
-    public async Task TheCompletionMarker_IsAbsentUntilMarked_ThenCarriesTheLatestVersionRatherThanAFlag()
+    public async Task TheCompletionMarker_IsAbsentUntilMarked_ThenCarriesTheLatestVersionRatherThanAFlag_AndLeavesOtherSectionsIntact()
     {
         var store = new FirstRunWizardStateStore(ConfigPath);
+        var layoutStore = new Layout.LayoutSettingsStore(ConfigPath);
+        await layoutStore.SaveAsync(new Cockpit.Core.Layout.LayoutSettings { SingleSessionLayout = true });
 
         Assert.Null(await store.GetCompletedVersionAsync());
 
         await store.MarkCompletedAsync(1);
 
         Assert.Equal(1, await store.GetCompletedVersionAsync());
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
 
         await store.MarkCompletedAsync(2);
 
         Assert.Equal(2, await store.GetCompletedVersionAsync());
-    }
-
-    [Fact]
-    public async Task MarkCompletedAsync_LeavesOtherSectionsIntact()
-    {
-        var layoutStore = new Layout.LayoutSettingsStore(ConfigPath);
-        await layoutStore.SaveAsync(new Cockpit.Core.Layout.LayoutSettings { SingleSessionLayout = true });
-
-        await new FirstRunWizardStateStore(ConfigPath).MarkCompletedAsync(1);
-
-        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
     }
 }

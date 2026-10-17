@@ -6,6 +6,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Provisioning;
 
 namespace Cockpit.Server;
@@ -57,9 +58,11 @@ internal static class Program
         logger.LogInformation("Stop budget: {Budget}.", stopBudget);
         CockpitBackend.RepairProcess(loggerFactory);
 
-        // Route D, before any plugin loads. The validated manifest is for the applier (DB-2.5b).
-        if (provisionUrl is not null
-            && await ProvisioningEntry.RunAsync(provisionUrl, args.Contains(ProvisioningEntry.ReapplyArgument), CockpitBuild.StateRoot, logger) is { Failure: not null })
+        // Route D, before any plugin loads: read and apply, all or nothing up to the write of cockpit.json (AC-1506).
+        var provisioning = provisionUrl is null
+            ? null
+            : await ProvisioningEntry.ProvisionAsync(provisionUrl, args.Contains(ProvisioningEntry.ReapplyArgument), CockpitBuild.StateRoot, logger);
+        if (provisioning is { Failure: not null })
         {
             logger.LogError("Not starting: provisioning failed (exit code {ExitCode}).", ProvisioningFailedExitCode);
             return ProvisioningFailedExitCode;
@@ -93,6 +96,11 @@ internal static class Program
 
         backend.SeedPluginSettings();
         backend.InitializePlugins();
+        if (provisioning is not null)
+        {
+            await ProvisionManifestApplier.FinishAsync(provisioning, backend.Services.GetRequiredService<PluginChannelHub>(), CockpitBuild.StateRoot, logger);
+        }
+
         backend.StartPlanners();
 
         var uiAssemblies = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetName().Name ?? string.Empty).Where(_IsUi).ToList();
