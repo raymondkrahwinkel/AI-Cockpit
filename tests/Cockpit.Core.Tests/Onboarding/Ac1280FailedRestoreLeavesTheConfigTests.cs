@@ -52,6 +52,16 @@ public sealed class Ac1280FailedRestoreLeavesTheConfigTests : IDisposable
         public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("This test only restores.");
 
+        public Task<BackupManifest> WriteAsync(Func<Stream, CancellationToken, Task> deliver, BackupOptions options, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("This test only restores.");
+
+        public Task<RestoreReport> RestoreAsync(
+            Stream source,
+            RestoreOptions options,
+            IProgress<RestoreProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("This test restores from a file.");
+
         public Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default) =>
             throw new FileNotFoundException($"Could not find file '{archivePath}'.");
 

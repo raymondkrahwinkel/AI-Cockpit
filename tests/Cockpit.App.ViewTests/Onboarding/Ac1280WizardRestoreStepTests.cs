@@ -82,6 +82,16 @@ public sealed class Ac1280WizardRestoreStepTests
         public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("These tests only restore.");
 
+        public Task<BackupManifest> WriteAsync(Func<Stream, CancellationToken, Task> deliver, BackupOptions options, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("These tests only restore.");
+
+        public Task<RestoreReport> RestoreAsync(
+            Stream source,
+            RestoreOptions options,
+            IProgress<RestoreProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("These tests restore from a file.");
+
         public Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default) =>
             Task.FromResult(new BackupManifest(
                 BackupManifest.CurrentSchema,

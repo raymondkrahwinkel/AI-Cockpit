@@ -356,6 +356,11 @@ names and keeps the tokens where `SignInMcpServerAsync` keeps them. The plugin p
 `PluginMcpSignInOutcome`, never a token; `Declined` means the server refused the grant. On a server, where no browser
 exists, this is the only sign-in there is. A plugin that calls it sets `minHostVersion` 0.92.0.
 
+`IBackupTarget` (AC-1501, SDK 3.8.0, namespace `Cockpit.Plugins.Abstractions.Backup`) is a place a cockpit backup is
+kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `ListAsync()` names what it holds as
+`BackupTargetEntry` rows, and `OpenReadAsync(id)` hands one back as a stream. A write that fails must leave nothing
+`ListAsync` shows. The host's own target is a local folder; no `ICockpitHost` method registers a plugin's target yet.
+
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`

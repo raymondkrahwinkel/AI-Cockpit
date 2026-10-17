@@ -49,9 +49,34 @@ internal sealed class BackupService(
     public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
         Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken);
 
+    public Task<BackupManifest> WriteAsync(
+        Func<Stream, CancellationToken, Task> deliver,
+        BackupOptions options,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => WriteIntoAsync(deliver, "a stream", CockpitDirectory, options, cancellationToken), cancellationToken);
+
+    // AC-1501: a path is the local folder it sits in, as a target — so the route everyone has today goes through the
+    // same seam a plugin's target will, rather than beside it.
+    internal Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
+    {
+        var folder = new LocalFolderBackupTarget(Path.GetDirectoryName(Path.GetFullPath(archivePath))!, StagingIn(root));
+
+        return WriteIntoAsync(
+            (archive, token) => folder.WriteAsync(Path.GetFileName(archivePath), archive, token),
+            archivePath,
+            root,
+            options,
+            cancellationToken);
+    }
+
     // The root is a parameter for the same reason the restore's is: neither half of this service may be pointed at
     // the operator's real cockpit directory by a test. The public pair is the only place that names it.
-    internal async Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
+    internal async Task<BackupManifest> WriteIntoAsync(
+        Func<Stream, CancellationToken, Task> deliver,
+        string destination,
+        string root,
+        BackupOptions options,
+        CancellationToken cancellationToken)
     {
         if (!Directory.Exists(root))
         {
@@ -113,15 +138,22 @@ internal sealed class BackupService(
                 await JsonSerializer.SerializeAsync(stream, manifest, Json, cancellationToken);
             }
 
-            await MoveIntoPlaceAsync(staging, archivePath, cancellationToken);
+            // Handed over only once it is whole, and read back from staging: `deliver` is the target's, not ours.
+            BackupManifest written;
+            await using (var archive = File.OpenRead(staging))
+            {
+                await deliver(archive, cancellationToken);
+                archive.Position = 0;
+                written = await ManifestOfAsync(archive, cancellationToken);
+            }
 
             logger.LogInformation(
                 "Wrote a backup to {Path} ({Credentials}, {Secrets} secret(s) stripped)",
-                archivePath,
+                destination,
                 options.IncludeCredentials ? "with credentials" : "without credentials",
                 removed.Count);
 
-            return await ReadManifestAsync(archivePath, cancellationToken);
+            return written;
         }
         finally
         {
@@ -176,7 +208,14 @@ internal sealed class BackupService(
 
     public async Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default)
     {
-        using var archive = ZipFile.OpenRead(archivePath);
+        await using var stream = File.OpenRead(archivePath);
+        return await ManifestOfAsync(stream, cancellationToken);
+    }
+
+    // Static so a target can read the manifests it lists without a service; the stream is left open for its owner.
+    internal static async Task<BackupManifest> ManifestOfAsync(Stream archiveStream, CancellationToken cancellationToken)
+    {
+        using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, leaveOpen: true);
 
         var entry = archive.GetEntry(BackupManifest.FileName)
             ?? throw new InvalidOperationException("This zip is not a cockpit backup: it has no backup.json.");
@@ -195,6 +234,45 @@ internal sealed class BackupService(
         IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
+
+    public Task<RestoreReport> RestoreAsync(
+        Stream source,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => RestoreIntoAsync(source, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
+
+    // AC-1501: fetched whole into the owner-only staging first (AC-45), then restored exactly as a file is — the
+    // manifest check, the unpack and the aside all stay the one path. A stop while fetching is a report, as ever.
+    internal async Task<RestoreReport> RestoreIntoAsync(
+        Stream source,
+        string root,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        CockpitConfigPath.EnsurePrivateDirectory(StagingIn(root));
+        var fetched = Path.Combine(StagingIn(root), $"cockpit-restore-{Guid.NewGuid():n}.zip");
+
+        try
+        {
+            try
+            {
+                await using var file = File.Create(fetched);
+                await source.CopyToAsync(file, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return new RestoreReport(Stopped: true, []);
+            }
+
+            return await RestoreIntoAsync(fetched, root, options, progress, cancellationToken);
+        }
+        finally
+        {
+            File.Delete(fetched);
+        }
+    }
 
     // The root is a parameter because a restore into the operator's real cockpit is not something a test may do.
     // A stop is REPORTED, not thrown, against the usual reading of a CancellationToken (AC-1281): stopping leaves
