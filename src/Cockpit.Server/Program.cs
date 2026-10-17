@@ -2,9 +2,11 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Secrets;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Provisioning;
 
 namespace Cockpit.Server;
 
@@ -18,14 +20,29 @@ internal static class Program
 
     private const string UnlockPasswordFileVariable = "COCKPIT_UNLOCK_PASSWORD_FILE";
 
+    // AC-1505: sysexits' EX_CONFIG, so a supervisor can tell "the provisioning source failed" from any other stop.
+    private const int ProvisioningFailedExitCode = 78;
+
     private static readonly TimeSpan DefaultStopBudget = TimeSpan.FromSeconds(8);
 
-    public static async Task<int> Main()
+    public static async Task<int> Main(string[] args)
     {
         // First, so a signal during the start is held until the start is done rather than ending the process mid-way.
         var stopRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => _RequestStop(context, stopRequested));
         using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, context => _RequestStop(context, stopRequested));
+
+        // AC-1505: read before the scrub takes it out of the environment, so no session inherits the URL or its token.
+        string? provisionUrl;
+        try
+        {
+            provisionUrl = ProvisioningEntry.UrlFromEnvironment();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await Console.Error.WriteLineAsync($"Not starting: {ProvisioningEntry.UrlFileVariable} could not be read: {exception.Message}");
+            return ProvisioningFailedExitCode;
+        }
 
         CockpitBackend.ScrubInheritedEnvironment();
         CockpitBackend.MarkProcess();
@@ -39,6 +56,14 @@ internal static class Program
         var stopBudget = _StopBudget(logger);
         logger.LogInformation("Stop budget: {Budget}.", stopBudget);
         CockpitBackend.RepairProcess(loggerFactory);
+
+        // Route D, before any plugin loads. The validated manifest is for the applier (DB-2.5b).
+        if (provisionUrl is not null
+            && await ProvisioningEntry.RunAsync(provisionUrl, args.Contains(ProvisioningEntry.ReapplyArgument), CockpitBuild.StateRoot, logger) is { Failure: not null })
+        {
+            logger.LogError("Not starting: provisioning failed (exit code {ExitCode}).", ProvisioningFailedExitCode);
+            return ProvisioningFailedExitCode;
+        }
 
         var backend = CockpitBackend.Build(loggerFactory, frontend: null, PluginStartup.Load);
 

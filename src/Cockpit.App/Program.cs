@@ -17,6 +17,7 @@ using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Provisioning;
 using Velopack;
 
 namespace Cockpit.App;
@@ -26,6 +27,9 @@ sealed class Program
     // AC-883: internal rather than private so a view test can populate the container and then prove a pane did
     // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
     public static IServiceProvider Services { get; internal set; } = null!;
+
+    // AC-1505: what `--provision` brought in, for the applier (DB-2.5b); a failure opens the wizard with its reason.
+    internal static ProvisioningOutcome? Provisioning { get; private set; }
 
     // How long a restart-launched instance waits for the outgoing one to release the single-instance claim before
     // giving up. The outgoing side is hard-exited by the exit watchdog within a few seconds (bug #32), and the
@@ -97,10 +101,20 @@ sealed class Program
         // a restart handoff and a hand launch leave the same trail otherwise.
         Cockpit.App.Logging.LifecycleLog.Use(loggerFactory);
         Cockpit.App.Logging.LifecycleLog.Write(
-            $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting: pid {Environment.ProcessId}, args [{string.Join(' ', args)}].");
+            $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting: pid {Environment.ProcessId}, args [{string.Join(' ', ProvisioningEntry.RedactArguments(args))}].");
 
         // Up front, before anything resolves a tool or spawns a session: the PATH repair and the stale-process sweep.
         CockpitBackend.RepairProcess(loggerFactory);
+
+        // AC-1505: route D, before any plugin loads. A restart is the same run going on, so it does not fetch again.
+        if (!restartHandoff && ProvisioningEntry.UrlFromArguments(args) is { } provisionUrl)
+        {
+            Provisioning = ProvisioningEntry.RunAsync(
+                provisionUrl,
+                args.Contains(ProvisioningEntry.ReapplyArgument),
+                CockpitBuild.StateRoot,
+                loggerFactory.CreateLogger("Cockpit.Provisioning")).GetAwaiter().GetResult();
+        }
 
         // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
         // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).

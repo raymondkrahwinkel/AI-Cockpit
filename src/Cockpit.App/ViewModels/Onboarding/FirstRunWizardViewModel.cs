@@ -35,7 +35,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     private readonly int _totalStepCount;
     private int _position;
 
-    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps, IReadOnlyList<WizardPlannedSlot>? plannedSlots = null)
+    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps, IReadOnlyList<WizardPlannedSlot>? plannedSlots = null, int? startAtOrder = null)
     {
         if (steps.Count == 0)
         {
@@ -105,6 +105,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
             _navigableIndexes = [0];
         }
 
+        _position = Math.Max(0, _navigableIndexes.ToList().FindIndex(index => ordered[index].Order == startAtOrder));
         _ApplyPosition();
     }
 
