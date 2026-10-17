@@ -1,0 +1,359 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
+using Material.Icons.Avalonia;
+
+namespace Cockpit.Plugin.Depot.UI;
+
+// AC-1568: browse a connected Depot project — documents and artifacts in one tree, view or download either, and for
+// an artifact manage its share link. The behaviour is DepotBrowserModel's; this is only the controls.
+internal sealed class DepotBrowserPanel : UserControl
+{
+    private readonly ICockpitUiHost _host;
+    private readonly IReadOnlyList<DepotConnectionRegistration> _connections;
+    private readonly HttpClient _http = new();
+    private readonly ComboBox _connectionBox = new() { MinWidth = 140 };
+    private readonly ComboBox _projectBox = new() { MinWidth = 200 };
+    private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button _signIn = new() { IsVisible = false };
+    private readonly TreeView _tree = new();
+    private readonly StackPanel _detail = new() { Spacing = 8, Margin = new Thickness(12) };
+    private DepotBrowserModel? _model;
+    private DepotBrowserTree _loaded = new([], false);
+    private string? _project;
+    private bool _filling;
+
+    public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections)
+    {
+        _host = host;
+        _connections = connections;
+        var refresh = new Button { Content = "Refresh" };
+        refresh.Click += async (_, _) => await LoadTreeAsync().ConfigureAwait(true);
+        _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
+        _connectionBox.ItemsSource = connections.Select(connection => connection.Name).ToList();
+        _connectionBox.IsVisible = connections.Count > 1;
+        _connectionBox.SelectionChanged += async (_, _) => await SelectConnectionAsync(_connectionBox.SelectedIndex).ConfigureAwait(true);
+        _projectBox.SelectionChanged += async (_, _) =>
+        {
+            if (!_filling && _projectBox.SelectedItem is DepotBrowserProject project)
+            {
+                _project = project.Project;
+                await LoadTreeAsync().ConfigureAwait(true);
+            }
+        };
+        _tree.SelectionChanged += async (_, _) =>
+        {
+            if (_tree.SelectedItem is TreeViewItem { Tag: DepotTreeItem item })
+            {
+                await ShowAsync(item).ConfigureAwait(true);
+            }
+        };
+
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh } };
+        var banner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 0, 12, 6), Children = { _message, _signIn } };
+        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("360,*") };
+        body.Children.Add(new Border { BorderBrush = _Brush("CockpitHairlineBrush"), BorderThickness = new Thickness(0, 1, 1, 0), Child = _tree });
+        var detail = new ScrollViewer { Content = _detail };
+        Grid.SetColumn(detail, 1);
+        body.Children.Add(detail);
+        var layout = new DockPanel();
+        DockPanel.SetDock(top, Dock.Top);
+        DockPanel.SetDock(banner, Dock.Top);
+        layout.Children.Add(top);
+        layout.Children.Add(banner);
+        layout.Children.Add(body);
+        Content = layout;
+
+        if (connections.Count == 0)
+        {
+            _message.Text = "Add a Depot server in the Depot settings first.";
+            return;
+        }
+
+        _connectionBox.SelectedIndex = 0;
+    }
+
+    private async Task SelectConnectionAsync(int index)
+    {
+        if (index < 0 || index >= _connections.Count)
+        {
+            return;
+        }
+
+        _model = new DepotBrowserModel(_host, _connections[index], _http);
+        _tree.ItemsSource = null;
+        _detail.Children.Clear();
+        _message.Text = "Loading projects…";
+        var answer = await _model.ProjectsAsync().ConfigureAwait(true);
+        if (!_Accepted(answer))
+        {
+            return;
+        }
+
+        var projects = answer.Data ?? [];
+        _filling = true;
+        _projectBox.ItemsSource = projects;
+        _projectBox.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DepotBrowserProject>((project, _) => new TextBlock { Text = project?.Name });
+        var wanted = await DefaultProjectAsync().ConfigureAwait(true);
+        _projectBox.SelectedItem = projects.FirstOrDefault(project => project.Project == wanted || project.Project.EndsWith("/" + wanted, StringComparison.Ordinal)) ?? projects.FirstOrDefault();
+        _filling = false;
+        _project = (_projectBox.SelectedItem as DepotBrowserProject)?.Project;
+        await LoadTreeAsync().ConfigureAwait(true);
+    }
+
+    // The Depot project the active Cockpit project keeps its memory in (a `depot…:<project>` reference), if any.
+    private async Task<string?> DefaultProjectAsync()
+    {
+        var rows = await _host.GetProjectMemoryRowsAsync(_host.ActivePaneId).ConfigureAwait(true);
+        var reference = rows.Select(row => row.Reference).FirstOrDefault(value => value.StartsWith(DepotPluginScheme, StringComparison.OrdinalIgnoreCase));
+        return reference is null ? null : reference[(reference.IndexOf(':') + 1)..];
+    }
+
+    private const string DepotPluginScheme = "depot";
+
+    public async Task LoadTreeAsync(string? selectPath = null)
+    {
+        if (_model is null || _project is null)
+        {
+            return;
+        }
+
+        _message.Text = "Loading…";
+        var answer = await _model.TreeAsync(_project).ConfigureAwait(true);
+        if (!_Accepted(answer))
+        {
+            return;
+        }
+
+        _loaded = answer.Data ?? new([], false);
+        _message.Text = _loaded.Nodes.Count == 0 ? "This project has no documents or artifacts yet." : string.Empty;
+        _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
+        _detail.Children.Clear();
+    }
+
+    private TreeViewItem _Row(DepotTreeItem item, string? selectPath)
+    {
+        var row = new TreeViewItem { Tag = item, Header = _Header(item), ItemsSource = item.Children.Select(child => _Row(child, selectPath)).ToList() };
+        if (selectPath is not null && (selectPath == item.Path || selectPath.StartsWith(item.Path + "/", StringComparison.Ordinal)))
+        {
+            row.IsExpanded = true;
+            row.IsSelected = selectPath == item.Path;
+        }
+
+        return row;
+    }
+
+    private static Control _Header(DepotTreeItem item)
+    {
+        var kind = item.Kind switch
+        {
+            DepotTreeKind.Folder => MaterialIconKind.FolderOutline,
+            DepotTreeKind.Document => MaterialIconKind.FileDocumentOutline,
+            _ when item.Node?.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true => MaterialIconKind.FileImageOutline,
+            _ => MaterialIconKind.FileOutline,
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        row.Children.Add(new MaterialIcon { Kind = kind, Width = 16, Height = 16 });
+        row.Children.Add(new TextBlock { Text = item.Name, VerticalAlignment = VerticalAlignment.Center });
+        if (item.Node is { ShareId: not null } shared)
+        {
+            row.Children.Add(new MaterialIcon { Kind = shared.IsPublic ? MaterialIconKind.Earth : MaterialIconKind.LinkVariant, Width = 12, Height = 12 });
+        }
+
+        if (item.Node is { } node)
+        {
+            row.Children.Add(_Faint($"{_Size(node.Size)}  {node.Modified?.ToLocalTime():yyyy-MM-dd}"));
+        }
+
+        return row;
+    }
+
+    private async Task ShowAsync(DepotTreeItem item)
+    {
+        _detail.Children.Clear();
+        if (item.Node is not { } node || _model is null || _project is null)
+        {
+            return;
+        }
+
+        _detail.Children.Add(new TextBlock { Text = item.Name, FontSize = 16, FontWeight = FontWeight.SemiBold });
+        _detail.Children.Add(_Faint($"{node.Path} · {_Size(node.Size)} · {node.Modified?.ToLocalTime():yyyy-MM-dd HH:mm}"));
+        var download = new Button { Content = "Download" };
+        download.Click += async (_, _) => await DownloadAsync(node).ConfigureAwait(true);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { download } };
+        _detail.Children.Add(actions);
+
+        if (node.Kind == DepotBrowserKind.Document)
+        {
+            var view = await _model.RenderDocumentAsync(_project, node).ConfigureAwait(true);
+            if (_Accepted(view) && view.Data is { } markdown)
+            {
+                _detail.Children.Add(markdown);
+            }
+
+            return;
+        }
+
+        _detail.Children.Add(_ShareBlock(node));
+        if (DepotBrowserModel.CanPreview(node))
+        {
+            var preview = await _model.PreviewAsync(_project, node).ConfigureAwait(true);
+            if (_Accepted(preview) && preview.Data is { } shown)
+            {
+                _detail.Children.Add(shown.Image is { } image
+                    ? new Image { Source = image, MaxHeight = 480, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left }
+                    : new SelectableTextBlock { Text = shown.Text, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas, Menlo, monospace") });
+            }
+
+            return;
+        }
+
+        var open = new Button { Content = "Open" };
+        open.Click += async (_, _) => await OpenAsync(node).ConfigureAwait(true);
+        actions.Children.Add(open);
+    }
+
+    private Control _ShareBlock(DepotBrowserNode node)
+    {
+        var block = new StackPanel { Spacing = 6 };
+        block.Children.Add(new TextBlock { Text = "Share link", FontWeight = FontWeight.SemiBold });
+        var visibility = new ComboBox { ItemsSource = new[] { "Members only", "Public" }, SelectedIndex = node.IsPublic ? 1 : 0, IsEnabled = _loaded.CanShare };
+        if (node.ShareId is null)
+        {
+            block.Children.Add(_Faint("Not shared"));
+            if (!_loaded.CanShare)
+            {
+                block.Children.Add(_Faint("Sharing needs the Editor role in this project."));
+                return block;
+            }
+
+            var create = new Button { Content = "Create link" };
+            create.Click += async (_, _) => await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: true).ConfigureAwait(true);
+            block.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { visibility, create } });
+            return block;
+        }
+
+        block.Children.Add(new TextBlock { Text = node.IsPublic ? "Public link" : "Members link", Foreground = _Brush(node.IsPublic ? "CockpitStatusWaitingBrush" : "CockpitAccentBrush") });
+        if (node.IsPublic)
+        {
+            block.Children.Add(_Faint("Anyone with this URL can open the file, no account needed."));
+        }
+
+        block.Children.Add(new TextBox { Text = node.ShareUrl, IsReadOnly = true });
+        var copy = new Button { Content = "Copy" };
+        copy.Click += async (_, _) => await _host.SetClipboardTextAsync(node.ShareUrl!).ConfigureAwait(true);
+        var openLink = new Button { Content = "Open link" };
+        openLink.Click += async (_, _) => await _Launch(new Uri(node.ShareUrl!)).ConfigureAwait(true);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, openLink } };
+        if (_loaded.CanShare)
+        {
+            var wasPublic = node.IsPublic;
+            visibility.SelectionChanged += async (_, _) =>
+            {
+                if ((visibility.SelectedIndex == 1) != wasPublic)
+                {
+                    await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: false).ConfigureAwait(true);
+                }
+            };
+            var stop = new Button { Content = "Stop sharing" };
+            stop.Click += async (_, _) => await UnshareAsync(node).ConfigureAwait(true);
+            row.Children.Insert(0, visibility);
+            row.Children.Add(stop);
+        }
+
+        block.Children.Add(row);
+        return block;
+    }
+
+    private async Task ShareAsync(DepotBrowserNode node, bool isPublic, bool copyLink)
+    {
+        var answer = await _model!.ShareAsync(_project!, node, isPublic, copyLink).ConfigureAwait(true);
+        if (answer is null)
+        {
+            // Declined: put the picker back where the file actually is.
+            await LoadTreeAsync(node.Path).ConfigureAwait(true);
+            return;
+        }
+
+        if (_Accepted(answer))
+        {
+            if (copyLink)
+            {
+                _host.ShowToast("Link copied to the clipboard.");
+            }
+
+            await LoadTreeAsync(node.Path).ConfigureAwait(true);
+        }
+    }
+
+    private async Task UnshareAsync(DepotBrowserNode node)
+    {
+        if (await _model!.UnshareAsync(_project!, node).ConfigureAwait(true) is { } answer && _Accepted(answer))
+        {
+            await LoadTreeAsync(node.Path).ConfigureAwait(true);
+        }
+    }
+
+    private async Task DownloadAsync(DepotBrowserNode node)
+    {
+        var answer = await _model!.DownloadAsync(_project!, node, async name =>
+        {
+            var file = await TopLevel.GetTopLevel(this)!.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = name }).ConfigureAwait(true);
+            return file is null ? null : await file.OpenWriteAsync().ConfigureAwait(true);
+        }).ConfigureAwait(true);
+        if (_Accepted(answer) && answer.Data)
+        {
+            _host.ShowToast($"Saved {DepotDownload.SafeFileName(node.Path)}.");
+        }
+    }
+
+    private async Task OpenAsync(DepotBrowserNode node) =>
+        _Accepted(await _model!.OpenAsync(_project!, node, _Launch).ConfigureAwait(true));
+
+    private async Task SignInAsync()
+    {
+        if (_model is not null && await _model.SignInAsync().ConfigureAwait(true))
+        {
+            _signIn.IsVisible = false;
+            await SelectConnectionAsync(_connectionBox.SelectedIndex).ConfigureAwait(true);
+        }
+    }
+
+    private Task _Launch(Uri uri) => TopLevel.GetTopLevel(this)?.Launcher.LaunchUriAsync(uri) ?? Task.CompletedTask;
+
+    // False (with the reason on screen) unless the answer is Ok. Not signed in gets a button and nothing else.
+    private bool _Accepted<T>(DepotBrowserAnswer<T> answer)
+    {
+        _signIn.IsVisible = answer.Status == DepotBrowserStatus.SignIn;
+        if (_signIn.IsVisible)
+        {
+            _signIn.Content = answer.Message;
+        }
+
+        if (answer.Status == DepotBrowserStatus.Ok)
+        {
+            _message.Text = string.Empty;
+            return true;
+        }
+
+        _message.Text = answer.Status == DepotBrowserStatus.SignIn ? "Not signed in." : answer.Message;
+        return false;
+    }
+
+    private static TextBlock _Faint(string text) => new() { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = _Brush("CockpitTextSecondaryBrush") };
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+
+    private static string _Size(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / 1024.0 / 1024.0:0.#} MB",
+    };
+}

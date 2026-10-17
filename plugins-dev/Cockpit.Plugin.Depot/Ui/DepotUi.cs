@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using Material.Icons;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Depot.UI;
@@ -21,5 +22,9 @@ public sealed class DepotUi : ICockpitPluginUi
         // AC-784: same global-toolbar route the Kubernetes plugin uses (AC-91) — the project editor's own
         // "Servers…" button above still opens settings the same way it always has.
         host.AddToolbarAction(new ToolbarAction("Depot settings", MaterialIconKind.Database, () => host.ShowSettingsAsync()));
+        // AC-1568: the file browser, as a dock panel and from the toolbar.
+        host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot files", MaterialIconKind.FolderNetworkOutline, () => new DepotBrowserPanel(host, settings.Connections)));
+        host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
+            () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections), "depot-browser", 1000, 680)));
     }
 }
