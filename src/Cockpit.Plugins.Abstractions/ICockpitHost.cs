@@ -843,4 +843,16 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>
+    /// Registers a place the cockpit's own portable settings can be kept for the operator (AC-540), so a fresh install
+    /// can take them over. The carrier only stores the blob; which settings go in is the host's choice.
+    /// </summary>
+    /// <remarks>
+    /// The host keeps one carrier: a second registration is ignored. Default no-op so existing implementations keep
+    /// compiling untouched.
+    /// </remarks>
+    void AddSettingsCarrier(Settings.SettingsCarrierRegistration registration)
+    {
+    }
+
 }

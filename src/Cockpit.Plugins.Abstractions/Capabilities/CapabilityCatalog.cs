@@ -151,6 +151,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "settings.carrier",
+            "Keeping the cockpit's settings for the operator",
+            "Keeps the cockpit's portable settings, chosen by the host, so a fresh install can take them over.",
+            CapabilityRisk.Sensitive,
+            "0.94.0",
+            ["ICockpitHost.AddSettingsCarrier"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",
