@@ -37,22 +37,22 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- Same Microsoft.Extensions.AI / .OpenAI versions as Cockpit.Infrastructure — the host's copies load
          at runtime (this plugin ships none of its own), so the version must line up for type identity. -->
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0">
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.11.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0">
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- AC-1345: resolved from ICockpitHost.Services (the app's own shared container already carries an
          ILoggerFactory registration) so a hand-edited cockpit.json with a non-positive TimeoutSeconds leaves
          a line in the same dev log every other host-side fallback does. Compile-only, like the references
          above: the host's own already-loaded copy answers this type at runtime. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

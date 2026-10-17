@@ -38,13 +38,13 @@
     <PackageReference Include="Material.Icons" Version="3.0.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jint" Version="4.12.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+    <PackageReference Include="Jint" Version="4.17.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The [McpServerTool] attributes for the workflow MCP (#AC-12). Host-provided (the cockpit already loads
          ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one identity. -->
-    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
