@@ -45,6 +45,9 @@ public static class ProvisionManifestApplier
 
     private const string ExchangeCredential = "exchange-provision-token";
 
+    // The link configures and does not log in: the operator signs in through the plugin's own settings.
+    private const string InteractiveCredential = "interactive";
+
     private static readonly JsonSerializerOptions ValueOptions = new() { Converters = { new JsonStringEnumConverter() } };
 
     private static readonly JsonSerializerOptions ChannelOptions = new(JsonSerializerDefaults.Web);
@@ -181,11 +184,18 @@ public static class ProvisionManifestApplier
         foreach (var connection in manifest.Connections ?? [])
         {
             var path = $"connections.{connection.Id}";
-            if (connection.Config is not { ValueKind: JsonValueKind.Object } config
-                || !config.TryGetProperty("credential", out var credential)
-                || credential.ValueKind != JsonValueKind.String
-                || credential.GetString() != ExchangeCredential)
+            var config = connection.Config is { ValueKind: JsonValueKind.Object } block ? block : default;
+            var credential = _String(config, "credential");
+            if (credential == InteractiveCredential)
             {
+                complete = false;
+                report.Add(new(path, SignInNeeded, Detail: $"add the connection to {_String(config, "url") ?? connection.Id} in the settings of plugin {connection.Plugin} and sign in there"));
+                continue;
+            }
+
+            if (credential != ExchangeCredential)
+            {
+                complete = false;
                 report.Add(new(path, ConnectionSkipped, Detail: $"handing a connection to plugin {connection.Plugin} is not built yet"));
                 continue;
             }
@@ -255,6 +265,9 @@ public static class ProvisionManifestApplier
     }
 
     private sealed record ExchangeAnswer(bool Success, string? Message);
+
+    private static string? _String(JsonElement config, string name) =>
+        config.ValueKind == JsonValueKind.Object && config.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     // Each key maps to one cockpit.json leaf on the carrier white list (AC-540); any other key is ignored and reported.
     private static List<(PropertyInfo[] Chain, object? Value)> _Settings(ProvisionManifest manifest, List<ProvisionNote> report)

@@ -66,6 +66,46 @@ public sealed class ProvisioningJourney
         }
     }
 
+    // The link configures Depot and does not log in: the toast leads to the plugin's own sign-in, and the link stays usable.
+    [Fact]
+    public async Task An_interactive_connection_leaves_the_link_usable_and_its_toast_offers_the_plugin_settings_to_sign_in()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var server = builder.Build();
+        server.MapGet("/manifest", () => Results.Text(InteractiveManifest, "application/vnd.cockpit.provision+json"));
+        await server.StartAsync();
+        var url = $"{server.Urls.Single()}/manifest?t={Token}";
+
+        try
+        {
+            await using var cockpit = JourneyHost.Desktop(stateRoot =>
+                Program.Provisioning = ProvisioningEntry.ProvisionAsync(url, false, stateRoot, NullLogger.Instance).GetAwaiter().GetResult());
+            await cockpit.StartDesktopAsync();
+            await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(cockpit.Cockpit.Toasts, () => cockpit.Cockpit.Toasts.Count > 0));
+
+            var toast = Assert.Single(cockpit.Cockpit.Toasts);
+            Assert.Equal("This cockpit was set up for you. Still to do: add the connection to https://depot.acme.nl in the settings of plugin depot and sign in there.", toast.Message);
+            Assert.True(toast.HasAction);
+            Assert.Equal("Open Depot settings", toast.ActionLabel);
+            Assert.False(File.Exists(Path.Combine(cockpit.StateRoot, "provision-tokens-used.txt")));
+            Assert.Null((await ProvisioningEntry.ProvisionAsync(url, true, cockpit.StateRoot, NullLogger.Instance))!.Failure);
+        }
+        finally
+        {
+            Program.Provisioning = null;
+        }
+    }
+
+    private const string InteractiveManifest = """
+        {
+          "format": "cockpit.provision", "formatVersion": 1,
+          "issuer": { "kind": "static" },
+          "connections": [ { "id": "acme-depot", "plugin": "depot", "required": true,
+                             "config": { "url": "https://depot.acme.nl", "credential": "interactive" } } ]
+        }
+        """;
+
     private const string Manifest = """
         {
           "format": "cockpit.provision", "formatVersion": 1,
