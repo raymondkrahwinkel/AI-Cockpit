@@ -17,6 +17,8 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
     private string? _failingDownload;
 
+    private readonly List<string?> _fetchedWithToken = [];
+
     public ProvisionManifestApplierTests() => Directory.CreateDirectory(_stateRoot);
 
     public void Dispose() => Directory.Delete(_stateRoot, recursive: true);
@@ -28,7 +30,10 @@ public sealed class ProvisionManifestApplierTests : IDisposable
     [Fact]
     public async Task A_failed_plugin_download_writes_nothing_and_names_the_plugin_then_the_manifest_applies_and_a_second_time_changes_nothing()
     {
-        File.WriteAllText(ConfigPath, """{ "Profiles": [ { "Label": "Mine", "ConfigDir": "D:\\mine" } ], "Terminal": { "FontSize": 11 } }""");
+        File.WriteAllText(ConfigPath, """
+            { "Profiles": [ { "Label": "Mine", "ConfigDir": "D:\\mine" } ], "Terminal": { "FontSize": 11 },
+              "PluginStores": [ { "kind": "remote", "location": "https://store.example/", "token": "entered-here" } ] }
+            """);
         var before = File.ReadAllBytes(ConfigPath);
 
         _failingDownload = "beta";
@@ -38,10 +43,16 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Contains("plugins.beta", failed.Failure);
         Assert.Equal(["plugins.beta"], failed.Report.Where(line => line.Reason == ProvisionManifestApplier.PluginFailed).Select(line => line.Path));
 
+        // A private store's token is the one entered on this machine; a private store without one is named, not left to fail.
+        Assert.Equal(["entered-here"], _fetchedWithToken.Distinct());
+        Assert.Contains("stores.acme-intern (enter the token for store acme-intern (https://plugins.acme.nl/) under Manage stores)", failed.Failure);
+        Assert.Equal(["stores.acme-intern"], failed.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
+
         _failingDownload = null;
         var applied = await _ApplyAsync();
 
         Assert.Null(applied.Failure);
+        Assert.Equal(["stores.acme-intern"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
         var written = File.ReadAllText(ConfigPath);
         var file = JsonNode.Parse(written)!;
         Assert.Equal(
@@ -68,7 +79,11 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         var read = ProvisionManifestReader.Read(Manifest);
         var storeClient = Substitute.For<IPluginStoreClient>();
         storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
-            .Returns(new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", [_Published("alpha"), _Published("beta")]), "https://store.example/index.json"));
+            .Returns(call =>
+            {
+                _fetchedWithToken.Add(call.Arg<PluginStoreConfig>().Token);
+                return new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", [_Published("alpha"), _Published("beta")]), "https://store.example/index.json");
+            });
         storeClient.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
@@ -109,7 +124,8 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         {
           "format": "cockpit.provision", "formatVersion": 1,
           "plugins": { "required": [ { "id": "alpha", "minVersion": "1.0.0", "store": "acme" }, { "id": "beta", "store": "acme" } ] },
-          "stores": { "allowed": [ { "id": "acme", "url": "https://store.example/", "auth": "none" } ] },
+          "stores": { "allowed": [ { "id": "acme", "url": "https://store.example/", "auth": "token-required" } ],
+                      "added": [ { "id": "acme-intern", "url": "https://plugins.acme.nl/", "auth": "token-required" } ] },
           "settings": {
             "notifications.localEnabled":     { "value": false, "mode": "default", "by": "org" },
             "terminal.fontSize":              { "value": 15,    "mode": "default", "by": "profile" },

@@ -681,7 +681,7 @@ public partial class App : Application
             Program.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Cockpit.Provisioning"));
         Program.Provisioning = finished;
         var open = finished.Report
-            .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.ConnectionSkipped)
+            .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.TokenNeeded or ProvisionManifestApplier.ConnectionSkipped)
             .Select(line => line.Detail)
             .ToList();
         if (open.Count > 0)

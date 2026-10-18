@@ -32,6 +32,8 @@ public static class ProvisionManifestApplier
 
     public const string SignInNeeded = "sign-in-needed";
 
+    public const string TokenNeeded = "token-needed";
+
     // A section this version reads but does not apply yet, said rather than passed over.
     public const string NotApplied = "not-applied";
 
@@ -72,6 +74,8 @@ public static class ProvisionManifestApplier
         var access = new CockpitConfigFileAccess(CockpitConfigPath.For(stateRoot));
         var current = await access.ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
 
+        var tokenNeeded = _TokenNeeded(manifest, current);
+        report.AddRange(tokenNeeded);
         var settings = _Settings(manifest, report);
         _ReportNotApplied(manifest, report);
         var plugins = await _ResolvePluginsAsync(manifest, current, pluginsRoot, storeClient, report, cancellationToken).ConfigureAwait(false);
@@ -96,7 +100,7 @@ public static class ProvisionManifestApplier
         if (failed.Count > 0)
         {
             report.AddRange(failed);
-            var failure = $"Provisioning wrote nothing to the settings: {string.Join("; ", failed.Select(line => $"{line.Path} ({line.Detail})"))}.";
+            var failure = $"Provisioning wrote nothing to the settings: {string.Join("; ", failed.Concat(tokenNeeded).Select(line => $"{line.Path} ({line.Detail})"))}.";
             logger.LogError("{Failure}", failure);
             return outcome with { Failure = failure, Report = report };
         }
@@ -124,7 +128,7 @@ public static class ProvisionManifestApplier
                 }
             }
 
-            foreach (var store in _Stores(manifest).Where(store => !file.PluginStores.Any(store.SameStoreAs)))
+            foreach (var store in _Stores(manifest, current).Where(store => !file.PluginStores.Any(store.SameStoreAs)))
             {
                 file.PluginStores.Add(store);
             }
@@ -373,7 +377,7 @@ public static class ProvisionManifestApplier
                 continue;
             }
 
-            var stores = _Stores(manifest, store).Concat(store is null ? current.PluginStores : []).DistinctBy(candidate => candidate.Location).ToList();
+            var stores = _Stores(manifest, current, store).Concat(store is null ? current.PluginStores : []).DistinctBy(candidate => candidate.Location).ToList();
             PluginProvisionRequest? request = null;
             foreach (var candidate in stores)
             {
@@ -428,11 +432,20 @@ public static class ProvisionManifestApplier
         return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
-    // The manifest's stores, without a token: that is asked for on this machine (§3.2).
-    private static IEnumerable<PluginStoreConfig> _Stores(ProvisionManifest manifest, string? id = null) =>
+    // The manifest's stores, each with the token this machine holds for it: a token never travels in a manifest (§3.2).
+    private static IEnumerable<PluginStoreConfig> _Stores(ProvisionManifest manifest, CockpitConfigFile current, string? id = null) =>
         (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
             .Where(store => id is null || store.Id == id)
-            .Select(store => PluginStoreConfig.Remote(store.Url));
+            .Select(store => PluginStoreConfig.Remote(store.Url, _LocalToken(store, current)));
+
+    private static string? _LocalToken(ProvisionStore store, CockpitConfigFile current) =>
+        current.PluginStores.FirstOrDefault(local => local is not null && local.SameStoreAs(PluginStoreConfig.Remote(store.Url)))?.Token;
+
+    private static List<ProvisionNote> _TokenNeeded(ProvisionManifest manifest, CockpitConfigFile current) =>
+        [.. (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
+            .Where(store => store.Auth == "token-required" && string.IsNullOrWhiteSpace(_LocalToken(store, current)))
+            .DistinctBy(store => store.Id)
+            .Select(store => new ProvisionNote($"stores.{store.Id}", TokenNeeded, Detail: $"enter the token for store {store.Id} ({store.Url}) under Manage stores"))];
 
     // Sets what travels and keeps what belongs to this machine: config directories, paths, keys and secret values.
     private static void _SetProfile(SessionProfileEntry entry, ProvisionProfile profile)
