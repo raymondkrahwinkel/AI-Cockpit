@@ -680,9 +680,13 @@ public partial class App : Application
             CockpitBuild.StateRoot,
             Program.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Cockpit.Provisioning"));
         Program.Provisioning = finished;
+        var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
+        // The report only knows plugin ids; the user should read the name the button shows.
+        var named = (finished.Manifest?.Connections ?? []).Select(connection => connection.Plugin).Distinct().Where(cockpit.HasPluginSettings).ToList();
         var open = finished.Report
             .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.TokenNeeded or ProvisionManifestApplier.ConnectionSkipped)
-            .Select(line => line.Detail)
+            .Select(line => named.Aggregate(line.Detail, (detail, plugin) => detail?.Replace(
+                $"the settings of plugin {plugin} and", $"the {cockpit.PluginSettings[plugin].PluginName} settings and")))
             .ToList();
         if (open.Count == 0)
         {
@@ -690,7 +694,6 @@ public partial class App : Application
         }
 
         var message = $"This cockpit was set up for you. Still to do: {string.Join("; ", open)}.";
-        var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
         var signInPlugin = (finished.Manifest?.Connections ?? [])
             .Where(connection => finished.Report.Any(line => line.Reason == ProvisionManifestApplier.SignInNeeded && line.Path == $"connections.{connection.Id}"))
             .Select(connection => connection.Plugin)

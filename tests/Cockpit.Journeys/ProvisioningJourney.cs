@@ -85,7 +85,7 @@ public sealed class ProvisioningJourney
             await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(cockpit.Cockpit.Toasts, () => cockpit.Cockpit.Toasts.Count > 0));
 
             var toast = Assert.Single(cockpit.Cockpit.Toasts);
-            Assert.Equal("This cockpit was set up for you. Still to do: add the connection to https://depot.acme.nl in the settings of plugin depot and sign in there.", toast.Message);
+            Assert.Equal("This cockpit was set up for you. Still to do: add the connection to https://depot.acme.nl in the Depot settings and sign in there.", toast.Message);
             Assert.True(toast.HasAction);
             Assert.Equal("Open Depot settings", toast.ActionLabel);
             Assert.False(File.Exists(Path.Combine(cockpit.StateRoot, "provision-tokens-used.txt")));
