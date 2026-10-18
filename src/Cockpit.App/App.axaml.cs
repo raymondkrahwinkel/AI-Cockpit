@@ -684,10 +684,25 @@ public partial class App : Application
             .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.TokenNeeded or ProvisionManifestApplier.ConnectionSkipped)
             .Select(line => line.Detail)
             .ToList();
-        if (open.Count > 0)
+        if (open.Count == 0)
         {
-            Program.Services.GetRequiredService<IToastService>().Show($"This cockpit was set up for you. Still to do: {string.Join("; ", open)}.", ToastSeverity.Information);
+            return;
         }
+
+        var message = $"This cockpit was set up for you. Still to do: {string.Join("; ", open)}.";
+        var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
+        var signInPlugin = (finished.Manifest?.Connections ?? [])
+            .Where(connection => finished.Report.Any(line => line.Reason == ProvisionManifestApplier.SignInNeeded && line.Path == $"connections.{connection.Id}"))
+            .Select(connection => connection.Plugin)
+            .FirstOrDefault(cockpit.HasPluginSettings);
+        if (signInPlugin is null)
+        {
+            Program.Services.GetRequiredService<IToastService>().Show(message, ToastSeverity.Information);
+            return;
+        }
+
+        Program.Services.GetRequiredService<IToastService>().Show(
+            message, ToastSeverity.Information, $"Open {cockpit.PluginSettings[signInPlugin].PluginName} settings", () => _ = cockpit.OpenPluginSettingsAsync(signInPlugin));
     }
 
     private static void _RegisterInstalledTemplates(IWorkflowTemplateLibrary library, IWorkflowTemplateRegistry registry)
