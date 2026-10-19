@@ -84,12 +84,14 @@ public sealed class DepotSyncWatcherTests : IDisposable
     }
 
     [Fact]
-    public async Task ACheckThatCannotAnswer_IsToldOnce_AlsoWhenItRecoversAndFailsAgain()
+    public async Task ACheckThatCannotAnswer_IsToldOnce_AlsoWhenItFirstFailedBeforeAnyoneListened_AndAfterRecovering()
     {
         var told = new List<(string ProjectId, string Reason)>();
-        _watcher.OnFailing = (projectId, reason) => told.Add((projectId, reason));
 
+        // The first pass runs at start, before anyone listens: what it found is still said by the next check.
         _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(SharedProjectBindingResult.Failed("Not signed in.")));
+        await _watcher.RunOnceAsync();
+        _watcher.OnFailing = (projectId, reason) => told.Add((projectId, reason));
         await _watcher.RunOnceAsync();
         await _watcher.RunOnceAsync();
         await _watcher.RunOnceAsync();

@@ -236,11 +236,13 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         if (_failing.TryAdd(projectId, 0))
         {
             _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
+        }
 
-            if (_told.TryAdd(projectId, 0))
-            {
-                OnFailing?.Invoke(projectId, reason);
-            }
+        // Claimed only once someone listens: the first pass runs at start, before the app has hung its toast on this, and a
+        // failure it found then must still be said by the next check.
+        if (OnFailing is { } tell && _told.TryAdd(projectId, 0))
+        {
+            tell(projectId, reason);
         }
     }
 
