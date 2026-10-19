@@ -65,7 +65,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
     // Says what the last run left unsaid, then starts watching the clock. Idempotent.
     public void Start()
     {
-        if (_timer is not null || _disposed || !_disposed)
+        if (_timer is not null || _disposed)
         {
             return;
         }
