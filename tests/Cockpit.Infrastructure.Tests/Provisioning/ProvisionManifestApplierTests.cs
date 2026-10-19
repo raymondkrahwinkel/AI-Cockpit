@@ -79,8 +79,8 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.DoesNotContain(applied.Report, line => line.Path.StartsWith("firstRun", StringComparison.Ordinal));
 
         // Off the white list: not written, and said.
-        Assert.NotEqual("Light", file["Layout"]?["ThemeMode"]?.ToString());
-        Assert.Contains(applied.Report, line => line is { Path: "settings.layout.themeMode", Reason: ProvisionManifestReader.SkippedUnknown });
+        Assert.NotEqual(300, file["Layout"]?["SidebarWidth"]?.GetValue<double>());
+        Assert.Contains(applied.Report, line => line is { Path: "settings.layout.sidebarWidth", Reason: ProvisionManifestReader.SkippedUnknown });
 
         var again = await _ApplyAsync();
         Assert.Null(again.Failure);
@@ -255,7 +255,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
             "notifications.localEnabled":     { "value": false, "mode": "default", "by": "org" },
             "terminal.fontSize":              { "value": 15,    "mode": "default", "by": "profile" },
             "sessionBehavior.autoCloseOnExit": { "value": true,  "mode": "locked",  "by": "org" },
-            "layout.themeMode":               { "value": "Light", "mode": "default", "by": "profile" }
+            "layout.sidebarWidth":            { "value": 300,     "mode": "default", "by": "profile" }
           },
           "profiles": { "items": [
             { "id": "acme-dev", "label": "Acme dev", "by": "org",

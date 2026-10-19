@@ -65,8 +65,8 @@ public sealed class ProvisioningJourney
 
             var file = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(cockpit.StateRoot)))!;
             Assert.Equal(("false", "15", "true"), (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
-            Assert.NotEqual("Light", file["Layout"]?["ThemeMode"]?.ToString());
-            Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "settings.layout.themeMode", Reason: "skipped-unknown" });
+            Assert.NotEqual(300, file["Layout"]?["SidebarWidth"]?.GetValue<double>());
+            Assert.Contains(Program.Provisioning.Report, line => line is { Path: "settings.layout.sidebarWidth", Reason: "skipped-unknown" });
             Assert.StartsWith("# Rule set of Acme", await File.ReadAllTextAsync(CockpitConfigPath.AssistantOrgRulesFor(cockpit.StateRoot)), StringComparison.Ordinal);
 
             // Used up only now that everything was applied, and kept as its hash alone.
@@ -146,7 +146,7 @@ public sealed class ProvisioningJourney
             "notifications.localEnabled":      { "value": false,   "mode": "default", "by": "org" },
             "terminal.fontSize":               { "value": 15,      "mode": "locked",  "by": "org" },
             "sessionBehavior.autoCloseOnExit": { "value": true,    "mode": "default", "by": "org" },
-            "layout.themeMode":                { "value": "Light", "mode": "default", "by": "org" }
+            "layout.sidebarWidth":             { "value": 300,     "mode": "default", "by": "org" }
           },
           "profiles": { "items": [
             { "id": "acme-dev", "label": "Acme dev", "by": "org", "provider": { "id": "claude-provider", "model": "claude-sonnet-5-5" } } ] },

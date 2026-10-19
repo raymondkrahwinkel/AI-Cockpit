@@ -335,6 +335,14 @@ internal static class Screenshotter
         // mismatch — the design-time instance's own two rows (one collision, one one-sided remote change) prove
         // both row shapes render and the warning note only shows for the collision.
         ["project-conflict"] = (_, _) => new ProjectDefinitionConflictDialog { DataContext = new ViewModels.ProjectDefinitionConflictViewModel() },
+        // AC-1510: settings both machines changed since they last agreed, one answered and two still open, so both row
+        // states and the enabled Apply show.
+        ["settings-conflict"] = (_, _) =>
+        {
+            var conflicts = new ViewModels.SettingsConflictViewModel();
+            conflicts.Rows[0].TakeTheirs = true;
+            return new SettingsConflictDialog { DataContext = conflicts };
+        },
         // --size 900x900) used to get the built-in size back regardless — the block rendered, but entirely below the
         // fold, which is what actually happened here (measured: at the built-in size only the section's heading,
         // half-cut, was ever on screen) (AC-246).

@@ -136,6 +136,13 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, connection.Id));
         }
 
+        // AC-1510: the first connection's account space carries the cockpit's portable settings; the host keeps one
+        // carrier, so a connection added later carries them from the next start.
+        if (settings.Connections.FirstOrDefault() is { } first)
+        {
+            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, first.Id).Registration(first));
+        }
+
         // AC-504: session delivery now asks via GetMcpServers instead of the shared registry, so reclaim what
         // AC-243 pushed there. Sequential, not fire-and-forget: RemoveMcpServer's load-modify-save has no
         // locking across calls, so parallel calls would race on the same stale snapshot and drop a connection.

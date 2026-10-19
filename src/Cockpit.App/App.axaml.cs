@@ -437,6 +437,7 @@ public partial class App : Application
         _ = mcpSignInNotice.CheckAsync();
 
         _SayWhenDepotSyncCannotCheck(Program.Services.GetRequiredService<CockpitViewModel>());
+        _AskWhenSettingsConflict();
 
         // AC-1519: name the panes whose leftover session this start stopped, so a pane reading Idle says why.
         _NotifyStoppedLeftovers();
@@ -744,6 +745,48 @@ public partial class App : Application
                 toasts.Show(message, ToastSeverity.Warning);
             }
         };
+    }
+
+    // AC-1510: a setting changed both here and on another machine is the operator's choice, offered from a toast so it
+    // never interrupts; the dialog lists every open one again, so a toast dismissed unread loses nothing.
+    private static void _AskWhenSettingsConflict()
+    {
+        if (Program.Services.GetService<SettingsCarrierSync>() is not { } sync)
+        {
+            return;
+        }
+
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        sync.Restart = () => Program.Services.GetRequiredService<IAppRestartService>().Restart();
+        sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
+            $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
+            ToastSeverity.Warning,
+            "Choose",
+            () => _ = _ChooseSettingsAsync(sync)));
+    }
+
+    private static async Task _ChooseSettingsAsync(SettingsCarrierSync sync)
+    {
+        try
+        {
+            if (sync.Conflicts is not { Count: > 0 } conflicts
+                || Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+            {
+                return;
+            }
+
+            var answers = await new SettingsConflictDialog { DataContext = new SettingsConflictViewModel(conflicts) }
+                .ShowDialog<IReadOnlyDictionary<string, bool>?>(owner);
+            if (answers is { Count: > 0 })
+            {
+                await sync.ResolveAsync(answers);
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.SettingsSync").LogWarning(exception, "Applying the settings choices failed");
+            Program.Services.GetRequiredService<IToastService>().Show($"Your choices could not be applied: {exception.Message}", ToastSeverity.Error);
+        }
     }
 
     private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)

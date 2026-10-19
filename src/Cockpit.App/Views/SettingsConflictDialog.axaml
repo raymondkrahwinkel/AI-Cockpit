@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.SettingsConflictDialog"
+        x:DataType="vm:SettingsConflictViewModel"
+        Title="Settings changed on two machines"
+        Width="600" Height="440" MinWidth="520" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:SettingsConflictViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-1510: one row per setting both machines changed since they last agreed. Nothing is overwritten until the
+         operator picks a side for that row; a row without a pick is asked again later. -->
+    <Grid RowDefinitions="*,Auto">
+        <Border Grid.Row="1" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Classes="Ghost" Content="Later" Command="{Binding LaterCommand}"/>
+                <Button Classes="Accent" Content="Apply choices" Command="{Binding ApplyCommand}"/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="14" Margin="24,20,24,28">
+                <TextBlock Text="These settings changed here and on your other machine." TextWrapping="Wrap"
+                           FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="Nothing was overwritten. Pick which value each setting keeps; what you leave open is asked again later."
+                           TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+
+                <Border CornerRadius="{StaticResource CockpitPanelRadius}"
+                        Background="{DynamicResource CockpitInsetBgBrush}" Padding="12">
+                    <StackPanel>
+                        <Grid ColumnDefinitions="1.2*,*,*" Margin="0,0,0,8">
+                            <TextBlock Grid.Column="0" Text="Setting" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" Text="This machine" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="2" Text="Other machine" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SettingsConflictRowViewModel">
+                                    <Grid ColumnDefinitions="1.2*,*,*" Margin="0,0,0,10">
+                                        <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="12.5" FontWeight="Medium"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <RadioButton Grid.Column="1" GroupName="{Binding Key}" IsChecked="{Binding KeepMine}">
+                                            <TextBlock Text="{Binding Mine}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                        </RadioButton>
+                                        <RadioButton Grid.Column="2" GroupName="{Binding Key}" IsChecked="{Binding TakeTheirs}">
+                                            <TextBlock Text="{Binding Theirs}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                        </RadioButton>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

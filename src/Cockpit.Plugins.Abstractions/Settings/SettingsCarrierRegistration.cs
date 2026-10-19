@@ -16,4 +16,13 @@ public sealed record SettingsCarrierRegistration(
     string AddressLabel,
     Func<CancellationToken, Task<bool>> HasStoredSettingsAsync,
     Func<CancellationToken, Task<byte[]?>> ReadAsync,
-    Func<byte[], CancellationToken, Task> WriteAsync);
+    Func<byte[], CancellationToken, Task> WriteAsync)
+{
+    /// <summary>
+    /// Keeps the blob only when the carrier still holds what the host last read (AC-1510), so a write from another
+    /// machine in between is never overwritten. The base version is the lowercase hex SHA-256 of the blob last read,
+    /// or null when the carrier held none. Returns false, writing nothing, when the carrier holds something else by
+    /// now. Optional: without it the host reads, compares and then calls <see cref="WriteAsync"/>.
+    /// </summary>
+    public Func<byte[], string?, CancellationToken, Task<bool>>? WriteIfUnchangedAsync { get; init; }
+}

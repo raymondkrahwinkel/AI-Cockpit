@@ -96,7 +96,7 @@ public sealed class RestoreJourney
         await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
             "journey",
             "Depot: Journey",
-            new McpOAuthToken { AccessToken = _AccountSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), ResourceUrl = $"{url}/mcp" });
+            new McpOAuthToken { AccessToken = _AccountSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), Scope = "depot", ResourceUrl = $"{url}/mcp" });
         await cockpit.StartDesktopAsync();
 
         return cockpit.Services.GetRequiredService<BackupTargets>().Find("depot:journey")

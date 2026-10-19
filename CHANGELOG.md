@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Your settings follow you between machines through Depot.** With a Depot connection, the cockpit keeps your
+  portable settings (profiles, projects, theme, shortcuts, notifications and the like, never credentials or paths on
+  this machine) in your own account space, and picks up what you changed on another machine at the next start. A
+  setting changed on both machines is never overwritten: you choose per setting which one stays. A change made while
+  Depot cannot be reached is said once and sent when it can be reached again. Settings your organisation manages stay
+  as it set them.
+
 - added: **A managed start now opens the way your organisation chose.** When the provisioning manifest names a work kind, a
   reading level or the Simple view for the first start, the cockpit applies them as defaults: it opens in Simple, installs the
   plugins your stores recommend for that work kind, and gives the organisation's profiles that reading level. What it cannot
