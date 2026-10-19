@@ -28,7 +28,7 @@ internal sealed class ServerPluginUiHost(ICockpitUiHost local, IPluginStorage st
 
     public IPluginUiChannel Channel => channel;
 
-    public IPluginStorage Storage => local.Storage;
+    public IPluginStorage Storage => storage;
 
     public void AddSettings(Func<Control> createView) => CreateSettingsView = createView;
 
