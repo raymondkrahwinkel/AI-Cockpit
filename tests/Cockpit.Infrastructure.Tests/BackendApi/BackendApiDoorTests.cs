@@ -126,6 +126,11 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "admin", HttpStatusCode.OK, "", "\"connected\":true", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/channel/elsewhere", """{"token":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_action", "", _Door.ProfileSecret },
+        // AC-1571: a request that does not fit its action (null, a missing field, a field of the wrong type) is refused with a
+        // fixed code; no exception reaches the answer.
+        { "POST", "/api/v1/plugins/private/channel/save", "null", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
+        { "POST", "/api/v1/plugins/private/channel/save", "{}", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
+        { "POST", "/api/v1/plugins/private/channel/save", """{"items":"one"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
         // AC-1571: a plugin's storage reads every set credential, nested ones too, as kept; a kept one sent to another address
         // asks for the key again, and the audit of a write names its keys and never a value.
         { "GET", "/api/v1/plugins/private/storage", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -697,6 +702,8 @@ public sealed class BackendApiDoorTests
 
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
+    private sealed record _SaveRequest(IReadOnlyList<string> Items);
+
     // A section with a row that must never reach /healthz.
     private static int _Occurrences(string text, string value) => text.Split(value).Length - 1;
 
@@ -924,6 +931,12 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(PluginStores);
             var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
             channels.Handle("private", "connect", (_, _) => Task.FromResult(JsonDocument.Parse("""{"connected":true}""").RootElement));
+            // Reads its payload as a plugin does (Depot's save-connections), so an unfitting request throws what a real one would.
+            channels.Handle("private", "save", (payload, _) =>
+            {
+                var request = payload.Deserialize<_SaveRequest>(JsonSerializerOptions.Web) ?? throw new ArgumentException("The request names nothing.", nameof(payload));
+                return Task.FromResult(JsonSerializer.SerializeToElement(request.Items.Count()));
+            });
             services.AddSingleton(channels);
             // AC-1571: "private" runs, with a credential at the top and one nested under an address, as YouTrack keeps its.
             var manager = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics(false));

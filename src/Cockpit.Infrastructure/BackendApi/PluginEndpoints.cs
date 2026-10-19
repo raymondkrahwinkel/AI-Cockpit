@@ -149,6 +149,10 @@ internal static class PluginEndpoints
             {
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_action", "That plugin offers no such action on the server.");
             }
+            catch (Exception exception) when (_IsInvalidRequest(exception))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
+            }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 // The type only: a handler's message may quote what it was given.
@@ -366,6 +370,13 @@ internal static class PluginEndpoints
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_managed_cli", "The server manages no such command-line tool for a running plugin.");
 
     private static bool _IsSecret(string name) => SecretKeyHolder.Shared.Fields.IsSecret(name);
+
+    // A channel request that does not fit its action: null, a missing field, a field of the wrong type. A handler reading
+    // it meets one of these (System.Text.Json and LINQ throw them), so the caller hears invalid_request instead of a
+    // plugin failure. ponytail: by exception type; a handler that throws one of these for its own reasons reads the same.
+    private static bool _IsInvalidRequest(Exception exception) =>
+        exception is ArgumentException or JsonException or KeyNotFoundException or FormatException
+            or (InvalidOperationException and not ObjectDisposedException);
 
     private static IResult _NotInstalled() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");

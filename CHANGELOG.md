@@ -94,6 +94,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of
+  the wrong type) is now refused as an invalid request instead of being reported as a plugin failure.
 - fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's
   Proxmox that is the server, not this desktop.
 - fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.12.1.
