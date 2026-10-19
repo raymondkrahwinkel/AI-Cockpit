@@ -860,7 +860,7 @@ internal sealed class BackupService(
             : SecretScrubber.Scrub(settings, SecretKeyHolder.Shared.Fields);
 
         // AC-1507: what a manifest manages comes back from the manifest, not from an archive.
-        settings.AsObject().Remove(nameof(CockpitConfigFile.Provisioning));
+        // settings.AsObject().Remove(nameof(CockpitConfigFile.Provisioning));
 
         var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
         await using var stream = entry.Open();
