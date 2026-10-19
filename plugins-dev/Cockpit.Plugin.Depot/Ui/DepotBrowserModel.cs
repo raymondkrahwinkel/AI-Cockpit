@@ -154,6 +154,80 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         return await _InvokeAsync<bool>(DepotBrowserChannel.Unshare, new(connection.Id, project, node.Path, ShareId: node.ShareId), cancellationToken).ConfigureAwait(true);
     }
 
+    // One file into `folder` ("" for the root). A path that already exists is replaced only after a yes; null when the
+    // operator declined. A text file travels over the channel as a document, anything else goes by ticket and a PUT.
+    public async Task<DepotBrowserAnswer<bool>?> UploadAsync(
+        string project, string folder, string fileName, Stream content, bool exists, CancellationToken cancellationToken = default)
+    {
+        var name = DepotDownload.SafeFileName(fileName);
+        var path = folder.Length == 0 ? name : $"{folder}/{name}";
+        if (exists && !await host.ConfirmAsync("Replace this file?", $"{path} already exists in this project.", "Replace").ConfigureAwait(true))
+        {
+            return null;
+        }
+
+        if (!content.CanSeek)
+        {
+            var buffered = new MemoryStream();
+            await content.CopyToAsync(buffered, cancellationToken).ConfigureAwait(true);
+            buffered.Position = 0;
+            content = buffered;
+        }
+
+        var request = new DepotBrowserRequest(connection.Id, project, path, Replace: exists);
+        if (DepotUploadKinds.IsText(path))
+        {
+            if (content.Length > DepotUploadKinds.MaxInlineBytes)
+            {
+                return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"{name} is over 8 MiB, which is the most Depot takes as a document.");
+            }
+
+            string body;
+            try
+            {
+                using var reader = new StreamReader(content, new UTF8Encoding(false, throwOnInvalidBytes: true));
+                body = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (DecoderFallbackException)
+            {
+                return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"{name} is not UTF-8 text, which is the only text Depot stores as a document.");
+            }
+
+            var text = await _InvokeAsync<DepotBrowserUpload>(DepotBrowserChannel.Upload, request with { Content = body }, cancellationToken).ConfigureAwait(true);
+            return text.Status == DepotBrowserStatus.Ok
+                ? DepotBrowserAnswer<bool>.Success(true)
+                : DepotBrowserAnswer<bool>.Failure(text.Status, text.Message);
+        }
+
+        var type = _ContentTypes.GetValueOrDefault(Path.GetExtension(name).ToLowerInvariant(), "application/octet-stream");
+        var ticket = await _InvokeAsync<DepotBrowserUpload>(
+            DepotBrowserChannel.Upload, request with { ContentType = type, Size = content.Length }, cancellationToken).ConfigureAwait(true);
+        if (ticket.Data?.UploadUrl is not { } url)
+        {
+            return DepotBrowserAnswer<bool>.Failure(ticket.Status, ticket.Message ?? "Depot did not return an upload URL.");
+        }
+
+        try
+        {
+            using var body = new StreamContent(content);
+            body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(type);
+            using var response = await http.PutAsync(url, body, cancellationToken).ConfigureAwait(true);
+            return response.IsSuccessStatusCode
+                ? DepotBrowserAnswer<bool>.Success(true)
+                : DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"Depot storage refused {name} (HTTP {(int)response.StatusCode}).");
+        }
+        catch (Exception exception) when (exception is HttpRequestException || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, "Could not reach Depot storage, or it took too long.");
+        }
+    }
+
+    private static readonly Dictionary<string, string> _ContentTypes = new()
+    {
+        [".png"] = "image/png", [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".gif"] = "image/gif",
+        [".webp"] = "image/webp", [".pdf"] = "application/pdf", [".zip"] = "application/zip", [".html"] = "text/html",
+    };
+
     // Only the operator's Sign-in click gets here; nothing else opens a browser.
     public async Task<bool> SignInAsync(CancellationToken cancellationToken = default) =>
         await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(true) == PluginMcpSignInOutcome.Authorized;

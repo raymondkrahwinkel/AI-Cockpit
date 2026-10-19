@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Upload** in the Depot file browser. An Editor picks one or more files and they land in the selected folder
+  (the root when none is selected); text files become documents, everything else a file in the project. A path that
+  already exists is replaced only after a yes, and Depot's reason shows when it refuses a file.
 - added: the bundled **Schedules** plugin with its engine for scheduled tasks. A task has a cron schedule in a
   required time zone, fires each slot once, also across a restart or the daylight-saving switch, and either catches up
   once or logs the slots it missed while the machine slept. Its first action is a fixed cockpit notification; the

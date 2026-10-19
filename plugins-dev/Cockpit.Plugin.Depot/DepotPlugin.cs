@@ -67,6 +67,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _HandleBrowser(host, DepotBrowserChannel.DownloadUrl, browser.DownloadUrlAsync);
         _HandleBrowser(host, DepotBrowserChannel.Share, browser.ShareAsync);
         _HandleBrowser(host, DepotBrowserChannel.Unshare, browser.UnshareAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Upload, browser.UploadAsync);
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.

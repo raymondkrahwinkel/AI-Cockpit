@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
@@ -133,6 +134,49 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             return true;
         });
 
+    // A write, so the Editor role is checked here. A text file is a document (`write`); anything else gets a ticket for the
+    // caller to PUT to. share "none": the default would leave a share behind when the PUT fails.
+    public Task<DepotBrowserAnswer<DepotBrowserUpload>> UploadAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
+        _RunAsync(async () =>
+        {
+            var project = _Required(request.Project, "project");
+            var path = _Required(request.Path, "path");
+            await _RequireEditorAsync(request, project, "Uploading", cancellationToken).ConfigureAwait(false);
+            if (DepotUploadKinds.IsText(path))
+            {
+                if (request.Content is null || Encoding.UTF8.GetByteCount(request.Content) > DepotUploadKinds.MaxInlineBytes)
+                {
+                    throw new _Failure(DepotBrowserStatus.Error, "A text file can be at most 8 MiB.");
+                }
+
+                var arguments = new Dictionary<string, object?> { ["project"] = project, ["path"] = path, ["content"] = request.Content };
+                if (request.Replace)
+                {
+                    using var current = _Parse(await _CallAsync(request, "read", _Arguments(request), cancellationToken).ConfigureAwait(false));
+                    arguments["baseChecksum"] = _String(current.RootElement, "checksum");
+                }
+
+                await _CallAsync(request, "write", arguments, cancellationToken).ConfigureAwait(false);
+                return new DepotBrowserUpload(null);
+            }
+
+            using var ticket = _Parse(await _CallAsync(
+                request,
+                "request_upload",
+                new Dictionary<string, object?>
+                {
+                    ["project"] = project,
+                    ["path"] = path,
+                    ["contentType"] = request.ContentType is { Length: > 0 } type ? type : "application/octet-stream",
+                    ["size"] = request.Size,
+                    ["share"] = "none",
+                },
+                cancellationToken).ConfigureAwait(false));
+            return _String(ticket.RootElement, "uploadUrl") is { Length: > 0 } url
+                ? new DepotBrowserUpload(url)
+                : throw new _Failure(DepotBrowserStatus.Error, "Depot did not return an upload URL.");
+        });
+
     private sealed record _Share(string ShareId, string Path, string Url, bool IsPublic);
 
     private async Task<IReadOnlyList<_Share>> _SharesAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken)
@@ -153,11 +197,14 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                 share.TryGetProperty("isPublic", out var isPublic) && isPublic.ValueKind == JsonValueKind.True))];
     }
 
-    private async Task _RequireEditorAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken)
+    private Task _RequireEditorAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken) =>
+        _RequireEditorAsync(request, project, "Sharing", cancellationToken);
+
+    private async Task _RequireEditorAsync(DepotBrowserRequest request, string project, string action, CancellationToken cancellationToken)
     {
         if (!(await _RoleAsync(request, project, cancellationToken).ConfigureAwait(false)).CanWrite())
         {
-            throw new _Failure(DepotBrowserStatus.Error, "Sharing needs the Editor role in this project.");
+            throw new _Failure(DepotBrowserStatus.Error, $"{action} needs the Editor role in this project.");
         }
     }
 
