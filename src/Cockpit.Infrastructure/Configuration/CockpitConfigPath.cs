@@ -50,6 +50,12 @@ internal static class CockpitConfigPath
 
     public static string AssistantMachineMemory => Path.Combine(Root, "assistant-machine.md");
 
+    // The organisation's rule set for the assistant (AC-1567): written only by the provisioning applier, read-only
+    // for the assistant, and never in a backup or a memory export — the next apply brings it back.
+    public static string AssistantOrgRulesFor(string root) => Path.Combine(root, "assistant-org-rules.md");
+
+    public static string AssistantOrgRules => AssistantOrgRulesFor(Root);
+
     // Where the assistant leaves the conversation before restarting itself (AC-596). Its own file rather than a
     // section of the memory: one is appended to and the other overwritten, and separate files need no parser and
     // no lock between them.

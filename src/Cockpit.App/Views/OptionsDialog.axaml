@@ -1509,6 +1509,22 @@
                                         ToolTip.Tip="Provider, session defaults, MCP servers and environment variables — and the restart that applies a permission mode"/>
                             </StackPanel>
 
+                            <!-- AC-1567: the organisation's rule set, read-only. Worded as an instruction the assistant
+                                 follows, never as something Cockpit enforces (manifest §3.6 rule 6). -->
+                            <Border IsVisible="{Binding AssistantOptions.OrgRulesHeading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="12" MaxWidth="560" HorizontalAlignment="Left">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding AssistantOptions.OrgRulesHeading}" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Set by your organisation and given to the assistant ahead of what you asked it to remember. It is an instruction to the assistant, not something Cockpit enforces. It is replaced on the next setup from your organisation, so it cannot be edited here."/>
+                                    </StackPanel>
+                                    <TextBlock Text="Managed by your organisation · read-only" Classes="optionsHint"/>
+                                    <SelectableTextBlock Text="{Binding AssistantOptions.OrgRulesText}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Classes="optionsSectionHeader" Text="3. REPLIES"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Read replies out loud" FontWeight="SemiBold"/>

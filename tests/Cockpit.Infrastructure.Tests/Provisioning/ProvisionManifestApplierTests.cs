@@ -2,10 +2,12 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Terminal;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Infrastructure.Terminal;
 using Cockpit.Plugins.Abstractions;
@@ -120,6 +122,51 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Equal((15, "Consolas"), ((await store.LoadAsync()).FontSize, (await store.LoadAsync()).FontFamily));
         Assert.Equal("Acme", (await new ManagedSettings(ConfigPath).ReadAsync())["Terminal.FontSize"]);
     }
+
+    // AC-1567, manifest-v1 §3.6: the rule set lands in its own file and nowhere else. The personal files stay byte for
+    // byte through write, update and removal; the memory tools cannot reach the org file, and an export leaves it out.
+    [Fact]
+    public async Task The_org_rule_set_is_its_own_file_that_the_personal_memory_never_reaches_and_that_leaves_with_the_manifest()
+    {
+        var memory = new AssistantMemoryFile(Path.Combine(_stateRoot, "assistant-memory.md"), Path.Combine(_stateRoot, "assistant-state.md"));
+        await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
+        await memory.RememberAsync("Docker runs in WSL.", AssistantMemoryScope.Machine);
+        await memory.NoteCurrentStateAsync("On AC-1567.");
+        string[] personal = ["assistant-memory.md", "assistant-machine.md", "assistant-state.md"];
+        List<byte[]> Personal() => [.. personal.Select(name => File.ReadAllBytes(Path.Combine(_stateRoot, name)))];
+        var before = Personal();
+        var orgFile = Path.Combine(_stateRoot, "assistant-org-rules.md");
+
+        var written = await _ApplyAsync(_OrgRules("Answer customers in Dutch."));
+        Assert.Contains(written.Report, line => line is { Path: "assistant.orgRules", Detail: "rule set of Acme written" });
+        Assert.StartsWith("# Rule set of Acme\n\nSet by Acme.", File.ReadAllText(orgFile), StringComparison.Ordinal);
+        Assert.Contains("Answer customers in Dutch.", await memory.ReadOrgRulesAsync(), StringComparison.Ordinal);
+        Assert.Equal(before, Personal());
+
+        await memory.RememberAsync("Prefers short answers.", AssistantMemoryScope.Behaviour);
+        await memory.RememberAsync("Has a GPU.", AssistantMemoryScope.Machine);
+        Assert.DoesNotContain("Prefers short answers.", File.ReadAllText(orgFile), StringComparison.Ordinal);
+        Assert.DoesNotContain("Has a GPU.", File.ReadAllText(orgFile), StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant-org-rules.md", await memory.ExportAsync(Path.Combine(_stateRoot, "export.zip")));
+        before = Personal();
+
+        var updated = await _ApplyAsync(_OrgRules("Answer customers in English."));
+        Assert.Contains(updated.Report, line => line is { Path: "assistant.orgRules", Detail: "rule set of Acme updated" });
+        Assert.Contains("Answer customers in English.", File.ReadAllText(orgFile), StringComparison.Ordinal);
+
+        var removed = await _ApplyAsync(_FontSize(null, 0));
+        Assert.Contains(removed.Report, line => line is { Path: "assistant.orgRules", Detail: "the organisation's rule set was removed" });
+        Assert.False(File.Exists(orgFile));
+        Assert.Equal(before, Personal());
+    }
+
+    private static string _OrgRules(string content) => $$"""
+        {
+          "format": "cockpit.provision", "formatVersion": 1,
+          "issuer": { "kind": "depot", "organization": { "id": "acme", "name": "Acme" } },
+          "assistant": { "orgRules": { "by": "org", "title": "Assistentregels Acme", "content": "{{content}}" } }
+        }
+        """;
 
     private static string _FontSize(string? mode, int value)
     {

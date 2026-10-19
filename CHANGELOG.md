@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the
+  assistant ahead of what you asked it to remember, shows read-only under Options → Assistant, and leaves with the
+  manifest. Your own memory is never written by it, and it is not in a backup or a memory export.
+
 - added: a Depot-bound project whose check cannot get an answer, typically because the connection is not signed in,
   now says so once with a **Open Depot settings** button, instead of the Depot sync going silent.
 

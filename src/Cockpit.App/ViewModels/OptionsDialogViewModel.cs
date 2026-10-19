@@ -14,8 +14,11 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class AssistantOptionsViewModel(
     IAssistantSettingsStore? settingsStore = null,
     IAssistantProfileStore? profileStore = null,
-    IConsentAuditLog? consentAuditLog = null) : ObservableObject
+    IConsentAuditLog? consentAuditLog = null,
+    IAssistantMemory? memory = null) : ObservableObject
 {
+    private readonly IAssistantMemory? _memory = memory;
+
     private readonly IAssistantSettingsStore? _settingsStore = settingsStore;
     private readonly IAssistantProfileStore? _profileStore = profileStore;
     private readonly IConsentAuditLog? _consentAuditLog = consentAuditLog;
@@ -55,6 +58,14 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string? _profileUnsetReason;
 
+    // AC-1567: the organisation's rule set, shown as the applier wrote it — its first line ("Rule set of <by>") as the
+    // block's title, the rest below. Null when there is none, which hides the block.
+    [ObservableProperty]
+    private string? _orgRulesHeading;
+
+    [ObservableProperty]
+    private string? _orgRulesText;
+
     // "Allow all" (#AC-637): skip the card for every source and both risk classes, on by default. The per-source
     // rows below are hidden while it is on rather than cleared — off puts back exactly what was ticked before.
     [ObservableProperty]
@@ -93,6 +104,14 @@ public sealed partial class AssistantOptionsViewModel(
                     ? ProfileDisplay.Format(record.Label, record.Provider, ProfileModel.Of(record))
                     : null;
                 ProfileUnsetReason = slot.UnsetReason;
+            }
+
+            if (_memory is not null)
+            {
+                var rules = await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true);
+                var lines = rules.Split('\n', 2);
+                OrgRulesHeading = rules.Length == 0 ? null : lines[0].TrimStart('#', ' ').Trim();
+                OrgRulesText = lines.Length > 1 ? lines[1].Trim() : null;
             }
         }
         finally
