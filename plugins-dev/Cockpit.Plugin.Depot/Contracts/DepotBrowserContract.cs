@@ -57,7 +57,8 @@ internal sealed record DepotBrowserShare(string ShareId, string Url, bool IsPubl
 // `UploadUrl` is the pre-signed PUT target for a binary file; null when the file was a document and is already written.
 internal sealed record DepotBrowserUpload(string? UploadUrl);
 
-// What Depot's web UI sends to the document store instead of the artifact store (DEP-92, BlobKinds.TextExtensions).
+// A copy of Depot's BlobKinds.TextExtensions (DEP-92): these go to the document store, the artifact store refuses them.
+// Keep this list in step with Depot's when that one changes.
 internal static class DepotUploadKinds
 {
     public const long MaxInlineBytes = 8 * 1024 * 1024;
