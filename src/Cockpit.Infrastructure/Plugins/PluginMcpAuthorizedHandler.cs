@@ -53,7 +53,7 @@ internal sealed class PluginMcpAuthorizedHandler(
         }
 
         // The upstream response points at the copy, which carries the bearer; the plugin only ever gets its own back.
-        response.RequestMessage ??= request;
+        response.RequestMessage = request;
         return response;
     }
 
