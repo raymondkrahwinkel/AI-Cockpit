@@ -110,11 +110,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             return Task.CompletedTask;
         }
 
-        _changed.TryRemove(projectId, out _);
-        return _CheckAsync(bound, cancellationToken);
+        return _CheckAsync(bound, cancellationToken, clearFlag: true);
     }
 
-    private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken)
+    private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken, bool clearFlag = false)
     {
         SharedProjectBindingResult result;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -152,17 +151,31 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         _failing.TryRemove(bound.ProjectId, out _);
 
-        var changed = _lastChecksum.TryGetValue(bound.ProjectId, out var previous)
-            && !string.Equals(previous, checksum, StringComparison.Ordinal);
-        _lastChecksum[bound.ProjectId] = checksum;
-        if (changed && _changed.TryAdd(bound.ProjectId, 0))
+        // One step, so a tick and "Sync now" on the same project cannot both see the old checksum. The flag is only
+        // cleared by a check that got an answer, and a change this very check sees puts it back.
+        bool changed;
+        bool reported;
+        lock (_lastChecksum)
+        {
+            changed = _lastChecksum.TryGetValue(bound.ProjectId, out var previous)
+                && !string.Equals(previous, checksum, StringComparison.Ordinal);
+            _lastChecksum[bound.ProjectId] = checksum;
+            if (clearFlag)
+            {
+                _changed.TryRemove(bound.ProjectId, out _);
+            }
+
+            reported = changed && _changed.TryAdd(bound.ProjectId, 0);
+        }
+
+        if (reported)
         {
             _logger.LogInformation("Depot reported a change to {ProjectId}.", bound.ProjectId);
         }
 
         if (OnChecked is not null)
         {
-            await OnChecked(bound.ProjectId, _changed.ContainsKey(bound.ProjectId), result.Binding!.LogoBytes).ConfigureAwait(true);
+            await OnChecked(bound.ProjectId, _changed.ContainsKey(bound.ProjectId), result.Binding?.LogoBytes).ConfigureAwait(true);
         }
     }
 
