@@ -235,7 +235,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         var remoteDocument = remoteBytes is null ? new JsonObject() : JsonNode.Parse(remoteBytes) as JsonObject ?? new JsonObject();
 
         // Only what the white list carries is ever taken from the carrier, whatever else it holds.
-        var remote = _Units(remoteDocument);
+        var remote = _Units(_Carried(remoteDocument));
         var local = await _ReadLocalAsync(cancellationToken).ConfigureAwait(false);
         var state = _LoadState();
         var firstContact = state.Base is null;
