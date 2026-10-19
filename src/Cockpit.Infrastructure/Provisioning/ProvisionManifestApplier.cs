@@ -298,7 +298,7 @@ public static class ProvisionManifestApplier
             level = null;
         }
 
-        return new(kind, level, asked?.SimpleView);
+        return new(null, null, null);
     }
 
     private static IEnumerable<Wanted> _FirstRunKeys(FirstRunChoices choices, string by)
