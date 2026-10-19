@@ -63,5 +63,14 @@ public sealed class Ac1504StartChoiceStepTests
         choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[0]);
         Assert.False(wizard.StepBar[4].IsSkipped);
         Assert.Equal("Step 2 of 5", wizard.StepProgressLabel);
+
+        // "Run setup again" builds a second wizard over the same step: it starts on "Start fresh", and the restore
+        // page it shows is its own control, not the one the first wizard still holds.
+        var firstRestorePage = choice.ViewModel.Options[1].Content;
+        choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[2]);
+        _ = new FirstRunWizardViewModel([new WelcomeStep(), choice], FirstRunWizardViewModel.EpicPlan);
+        Assert.Equal("Start fresh", choice.ViewModel.Selected.Title);
+        choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[1]);
+        Assert.NotSame(firstRestorePage, choice.ViewModel.SelectedContent);
     });
 }

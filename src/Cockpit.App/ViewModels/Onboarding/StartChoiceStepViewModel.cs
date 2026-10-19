@@ -12,7 +12,7 @@ namespace Cockpit.App.ViewModels.Onboarding;
 // Drives the wizard's "How do you want to start?" step (AC-1504), slot 10: the host's own choices first, then whatever
 // routes plugins registered. The picked route's content hangs under the choices, and whether it answers the
 // work-kind question is what the shell reads to strike that step through.
-public sealed partial class StartChoiceStepViewModel : ObservableObject
+public sealed partial class StartChoiceStepViewModel : ObservableObject, IDisposable
 {
     private readonly IReadOnlyList<StartChoiceOptionViewModel> _builtIn;
     private readonly IFirstStartRouteRegistry? _routes;
@@ -27,10 +27,19 @@ public sealed partial class StartChoiceStepViewModel : ObservableObject
         _selected.IsSelected = true;
         _ReloadOptions();
 
+        // A plugin registers from its own thread and can arrive after the wizard is already open.
         if (routes is not null)
         {
-            // A plugin registers from its own thread and can arrive after the wizard is already open.
-            routes.Changed += (_, _) => Dispatcher.UIThread.Post(_ReloadOptions);
+            routes.Changed += _OnRoutesChanged;
+        }
+    }
+
+    // The registry outlives every wizard, so a finished one lets go of it.
+    public void Dispose()
+    {
+        if (_routes is not null)
+        {
+            _routes.Changed -= _OnRoutesChanged;
         }
     }
 
@@ -51,9 +60,6 @@ public sealed partial class StartChoiceStepViewModel : ObservableObject
     // Raised when the picked choice changes whether the work-kind step has anything left to ask.
     public event EventHandler? AnswersChanged;
 
-    // Back to "Start fresh": a wizard opened again must not carry the last run's route into a step bar it did not pick.
-    public void Reset() => Choose(_builtIn[0]);
-
     [RelayCommand]
     private void Choose(StartChoiceOptionViewModel option)
     {
@@ -69,6 +75,8 @@ public sealed partial class StartChoiceStepViewModel : ObservableObject
         OnPropertyChanged(nameof(AnswersWorkKind));
         AnswersChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    private void _OnRoutesChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(_ReloadOptions);
 
     private void _ReloadOptions()
     {

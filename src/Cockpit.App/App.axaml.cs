@@ -195,7 +195,7 @@ public partial class App : Application
         int? startAtOrder = null;
         if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<StartChoiceStep>().FirstOrDefault() is { } choiceStep)
         {
-            choiceStep.ViewModel.Notice = provisioningFailure;
+            choiceStep.Notice = provisioningFailure;
             startAtOrder = choiceStep.Order;
         }
 

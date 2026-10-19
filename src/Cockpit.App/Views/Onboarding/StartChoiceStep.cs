@@ -13,6 +13,8 @@ namespace Cockpit.App.Views.Onboarding;
 // that plugins contribute come in through the registry; the step only reads them.
 internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
 {
+    private readonly IFirstStartRouteRegistry? _routes;
+
     public StartChoiceStep(IBackupService backups, IFirstRunWizardStateStore stateStore, IAppRestartService restart, IFirstStartRouteRegistry routes)
         : this(new RestoreStepViewModel(backups, stateStore, restart), routes)
     {
@@ -21,8 +23,13 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
     // Renders a step over a restore view model that is already staged — the screenshot scenes, which have no archive.
     internal StartChoiceStep(RestoreStepViewModel restoreViewModel, IFirstStartRouteRegistry? routes = null)
     {
+        _routes = routes;
         RestoreViewModel = restoreViewModel;
-        ViewModel = new StartChoiceStepViewModel(
+        ViewModel = _Create();
+    }
+
+    private StartChoiceStepViewModel _Create() =>
+        new(
             [
                 new StartChoiceOptionViewModel(
                     "start-fresh", MaterialIconKind.Creation, "Start fresh",
@@ -30,14 +37,18 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
                 new StartChoiceOptionViewModel(
                     "restore-backup", MaterialIconKind.Download, "Restore a backup file",
                     "Coming from another machine? Bring the backup you made there.",
-                    () => new RestoreStepView { DataContext = restoreViewModel }),
+                    () => new RestoreStepView { DataContext = RestoreViewModel }),
             ],
-            routes);
-    }
+            _routes);
 
     internal RestoreStepViewModel RestoreViewModel { get; }
 
-    internal StartChoiceStepViewModel ViewModel { get; }
+    // The one the latest wizard was built over: each wizard gets its own, so a run opened again starts on "Start
+    // fresh" and never shares a control (or a stale notice) with the one before it.
+    internal StartChoiceStepViewModel ViewModel { get; private set; }
+
+    // Why the next wizard opens here, e.g. a --provision that failed (AC-1505); read once, by the wizard being built.
+    internal string Notice { get; set; } = string.Empty;
 
     public int Order => 10;
 
@@ -48,7 +59,10 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
 
     public Control BuildContent()
     {
-        ViewModel.Reset();
+        ViewModel.Dispose();
+        ViewModel = _Create();
+        ViewModel.Notice = Notice;
+        Notice = string.Empty;
 
         return new StartChoiceStepView { DataContext = ViewModel };
     }

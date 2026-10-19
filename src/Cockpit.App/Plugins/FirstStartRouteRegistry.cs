@@ -31,20 +31,34 @@ public interface IFirstStartRouteRegistry
 
 internal sealed class FirstStartRouteRegistry : IFirstStartRouteRegistry, ISingletonService
 {
+    private readonly Lock _gate = new();
     private readonly List<(FirstStartRoute Route, string PluginName)> _routes = [];
 
     public event EventHandler? Changed;
 
-    public IReadOnlyList<(FirstStartRoute Route, string PluginName)> Routes => [.. _routes];
+    public IReadOnlyList<(FirstStartRoute Route, string PluginName)> Routes
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _routes];
+            }
+        }
+    }
 
     public bool Register(FirstStartRoute route, string pluginName)
     {
-        if (_routes.Any(entry => entry.Route.Id == route.Id))
+        lock (_gate)
         {
-            return false;
+            if (_routes.Any(entry => entry.Route.Id == route.Id))
+            {
+                return false;
+            }
+
+            _routes.Add((route, pluginName));
         }
 
-        _routes.Add((route, pluginName));
         Changed?.Invoke(this, EventArgs.Empty);
 
         return true;
