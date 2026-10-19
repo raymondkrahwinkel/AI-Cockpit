@@ -107,6 +107,9 @@ public sealed class CockpitBackend
     {
         var services = new ServiceCollection();
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
+
+        // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
+        SettingsCarrierSync.ApplyIncomingAsync(CockpitConfigPath.Default, loggerFactory.CreateLogger<SettingsCarrierSync>()).GetAwaiter().GetResult();
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();
@@ -280,6 +283,9 @@ public sealed class CockpitBackend
         _ = Services.GetService<IProjectCatalog>();
         Services.GetService<DepotSyncWatcher>()?.Start();
 
+        // AC-1510: after the plugins' Initialize, where a carrier registers.
+        Services.GetService<SettingsCarrierSync>()?.Start();
+
         // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.
         if (Services.GetService<StaleClaimReaper>() is { } claimReaper)
         {
@@ -314,7 +320,7 @@ public sealed class CockpitBackend
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
-            Services.GetService<ScheduledBackup>(),
+            Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
         ];
         foreach (var planner in planners)
         {

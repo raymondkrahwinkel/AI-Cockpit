@@ -35,6 +35,8 @@ internal static class SettingsCarrierWhitelist
         "UsageThresholds.ByProvider", "UsageThresholds.ByProfile", "UsageThresholds.ByAssistant",
         "Terminal.FontFamily", "Terminal.FontSize",
         "Shortcuts.Gestures", "Shortcuts.PluginGestures",
+        "Layout.ThemeMode",
+        "Updates.ChosenChannel", "Updates.CheckOnStartup",
     ];
 
     // Measured on the 2026-09-17 second-machine start: paths bound to one machine, which `Carried` must never reach.

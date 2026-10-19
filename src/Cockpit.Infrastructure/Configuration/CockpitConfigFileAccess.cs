@@ -31,6 +31,9 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     private readonly Lock _tailLock = new();
     private Task _tail = Task.CompletedTask;
 
+    // AC-1510: said after every save of a config file, with its path, so the settings sync can push a change.
+    internal static event Action<string>? Written;
+
     public string ConfigFilePath => configFilePath;
 
     // AC-1108: mid-batch, sees that batch's own not-yet-flushed copy instead of stale disk — GlobalHotkeyCoordinator
@@ -282,6 +285,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             _keyHolder.NoteUnprotectedSecretsWritten();
         }
 
+        Written?.Invoke(configFilePath);
         await Task.CompletedTask.ConfigureAwait(false);
     }
 

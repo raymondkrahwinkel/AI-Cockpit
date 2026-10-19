@@ -542,8 +542,12 @@
     <!-- 3.16.0 (AC-1586): ICockpitHost.CreateAuthorizedHandler(name, scope), a host-only token narrowed to one scope, and
          McpServerContribution.OAuthScopes and OAuthHostOnlyScopes. A plugin that uses them sets minHostVersion 0.98.0.
          Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.16.0</Version>
-    <AssemblyVersion>1.15.0.0</AssemblyVersion>
+    <!-- 3.17.0 (AC-1510): SettingsCarrierRegistration.WriteIfUnchangedAsync (init, optional), a write that refuses when the
+         carrier holds something other than the blob the host last read. Optional and init-only, so a carrier without it
+         keeps working; a positional parameter would have broken every caller. A plugin that sets it sets minHostVersion
+         0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.17.0</Version>
+    <AssemblyVersion>1.16.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
