@@ -141,8 +141,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         {
             var project = _Required(request.Project, "project");
             var path = _Required(request.Path, "path");
-            await _RequireEditorAsync(request, project, "Uploading", cancellationToken).ConfigureAwait(false);
-            if (DepotUploadKinds.IsText(path))
+            if (DepotUploadKinds.IsText(path) && request.Size < 0)
             {
                 if (request.Content is null || Encoding.UTF8.GetByteCount(request.Content) > DepotUploadKinds.MaxInlineBytes)
                 {
@@ -169,7 +168,6 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                     ["path"] = path,
                     ["contentType"] = request.ContentType is { Length: > 0 } type ? type : "application/octet-stream",
                     ["size"] = request.Size,
-                    ["share"] = "none",
                 },
                 cancellationToken).ConfigureAwait(false));
             return _String(ticket.RootElement, "uploadUrl") is { Length: > 0 } url
