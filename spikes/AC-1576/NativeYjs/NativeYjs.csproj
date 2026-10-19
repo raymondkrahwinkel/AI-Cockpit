@@ -5,11 +5,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- YDotNet.Native.Linux 0.6.0 ships its binaries under distribution-specific runtime folders (a packaging bug), which the SDK flags. -->
+    <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="YDotNet" Version="0.6.0" />
     <PackageReference Include="YDotNet.Native.Win32" Version="0.6.0" />
     <PackageReference Include="YDotNet.Native.Linux" Version="0.6.0" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
   </ItemGroup>
 </Project>
