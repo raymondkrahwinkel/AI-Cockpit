@@ -48,7 +48,7 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
             _AnswerGuestActionAsync(payload, gate, cancellationToken, ProxmoxActionText.ShutdownVm, ProxmoxActionText.ShutdownLxc, engine.ShutdownVmAsync, engine.ShutdownLxcAsync)));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.StopGuest, (payload, cancellationToken) =>
             _AnswerGuestActionAsync(payload, gate, cancellationToken, ProxmoxActionText.StopVm, ProxmoxActionText.StopLxc, engine.StopVmAsync, engine.StopLxcAsync)));
-        _handlers.Add(host.Channel.Handle(ProxmoxChannel.FetchFingerprint + "-off", async (payload, cancellationToken) =>
+        _handlers.Add(host.Channel.Handle(ProxmoxChannel.FetchFingerprint, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<ProxmoxFingerprintRequest>(ProxmoxChannel.Json)
                 ?? throw new InvalidOperationException("A fingerprint request needs a host and port.");
