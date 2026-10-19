@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
@@ -29,6 +30,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private volatile DepotConnectionRegistration? _pending;
 
     private readonly List<IDisposable> _handlers = [];
+
+    private Inbox.DepotInbox? _inbox;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
@@ -86,6 +89,20 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _HandlePublish(host, DepotPublishChannel.Remove, publisher.RemoveAsync);
         _HandlePublish(host, DepotPublishChannel.Plan, publisher.PlanAsync);
         _HandlePublish(host, DepotPublishChannel.Run, publisher.RunAsync);
+
+        // AC-1586: the Depot inbox, over REST and the inbox hub with a host-only token for depot.inbox alone.
+        _inbox = new Inbox.DepotInbox(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope),
+            (connection, userId, onPush, onClosed) => new Inbox.SignalRDepotInboxHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope), onPush, onClosed),
+            page => host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)),
+            host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
+        var inbox = _inbox;
+        _handlers.Add(host.Channel.Handle(DepotInboxChannel.Unread, async (_, cancellationToken) =>
+            JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
+        _HandleInbox(host, DepotInboxChannel.List, inbox.ListAsync);
+        _HandleInbox(host, DepotInboxChannel.MarkRead, inbox.MarkReadAsync);
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -147,6 +164,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotBrowserRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandleInbox(ICockpitHost host, string action, Func<DepotInboxRequest, CancellationToken, Task<DepotInboxPage>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotInboxRequest>(DepotChannel.Json)
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
@@ -423,6 +448,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // Scheme+host+port of the stored base URL: Depot's protected-resource metadata names the origin as
             // its authorization_servers entry, not a subpath. Falls back to the base URL if unparseable (defensive only).
             OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,
+            // AC-1586: Depot's built-in client, the one allowed depot.inbox; the host keeps that scope off every token a
+            // session gets and spends it only behind CreateAuthorizedHandler(name, "depot.inbox").
+            OAuthClientId = DepotClientId,
+            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} offline_access",
+            OAuthHostOnlyScopes = Inbox.DepotInbox.Scope,
         };
     }
 
@@ -434,6 +464,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         _publishHttp.Dispose();
+        // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
+        // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
+        _ = _inbox?.DisposeAsync().AsTask();
 
         _handlers.Clear();
     }

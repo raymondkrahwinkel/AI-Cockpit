@@ -383,6 +383,16 @@ once. Use it as `new HttpClient(host.CreateAuthorizedHandler(name))`, and for Si
 `options.HttpMessageHandlerFactory = _ => host.CreateAuthorizedHandler(name)`, never `AccessTokenProvider`. It works the
 same on a desktop and on a server: the credential stays wherever the plugin's backend part runs.
 
+`CreateAuthorizedHandler(name, scope)` (AC-1586, SDK 3.16.0, host 0.98.0) is the same handler with a **host-only** token
+for `scope` alone, one of the scopes the contribution lists in `OAuthHostOnlyScopes`. The host gets it from the sign-in
+with a refresh-token grant that asks for that one scope (RFC 6749 §6), keeps it in memory only and never hands it to a
+session. Every token a session can be handed is narrowed the same way to the sign-in's scopes without the host-only
+ones. A scope the server states has to be within the request (one it leaves out counts as asked, RFC 6749 §5.1); a
+server that answers wider gives a session no token from that sign-in at all. Refreshes per server run one at a time
+and keep each rotated refresh token. Any other `scope`, or a server that will not narrow to it, is a 401 that never left
+the host. The Depot plugin uses it for
+`depot.inbox` (its `/cockpit/inbox` routes and `/hubs/inbox`).
+
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
@@ -1828,6 +1838,9 @@ public sealed record McpServerContribution(
 | `Url` | The server's HTTP endpoint, e.g. `https://x.youtrack.cloud/mcp`. |
 | `BearerToken` | Static bearer token sent as `Authorization: Bearer …`, or `null`/empty for no auth. |
 | `Scope` | Which session worlds this server fans out to **on first registration** — see below. |
+| `OAuthAuthority`, `OAuthClientId` (init) | Set `OAuthAuthority` for an OAuth server; `OAuthClientId` names a client the server already knows, else the cockpit registers itself (RFC 7591). |
+| `OAuthScopes` (init, AC-1586, host 0.98.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
+| `OAuthHostOnlyScopes` (init, AC-1586, host 0.98.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
 
 ### `McpContributionScope` {#mcpcontributionscope}
 

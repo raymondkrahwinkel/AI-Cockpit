@@ -33,16 +33,22 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- AC-499: resolved from ICockpitHost.Services (the app's own shared container already carries an
          ILoggerFactory registration — see Program.cs) so a failed reachability check leaves a line in the same
          dev log every other host-side failure does, rather than nowhere at all. Compile-only, like the reference
          above: the host's own already-loaded copy answers this type at runtime. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AC-1586: the inbox hub's client. Not in the host, so it ships in the plugin folder; its protocol is not one to
+         hand-roll. Its Microsoft.Extensions dependencies resolve to the host's own copies. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>

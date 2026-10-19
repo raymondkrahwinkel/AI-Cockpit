@@ -46,6 +46,10 @@ public sealed record McpServerConfig
     // offline_access); left unset, that derivation runs unchanged.
     public string? OAuthScopes { get; init; }
 
+    // AC-1586: scopes the cockpit keeps for itself (space-separated). No stored token, so nothing a session is
+    // handed, carries one: each is narrowed away by a refresh. Only a host-only token asked for by name has it.
+    public string? OAuthHostOnlyScopes { get; init; }
+
     // AC-354: extra headers sent alongside whatever `Auth` arranges, for a server needing `X-Api-Key` or another
     // scheme `McpServerAuth.ApiKey` can't express. Additive, not a replacement; ignored for stdio servers.
     public IReadOnlyList<McpHeader> Headers { get; init; } = [];
@@ -89,7 +93,7 @@ public sealed record McpServerConfig
         + $"{nameof(Command)} = {Command}, {nameof(Url)} = {Url}, {nameof(Auth)} = {Auth}, "
         + $"{nameof(ApiKey)} = {(string.IsNullOrEmpty(ApiKey) ? "null" : "***")}, "
         + $"{nameof(OAuthAuthority)} = {OAuthAuthority}, {nameof(OAuthClientId)} = {OAuthClientId}, "
-        + $"{nameof(OAuthScopes)} = {OAuthScopes}, "
+        + $"{nameof(OAuthScopes)} = {OAuthScopes}, {nameof(OAuthHostOnlyScopes)} = {OAuthHostOnlyScopes}, "
         + $"{nameof(Headers)} = [{string.Join(", ", Headers)}], "
         + $"{nameof(PinnedCertificateFingerprint)} = {PinnedCertificateFingerprint}, {nameof(KeyExpiresAt)} = {KeyExpiresAt}, "
         + $"{nameof(Enabled)} = {Enabled}, {nameof(CockpitHosted)} = {CockpitHosted}, "

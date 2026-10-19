@@ -6,14 +6,25 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Infrastructure.Plugins;
 
 // AC-1587: what ICockpitHost.CreateAuthorizedHandler hands a plugin. The bearer goes on a copy of each request that
-// the plugin never sees, and only to the origin of the plugin's own OAuth MCP server; the coordinator supplies and
-// renews it exactly as it does for the MCP connection itself.
+// the plugin never sees, and only to the origin of the plugin's own OAuth MCP server. `acquire` supplies it and
+// `renew(server, rejected)` replaces one the server refused: the MCP connection's own, or a host-only one (AC-1586).
 internal sealed class PluginMcpAuthorizedHandler(
     string serverName,
     Func<McpServerConfig?> resolveServer,
-    IMcpOAuthCoordinator? coordinator,
+    Func<McpServerConfig, CancellationToken, Task<McpOAuthAccess>>? acquire,
+    Func<McpServerConfig, string, CancellationToken, Task<McpOAuthAccess>>? renew,
     HttpMessageHandler upstream) : HttpMessageHandler
 {
+    public PluginMcpAuthorizedHandler(string serverName, Func<McpServerConfig?> resolveServer, IMcpOAuthCoordinator? coordinator, HttpMessageHandler upstream)
+        : this(
+            serverName,
+            resolveServer,
+            coordinator is null ? null : (server, cancellationToken) => coordinator.AcquireAsync(server, interactive: false, cancellationToken),
+            coordinator is null ? null : coordinator.RenewRejectedAsync,
+            upstream)
+    {
+    }
+
     private readonly HttpMessageInvoker _upstream = new(upstream);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -29,12 +40,12 @@ internal sealed class PluginMcpAuthorizedHandler(
             throw new HttpRequestException($"Refused: the request is not for the origin of MCP server '{serverName}'.");
         }
 
-        if (coordinator is null)
+        if (acquire is null || renew is null)
         {
             return _Unauthorized(request);
         }
 
-        var access = await _AskAsync(() => coordinator.AcquireAsync(server, interactive: false, cancellationToken)).ConfigureAwait(false);
+        var access = await _AskAsync(() => acquire(server, cancellationToken)).ConfigureAwait(false);
         if (_TokenOf(access) is not { } accessToken)
         {
             return _Unauthorized(request);
@@ -46,7 +57,7 @@ internal sealed class PluginMcpAuthorizedHandler(
         // credential is renewed either way, so the plugin's own retry carries the new one.
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var renewed = await _AskAsync(() => coordinator.RenewRejectedAsync(server, accessToken, cancellationToken)).ConfigureAwait(false);
+            var renewed = await _AskAsync(() => renew(server, accessToken, cancellationToken)).ConfigureAwait(false);
             if (request.Content is null && _TokenOf(renewed) is { } renewedToken)
             {
                 response.Dispose();
