@@ -539,8 +539,11 @@
     <!-- 3.15.0 (AC-1509): IFirstStartPlugin, a backend part that registers what its first-start route needs before the
          first-run wizard opens, ahead of Initialize. A plugin that implements it sets minHostVersion 0.97.0. Additive — a
          minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.15.0</Version>
-    <AssemblyVersion>1.14.0.0</AssemblyVersion>
+    <!-- 3.16.0 (AC-1586): ICockpitHost.CreateAuthorizedHandler(name, scope), a host-only token narrowed to one scope, and
+         McpServerContribution.OAuthScopes and OAuthHostOnlyScopes. A plugin that uses them sets minHostVersion 0.98.0.
+         Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.16.0</Version>
+    <AssemblyVersion>1.15.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>

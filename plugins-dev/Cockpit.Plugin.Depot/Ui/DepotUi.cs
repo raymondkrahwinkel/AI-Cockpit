@@ -36,9 +36,16 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         // AC-784: same global-toolbar route the Kubernetes plugin uses (AC-91) — the project editor's own
         // "Servers…" button above still opens settings the same way it always has.
         host.AddToolbarAction(new ToolbarAction("Depot settings", MaterialIconKind.Database, () => host.ShowSettingsAsync()));
+        // AC-1586: one inbox model for the plugin's lifetime, so the side-menu badge sums every connection's unread.
+        var inbox = new DepotInboxModel(host);
+        var badge = host.AddSideMenuButtonWithBadge("Depot inbox", () => _ = host.ShowDialogAsync(
+            "Depot", () => new DepotBrowserPanel(host, settings.Connections, inbox, openInbox: true), "depot-browser", 1000, 680));
+        inbox.Changed += _ => badge.Primary = inbox.Total;
+        _ = inbox.LoadCountsAsync();
+
         // AC-1568: the file browser, as a dock panel and from the toolbar.
-        host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot files", MaterialIconKind.FolderNetworkOutline, () => new DepotBrowserPanel(host, settings.Connections)));
+        host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot files", MaterialIconKind.FolderNetworkOutline, () => new DepotBrowserPanel(host, settings.Connections, inbox)));
         host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
-            () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections), "depot-browser", 1000, 680)));
+            () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections, inbox), "depot-browser", 1000, 680)));
     }
 }

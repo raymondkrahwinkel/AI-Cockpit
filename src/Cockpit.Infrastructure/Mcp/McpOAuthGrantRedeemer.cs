@@ -11,7 +11,10 @@ namespace Cockpit.Infrastructure.Mcp;
 // AC-1511: a sign-in without a browser. Redeems a plugin's grant at the token endpoint the server's metadata names,
 // found as the MCP SDK finds it, and files the tokens where the SDK's sign-in does, with what renewing them needs.
 // No parameter or response body is ever logged: both carry credentials.
-internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILogger<McpOAuthGrantRedeemer> logger) : ISingletonService
+internal sealed class McpOAuthGrantRedeemer(
+    IMcpOAuthTokenStore tokenStore,
+    ILogger<McpOAuthGrantRedeemer> logger,
+    McpOAuthScopeNarrower? narrower = null) : ISingletonService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -29,7 +32,7 @@ internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILog
         try
         {
             if (await _AuthorizationServerAsync(resource, cancellationToken).ConfigureAwait(false) is not { } authorizationServer
-                || await _TokenEndpointAsync(authorizationServer, cancellationToken).ConfigureAwait(false) is not { } tokenEndpoint)
+                || await McpOAuthScopeNarrower.TokenEndpointAsync(Http, authorizationServer, cancellationToken).ConfigureAwait(false) is not { } tokenEndpoint)
             {
                 logger.LogWarning("MCP server {Server} names no token endpoint to redeem a grant at.", server.Name);
                 return PluginMcpSignInOutcome.Unreachable;
@@ -59,7 +62,7 @@ internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILog
                 await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             var root = answer.RootElement;
-            if (_String(root, "access_token") is not { Length: > 0 } accessToken)
+            if (McpOAuthScopeNarrower.String(root, "access_token") is not { Length: > 0 } accessToken)
             {
                 logger.LogWarning("MCP server {Server} accepted a {GrantType} grant but returned no access token.", server.Name, grantType);
                 return PluginMcpSignInOutcome.Declined;
@@ -68,29 +71,30 @@ internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILog
             DateTimeOffset? expiresAt = root.TryGetProperty("expires_in", out var expiresIn) && expiresIn.TryGetInt32(out var seconds) && seconds > 0
                 ? DateTimeOffset.UtcNow.AddSeconds(seconds)
                 : null;
-            var refreshToken = _String(root, "refresh_token");
-            await tokenStore.SaveAsync(
-                server.IdentityKey,
-                server.Name,
-                new McpOAuthToken
-                {
-                    AccessToken = accessToken,
-                    Scheme = _String(root, "token_type") is { Length: > 0 } scheme ? scheme : "Bearer",
-                    RefreshToken = refreshToken,
-                    ExpiresAt = expiresAt,
-                    Scope = _String(root, "scope"),
-                    ResourceUrl = server.Url,
-                    ClientId = form.GetValueOrDefault("client_id"),
-                    AuthorizationServer = authorizationServer,
-                },
-                cancellationToken).ConfigureAwait(false);
+            var redeemed = new McpOAuthToken
+            {
+                AccessToken = accessToken,
+                Scheme = McpOAuthScopeNarrower.String(root, "token_type") is { Length: > 0 } scheme ? scheme : "Bearer",
+                RefreshToken = McpOAuthScopeNarrower.String(root, "refresh_token"),
+                ExpiresAt = expiresAt,
+                Scope = McpOAuthScopeNarrower.String(root, "scope"),
+                ResourceUrl = server.Url,
+                ClientId = form.GetValueOrDefault("client_id"),
+                AuthorizationServer = authorizationServer,
+            };
+
+            // AC-1586: before it is stored, since whatever is stored is what a session gets handed.
+            var stored = narrower is null
+                ? redeemed
+                : await narrower.KeepHostOnlyScopesOffAsync(server, redeemed, CancellationToken.None).ConfigureAwait(false);
+            await tokenStore.SaveAsync(server.IdentityKey, server.Name, stored, CancellationToken.None).ConfigureAwait(false);
 
             logger.LogInformation(
                 "Stored a new access token for MCP server {Server} from a {GrantType} grant; it expires at {ExpiresAt} and {RefreshState}.",
                 server.Name,
                 grantType,
-                expiresAt,
-                string.IsNullOrWhiteSpace(refreshToken) ? "carries no refresh token, so it cannot renew itself" : "can renew itself");
+                stored.ExpiresAt,
+                string.IsNullOrWhiteSpace(stored.RefreshToken) ? "carries no refresh token, so it cannot renew itself" : "can renew itself");
             return PluginMcpSignInOutcome.Authorized;
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
@@ -111,7 +115,7 @@ internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILog
             ? [$"{origin}/.well-known/oauth-protected-resource{path}", $"{origin}/.well-known/oauth-protected-resource"]
             : new[] { $"{origin}/.well-known/oauth-protected-resource" })
         {
-            if (await _ReadJsonAsync(candidate, cancellationToken).ConfigureAwait(false) is { } metadata
+            if (await McpOAuthScopeNarrower.ReadJsonAsync(Http, candidate, cancellationToken).ConfigureAwait(false) is { } metadata
                 && metadata.TryGetProperty("authorization_servers", out var servers)
                 && servers.ValueKind == JsonValueKind.Array
                 && servers.EnumerateArray().Select(server => server.GetString()).FirstOrDefault(server => !string.IsNullOrWhiteSpace(server)) is { } first)
@@ -122,37 +126,4 @@ internal sealed class McpOAuthGrantRedeemer(IMcpOAuthTokenStore tokenStore, ILog
 
         return null;
     }
-
-    // RFC 8414 first, OpenID Connect discovery second; Depot (OpenIddict) answers both.
-    private static async Task<string?> _TokenEndpointAsync(string authorizationServer, CancellationToken cancellationToken)
-    {
-        var issuer = authorizationServer.TrimEnd('/');
-        foreach (var candidate in new[] { $"{issuer}/.well-known/oauth-authorization-server", $"{issuer}/.well-known/openid-configuration" })
-        {
-            if (await _ReadJsonAsync(candidate, cancellationToken).ConfigureAwait(false) is { } metadata
-                && _String(metadata, "token_endpoint") is { Length: > 0 } endpoint)
-            {
-                return endpoint;
-            }
-        }
-
-        return null;
-    }
-
-    private static async Task<JsonElement?> _ReadJsonAsync(string url, CancellationToken cancellationToken)
-    {
-        using var response = await Http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            return null;
-        }
-
-        using var document = await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
-    }
-
-    private static string? _String(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }

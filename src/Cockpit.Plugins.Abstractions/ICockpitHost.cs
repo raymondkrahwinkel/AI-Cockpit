@@ -347,6 +347,19 @@ public interface ICockpitHost
     HttpMessageHandler CreateAuthorizedHandler(string name) => new Mcp.UnavailableAuthorizedHandler();
 
     /// <summary>
+    /// The same handler as <see cref="CreateAuthorizedHandler(string)"/>, carrying a token for <paramref name="scope"/>
+    /// alone (AC-1586), narrowed from the cockpit's sign-in by a refresh (RFC 6749 §6), for a scope the plugin listed in
+    /// <see cref="Mcp.McpServerContribution.OAuthHostOnlyScopes"/>.
+    /// </summary>
+    /// <remarks>
+    /// That token stays in the cockpit: it is never stored with the sign-in and never handed to a session, so an agent
+    /// cannot use it. Its answers are those of the other overload, origin rule and 401s included; a server that states a
+    /// scope wider than <paramref name="scope"/> gets a 401 that never left the host (one it leaves out counts as asked). The
+    /// default, for a host that predates this member, is a handler that throws <see cref="HttpRequestException"/>.
+    /// </remarks>
+    HttpMessageHandler CreateAuthorizedHandler(string name, string scope) => new Mcp.UnavailableAuthorizedHandler();
+
+    /// <summary>
     /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13),
     /// or clears it with an empty string. The session is named by its <c>IPluginSessionContext.PaneId</c>.
     /// </summary>

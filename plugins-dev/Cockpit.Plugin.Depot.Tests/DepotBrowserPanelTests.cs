@@ -1,6 +1,7 @@
 extern alias UiAsm;
 
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.VisualTree;
 using NSubstitute;
@@ -74,6 +75,57 @@ public class DepotBrowserPanelTests
 
         Assert.False(_UploadButton(panel).IsVisible);
     }
+
+    // AC-1586: the Inbox tab (mockup 7b) on fixture data, as the side-menu button opens it. With DEPOT_INBOX_SCENE_PNG set
+    // to a path the frame is written there; the assertion is that the connection's messages, and only those, are shown.
+    [Fact]
+    public void InboxTab_RendersTheConnectionsMessages()
+    {
+        var rig = new DepotBrowserModelTests.Rig();
+        rig.Answers["browser-projects"] = DepotBrowserModelTests._Ok(Array.Empty<object>());
+        rig.Answers["inbox-list"] = new
+        {
+            count = new { connectionId = "c1", state = "ok", unread = 3, perOrganization = new Dictionary<string, int> { ["krahwinkel-it"] = 2, ["wispslate"] = 1 } },
+            messages = new object[]
+            {
+                _Message("m1", "NoteInvitation", "Sanne invites you to a note", false, "krahwinkel-it", "Krahwinkel IT", -1, new { state = "note", title = "Sprint review", path = "Meetings/2026-10-19 Sprint review.md", live = true, openUrl = "https://depot.example.com/n/t1" }),
+                _Message("m2", "AccessRequest", "Lotte asks for access to depot", false, "krahwinkel-it", "Krahwinkel IT", -45, null),
+                _Message("m3", "NoteInvitation", "Mark invites you to a note", false, "wispslate", "Wispslate", -90, new { state = "note", title = "Roadmap Q4", path = "Plans/Roadmap.md", live = false, openUrl = "https://depot.example.com/n/t2" }),
+                _Message("m4", "OrganizationInvitation", "Added to krahwinkel-it/klanten", true, "krahwinkel-it", "Krahwinkel IT", -1500, null),
+            },
+            updatedAt = DateTimeOffset.UtcNow,
+        };
+        rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
+        Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
+        var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")], openInbox: true);
+        var window = new Window { Width = 420, Height = 640, Content = panel };
+        window.Show();
+
+        _Until(() => panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Lotte asks for access to depot"));
+
+        using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
+        if (Environment.GetEnvironmentVariable("DEPOT_INBOX_SCENE_PNG") is { Length: > 0 } path)
+        {
+            using var stream = File.Create(path);
+            frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+
+        Assert.True(frame.PixelSize.Width > 0);
+        Assert.Contains(panel.GetVisualDescendants().OfType<ToggleButton>(), chip => Equals(chip.Content, "Krahwinkel IT · 2"));
+    }
+
+    private static object _Message(string id, string kind, string summary, bool isRead, string slug, string organization, int minutesAgo, object? note) => new
+    {
+        id,
+        kind,
+        isRead,
+        handled = false,
+        createdAt = DateTimeOffset.Now.AddMinutes(minutesAgo),
+        organization = new { slug, name = organization },
+        summary,
+        openUrl = $"https://depot.example.com/mailbox?id={id}",
+        note,
+    };
 
     private static Button _UploadButton(DepotBrowserPanel panel) =>
         panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Upload"));

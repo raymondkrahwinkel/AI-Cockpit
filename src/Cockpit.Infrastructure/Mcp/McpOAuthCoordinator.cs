@@ -15,8 +15,11 @@ internal sealed class McpOAuthCoordinator(
     IMcpOAuthTokenStore tokenStore,
     IMcpOAuthAuthorizer authorizer,
     ILogger<McpOAuthCoordinator> logger,
-    IToastNotifier? toastNotifier = null) : IMcpOAuthCoordinator, ISingletonService
+    IToastNotifier? toastNotifier = null,
+    McpOAuthRefreshGate? refreshGate = null) : IMcpOAuthCoordinator, ISingletonService
 {
+    private readonly McpOAuthRefreshGate _refreshGate = refreshGate ?? new McpOAuthRefreshGate();
+
     // How much of an access token's remaining life has to be left for it to be worth using for *one request*:
     // enough to survive the round trip it is about to be spent on and no more.
     private static readonly TimeSpan RequestExpiryMargin = TimeSpan.FromMinutes(2);
@@ -114,7 +117,7 @@ internal sealed class McpOAuthCoordinator(
         // Somebody already replaced it. This is the ordinary shape of a hundred calls in flight against a credential
         // the server has just started refusing: the first renews, and every other one arrives here to find a token it
         // has not tried yet. Handing that one back is what keeps the burst to a single round trip.
-        if (!string.Equals(stored.AccessToken, rejectedAccessToken, StringComparison.Ordinal))
+        if (!string.Equals(stored.AccessToken, rejectedAccessToken, StringComparison.Ordinal) && _IsServable(server, stored))
         {
             return _Authorized(server, stored.AccessToken);
         }
@@ -158,7 +161,7 @@ internal sealed class McpOAuthCoordinator(
         }
 
         var renewAt = _RenewAtFor(server, policy);
-        if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, renewAt))
+        if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, renewAt) && _IsServable(server, stored))
         {
             return _Authorized(server, stored.AccessToken);
         }
@@ -216,7 +219,7 @@ internal sealed class McpOAuthCoordinator(
             _RememberWhatItsFreshTokensAreWorth(server, token!);
         }
 
-        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom))
+        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom) && _IsServable(server, token))
         {
             logger.LogInformation(
                 "Renewed the authorization for MCP server {Server}; the new access token runs to {ExpiresAt}.",
@@ -230,7 +233,7 @@ internal sealed class McpOAuthCoordinator(
         // call until the expiry tries the renewal again. Only where a credential is spent per call: a session holds
         // its answer for hours, and a token the server has just refused is one this end's clock is wrong about.
         if (!renewed && policy.ServeTheHeldTokenInstead && token is not null && token.IsForResource(server.Url)
-            && token.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom))
+            && token.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom) && _IsServable(server, token))
         {
             logger.LogInformation(
                 "Renewing the authorization for MCP server {Server} did not succeed, but the access token in hand runs to {ExpiresAt} and still covers this call, so it is used and the renewal is attempted again on the next one.",
@@ -326,7 +329,11 @@ internal sealed class McpOAuthCoordinator(
         {
             // CancellationToken.None on purpose: this work is shared, so honouring the first caller's token would
             // let whoever happened to arrive first cancel a renewal the others are still waiting on.
-            return await _HandshakeAsync(server, interactive: false, margin, CancellationToken.None).ConfigureAwait(false);
+            // AC-1586: one refresh per server at a time, a host-only token's included, since each one rotates the grant.
+            return await _refreshGate.RunAsync(
+                server.IdentityKey,
+                () => _HandshakeAsync(server, interactive: false, margin, CancellationToken.None),
+                CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -414,6 +421,10 @@ internal sealed class McpOAuthCoordinator(
             logger.LogWarning(exception, "Could not show the operator a notification about MCP server {Server}.", server.Name);
         }
     });
+
+    // AC-1586: what may be handed out at all — never a token that may carry a scope the cockpit keeps for itself.
+    private static bool _IsServable(McpServerConfig server, McpOAuthToken token) =>
+        !string.IsNullOrWhiteSpace(token.AccessToken) && McpOAuthScopeNarrower.IsSessionSafe(server, token);
 
     public async Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default)
     {

@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Depot inbox** in the side menu, its badge the unread messages over every Depot connection, and an **Inbox**
+  tab in the Depot panel. It updates live when Depot reports a change, shows one connection's inbox at a time with a
+  filter per organization, and opens a message in Depot (**Open in Depot** for a note invitation, **Decide in Depot**
+  for the rest) or marks it read. A sign-in that expired clears the list; a Depot that does not answer keeps the last
+  list, dimmed. Each Depot connection asks for one more sign-in before its inbox shows.
+
+- added: a plugin can keep an OAuth scope for the cockpit alone. No token a session or an agent gets carries it; Depot's
+  inbox scope is the first, so an agent with the Depot connection cannot read your inbox.
+
 - added: **Sign in to a Depot on the very first start.** The first-run wizard's "How do you want to start?" now offers
   **Sign in to a Depot** from the first launch on. Enter your Depot's address and sign in (your browser opens only when
   you click), then **restore your latest backup** from your Depot, or **set up from your profile and organisation**

@@ -472,6 +472,8 @@ public class PluginBackendHost(
                     ApiKey = refreshed.ApiKey,
                     OAuthAuthority = refreshed.OAuthAuthority,
                     OAuthClientId = refreshed.OAuthClientId,
+                    OAuthScopes = refreshed.OAuthScopes,
+                    OAuthHostOnlyScopes = refreshed.OAuthHostOnlyScopes,
                 };
             }
 
@@ -626,10 +628,25 @@ public class PluginBackendHost(
     public HttpMessageHandler CreateAuthorizedHandler(string name) =>
         new PluginMcpAuthorizedHandler(
             name,
-            () => _OwnMcpServerContributions().FirstOrDefault(
-                server => string.Equals(server.Name, name, StringComparison.Ordinal) && server.Auth == McpServerAuth.OAuth),
+            () => _OwnOAuthServer(name),
             services.GetService<IMcpOAuthCoordinator>(),
             new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+
+    // AC-1586: the same, with a host-only token for `scope` alone, which no session is ever handed.
+    public HttpMessageHandler CreateAuthorizedHandler(string name, string scope)
+    {
+        var hostOnly = services.GetService<McpOAuthHostOnlyTokens>();
+        return new PluginMcpAuthorizedHandler(
+            name,
+            () => _OwnOAuthServer(name),
+            hostOnly is null ? null : (server, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected: null, cancellationToken),
+            hostOnly is null ? null : (server, rejected, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected, cancellationToken),
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+    }
+
+    private McpServerConfig? _OwnOAuthServer(string name) =>
+        _OwnMcpServerContributions().FirstOrDefault(
+            server => string.Equals(server.Name, name, StringComparison.Ordinal) && server.Auth == McpServerAuth.OAuth);
 
     // AC-748: the MCP client SDK prefixes failed-call messages with "An error occurred invoking '{toolName}': ".
     // Stripped once here rather than in every caller that pattern-matches the tool's own error text

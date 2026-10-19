@@ -31,7 +31,9 @@ internal sealed class DepotBrowserPanel : UserControl
     private string? _project;
     private bool _filling;
 
-    public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections)
+    // AC-1586: `inbox` is the plugin's shared inbox model (the badge's), or null for a panel that keeps its own;
+    // `openInbox` starts on the Inbox tab, as the side-menu button does.
+    public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections, DepotInboxModel? inbox = null, bool openInbox = false)
     {
         _host = host;
         _connections = connections;
@@ -74,7 +76,19 @@ internal sealed class DepotBrowserPanel : UserControl
         layout.Children.Add(banner);
         layout.Children.Add(_publications);
         layout.Children.Add(body);
-        Content = layout;
+        var ownsInbox = inbox is null;
+        var inboxModel = inbox ?? new DepotInboxModel(host);
+        if (ownsInbox)
+        {
+            DetachedFromVisualTree += (_, _) => inboxModel.Dispose();
+        }
+
+        var inboxTab = new TabItem { Header = "Inbox", Content = new DepotInboxPanel(inboxModel, connections) };
+        Content = new TabControl
+        {
+            Items = { new TabItem { Header = "Files", Content = layout }, inboxTab },
+            SelectedItem = openInbox ? inboxTab : null,
+        };
 
         if (connections.Count == 0)
         {
