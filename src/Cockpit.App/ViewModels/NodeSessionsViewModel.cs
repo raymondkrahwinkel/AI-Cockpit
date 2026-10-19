@@ -36,7 +36,7 @@ public sealed partial class NodeSessionsViewModel(
     private DateTimeOffset _nextAttemptAt;
     private DateTimeOffset _disconnectedAt;
     private int _retries;
-    private long _latencyMs;
+    private long? _latencyMs;
     private string? _version;
 
     // AC-1458: the running refresh's token; Disconnect cancels it, so nothing more leaves for this node.
@@ -387,7 +387,7 @@ public sealed partial class NodeSessionsViewModel(
             _disconnectedAt = next == NodeConnectionState.Disconnected ? now : _disconnectedAt;
         }
 
-        _latencyMs = state?.LatencyMs ?? _latencyMs;
+        _latencyMs = state?.LatencyMs;
         _version = state?.Key?.Version ?? _version;
         ConnectionState = next;
         _DescribeConnection();
@@ -477,7 +477,7 @@ public sealed partial class NodeSessionsViewModel(
     private void _DescribeConnection() => ConnectionDetail = ConnectionState switch
     {
         NodeConnectionState.Connected =>
-            $"since {_Clock(_connectedSince)} · {_latencyMs} ms · {NetworkOf(Url)}{(_version is { Length: > 0 } version ? $" · v{version}" : "")}",
+            $"since {_Clock(_connectedSince)} · {(_latencyMs is { } latency ? $"{latency} ms" : "no answer")} · {NetworkOf(Url)}{(_version is { Length: > 0 } version ? $" · v{version}" : "")}",
         NodeConnectionState.Reconnecting when IsServerGroup =>
             $"lost at {_Clock(_lostAt)} · sessions on the server keep running",
         NodeConnectionState.Reconnecting =>

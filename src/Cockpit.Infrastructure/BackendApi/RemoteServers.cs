@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-1456: one RemoteBackend per registry row that holds a connect key, so a pairing never becomes a server group.
-// Nothing polls: the state follows the stream's own connection, and /whoami is asked once per (re)connect.
+// The stream owns connection state; /whoami refreshes the key and latency every 30 seconds while it stays open.
 internal sealed class RemoteServers(IMcpServerStore registry, INotificationSettingsStore settingsStore, ILogger<RemoteServers> logger)
     : IRemoteServers, ISingletonService, IAsyncDisposable
 {
@@ -182,6 +182,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     private readonly BackendApiClient _client;
     private readonly RemoteServerHealthReader _health;
     private readonly RemoteProjects _projects;
+    private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _gate = new();
     private RemoteServerState _state = new(false, null, null);
@@ -191,16 +192,17 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     // Counts the stream's opens and drops; read and written under _gate.
     private int _generation;
 
-        public RemoteServer(string name, McpServerConfig row, INotificationSettingsStore settingsStore, ILogger logger)
+    public RemoteServer(string name, McpServerConfig row, INotificationSettingsStore settingsStore, ILogger logger, TimeProvider? time = null)
     {
         Name = name;
         _row = row;
         _logger = logger;
+        _time = time ?? TimeProvider.System;
         _client = new BackendApiClient(
             new Uri(new Uri(row.Url ?? ""), "/"),
             row.ApiKey ?? "",
             row.PinnedCertificateFingerprint ?? "",
-            TimeProvider.System);
+            _time);
         Administration = new RemoteConnectKeyAdministration(_client);
         Profiles = new RemoteServerProfiles(_client);
         AssistantAdministration = new RemoteAssistantAdministration(_client);
@@ -305,6 +307,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
 
                 StateChanged?.Invoke(this, EventArgs.Empty);
                 _health.Start(_stop.Token);
+                _ = _ProbeAsync();
                 return;
             }
             catch (BackendApiException exception) when (exception.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
@@ -381,10 +384,50 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         }
     }
 
-    private async Task _ReadKeyAsync()
+    private async Task _ProbeAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30), _time);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stop.Token).ConfigureAwait(false))
+            {
+                if (!State.IsConnected)
+                {
+                    continue;
+                }
+
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                try
+                {
+                    await _ReadKeyAsync(timeout.Token).ConfigureAwait(false);
+                }
+                catch (BackendApiException exception) when (exception.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                {
+                    _logger.LogInformation("Server {Server} refused this cockpit's connect key ({Status}).", Name, exception.Status);
+                    _Set(state => state with { KeyRefused = true });
+                    return;
+                }
+                catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogInformation(exception, "Server {Server} did not answer whoami.", Name);
+                    _Set(state => state with { LatencyMs = null });
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task _ReadKeyAsync(CancellationToken? cancellationToken = null)
     {
         var started = Stopwatch.GetTimestamp();
-        var who = await _client.WhoAmIAsync(_stop.Token).ConfigureAwait(false);
+        var who = await _client.WhoAmIAsync(cancellationToken ?? _stop.Token).ConfigureAwait(false);
         var latency = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         var key = new RemoteServerKey(who.Label, who.Capability, who.HoldsAssistant, who.AssistantHeldBy, who.Version, who.StartedAt, who.MayAnswerPermissions, who.AllowsForSession);
         _Set(state => state with { LatencyMs = latency, Key = key });

@@ -104,7 +104,7 @@ public interface IRemoteServer
     event EventHandler? StateChanged;
 }
 
-// AC-1456: `LatencyMs` is the /whoami round trip at the last (re)connect; `Key` is null until a /whoami answered.
+// AC-1456: `LatencyMs` is the latest /whoami round trip; `Key` is null until a /whoami answered.
 // `KeyRefused` is a server that turned the key away, which no retry will change.
 public sealed record RemoteServerState(bool IsConnected, long? LatencyMs, RemoteServerKey? Key, bool KeyRefused = false);
 
