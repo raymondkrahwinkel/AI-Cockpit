@@ -205,7 +205,7 @@ public static class ProvisionManifestApplier
                 state.Managed[want.Key] = new ManagedKeyEntry { By = want.By, Value = ManagedConfigKeys.Read(file, want.Key) ?? want.Value };
                 state.Applied[want.Key] = state.Offered[want.Key] = hash;
             }
-            else if (unset || local is not null && state.Applied.GetValueOrDefault(want.Key) == ManagedConfigKeys.Hash(local))
+            else if (unset || local is not null)
             {
                 if (local != want.Value)
                 {
