@@ -69,12 +69,17 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Equal(@"D:\mine", file["Profiles"]![0]!["ConfigDir"]!.ToString());
         Assert.Equal(("acceptEdits", "claude-sonnet-5-5"), (file["Profiles"]![1]!["Defaults"]!["PermissionMode"]!.ToString(), file["Profiles"]![1]!["Provider"]!["Model"]!.ToString()));
         Assert.Equal(
-            ["alpha:true:sha-alpha", "beta:true:sha-beta"],
+            ["alpha:true:sha-alpha", "beta:true:sha-beta", "gamma:true:sha-gamma"],
             file["Plugins"]!.AsObject().Select(plugin => $"{plugin.Key}:{plugin.Value!["Enabled"]}:{plugin.Value["PinnedSha256"]}"));
         Assert.Equal(1, file["FirstRunWizardVersion"]!.GetValue<int>());
 
+        // AC-1512, §3.10: the first-run answers landed as defaults, not just as "the wizard was answered": Simple on open,
+        // the work kind's plugin (gamma, tagged in the store), the manifest profile's reading level. Nothing to say.
+        Assert.Equal(("true", "Simple"), (file["Layout"]!["OpenInSimpleView"]!.ToString(), file["Profiles"]![1]!["Defaults"]!["DefaultReadingLevel"]!.ToString()));
+        Assert.DoesNotContain(applied.Report, line => line.Path.StartsWith("firstRun", StringComparison.Ordinal));
+
         // Off the white list: not written, and said.
-        Assert.Null(file["Layout"]);
+        Assert.NotEqual("Light", file["Layout"]!["ThemeMode"]!.ToString());
         Assert.Contains(applied.Report, line => line is { Path: "settings.layout.themeMode", Reason: ProvisionManifestReader.SkippedUnknown });
 
         var again = await _ApplyAsync();
@@ -82,6 +87,10 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Equal(written, File.ReadAllText(ConfigPath));
         string[] changes = [ProvisionManifestApplier.Applied, ProvisionManifestApplier.KeptLocal, ProvisionManifestApplier.ReplacedManaged, ProvisionManifestApplier.RestoredUnmanaged];
         Assert.DoesNotContain(again.Report, line => changes.Contains(line.Reason));
+
+        // What a first-run answer cannot do is said, never passed over.
+        var refused = await _ApplyAsync(_FirstRun("""{ "workKind": "writing", "readingLevel": "Expert" }"""));
+        Assert.Equal(["firstRun.workKind", "firstRun.readingLevel"], refused.Report.Where(line => line.Reason == ProvisionManifestApplier.NotApplied).Select(line => line.Path));
     }
 
     // AC-1507, manifest-v1 §4.2: the rows where a local value could be lost. Each applies `first`, lets the operator
@@ -121,25 +130,6 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
         Assert.Equal((15, "Consolas"), ((await store.LoadAsync()).FontSize, (await store.LoadAsync()).FontFamily));
         Assert.Equal("Acme", (await new ManagedSettings(ConfigPath).ReadAsync())["Terminal.FontSize"]);
-    }
-
-    // AC-1512, manifest-v1 §3.10: the first-run answers land as defaults, not just as "the wizard was answered". What
-    // cannot land is said in the report.
-    [Fact]
-    public async Task The_first_run_answers_open_the_cockpit_in_Simple_with_the_work_kinds_plugins_and_the_reading_level_and_say_what_they_could_not_apply()
-    {
-        var applied = await _ApplyAsync(_FirstRun("""{ "workKind": "documents-and-design", "readingLevel": "Simple", "simpleView": true }"""));
-
-        Assert.Null(applied.Failure);
-        var file = JsonNode.Parse(File.ReadAllText(ConfigPath))!;
-        Assert.Equal("true", file["Layout"]!["OpenInSimpleView"]!.ToString());
-        Assert.Equal("Simple", file["Profiles"]![0]!["Defaults"]!["DefaultReadingLevel"]!.ToString());
-        Assert.Equal("true", file["Plugins"]!["beta"]!["Enabled"]!.ToString());
-        Assert.Null(file["Plugins"]!["alpha"]);
-        Assert.DoesNotContain(applied.Report, line => line.Path.StartsWith("firstRun", StringComparison.Ordinal));
-
-        var refused = await _ApplyAsync(_FirstRun("""{ "workKind": "writing", "readingLevel": "Expert" }"""));
-        Assert.Equal(["firstRun.workKind", "firstRun.readingLevel"], refused.Report.Where(line => line.Reason == ProvisionManifestApplier.NotApplied).Select(line => line.Path));
     }
 
     private static string _FirstRun(string firstRun) => $$"""
@@ -216,7 +206,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
             .Returns(call =>
             {
                 _fetchedWithToken.Add(call.Arg<PluginStoreConfig>().Token);
-                return new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", [_Published("alpha"), _Published("beta")]), "https://store.example/index.json");
+                return new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", [_Published("alpha"), _Published("beta"), _Published("gamma")]), "https://store.example/index.json");
             });
         storeClient.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
@@ -253,7 +243,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
     private static PluginStoreEntry _Published(string id) =>
         new(id, id, null, null, "1.2.0", [new PluginStoreVersion("1.2.0", $"{id}.zip", AbstractionsContract.Version, null, null, null)],
-            Audience: id == "beta" ? [PluginWorkKinds.DocumentsAndDesign] : null);
+            Audience: id == "gamma" ? [PluginWorkKinds.DocumentsAndDesign] : null);
 
     private const string Manifest = """
         {
@@ -271,7 +261,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
             { "id": "acme-dev", "label": "Acme dev", "by": "org",
               "provider": { "id": "claude-provider", "model": "claude-sonnet-5-5" },
               "defaults": { "permissionMode": "acceptEdits" } } ] },
-          "firstRun": { "workKind": "ontwikkelen" }
+          "firstRun": { "workKind": "documents-and-design", "readingLevel": "Simple", "simpleView": true }
         }
         """;
 }

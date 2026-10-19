@@ -537,7 +537,11 @@ public static class ProvisionManifestApplier
         if (workKind is not null)
         {
             var tagged = new List<(string Id, string? MinVersion, string? Pin, string? Store)>();
-            foreach (var store in _Stores(manifest, current).Concat(current.PluginStores).DistinctBy(candidate => candidate.Location))
+            // A private store without a token here is not asked: _TokenNeeded already says so.
+            var readable = (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
+                .Where(store => store.Auth != "token-required" || !string.IsNullOrWhiteSpace(_LocalToken(store, current)))
+                .Select(store => PluginStoreConfig.Remote(store.Url, _LocalToken(store, current)));
+            foreach (var store in readable.Concat(current.PluginStores).DistinctBy(candidate => candidate.Location))
             {
                 var index = (await FetchAsync(store).ConfigureAwait(false)).Index;
                 tagged.AddRange((index?.Plugins ?? [])
