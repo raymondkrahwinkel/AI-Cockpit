@@ -216,6 +216,35 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"OPENAI_API_KEY","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"permissionMode":"bypassPermissions"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
+        // AC-1585: the whole profile as the editor holds it, each secret masked; sent back masked it stays, cleared it goes,
+        // never to another address, and a program path, loader variable or another folder is refused as field by field.
+        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"apiKey\":\"(set on the server)\"", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"secretValue\":\"(set on the server)\"", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","purpose":"changed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","purpose":"changed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.OK, "", "\"purpose\":\"changed\"", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://elsewhere.example:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":[{"key":"OTHER_TOKEN","secretValue":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":{"provider":3,"pluginProviderId":"door-openai","pluginConfigJson":"{}"}}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Plugged","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.Conflict, "profile_exists", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Plugged", """{"profile":{"label":"Plugged","provider":{"provider":3,"pluginProviderId":"door-openai","pluginConfigJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://elsewhere.example/v1\"}"}}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/fake/.claude","executablePath":"/tmp/{secret}"}}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/tmp/{secret}","executablePath":"/opt/claude"}}""", "admin", HttpStatusCode.BadRequest, "config_dir_refused", "", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/fake/.claude","executablePath":"/opt/claude","purpose":"kept"}}""", "admin", HttpStatusCode.OK, "", "\"purpose\":\"kept\"", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles", """{"label":"Fresh","provider":"ollama","settings":{"profile":{"label":"Fresh","provider":{"provider":""" + (int)SessionProvider.Ollama + ""","baseUrl":"http://127.0.0.1:11434","model":"m"}}}}""", "admin", HttpStatusCode.Created, "", "\"label\":\"Fresh\"", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles", """{"label":"Fresh","provider":"lmstudio","settings":{"profile":{"label":"Fresh","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + "}}}", "admin", HttpStatusCode.Created, "", "\"hasApiKey\":false", _Door.ProfileSecret },
+        { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"profile":{"label":"Keyed","provider":{"provider":""" + (int)SessionProvider.LmStudio + ""","apiKey":"{secret}"}}}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/providers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/providers", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/mcp-servers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/mcp-servers/depot/estimate", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"(set on the server)","label":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"{secret}","extra":1}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/managed-clis", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/managed-clis/claude/install", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/managed-clis", null, "admin", HttpStatusCode.OK, "", "{}", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/managed-clis/{secret}/status", null, "admin", HttpStatusCode.NotFound, "no_managed_cli", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/plugins/fresh/managed-clis/claude", null, "admin", HttpStatusCode.NotFound, "no_managed_cli", "", _Door.ProfileSecret },
         // AC-1475 criteria 1 and 2: the server's own assistant is admin's alone, no answer of it holds a secret, also after a
         // copy-in of a profile with one, and a credential, a program path or a loader variable in its patch is refused.
         { "GET", "/api/v1/assistant/settings", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -236,6 +265,12 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"executablePath":"/tmp/{secret}"}}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"environment":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
     };
+
+    // AC-1585: the keyed profile's provider and variables as the server hands them out, every secret masked.
+    private static string _KeyedProvider(string baseUrl) =>
+        "{\"provider\":" + (int)SessionProvider.LmStudio + ",\"baseUrl\":\"" + baseUrl + "\",\"model\":\"qwen\",\"apiKey\":\"(set on the server)\"}";
+
+    private const string _KeyedMasked = """[{"key":"PROVIDER_TOKEN","secretValue":"(set on the server)"},{"key":"REGION","value":"eu"},{"key":"BACKUP_PASSWORD","value":"(set on the server)"}]""";
 
     // AC-1473: `listed` and `absent` are what the answer must and must not hold.
     [Theory]

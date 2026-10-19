@@ -48,7 +48,7 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
             MinimumPrefixLength = 0,
             FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
             Text = existing.ExecutablePath ?? string.Empty,
-            PlaceholderText = "Blank = \"claude\" resolved against PATH",
+            PlaceholderText = "Blank = automatic: the managed copy, else \"claude\" on PATH",
         };
 
         View = new StackPanel

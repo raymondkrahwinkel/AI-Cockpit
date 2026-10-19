@@ -353,7 +353,9 @@ internal static class ProfileEndpoints
         {
             Label = incoming.Label.Trim(),
             ProviderConfig = config,
-            Defaults = incoming.Defaults is { } defaults ? defaults with { OptionDefaults = options.Count > 0 ? options : null } : null,
+            Defaults = (incoming.Defaults ?? (options.Count > 0 ? new ProfileDefaults("", "", "") : null)) is { } defaults
+                ? defaults with { OptionDefaults = options.Count > 0 ? options : null }
+                : null,
             EnvironmentVariables = variables.Count > 0 ? variables : null,
         }, Results.Empty);
     }

@@ -83,6 +83,26 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
 
     private sealed record RemoteAuthState(string State);
 
+    public Task<IReadOnlyDictionary<string, string?>> GetManagedClisAsync(string folderId, CancellationToken cancellationToken = default) =>
+        client.SendAsync<IReadOnlyDictionary<string, string?>>(HttpMethod.Get, _ManagedCliPath(folderId, null), null, ConnectKeyEndpoints.Json, cancellationToken);
+
+    public Task<RemoteManagedCliStatus> GetManagedCliStatusAsync(string folderId, string cliName, CancellationToken cancellationToken = default) =>
+        client.SendAsync<RemoteManagedCliStatus>(HttpMethod.Get, _ManagedCliPath(folderId, cliName) + "/status", null, ConnectKeyEndpoints.Json, cancellationToken);
+
+    public Task<RemoteManagedCliInstall> InstallManagedCliAsync(string folderId, string cliName, CancellationToken cancellationToken = default) =>
+        client.SendAsync<RemoteManagedCliInstall>(HttpMethod.Post, _ManagedCliPath(folderId, cliName) + "/install", null, ConnectKeyEndpoints.Json, cancellationToken);
+
+    public async Task<bool> RemoveManagedCliAsync(string folderId, string cliName, CancellationToken cancellationToken = default) =>
+        (await client.SendAsync<RemoteRemoved>(HttpMethod.Delete, _ManagedCliPath(folderId, cliName), null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).Removed;
+
+    public async Task SetManagedCliAutoUpdateAsync(string folderId, string cliName, bool enabled, CancellationToken cancellationToken = default) =>
+        await client.SendAsync<JsonObject>(HttpMethod.Put, _ManagedCliPath(folderId, cliName) + "/auto-update", new { enabled }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+
+    private sealed record RemoteRemoved(bool Removed);
+
+    private static string _ManagedCliPath(string folderId, string? cliName) =>
+        $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/managed-clis" + (cliName is null ? "" : $"/{Uri.EscapeDataString(cliName)}");
+
     private static string _StoragePath(string folderId) => $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/storage";
 
     public async Task RestartAsync(CancellationToken cancellationToken = default)

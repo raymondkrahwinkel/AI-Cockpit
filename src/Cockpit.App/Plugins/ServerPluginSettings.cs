@@ -6,6 +6,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
@@ -35,7 +36,8 @@ internal sealed class ServerPluginSettings
         string folderId,
         IReadOnlyDictionary<string, string> seed,
         ICockpitUiHost local,
-        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+        IReadOnlyDictionary<string, string?> managedClis)
     {
         _relay = relay;
         _folderId = folderId;
@@ -49,7 +51,8 @@ internal sealed class ServerPluginSettings
                 await relay.GetMcpServerAuthStateAsync(folderId, name, cancellationToken).ConfigureAwait(false), ignoreCase: true, out var state)
                 ? state
                 : PluginMcpAuthState.Unknown,
-            profiles);
+            profiles,
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)));
     }
 
     public Func<Control> CreateView => _host.CreateSettingsView ?? throw new InvalidOperationException("The plugin registered no settings view.");
@@ -62,7 +65,7 @@ internal sealed class ServerPluginSettings
         string folderId,
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, await ServerManagedClis.ReadAsync(relay, folderId));
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return null;
@@ -80,7 +83,7 @@ internal sealed class ServerPluginSettings
         string folderId,
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, await ServerManagedClis.ReadAsync(relay, folderId));
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return new Dictionary<string, Func<string?, IPluginProviderConfigView>>();

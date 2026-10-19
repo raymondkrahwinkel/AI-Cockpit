@@ -18,12 +18,14 @@ namespace Cockpit.App.Plugins;
 // AC-1571: the host a second copy of a plugin's UI part gets, so its own settings view reads and writes the plugin's
 // storage on a server and reaches its backend part there. It keeps the settings view and drops every other
 // registration (the local copy already made them); window helpers go to the local host, and what acts on this machine does nothing.
+// AC-1585: it keeps a provider's profile view too, and its managed command-line tools are the server's.
 internal sealed class ServerPluginUiHost(
     ICockpitUiHost local,
     IPluginStorage storage,
     IPluginUiChannel channel,
     Func<string, CancellationToken, Task<PluginMcpAuthState>> mcpAuthState,
-    Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles) : ICockpitUiHost
+    Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+    ServerManagedClis managedClis) : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
@@ -181,19 +183,22 @@ internal sealed class ServerPluginUiHost(
 
     public bool CanSendIntent(string targetPluginId, string action) => false;
 
-    public string? ResolveManagedCliPath(string cliName) => null;
+    // AC-1585: the server's managed copies, as the plugin's host there has them.
+    public string? ResolveManagedCliPath(string cliName) => managedClis.Resolve(cliName);
 
     public Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new ManagedCliStatus(null, null));
+        managedClis.StatusAsync(cliName, cancellationToken);
 
     public Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(ManagedCliInstallResult.Fail("A server's command-line tools are installed on the server."));
+        managedClis.InstallAsync(cliName, cancellationToken);
 
-    public bool RemoveManagedCli(string cliName) => false;
+    public bool RemoveManagedCli(string cliName) => managedClis.Remove(cliName);
 
-    public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    public Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default) =>
+        managedClis.AutoUpdateAsync(cliName, cancellationToken);
 
-    public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) =>
+        managedClis.SetAutoUpdateAsync(cliName, enabled, cancellationToken);
 
     public Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
         mcpAuthState(name, cancellationToken);

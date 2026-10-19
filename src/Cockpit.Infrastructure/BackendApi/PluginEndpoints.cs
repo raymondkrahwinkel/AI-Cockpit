@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
+using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -248,7 +249,60 @@ internal static class PluginEndpoints
             var state = await host.GetMcpServerAuthStateAsync(name, cancellationToken).ConfigureAwait(false);
             return Results.Json(new { state }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("get_plugin_mcp_auth_state", services);
+
+        // AC-1585: the managed command-line tools as the plugin's host on the server has them, so its own view (the
+        // Claude provider's install panel) shows and changes the server's copy, not this desktop's.
+        api.MapGet("/plugins/{folderId}/managed-clis", (string folderId) =>
+            services.GetService<PluginManager>()?.HostOf(folderId) is { } host
+                ? Results.Json((services.GetService<IManagedCliService>()?.RegisteredCliNames ?? []).ToDictionary(name => name, host.ResolveManagedCliPath), ConnectKeyEndpoints.Json)
+                : _NotRunning()).RequireAdmin().Audited("list_plugin_managed_clis", services);
+
+        api.MapGet("/plugins/{folderId}/managed-clis/{name}/status", async (string folderId, string name, CancellationToken cancellationToken) =>
+        {
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host || !_IsManagedCli(services, name))
+            {
+                return _NoManagedCli();
+            }
+
+            var status = await host.GetManagedCliStatusAsync(name, cancellationToken).ConfigureAwait(false);
+            var autoUpdate = await host.GetManagedCliAutoUpdateAsync(name, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new RemoteManagedCliStatus(status.InstalledVersion, status.LatestVersion, autoUpdate), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("get_plugin_managed_cli_status", services);
+
+        api.MapPost("/plugins/{folderId}/managed-clis/{name}/install", async (string folderId, string name, CancellationToken cancellationToken) =>
+        {
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host || !_IsManagedCli(services, name))
+            {
+                return _NoManagedCli();
+            }
+
+            var result = await host.InstallManagedCliAsync(name, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new RemoteManagedCliInstall(result.Success, result.Version, result.ExecutablePath, result.Error), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("install_plugin_managed_cli", services);
+
+        api.MapDelete("/plugins/{folderId}/managed-clis/{name}", (string folderId, string name) =>
+            services.GetService<PluginManager>()?.HostOf(folderId) is { } host && _IsManagedCli(services, name)
+                ? Results.Json(new { removed = host.RemoveManagedCli(name) }, ConnectKeyEndpoints.Json)
+                : _NoManagedCli()).RequireAdmin().Audited("remove_plugin_managed_cli", services);
+
+        api.MapPut("/plugins/{folderId}/managed-clis/{name}/auto-update", async (string folderId, string name, ManagedCliAutoUpdateBody body, CancellationToken cancellationToken) =>
+        {
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host || !_IsManagedCli(services, name))
+            {
+                return _NoManagedCli();
+            }
+
+            await host.SetManagedCliAutoUpdateAsync(name, body.Enabled, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new { ok = true }, ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("set_plugin_managed_cli_auto_update", services);
     }
+
+    private static bool _IsManagedCli(IServiceProvider services, string name) =>
+        services.GetService<IManagedCliService>()?.RegisteredCliNames.Contains(name, StringComparer.Ordinal) == true;
+
+    // Never the name it was given, which a mistyped path could have put anything in.
+    private static IResult _NoManagedCli() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_managed_cli", "The server manages no such command-line tool for a running plugin.");
 
     private static bool _IsSecret(string name) => SecretKeyHolder.Shared.Fields.IsSecret(name);
 
@@ -503,3 +557,5 @@ internal static class PluginEndpoints
 
     private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
 }
+
+internal sealed record ManagedCliAutoUpdateBody(bool Enabled);

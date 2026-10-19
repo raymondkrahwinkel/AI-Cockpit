@@ -244,7 +244,7 @@
                             <StackPanel Spacing="2">
                                 <TextBlock Text="Keys and tokens you enter here are write-only." FontWeight="SemiBold"/>
                                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                           Text="The server stores them and only tells you whether one is set; nothing shows them again. Provider sign-ins still happen on the server itself (Server health › Sign in without a browser) or come from a container secret."/>
+                                           Text="The server stores them and only tells you whether one is set; nothing shows them again. A provider sign-in runs on the server, started from a profile's Login or from Server health, and its token stays there."/>
                             </StackPanel>
                         </DockPanel>
                     </Border>
