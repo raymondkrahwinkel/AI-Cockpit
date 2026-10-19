@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **A managed start now opens the way your organisation chose.** When the provisioning manifest names a work kind, a
+  reading level or the Simple view for the first start, the cockpit applies them as defaults: it opens in Simple, installs the
+  plugins your stores recommend for that work kind, and gives the organisation's profiles that reading level. What it cannot
+  apply (an unknown work kind, a reading level without a profile to put it on) is listed in the provisioning report.
+
 - added: **Depot inbox** in the side menu, its badge the unread messages over every Depot connection, and an **Inbox**
   tab in the Depot panel. It updates live when Depot reports a change, shows one connection's inbox at a time with a
   filter per organization, and opens a message in Depot (**Open in Depot** for a note invitation, **Decide in Depot**

@@ -123,6 +123,35 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Equal("Acme", (await new ManagedSettings(ConfigPath).ReadAsync())["Terminal.FontSize"]);
     }
 
+    // AC-1512, manifest-v1 §3.10: the first-run answers land as defaults, not just as "the wizard was answered". What
+    // cannot land is said in the report.
+    [Fact]
+    public async Task The_first_run_answers_open_the_cockpit_in_Simple_with_the_work_kinds_plugins_and_the_reading_level_and_say_what_they_could_not_apply()
+    {
+        var applied = await _ApplyAsync(_FirstRun("""{ "workKind": "documents-and-design", "readingLevel": "Simple", "simpleView": true }"""));
+
+        Assert.Null(applied.Failure);
+        var file = JsonNode.Parse(File.ReadAllText(ConfigPath))!;
+        Assert.Equal("true", file["Layout"]!["OpenInSimpleView"]!.ToString());
+        Assert.Equal("Simple", file["Profiles"]![0]!["Defaults"]!["DefaultReadingLevel"]!.ToString());
+        Assert.Equal("true", file["Plugins"]!["beta"]!["Enabled"]!.ToString());
+        Assert.Null(file["Plugins"]!["alpha"]);
+        Assert.DoesNotContain(applied.Report, line => line.Path.StartsWith("firstRun", StringComparison.Ordinal));
+
+        var refused = await _ApplyAsync(_FirstRun("""{ "workKind": "writing", "readingLevel": "Expert" }"""));
+        Assert.Equal(["firstRun.workKind", "firstRun.readingLevel"], refused.Report.Where(line => line.Reason == ProvisionManifestApplier.NotApplied).Select(line => line.Path));
+    }
+
+    private static string _FirstRun(string firstRun) => $$"""
+        {
+          "format": "cockpit.provision", "formatVersion": 1,
+          "issuer": { "kind": "depot", "organization": { "id": "acme", "name": "Acme" } },
+          "stores": { "allowed": [ { "id": "acme", "url": "https://store.example/", "auth": "none" } ] },
+          "profiles": { "items": [ { "id": "acme-dev", "label": "Acme dev", "by": "org", "provider": { "id": "claude-provider" } } ] },
+          "firstRun": {{firstRun}}
+        }
+        """;
+
     // AC-1567, manifest-v1 §3.6: the rule set lands in its own file and nowhere else. The personal files stay byte for
     // byte through write, update and removal; the memory tools cannot reach the org file, and an export leaves it out.
     [Fact]
@@ -223,7 +252,8 @@ public sealed class ProvisionManifestApplierTests : IDisposable
     }
 
     private static PluginStoreEntry _Published(string id) =>
-        new(id, id, null, null, "1.2.0", [new PluginStoreVersion("1.2.0", $"{id}.zip", AbstractionsContract.Version, null, null, null)]);
+        new(id, id, null, null, "1.2.0", [new PluginStoreVersion("1.2.0", $"{id}.zip", AbstractionsContract.Version, null, null, null)],
+            Audience: id == "beta" ? [PluginWorkKinds.DocumentsAndDesign] : null);
 
     private const string Manifest = """
         {

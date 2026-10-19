@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Configuration;
@@ -43,6 +44,9 @@ public static class ProvisionManifestApplier
 
     // A Claude profile keeps its own provider on disk; every other provider is a plugin's.
     private const string ClaudeProviderId = "claude-provider";
+
+    // AC-1316's opening stand, written as a default key like any other setting.
+    private const string SimpleViewKey = "Layout.OpenInSimpleView";
 
     // AC-1511's one way to redeem an installation token: the connection's plugin's own channel action.
     private const string ExchangeAction = "connect-with-install-token";
@@ -85,7 +89,8 @@ public static class ProvisionManifestApplier
         report.AddRange(tokenNeeded);
         var settings = _Settings(manifest, report);
         _ReportNotApplied(manifest, report);
-        var plugins = await _ResolvePluginsAsync(manifest, current, pluginsRoot, storeClient, report, cancellationToken).ConfigureAwait(false);
+        var firstRun = _FirstRun(manifest, report);
+        var plugins = await _ResolvePluginsAsync(manifest, current, pluginsRoot, storeClient, firstRun.WorkKind, report, cancellationToken).ConfigureAwait(false);
 
         // Nothing is installed while anything is unresolved, and nothing is written while anything failed: the write is last.
         var pinned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -119,7 +124,8 @@ public static class ProvisionManifestApplier
             var wanted = settings.Select(setting => new Wanted(setting.Key, setting.Locked, organisation ?? setting.By, ManagedConfigKeys.Json(setting.Value),
                     target => ManagedConfigKeys.Set(target, setting.Chain, setting.Value)))
                 .Concat(_PluginKeys(manifest, plugins.Enable.Concat(pinned.Keys), file, state, organisation ?? "your organisation"))
-                .Concat((manifest.Profiles?.Items ?? []).Select(profile => _ProfileKey(file, profile, organisation ?? profile.By)))
+                .Concat((manifest.Profiles?.Items ?? []).Select(profile => _ProfileKey(file, profile, organisation ?? profile.By, firstRun.ReadingLevel)))
+                .Concat(_FirstRunKeys(firstRun, organisation ?? "your organisation"))
                 .ToList();
             _Merge(file, state, wanted, report);
 
@@ -238,7 +244,8 @@ public static class ProvisionManifestApplier
                 state.Managed[want.Key] = new ManagedKeyEntry { By = want.By, Value = ManagedConfigKeys.Read(file, want.Key) ?? want.Value };
                 state.Applied[want.Key] = state.Offered[want.Key] = hash;
             }
-            else if (unset || local is not null && state.Applied.GetValueOrDefault(want.Key) == ManagedConfigKeys.Hash(local))
+            // A local value already equal to the default is adopted as applied, not reported as a choice that stays.
+            else if (unset || local == want.Value || local is not null && state.Applied.GetValueOrDefault(want.Key) == ManagedConfigKeys.Hash(local))
             {
                 if (local != want.Value)
                 {
@@ -259,6 +266,50 @@ public static class ProvisionManifestApplier
         }
     }
 
+    private sealed record FirstRunChoices(PluginWorkKindOption? WorkKind, string? ReadingLevel, bool? SimpleView);
+
+    // §3.10: what the wizard would have asked. Each answer that cannot be applied is said, never passed over.
+    private static FirstRunChoices _FirstRun(ProvisionManifest manifest, List<ProvisionNote> report)
+    {
+        var asked = manifest.FirstRun;
+        var kind = PluginWorkKinds.All.FirstOrDefault(option => string.Equals(option.Key, asked?.WorkKind, StringComparison.OrdinalIgnoreCase));
+        if (asked?.WorkKind is { } name && kind is null)
+        {
+            report.Add(new("firstRun.workKind", NotApplied, Detail: $"no work kind is called \"{name}\"; they are {string.Join(", ", PluginWorkKinds.All.Select(option => option.Key))}"));
+        }
+
+        string? level = null;
+        if (asked?.ReadingLevel is { } text)
+        {
+            if (Enum.TryParse<ReadingLevel>(text, ignoreCase: true, out var parsed) && Enum.GetName(parsed) is { } named)
+            {
+                level = named;
+            }
+            else
+            {
+                report.Add(new("firstRun.readingLevel", NotApplied, Detail: $"\"{text}\" is not a reading level"));
+            }
+        }
+
+        // A reading level is a profile's default; without a profile from the manifest there is none to put it on.
+        if (level is not null && manifest.Profiles?.Items is not { Count: > 0 })
+        {
+            report.Add(new("firstRun.readingLevel", NotApplied, Detail: "it is the default of the profiles the manifest brings, and it brings none"));
+            level = null;
+        }
+
+        return new(kind, level, asked?.SimpleView);
+    }
+
+    private static IEnumerable<Wanted> _FirstRunKeys(FirstRunChoices choices, string by)
+    {
+        if (choices.SimpleView is { } simple)
+        {
+            var json = ManagedConfigKeys.Json(simple);
+            yield return new Wanted(SimpleViewKey, false, by, json, target => ManagedConfigKeys.Write(target, SimpleViewKey, json));
+        }
+    }
+
     // Required plugins are locked on, forbidden ones locked off where they are registered (§3.1), selected ones a default.
     private static IEnumerable<Wanted> _PluginKeys(
         ProvisionManifest manifest, IEnumerable<string> enable, CockpitConfigFile file, ProvisioningStateEntry state, string by)
@@ -273,7 +324,7 @@ public static class ProvisionManifestApplier
     }
 
     // A profile's value is its carried fields after the manifest's are set on it, so what it keeps of this machine counts too.
-    private static Wanted _ProfileKey(CockpitConfigFile file, ProvisionProfile profile, string by)
+    private static Wanted _ProfileKey(CockpitConfigFile file, ProvisionProfile profile, string by, string? readingLevel)
     {
         var key = $"Profiles.{profile.Label}";
         var probe = new CockpitConfigFile();
@@ -283,10 +334,10 @@ public static class ProvisionManifestApplier
             ManagedConfigKeys.Write(probe, key, local);
         }
 
-        return new Wanted(key, profile.Mode == ProvisionManifestReader.LockedMode, by, _Profiled(probe, profile), target => _Profiled(target, profile));
+        return new Wanted(key, profile.Mode == ProvisionManifestReader.LockedMode, by, _Profiled(probe, profile, readingLevel), target => _Profiled(target, profile, readingLevel));
     }
 
-    private static string _Profiled(CockpitConfigFile file, ProvisionProfile profile)
+    private static string _Profiled(CockpitConfigFile file, ProvisionProfile profile, string? readingLevel)
     {
         var entry = file.Profiles.FirstOrDefault(candidate => candidate.Label == profile.Label);
         if (entry is null)
@@ -295,7 +346,7 @@ public static class ProvisionManifestApplier
             file.Profiles.Add(entry);
         }
 
-        _SetProfile(entry, profile);
+        _SetProfile(entry, profile, readingLevel);
         return ManagedConfigKeys.Carried(entry);
     }
 
@@ -458,6 +509,7 @@ public static class ProvisionManifestApplier
         CockpitConfigFile current,
         string pluginsRoot,
         IPluginStoreClient storeClient,
+        PluginWorkKindOption? workKind,
         List<ProvisionNote> report,
         CancellationToken cancellationToken)
     {
@@ -467,9 +519,45 @@ public static class ProvisionManifestApplier
         var wanted = (manifest.Plugins?.Required ?? []).Select(plugin => (plugin.Id, plugin.MinVersion, plugin.Pin, plugin.Store))
             .Concat((manifest.Plugins?.Selected ?? []).Where(plugin => allowed is null || allowed.Contains(plugin.Id)).Select(plugin => (plugin.Id, plugin.MinVersion, Pin: (string?)null, Store: (string?)null)))
             .Where(plugin => !forbidden.Contains(plugin.Id))
-            .DistinctBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase);
+            .ToList();
 
         var indexes = new Dictionary<PluginStoreConfig, PluginStoreFetchResult>();
+
+        async Task<PluginStoreFetchResult> FetchAsync(PluginStoreConfig store)
+        {
+            if (!indexes.TryGetValue(store, out var fetched))
+            {
+                fetched = indexes[store] = await storeClient.FetchIndexAsync(store, cancellationToken).ConfigureAwait(false);
+            }
+
+            return fetched;
+        }
+
+        // AC-511's path: what the stores tag for this work kind comes as selected plugins, so allowed and forbidden still rule.
+        if (workKind is not null)
+        {
+            var tagged = new List<(string Id, string? MinVersion, string? Pin, string? Store)>();
+            foreach (var store in _Stores(manifest, current).Concat(current.PluginStores).DistinctBy(candidate => candidate.Location))
+            {
+                var index = (await FetchAsync(store).ConfigureAwait(false)).Index;
+                tagged.AddRange((index?.Plugins ?? [])
+                    .Where(entry => entry.Audience?.Contains(workKind.Key, StringComparer.OrdinalIgnoreCase) == true
+                        && entry.Category != PluginStoreEntry.ProviderCategory
+                        && !forbidden.Contains(entry.Id)
+                        && (allowed is null || allowed.Contains(entry.Id))
+                        && entry.Versions.Any(offered => PluginCompatibility.IsCompatible(offered, AbstractionsContract.Version, HostVersionInfo.Current)))
+                    .Select(entry => (entry.Id, (string?)null, (string?)null, (string?)null)));
+            }
+
+            if (tagged.Count == 0)
+            {
+                report.Add(new("firstRun.workKind", NotApplied, Detail: $"no store offers a plugin for {workKind.Label} that runs here"));
+            }
+
+            wanted.AddRange(tagged);
+        }
+
+        wanted = [.. wanted.DistinctBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)];
         foreach (var (id, minVersion, pin, store) in wanted)
         {
             var installed = _Version(File.Exists(Path.Combine(pluginsRoot, id, "plugin.json")) ? File.ReadAllText(Path.Combine(pluginsRoot, id, "plugin.json")) : null);
@@ -491,11 +579,7 @@ public static class ProvisionManifestApplier
             PluginProvisionRequest? request = null;
             foreach (var candidate in stores)
             {
-                if (!indexes.TryGetValue(candidate, out var fetched))
-                {
-                    fetched = indexes[candidate] = await storeClient.FetchIndexAsync(candidate, cancellationToken).ConfigureAwait(false);
-                }
-
+                var fetched = await FetchAsync(candidate).ConfigureAwait(false);
                 var entry = fetched.Index?.Plugins.FirstOrDefault(plugin => string.Equals(plugin.Id, id, StringComparison.OrdinalIgnoreCase));
                 var version = entry?.Versions
                     .Where(offered => _Satisfies(offered.Version, minVersion, pin) && PluginCompatibility.IsCompatible(offered, AbstractionsContract.Version, HostVersionInfo.Current))
@@ -558,7 +642,7 @@ public static class ProvisionManifestApplier
             .Select(store => new ProvisionNote($"stores.{store.Id}", TokenNeeded, Detail: $"enter the token for store {store.Id} ({store.Url}) under Manage stores"))];
 
     // Sets what travels and keeps what belongs to this machine: config directories, paths, keys and secret values.
-    private static void _SetProfile(SessionProfileEntry entry, ProvisionProfile profile)
+    private static void _SetProfile(SessionProfileEntry entry, ProvisionProfile profile, string? readingLevel)
     {
         entry.Label = profile.Label;
         entry.Purpose = profile.Purpose;
@@ -586,6 +670,14 @@ public static class ProvisionManifestApplier
             config.AutoApproveTools = defaults.AutoApproveTools ?? config.AutoApproveTools;
             config.OptionDefaults = defaults.OptionDefaults ?? config.OptionDefaults;
             config.DefaultReadingLevel = defaults.ReadingLevel ?? config.DefaultReadingLevel;
+            entry.Defaults = config;
+        }
+
+        // The first-run level is the default of a profile that names none of its own.
+        if (readingLevel is not null && profile.Defaults?.ReadingLevel is null)
+        {
+            var config = entry.Defaults ?? new ProfileDefaultsEntry();
+            config.DefaultReadingLevel = readingLevel;
             entry.Defaults = config;
         }
 

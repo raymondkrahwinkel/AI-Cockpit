@@ -12,6 +12,8 @@ using Cockpit.App.Converters;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Provisioning;
 
@@ -30,9 +32,15 @@ public sealed class ProvisioningJourney
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var server = builder.Build();
-        server.MapGet("/manifest", () => Results.Text(Manifest, "application/vnd.cockpit.provision+json"));
+        var origin = "";
+        server.MapGet("/manifest", () => Results.Text(Manifest.Replace("STORE_URL", $"{origin}/store/"), "application/vnd.cockpit.provision+json"));
+        // AC-1512: a store tags one plugin that ships with the build for the manifest's work kind.
+        server.MapGet("/store/index.json", () => Results.Text(
+            $$"""{"name":"Journey store","plugins":[{"id":"schedules","name":"Schedules","description":null,"author":null,"latestVersion":"1.0.0","audience":["documents-and-design"],"versions":[{"version":"1.0.0","path":"schedules-1.0.0.zip","abstractionsVersion":{{AbstractionsContract.Version}},"minHostVersion":null,"sha256":null,"notes":null}]}]}""",
+            "application/json"));
         await server.StartAsync();
-        var url = $"{server.Urls.Single()}/manifest";
+        origin = server.Urls.Single();
+        var url = $"{origin}/manifest";
 
         try
         {
@@ -48,9 +56,15 @@ public sealed class ProvisioningJourney
             Assert.Equal(FirstRunWizardVersion.Current, await cockpit.Services.GetRequiredService<IFirstRunWizardStateStore>().GetCompletedVersionAsync());
             Assert.Contains("Acme dev", (await cockpit.Services.GetRequiredService<ISessionProfileStore>().LoadAsync()).Select(profile => profile.Label));
 
+            // AC-1512: the first-run answers landed: Simple on open, the work kind's plugin, and the profile's reading level.
+            Assert.True(cockpit.Cockpit.SimpleView);
+            Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "plugins.schedules", Reason: ProvisionManifestApplier.Applied });
+            Assert.Equal(ReadingLevel.Simple, (await cockpit.Services.GetRequiredService<ISessionProfileStore>().LoadAsync()).Single(profile => profile.Label == "Acme dev").Defaults?.DefaultReadingLevel);
+            Assert.DoesNotContain(Program.Provisioning!.Report, line => line is { Reason: ProvisionManifestApplier.NotApplied, Path: var path } && path.StartsWith("firstRun", StringComparison.Ordinal));
+
             var file = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(cockpit.StateRoot)))!;
             Assert.Equal(("false", "15", "true"), (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
-            Assert.Null(file["Layout"]);
+            Assert.NotEqual("Light", file["Layout"]?["ThemeMode"]?.ToString());
             Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "settings.layout.themeMode", Reason: "skipped-unknown" });
             Assert.StartsWith("# Rule set of Acme", await File.ReadAllTextAsync(CockpitConfigPath.AssistantOrgRulesFor(cockpit.StateRoot)), StringComparison.Ordinal);
 
@@ -126,6 +140,7 @@ public sealed class ProvisioningJourney
           "format": "cockpit.provision", "formatVersion": 1,
           "issuer": { "kind": "static", "organization": { "id": "acme", "name": "Acme" } },
           "plugins": { "required": [ { "id": "clock" }, { "id": "git-status" } ] },
+          "stores": { "allowed": [ { "id": "journey", "url": "STORE_URL", "auth": "none" } ] },
           "settings": {
             "notifications.localEnabled":      { "value": false,   "mode": "default", "by": "org" },
             "terminal.fontSize":               { "value": 15,      "mode": "locked",  "by": "org" },
@@ -135,7 +150,7 @@ public sealed class ProvisioningJourney
           "profiles": { "items": [
             { "id": "acme-dev", "label": "Acme dev", "by": "org", "provider": { "id": "claude-provider", "model": "claude-sonnet-5-5" } } ] },
           "assistant": { "orgRules": { "by": "org", "title": "Assistentregels Acme", "content": "Answer customers in Dutch." } },
-          "firstRun": { "workKind": "ontwikkelen" }
+          "firstRun": { "workKind": "documents-and-design", "readingLevel": "Simple", "simpleView": true }
         }
         """;
 }
