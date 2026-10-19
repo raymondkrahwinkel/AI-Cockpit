@@ -8,7 +8,7 @@ namespace Cockpit.Infrastructure.Mcp;
 // AC-1571 B2: an interactive sign-in on this machine whose browser step runs on a desktop elsewhere. The SDK here keeps
 // the PKCE verifier and the state; the authorization link goes out, and only the redirect's query comes back. Set as
 // Current around the sign-in, the authorizer redirects to the desktop's loopback port and waits here instead of a browser.
-internal sealed class McpOAuthHandoff(int port)
+internal sealed class McpOAuthHandoff(string serverName, int port)
 {
     private static readonly AsyncLocal<McpOAuthHandoff?> CurrentHandoff = new();
 
@@ -22,6 +22,8 @@ internal sealed class McpOAuthHandoff(int port)
         set => CurrentHandoff.Value = value;
     }
 
+    public string ServerName => serverName;
+
     public Uri RedirectUri { get; } = McpOAuthLoopback.RedirectUriAt(port);
 
     // Completes once the SDK has built the authorization link, which carries the challenge but never the verifier.
@@ -31,7 +33,14 @@ internal sealed class McpOAuthHandoff(int port)
 
     public async Task<AuthorizationResult?> AwaitRedirectAsync(Uri authorizationUri, McpSignInStageRecorder? stageRecorder, CancellationToken cancellationToken)
     {
-        _state = McpOAuthLoopback.StateOf(authorizationUri);
+        // One link per handoff: a second authorization in the same sign-in gets no code rather than a stale one.
+        var state = McpOAuthLoopback.StateOf(authorizationUri);
+        if (_link.Task.IsCompleted)
+        {
+            return null;
+        }
+
+        _state = state;
         _link.TrySetResult(authorizationUri);
         stageRecorder?.Record(McpSignInStage.BrowserRequested);
         using var registration = cancellationToken.Register(Abandon);

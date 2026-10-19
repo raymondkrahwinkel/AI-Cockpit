@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Web;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -63,7 +62,15 @@ internal sealed class McpOAuthLoopback : IDisposable
                     continue;
                 }
 
-                await RespondAsync(context, serverName, answer.Error is null).ConfigureAwait(false);
+                // The redirect counts once it arrived; a tab closed before the page reached it does not lose the code.
+                try
+                {
+                    await RespondAsync(context, serverName, answer.Error is null).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is HttpListenerException or IOException or ObjectDisposedException)
+                {
+                }
+
                 return query.TrimStart('?');
             }
         }
@@ -76,7 +83,7 @@ internal sealed class McpOAuthLoopback : IDisposable
     public void Dispose() => _listener.Close();
 
     // The `state` an authorization link carries, which its redirect has to bring back.
-    public static string? StateOf(Uri authorizationUri) => HttpUtility.ParseQueryString(authorizationUri.Query)["state"];
+    public static string? StateOf(Uri authorizationUri) => ParseCallback(authorizationUri.Query).State;
 
     public static (string? Code, string? State, string? Iss, string? Error) ParseCallback(string? query)
     {

@@ -20,7 +20,8 @@ internal sealed class McpServerSignIns(ILogger<McpServerSignIns>? logger = null)
     private readonly Lock _gate = new();
     private readonly Dictionary<(string FolderId, string Name), McpServerSignIn> _byServer = [];
 
-    // A running sign-in for the same server is ended first, and waited for, so its token restore cannot land on this one.
+    // A running sign-in for the same server is ended first. Each one runs only after the one it replaced has ended,
+    // chained under the gate, so two never clear and restore the same token store at once.
     public async Task<McpServerSignIn> StartAsync(
         string folderId,
         string name,
@@ -35,15 +36,10 @@ internal sealed class McpServerSignIns(ILogger<McpServerSignIns>? logger = null)
         {
             _byServer.TryGetValue((folderId, name), out replaced);
             _byServer[(folderId, name)] = started;
+            started.Run(replaced?.Ended, signIn, ended);
         }
 
-        if (replaced is not null)
-        {
-            replaced.End("replaced");
-            await replaced.Ended.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        started.Run(signIn, ended);
+        replaced?.End("replaced");
         await started.LinkAsync(LinkWait, cancellationToken).ConfigureAwait(false);
         return started;
     }
@@ -89,7 +85,7 @@ internal sealed class McpServerSignIn
         FolderId = folderId;
         Name = name;
         ExpiresAt = expiresAt;
-        _handoff = new McpOAuthHandoff(port);
+        _handoff = new McpOAuthHandoff(name, port);
         _logger = logger;
     }
 
@@ -125,18 +121,20 @@ internal sealed class McpServerSignIn
         Task.WhenAny(_handoff.Link, Ended, Task.Delay(wait, cancellationToken));
 
     // Not awaited here: the sign-in outlives the request that started it. _RunAsync catches everything it can meet.
-    internal void Run(Func<CancellationToken, Task<PluginMcpSignInOutcome>> signIn, Func<McpServerSignIn, Task> ended) =>
-        Ended = _RunAsync(signIn, ended);
+    internal void Run(Task? predecessor, Func<CancellationToken, Task<PluginMcpSignInOutcome>> signIn, Func<McpServerSignIn, Task> ended) =>
+        Ended = _RunAsync(predecessor ?? Task.CompletedTask, signIn, ended);
 
-    private async Task _RunAsync(Func<CancellationToken, Task<PluginMcpSignInOutcome>> signIn, Func<McpServerSignIn, Task> ended)
+    private async Task _RunAsync(Task predecessor, Func<CancellationToken, Task<PluginMcpSignInOutcome>> signIn, Func<McpServerSignIn, Task> ended)
     {
-        // Abandoning rather than cancelling: a cancelled handshake skips the coordinator's restore of the token it held.
-        using var expiry = new CancellationTokenSource(ExpiresAt - DateTimeOffset.UtcNow);
-        using var registration = expiry.Token.Register(() => End("expired"));
-        McpOAuthHandoff.Current = _handoff;
+        await Task.Yield();
         try
         {
-            var outcome = await signIn(CancellationToken.None).ConfigureAwait(false);
+            await predecessor.ConfigureAwait(false);
+
+            // Abandoning rather than cancelling: a cancelled handshake skips the coordinator's restore of the token it held.
+            using var expiry = new CancellationTokenSource(TimeSpan.FromTicks(Math.Max(0, (ExpiresAt - DateTimeOffset.UtcNow).Ticks)));
+            using var registration = expiry.Token.Register(() => End("expired"));
+            var outcome = _endedAs is null ? await _SignInAsync(signIn).ConfigureAwait(false) : PluginMcpSignInOutcome.Declined;
             _status = outcome == PluginMcpSignInOutcome.Authorized ? "succeeded" : _endedAs ?? outcome switch
             {
                 PluginMcpSignInOutcome.Unavailable => "unavailable",
@@ -151,7 +149,6 @@ internal sealed class McpServerSignIn
         }
         finally
         {
-            McpOAuthHandoff.Current = null;
             _handoff.Abandon();
         }
 
@@ -163,5 +160,12 @@ internal sealed class McpServerSignIn
         {
             _logger.LogWarning("Ending the sign-in for MCP server {Server} failed ({Error}).", Name, exception.GetType().Name);
         }
+    }
+
+    // Its own async method, so the handoff set here is seen by this sign-in's flow and nothing that outlives it.
+    private async Task<PluginMcpSignInOutcome> _SignInAsync(Func<CancellationToken, Task<PluginMcpSignInOutcome>> signIn)
+    {
+        McpOAuthHandoff.Current = _handoff;
+        return await signIn(CancellationToken.None).ConfigureAwait(false);
     }
 }

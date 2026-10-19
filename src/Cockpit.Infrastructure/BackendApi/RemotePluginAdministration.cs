@@ -122,7 +122,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
                 && (BrowserOpener ?? (url => McpOAuthLoopback.OpenBrowser(url, _logger)))(link))
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                deadline.CancelAfter(flow.ExpiresAt - DateTimeOffset.UtcNow);
+                // Never longer than the server keeps a sign-in, nor negative, whatever this desktop's clock says.
+                var left = flow.ExpiresAt - DateTimeOffset.UtcNow;
+                deadline.CancelAfter(left > TimeSpan.Zero && left < McpServerSignIns.Lifetime ? left : McpServerSignIns.Lifetime);
                 if (await loopback.ReceiveAsync(name, state, deadline.Token).ConfigureAwait(false) is { } redirect)
                 {
                     flow = await client.SendAsync<RemoteMcpSignIn>(HttpMethod.Post, $"{flowPath}/input", new { text = redirect }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);

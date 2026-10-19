@@ -41,7 +41,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         TimeSpan renewalMargin = default)
     {
         // AC-1571 B2: a sign-in whose browser step runs on a desktop elsewhere redirects to that desktop's loopback port.
-        var handoff = interactive ? McpOAuthHandoff.Current : null;
+        var handoff = interactive && McpOAuthHandoff.Current is { } current && current.ServerName == server.Name ? current : null;
         var options = new ClientOAuthOptions
         {
             // A fresh loopback port per server avoids collisions; the redirect is registered via DCR so a
