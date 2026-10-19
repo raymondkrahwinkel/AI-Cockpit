@@ -12,7 +12,7 @@ namespace Cockpit.Plugin.Depot;
 // Depot as a project memory source (AC-165/166) with a settings view for connecting one or more instances
 // (AC-243); each connection registers its own memory source (AC-501, see `DepotMemorySource`). Since AC-504
 // each connection's MCP server is offered per-project rather than pushed into the shared registry.
-public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
+public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStartPlugin
 {
     // Kept from Initialize so GetMcpServers can read the current connection list each time the host asks, rather
     // than a snapshot taken once — the same reason YouTrackPlugin keeps its own settings reference.
@@ -21,6 +21,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // Kept from Initialize (AC-503) so GetMcpServers below can hand BuildRegistrationPairs the host it needs
     // to wire CheckReachability, even though this call site only reads Registration.Scheme back out.
     private ICockpitHost? _host;
+
+    // AC-1509: the host Initialize gave, once it ran; until then a first-start sign-in only writes storage and its backup target.
+    private ICockpitHost? _initializedHost;
+
+    // AC-1509: the Depot a first-start sign-in is signing in to, offered to the host before it is a connection.
+    private volatile DepotConnectionRegistration? _pending;
 
     private readonly List<IDisposable> _handlers = [];
 
@@ -53,6 +59,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         var settings = new DepotSettings(host.Storage);
         _settings = settings;
         _host = host;
+        _initializedHost = host;
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
         // channel action is what that view's own Save/Sign-in route now asks for instead of touching the
@@ -118,6 +125,23 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _ = _ReclaimPushedMcpServersSequentiallyAsync(host, settings.Connections);
     }
 
+    // AC-1509: route C before Initialize, on the host the first-start phase gives. The settings are read here too, so the
+    // host's sign-in finds the pending Depot through GetMcpServers before Initialize ran.
+    public void InitializeFirstStart(ICockpitHost host)
+    {
+        var settings = new DepotSettings(host.Storage);
+        _settings ??= settings;
+        _host ??= host;
+
+        var firstStart = new FirstStart.DepotFirstStart(host, settings, connection => _pending = connection, () => _initializedHost);
+        _handlers.Add(host.Channel.Handle(DepotChannel.FirstStartSignIn, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotFirstStartSignInRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no Depot.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await firstStart.SignInAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+    }
+
     private void _HandleBrowser<T>(
         ICockpitHost host, string action, Func<DepotBrowserRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
@@ -155,7 +179,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         var request = payload.Deserialize<DepotSaveConnectionsRequest>(DepotChannel.Json)
             ?? throw new ArgumentException("The request names no connections.", nameof(payload));
 
-        await _WriteConnectionsAsync(
+        await WriteConnectionsAsync(
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))],
@@ -191,7 +215,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
         var id = existing?.Id ?? (string.IsNullOrWhiteSpace(request.Connection.Id) ? Guid.NewGuid().ToString("n") : request.Connection.Id);
         var connection = new DepotConnectionRegistration(id, name, url);
-        await _WriteConnectionsAsync(
+        await WriteConnectionsAsync(
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
@@ -207,7 +231,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await _WriteConnectionsAsync(host, settings, before, cancellationToken).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -220,7 +244,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
-    private static async Task _WriteConnectionsAsync(
+    internal static async Task WriteConnectionsAsync(
         ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after, CancellationToken cancellationToken)
     {
         var before = settings.Connections;
@@ -368,7 +392,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // this overload — the catalog always calls the scoped overload below — but the host falls back to it for
     // OAuth sign-in from this plugin's own settings view, which has no project to scope a call by.
     public IReadOnlyList<McpServerContribution> GetMcpServers() =>
-        _settings is null ? [] : _settings.Connections.Select(_ContributionFor).ToList();
+        _settings is null ? [] : [.. _settings.Connections.Append(_pending).OfType<DepotConnectionRegistration>().Select(_ContributionFor)];
 
     // The connection(s) whose memory-source scheme is among `projectMemorySchemes` (AC-504). `projectId`
     // is unused: the schemes already say which of this plugin's connections the project points at.

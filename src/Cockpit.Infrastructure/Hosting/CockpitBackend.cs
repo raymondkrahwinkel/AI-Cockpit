@@ -201,7 +201,7 @@ public sealed class CockpitBackend
         }
 
         SeedPluginSettings();
-        plugins.Initialize(hostFor ?? _BackendHostFor());
+        plugins.Initialize(hostFor ?? BackendHostFor());
         _pluginsInitialized = true;
     }
 
@@ -536,8 +536,9 @@ public sealed class CockpitBackend
     }
 #endif
 
-    // The windowless host for every plugin, sharing one observer, one actions surface and one cache file (AC-1294).
-    private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> _BackendHostFor()
+    // The windowless host for every plugin, sharing one observer, one actions surface and one cache file (AC-1294). AC-1509:
+    // the desktop hands it to a plugin's first-start part too, which runs before there is a window to build its own host on.
+    public Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> BackendHostFor()
     {
         var registrationStore = Services.GetRequiredService<IPluginRegistrationStore>();
         var secretFieldStore = Services.GetRequiredService<IPluginSecretFieldStore>();

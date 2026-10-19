@@ -160,6 +160,8 @@ public partial class App : Application
     // goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
     private void _StartCockpitAndOnboard(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        InitializeFirstStart();
+
         // Read before either window exists, the same way _IsLockedAtStartup reads its own decision: this picks
         // which window shows next, so it has to be known before that window is built rather than raced against it.
         if (_NeedsOnboarding())
@@ -545,6 +547,23 @@ public partial class App : Application
                 assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
             }
         };
+    }
+
+    // AC-1509: the plugins' first-start routes, before the wizard can open. Plugin phase 2 below runs only once the wizard
+    // is done, so without this a plugin's route would exist for "Run setup again" and never on the first start itself.
+    // Internal so the journeys run it in App's order.
+    internal static void InitializeFirstStart()
+    {
+        if (Program.Services.GetService<PluginManager>() is null)
+        {
+            return;
+        }
+
+        Program.Services.GetRequiredService<PluginUiManager>().InitializeFirstStart(
+            PluginUiManager.ActivateUi,
+            Program.Services.GetRequiredService<CockpitBackend>().BackendHostFor(),
+            discovered => new FirstStartHost(discovered.FolderId, discovered.Manifest.Name, Program.Services),
+            Program.Services.GetRequiredService<IFirstStartRouteRegistry>());
     }
 
     // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopBackendHost per plugin carrying the
