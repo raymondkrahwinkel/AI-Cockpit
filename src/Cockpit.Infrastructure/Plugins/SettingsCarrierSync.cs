@@ -115,11 +115,12 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
                 continue;
             }
 
+            // Already written by a start that stopped before it could say so: nothing left to do.
             if (_Same(mine, taken.Was))
             {
                 apply[key] = taken;
             }
-            else
+            else if (!_Same(mine, taken.Value))
             {
                 state.Conflicts[key] = new _Conflict(mine, taken.Value, taken.Steps);
             }
@@ -280,18 +281,21 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             var was = baseline.GetValueOrDefault(key);
             var mine = local.Units.GetValueOrDefault(key)?.Text;
 
-            // A key taken over and then changed here before the next start: the base already moved, so it is a choice.
-            if (state.Incoming.Remove(key, out var taken) && !_Same(mine, taken.Was))
+            // A key taken over and then changed here before the next start: the base already moved, so it is a choice,
+            // unless both now agree or the other side has no say in it.
+            if (state.Incoming.Remove(key, out var taken))
             {
-                state.Conflicts[key] = new _Conflict(mine, theirs, taken.Steps);
-                newConflicts++;
-                continue;
-            }
-
-            if (taken is not null)
-            {
-                state.Incoming[key] = taken;
-                mine = taken.Value;
+                if (_Same(mine, taken.Was))
+                {
+                    state.Incoming[key] = taken;
+                    mine = taken.Value;
+                }
+                else if (!_Same(mine, theirs) && (theirs is not null || isElement))
+                {
+                    state.Conflicts[key] = new _Conflict(mine, theirs, taken.Steps);
+                    newConflicts++;
+                    continue;
+                }
             }
 
             if (_Same(mine, theirs) || unit is null)
@@ -402,7 +406,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         return new _Local(_Units(carried), carried.ToJsonString(), new HashSet<string>(file.Provisioning?.Managed.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal));
     }
 
-    // The white list's cut, less any address that carries a credential or a query: a token in a git URL stays here.
+    // The white list's cut, with every address cut to scheme, host and path: a token in a git URL stays here.
     private static JsonObject _Carried(JsonObject document)
     {
         var carried = JsonNode.Parse(SettingsCarrierWhitelist.Extract(document)) as JsonObject ?? new JsonObject();
@@ -427,10 +431,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         foreach (var (name, value) in obj.ToList())
         {
-            if (value is JsonValue text && text.TryGetValue<string>(out var address) && Uri.TryCreate(address, UriKind.Absolute, out var uri)
-                && (uri.UserInfo.Length > 0 || uri.Query.Length > 1))
+            if (value is JsonValue text && text.TryGetValue<string>(out var address) && _Bare(address) is { } bare)
             {
-                obj.Remove(name);
+                obj[name] = bare;
             }
             else
             {
@@ -438,6 +441,12 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             }
         }
     }
+
+    // Null when the text is no address with a user, password or query in it.
+    private static string? _Bare(string text) =>
+        Uri.TryCreate(text, UriKind.Absolute, out var uri) && (uri.UserInfo.Length > 0 || uri.Query.Length > 1)
+            ? uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped)
+            : null;
 
     // Writes each taken-over key into its own top-level section, one key at a time; a key this build cannot write is
     // returned rather than thrown, so a value from a newer build never stops the cockpit from starting.
@@ -591,6 +600,12 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             if (!SettingsCarrierWhitelist.IsLeaf(path) && value is JsonObject inner && target[name] is JsonObject existing)
             {
                 _Overlay(existing, inner, path);
+            }
+            else if (target[name] is JsonValue kept && kept.TryGetValue<string>(out var address) && _Bare(address) is { } bare
+                && value is JsonValue incoming && incoming.TryGetValue<string>(out var same) && same == bare)
+            {
+                // The same address without the user or query this machine keeps for it: what is here stays.
+                continue;
             }
             else
             {
