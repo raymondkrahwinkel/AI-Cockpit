@@ -161,7 +161,7 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
     {
         var name = DepotDownload.SafeFileName(fileName);
         var path = folder.Length == 0 ? name : $"{folder}/{name}";
-        if (!exists && !await host.ConfirmAsync("Replace this file?", $"{path} already exists in this project.", "Replace").ConfigureAwait(true))
+        if (exists && !await host.ConfirmAsync("Replace this file?", $"{path} already exists in this project.", "Replace").ConfigureAwait(true))
         {
             return null;
         }
