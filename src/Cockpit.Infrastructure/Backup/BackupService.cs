@@ -391,7 +391,10 @@ internal sealed class BackupService(
                 options.Plugins.Count,
                 aside);
 
-            return new RestoreReport(Stopped: false, fetched.Notes);
+            var emptied = EmptiedSignIn.From(incoming, manifest.RemovedSecrets, options);
+            RestoredSignIns.Save(root, emptied);
+
+            return new RestoreReport(Stopped: false, fetched.Notes) { EmptiedSignIns = emptied };
         }
         finally
         {
