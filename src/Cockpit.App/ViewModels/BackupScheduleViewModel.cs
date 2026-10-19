@@ -78,7 +78,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
             Keep = Math.Max(1, Keep),
         };
 
-        Saving = _SaveAsync(_loaded);
+        Saving = Task.CompletedTask;
     }
 
     // Said, not swallowed: a schedule that silently did not stick is a backup the operator thinks they have.
