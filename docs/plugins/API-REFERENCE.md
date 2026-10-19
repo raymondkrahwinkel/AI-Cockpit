@@ -148,7 +148,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
 | `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
-| `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
+| `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync`, `ICockpitHost.CreateAuthorizedHandler` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
@@ -365,6 +365,16 @@ kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `L
 `ListAsync` shows. The host's own target is a local folder; no `ICockpitHost` method registers a plugin's target yet.
 `DeleteAsync(id)` (AC-1502, SDK 3.11.0) removes one backup for retention and returns `false` by default, meaning the
 target cannot delete: the host then keeps everything on it and says so once.
+
+`CreateAuthorizedHandler(name)` (AC-1587, SDK 3.13.0) gives a plugin an `HttpMessageHandler` for the routes of its own
+OAuth MCP server beside `/mcp`, such as a REST API or a SignalR hub. The host puts the bearer on its own copy of each
+request, so the plugin never sees the token. Only the origin of that server's URL is served (`ws`/`wss` count as
+`http`/`https`); any other origin, or a name that is not one of the plugin's own `GetMcpServers()` OAuth servers, throws
+`HttpRequestException`. Redirects are returned, not followed. Without a usable credential the answer is a 401 that never
+left the host; a 401 from the server renews the credential like the MCP connection does and resends a bodiless request
+once. Use it as `new HttpClient(host.CreateAuthorizedHandler(name))`, and for SignalR as
+`options.HttpMessageHandlerFactory = _ => host.CreateAuthorizedHandler(name)`, never `AccessTokenProvider`. It works the
+same on a desktop and on a server: the credential stays wherever the plugin's backend part runs.
 
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The

@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
+  sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the
   assistant ahead of what you asked it to remember, shows read-only under Options → Assistant, and leaves with the
   manifest. Your own memory is never written by it, and it is not in a backup or a memory export.

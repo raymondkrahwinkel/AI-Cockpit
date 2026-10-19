@@ -613,6 +613,16 @@ public class PluginBackendHost(
         }
     }
 
+    // AC-1587: only this plugin's own OAuth servers, never the cross-plugin lookup sign-in uses, since this one spends
+    // the credential. Redirects are not followed, so a server cannot steer the bearer to another origin.
+    public HttpMessageHandler CreateAuthorizedHandler(string name) =>
+        new PluginMcpAuthorizedHandler(
+            name,
+            () => _OwnMcpServerContributions().FirstOrDefault(
+                server => string.Equals(server.Name, name, StringComparison.Ordinal) && server.Auth == McpServerAuth.OAuth),
+            services.GetService<IMcpOAuthCoordinator>(),
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+
     // AC-748: the MCP client SDK prefixes failed-call messages with "An error occurred invoking '{toolName}': ".
     // Stripped once here rather than in every caller that pattern-matches the tool's own error text
     // (e.g. Depot's PublishAsync StartsWith("[NotFound]")).
