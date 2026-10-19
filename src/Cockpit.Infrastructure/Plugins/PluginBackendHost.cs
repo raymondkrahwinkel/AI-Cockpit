@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
@@ -19,6 +20,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
@@ -250,6 +252,12 @@ public class PluginBackendHost(
 
     public void AddSettingsCarrier(SettingsCarrierRegistration registration) =>
         services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
+
+    public void AddBackupTarget(IBackupTarget target) =>
+        services.GetRequiredService<BackupTargets>().Add(pluginId, target);
+
+    public void RemoveBackupTarget(string id) =>
+        services.GetRequiredService<BackupTargets>().Remove(id);
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
@@ -612,6 +620,16 @@ public class PluginBackendHost(
             return PluginMcpToolCallResult.Failed(_UnwrapToolInvocationError(toolName, exception.Message));
         }
     }
+
+    // AC-1587: only this plugin's own OAuth servers, never the cross-plugin lookup sign-in uses, since this one spends
+    // the credential. Redirects are not followed, so a server cannot steer the bearer to another origin.
+    public HttpMessageHandler CreateAuthorizedHandler(string name) =>
+        new PluginMcpAuthorizedHandler(
+            name,
+            () => _OwnMcpServerContributions().FirstOrDefault(
+                server => string.Equals(server.Name, name, StringComparison.Ordinal) && server.Auth == McpServerAuth.OAuth),
+            services.GetService<IMcpOAuthCoordinator>(),
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
 
     // AC-748: the MCP client SDK prefixes failed-call messages with "An error occurred invoking '{toolName}': ".
     // Stripped once here rather than in every caller that pattern-matches the tool's own error text

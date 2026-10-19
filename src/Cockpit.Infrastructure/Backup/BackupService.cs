@@ -162,7 +162,7 @@ internal sealed class BackupService(
             {
                 await deliver(archive, cancellationToken);
                 archive.Position = 0;
-                written = await ManifestOfAsync(archive, cancellationToken);
+                written = await BackupManifest.ReadAsync(archive, cancellationToken);
             }
 
             logger.LogInformation(
@@ -227,21 +227,7 @@ internal sealed class BackupService(
     public async Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default)
     {
         await using var stream = File.OpenRead(archivePath);
-        return await ManifestOfAsync(stream, cancellationToken);
-    }
-
-    // Static so a target can read the manifests it lists without a service; the stream is left open for its owner.
-    internal static async Task<BackupManifest> ManifestOfAsync(Stream archiveStream, CancellationToken cancellationToken)
-    {
-        using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, leaveOpen: true);
-
-        var entry = archive.GetEntry(BackupManifest.FileName)
-            ?? throw new InvalidOperationException("This zip is not a cockpit backup: it has no backup.json.");
-
-        await using var stream = entry.Open();
-
-        return await JsonSerializer.DeserializeAsync<BackupManifest>(stream, Json, cancellationToken)
-            ?? throw new InvalidOperationException("This backup's manifest could not be read.");
+        return await BackupManifest.ReadAsync(stream, cancellationToken);
     }
 
     // Same offload as WriteAsync, and for the same reason (AC-747): ZipFile.ExtractToDirectory unpacks the whole

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Core.Backup;
 using Cockpit.Plugins.Abstractions.Backup;
 
 namespace Cockpit.Infrastructure.Backup;
@@ -71,7 +72,7 @@ internal sealed class LocalFolderBackupTarget(string folder, string staging) : I
         try
         {
             await using var stream = File.OpenRead(path);
-            var manifest = await BackupService.ManifestOfAsync(stream, cancellationToken);
+            var manifest = await BackupManifest.ReadAsync(stream, cancellationToken);
 
             return new BackupTargetEntry(Path.GetFileName(path), manifest.CreatedUtc, stream.Length, manifest.AppVersion);
         }

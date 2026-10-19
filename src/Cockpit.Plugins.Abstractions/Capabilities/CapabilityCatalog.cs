@@ -160,6 +160,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "backup.target",
+            "Keeping the cockpit's backups",
+            "Keeps whole backups of the cockpit somewhere the operator picks, and hands them back for a restore.",
+            CapabilityRisk.Sensitive,
+            "0.96.0",
+            ["ICockpitHost.AddBackupTarget", "ICockpitHost.RemoveBackupTarget"],
+            []),
+
+        new(
             "first-start.routes",
             "A way to begin on the first start",
             "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",
@@ -417,10 +426,10 @@ public static class CapabilityCatalog
         new(
             "mcp.call",
             "Calling MCP tools",
-            "Calls and probes MCP tools through the host, under whatever credentials the host holds for that server.",
+            "Calls and probes MCP tools through the host, and sends requests to that server's own origin, under whatever credentials the host holds for it.",
             CapabilityRisk.Dangerous,
             "0.14.0",
-            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync"],
+            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync", "ICockpitHost.CreateAuthorizedHandler"],
             [
                 new("serverName", "The MCP server the plugin may call."),
                 new("toolName", "The tool on that server the plugin may call."),

@@ -106,6 +106,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             host.AddSharedProjectSource(source);
         }
 
+        // AC-1508: each connection's account space is a place a cockpit backup can be kept.
+        foreach (var connection in settings.Connections)
+        {
+            host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, connection.Id));
+        }
+
         // AC-504: session delivery now asks via GetMcpServers instead of the shared registry, so reclaim what
         // AC-243 pushed there. Sequential, not fire-and-forget: RemoveMcpServer's load-modify-save has no
         // locking across calls, so parallel calls would race on the same stale snapshot and drop a connection.
@@ -233,11 +239,29 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
         _SyncMemorySources(host, before, after);
         _SyncSharedProjectSources(host, before, after);
+        _SyncBackupTargets(host, settings, before, after);
 
         foreach (var orphanedName in orphanedNames)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await host.RemoveMcpServer(orphanedName).ConfigureAwait(false);
+        }
+    }
+
+    // AC-1508: a target reads its connection by id on every call, so a rename needs nothing; only additions and removals do.
+    private static void _SyncBackupTargets(
+        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> before, IReadOnlyList<DepotConnectionRegistration> after)
+    {
+        var kept = after.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var gone in before.Where(connection => !kept.Contains(connection.Id)))
+        {
+            host.RemoveBackupTarget(Backup.DepotBackupTarget.IdFor(gone.Id));
+        }
+
+        var had = before.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var added in after.Where(connection => !had.Contains(connection.Id)))
+        {
+            host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, added.Id));
         }
     }
 

@@ -35,9 +35,11 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         IBackupService backups,
         IBackupScheduleStore store,
         IToastService? toasts = null,
-        ILogger<ScheduledBackup>? logger = null)
+        ILogger<ScheduledBackup>? logger = null,
+        BackupTargets? targets = null)
         : this(backups, store, toasts, logger, TimeProvider.System)
     {
+        TargetFor = schedule => _LocalFolderFor(schedule) ?? targets?.Find(schedule.TargetId);
     }
 
     // Test seam: a controllable clock, so a due backup is provable without waiting a day for it.
@@ -55,8 +57,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         _time = time;
     }
 
-    // Where a schedule's backups go. Replaced by the tests; the default knows the local folder and nothing else
-    // until a plugin can register a target (AC-1508).
+    // Where a schedule's backups go: the local folder, or a target a plugin registered (AC-1508). Replaced by the tests.
     internal Func<BackupSchedule, IBackupTarget?> TargetFor { get; set; } = _LocalFolderFor;
 
     // The tick in flight, for the tests to await.

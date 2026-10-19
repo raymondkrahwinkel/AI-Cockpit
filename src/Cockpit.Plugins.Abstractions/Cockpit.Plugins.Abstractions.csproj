@@ -529,8 +529,15 @@
     <!-- 3.10.0 (DEP-381): SharedProject.HasRepository (init, default true: a source that does not say stays addable), whether the definition names a repository to
          clone. A plugin that sets it sets minHostVersion 0.95.0. Additive — a minor; the major and abstractionsVersion
          stay 3. -->
-    <Version>3.12.0</Version>
-    <AssemblyVersion>1.11.0.0</AssemblyVersion>
+    <!-- 3.13.0 (AC-1587): ICockpitHost.CreateAuthorizedHandler, a handler that sends a plugin's requests to its own OAuth MCP
+         server's origin with the host's bearer, which the plugin never sees. Numbered past epic/AC-1497 (3.12.0) and
+         epic/AC-1571 (3.10.0) so the merges do not collide. No plugin calls it yet, so none raises minHostVersion.
+         Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.14.0 (AC-1508): ICockpitHost.AddBackupTarget and RemoveBackupTarget (default no-op) and the capability
+         backup.target, so a plugin's IBackupTarget is offered in Options → Backup and to the scheduled backup. A plugin
+         that calls them sets minHostVersion 0.96.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.14.0</Version>
+    <AssemblyVersion>1.13.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>

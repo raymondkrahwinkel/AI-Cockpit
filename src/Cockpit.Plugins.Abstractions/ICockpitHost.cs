@@ -326,6 +326,27 @@ public interface ICockpitHost
         Task.FromResult(Mcp.McpProbeResult.Failed);
 
     /// <summary>
+    /// A handler that sends HTTP requests to the OAuth MCP server this plugin contributed under
+    /// <paramref name="name"/> through <see cref="Mcp.IPluginMcpProvider.GetMcpServers"/>, carrying the cockpit's
+    /// credential for it (AC-1587), for that server's own routes beside its MCP endpoint, such as a REST API or a
+    /// SignalR hub.
+    /// </summary>
+    /// <remarks>
+    /// The host sets the bearer on its own copy of each request, so neither the plugin's request, the response nor
+    /// an exception ever carries the token (Iron Law #8); this guards the handler's own surface, not an in-process
+    /// plugin that goes around it. Only the origin of that server's URL is served (scheme,
+    /// host and port; <c>ws</c>/<c>wss</c> count as <c>http</c>/<c>https</c>). A request for any other origin, or
+    /// for a name that is not one of this plugin's own OAuth servers, throws <see cref="HttpRequestException"/>.
+    /// Redirects come back as they are and are never followed. Without a usable credential the answer is a 401
+    /// that never reached the server; offer <see cref="SignInMcpServerAsync"/>. A 401 from the server renews the
+    /// credential the way the server's MCP connection does, and a request without a body is sent once more. It
+    /// serves as an <see cref="HttpClient"/>'s handler and from SignalR's
+    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c>, WebSockets included. The default, for a host that
+    /// predates this member, is a handler that throws <see cref="HttpRequestException"/> on every request.
+    /// </remarks>
+    HttpMessageHandler CreateAuthorizedHandler(string name) => new Mcp.UnavailableAuthorizedHandler();
+
+    /// <summary>
     /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13),
     /// or clears it with an empty string. The session is named by its <c>IPluginSessionContext.PaneId</c>.
     /// </summary>
@@ -852,6 +873,26 @@ public interface ICockpitHost
     /// compiling untouched.
     /// </remarks>
     void AddSettingsCarrier(Settings.SettingsCarrierRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// Registers a place a cockpit backup can be kept (AC-1508). The operator picks it beside the local file in
+    /// Options → Backup, and a scheduled backup can write to it; the host builds the archive and restores from it.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by <see cref="Backup.IBackupTarget.Id"/>: a second registration under an id already taken is ignored.
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void AddBackupTarget(Backup.IBackupTarget target)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the backup target registered under <paramref name="id"/>, for a target whose place is gone — a
+    /// connection the operator removed. An unknown id is a no-op, and so is the default.
+    /// </summary>
+    void RemoveBackupTarget(string id)
     {
     }
 
