@@ -43,6 +43,7 @@ public sealed class RemoteAdminJourney
 
     // AC-1514: the echo fixture's one shared definition (Cockpit.Plugin.EchoProvider's EchoSharedProjectSource).
     private const string SharedProject = "echo-shared:journey";
+    private const string BareProject = "echo-shared:bare";
 
     private const string SharedName = "journey-shared";
 
@@ -378,12 +379,17 @@ public sealed class RemoteAdminJourney
             // AC-1514: From Depot offers the fixture source's project; "Add on" clones the repository its definition names
             // and stores it bound, it leaves the list, a second add is refused, and "+ Start on" starts a session in it.
             var sharedOffered = new List<string>();
+            var cloneable = ((await setup.GetAsync<JsonObject>("api/v1/projects/shared"))["sources"]?.AsArray() ?? [])
+                .SelectMany(source => source?["projects"]?.AsArray() ?? [])
+                .ToDictionary(project => project?["id"]?.GetValue<string>() ?? "", project => project?["cloneable"]?.GetValue<bool>() ?? false);
+            ServerSharedProjectRowViewModel? bareRow = null;
             var sharedResult = "";
             var sharedAfter = new List<string>();
             var sharedPane = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
+                bareRow = admin.SharedProjects.Single(project => project.Id == BareProject);
                 admin.SharedProfile = "Echo";
                 await admin.AddSharedCommand.ExecuteAsync(admin.SharedProjects.Single(project => project.Id == SharedProject));
                 sharedResult = admin.CloneResult;
@@ -397,6 +403,8 @@ public sealed class RemoteAdminJourney
                 await view.StartOnServerCommand.ExecuteAsync(group);
                 sharedPane = group.Sessions.Single(session => !running.Contains(session.Handle.PaneId)).Handle.PaneId;
             });
+            var bareAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
+                setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = BareProject, profile = "Echo" }));
             var secondAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
                 setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = SharedProject, profile = "Echo" }));
             var bound = (await new ProjectStore(CockpitConfigPath.For(stateRoot)).LoadAsync()).Projects.Single(project => project.Name == SharedName);
@@ -480,6 +488,12 @@ public sealed class RemoteAdminJourney
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Contains(SharedProject, sharedOffered);
+            // DEP-381: a definition without a repository is offered as not cloneable, its "Add on" is disabled with the reason,
+            // and the server still refuses it.
+            Assert.Equal((true, false), (cloneable[SharedProject], cloneable[BareProject]));
+            Assert.Contains("names no repository", bareRow?.NoRepositoryHint, StringComparison.Ordinal);
+            Assert.False(bareRow?.HasRepository);
+            Assert.Equal(HttpStatusCode.BadRequest, bareAdd.Status);
             Assert.StartsWith($"Cloned into {bound.SourceDirectory} · ", sharedResult, StringComparison.Ordinal);
             Assert.DoesNotContain(SharedProject, sharedAfter);
             Assert.Equal(HttpStatusCode.Conflict, secondAdd.Status);

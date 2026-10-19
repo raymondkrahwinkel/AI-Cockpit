@@ -38,4 +38,11 @@ public sealed record SharedProject(string Id, string Name)
     /// enforces the real rule. False by default.
     /// </remarks>
     public bool CanWriteBack { get; init; }
+
+    /// <summary>
+    /// Whether the definition names a repository the host can clone — the only way a host without a folder of its
+    /// own (a server) binds it. A host may disable "add" on a project without one. True by default: a source that
+    /// does not say stays addable, and the host's own refusal is the answer.
+    /// </summary>
+    public bool HasRepository { get; init; } = true;
 }

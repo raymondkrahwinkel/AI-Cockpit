@@ -165,6 +165,8 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/projects/shared", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        // DEP-381: the backstop behind the disabled "Add on" — a definition without a repository is still refused, with the reason.
+        { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:bare","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "names no repository", _Door.ProfileSecret },
         // AC-1473 criteria 2 and 3: no profile answer holds a secret, a request with one, a program path or a loader
         // variable is refused without repeating it, and an operate key reads only its own profiles.
         { "GET", "/api/v1/profiles", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -826,6 +828,7 @@ public sealed class BackendApiDoorTests
             source.SourceName.Returns("Door");
             source.PrepareBindingAsync("door:project", Arg.Any<CancellationToken>()).Returns(SharedProjectBindingResult.Success(
                 new SharedProjectBinding("Door project") { GitUrl = $"https://laptop:{ProfileSecret}@example.invalid/o/r.git" }));
+            source.PrepareBindingAsync("door:bare", Arg.Any<CancellationToken>()).Returns(SharedProjectBindingResult.Success(new SharedProjectBinding("Bare project")));
             var sharedSources = new SharedProjectSourceRegistry();
             sharedSources.Register(source);
             services.AddSingleton<ISharedProjectSourceRegistry>(sharedSources);

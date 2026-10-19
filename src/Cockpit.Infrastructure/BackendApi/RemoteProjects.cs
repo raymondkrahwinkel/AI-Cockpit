@@ -94,7 +94,7 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
                 source.Name,
                 source.Error is null,
                 source.Error,
-                [.. source.Projects.Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, null))])),
+                [.. source.Projects.Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, null, project.Cloneable))])),
         ];
     }
 
@@ -186,7 +186,8 @@ internal sealed record RemoteSharedList(IReadOnlyList<RemoteSharedSource> Source
 
 internal sealed record RemoteSharedSource(string Name, string? Error, IReadOnlyList<RemoteSharedRow> Projects);
 
-internal sealed record RemoteSharedRow(string Id, string Name, string? Description = null);
+// A server that predates `cloneable` sends none; the row then stays addable and the server's own refusal is the answer.
+internal sealed record RemoteSharedRow(string Id, string Name, string? Description = null, bool Cloneable = true);
 
 internal sealed record RemoteProjectList(IReadOnlyList<RemoteProjectRow> Projects);
 
