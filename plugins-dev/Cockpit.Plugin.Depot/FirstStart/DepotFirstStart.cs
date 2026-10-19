@@ -32,11 +32,6 @@ internal sealed class DepotFirstStart(
             : address.Host;
         var connection = existing ?? new DepotConnectionRegistration(Guid.NewGuid().ToString("n"), name, url);
 
-        if (existing is null)
-        {
-            await _KeepAsync([.. before, connection], connection, cancellationToken).ConfigureAwait(false);
-        }
-
         PluginMcpSignInOutcome outcome;
         setPending(existing is null ? connection : null);
         try
