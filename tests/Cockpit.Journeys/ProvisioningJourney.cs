@@ -52,6 +52,7 @@ public sealed class ProvisioningJourney
             Assert.Equal(("false", "15", "true"), (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
             Assert.Null(file["Layout"]);
             Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "settings.layout.themeMode", Reason: "skipped-unknown" });
+            Assert.StartsWith("# Rule set of Acme", await File.ReadAllTextAsync(CockpitConfigPath.AssistantOrgRulesFor(cockpit.StateRoot)), StringComparison.Ordinal);
 
             // Used up only now that everything was applied, and kept as its hash alone.
             var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Token)));
@@ -133,6 +134,7 @@ public sealed class ProvisioningJourney
           },
           "profiles": { "items": [
             { "id": "acme-dev", "label": "Acme dev", "by": "org", "provider": { "id": "claude-provider", "model": "claude-sonnet-5-5" } } ] },
+          "assistant": { "orgRules": { "by": "org", "title": "Assistentregels Acme", "content": "Answer customers in Dutch." } },
           "firstRun": { "workKind": "ontwikkelen" }
         }
         """;

@@ -164,7 +164,38 @@ public static class ProvisionManifestApplier
             state.Revision = manifest.Revision;
         }, cancellationToken).ConfigureAwait(false);
 
+        await _WriteOrgRulesAsync(manifest.Assistant?.OrgRules, organisation, stateRoot, report, cancellationToken).ConfigureAwait(false);
         return outcome with { Report = report };
+    }
+
+    // §3.6: its own file, never the personal ones. A manifest without a rule set takes the file away; both say so.
+    private static async Task _WriteOrgRulesAsync(ProvisionOrgRules? rules, string? organisation, string stateRoot, List<ProvisionNote> report, CancellationToken cancellationToken)
+    {
+        var path = CockpitConfigPath.AssistantOrgRulesFor(stateRoot);
+        var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false) : null;
+        if (rules is null)
+        {
+            if (existing is not null)
+            {
+                File.Delete(path);
+                report.Add(new("assistant.orgRules", Applied, Detail: "the organisation's rule set was removed"));
+            }
+
+            return;
+        }
+
+        var by = organisation ?? rules.By;
+        var title = string.IsNullOrWhiteSpace(rules.Title) ? string.Empty : $"## {rules.Title.Trim()}\n\n";
+        var text = $"# Rule set of {by}\n\nSet by {by}. Where it conflicts with your own instructions or memory, this rule set wins.\n\n{title}{rules.Content.Trim()}\n";
+        if (existing == text)
+        {
+            return;
+        }
+
+        var staging = path + ".tmp";
+        await File.WriteAllTextAsync(staging, text, cancellationToken).ConfigureAwait(false);
+        File.Move(staging, path, overwrite: true);
+        report.Add(new("assistant.orgRules", Applied, Detail: existing is null ? $"rule set of {by} written" : $"rule set of {by} updated"));
     }
 
     // One key the manifest has a value for: its JSON as the manifest wants it, and how to write that in.
@@ -409,7 +440,6 @@ public static class ProvisionManifestApplier
         Say(manifest.Profiles?.AssistantProfile is not null, "profiles.assistantProfile", "the assistant's profile is chosen on this machine for now");
         Say(manifest.Profiles?.DefaultProfile is not null, "profiles.defaultProfile", "the default profile is chosen on this machine for now");
         Say(manifest.Projects?.Shared is { Count: > 0 }, "projects.shared", "shared projects arrive with their connection's plugin");
-        Say(manifest.Assistant?.OrgRules is not null, "assistant.orgRules", "the organisation's rule set is not written yet");
         Say(manifest.Policy is not null, "policy", "policy is not enforced yet");
         Say(manifest.Backup is { Target: not null } or { Schedule: not null }, "backup", "the backup target and schedule are set on this machine for now");
         foreach (var project in manifest.Projects?.Own ?? [])

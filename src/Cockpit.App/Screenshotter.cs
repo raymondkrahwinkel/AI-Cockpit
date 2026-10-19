@@ -205,6 +205,8 @@ internal static class Screenshotter
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
+        // AC-1567: the organisation's rule set as the read-only block on the same page.
+        ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
         // AC-1000: the consent-bypass state (one recognised source, one orphaned #K11 key) that used to render on
         // the old "voice-assistant" scene now lives on Security — its own scene rather than folding it into a plain
         // "security" scene, since nothing else needs that seeded ConsentBypassSources state.
@@ -1694,10 +1696,17 @@ internal static class Screenshotter
 
     // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
     // filled in rather than showing the design-time graph's "no profile store" fallback.
-    private static OptionsDialog _OptionsAssistantPage()
+    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false)
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
+        if (orgRules)
+        {
+            cockpit.AssistantOptions.OrgRulesHeading = "Rule set of Acme";
+            cockpit.AssistantOptions.OrgRulesText = "Set by Acme. Where it conflicts with your own instructions or memory, this rule set wins.\n\n"
+                + "## Assistentregels Acme\n\n- Answer customers in Dutch.\n- Never paste customer data into a public channel.";
+        }
+
         // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
         // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
         cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";

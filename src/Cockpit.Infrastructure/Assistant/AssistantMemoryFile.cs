@@ -21,6 +21,8 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 
     private readonly string _machinePath;
 
+    private readonly string _orgRulesPath;
+
     public AssistantMemoryFile()
         : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory)
     {
@@ -32,6 +34,7 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         _filePath = filePath;
         _statePath = statePath;
         _machinePath = machinePath ?? Path.Combine(Path.GetDirectoryName(filePath)!, "assistant-machine.md");
+        _orgRulesPath = CockpitConfigPath.AssistantOrgRulesFor(Path.GetDirectoryName(filePath) ?? CockpitConfigPath.Root);
     }
 
     public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) =>
@@ -39,6 +42,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 
     public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) =>
         _ReadAsync(_statePath, cancellationToken);
+
+    // Only read here: `_PathFor` never answers with it, so no remember, note or import can reach it (AC-1567).
+    public Task<string> ReadOrgRulesAsync(CancellationToken cancellationToken = default) =>
+        _ReadAsync(_orgRulesPath, cancellationToken);
 
     // Overwrites, where `RememberAsync` appends — and in a second file rather than a section of the
     // first, so neither write has to parse or hold a lock over the other's lines.

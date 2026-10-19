@@ -20,7 +20,7 @@ public static class AssistantStandingInstruction
         "Where the conversation stood when you last handed over. It is yours, written before a restart, and it may "
         + "be out of date — treat it as a note to yourself rather than as something the operator just said:";
 
-    // The instruction a session starts under: built-in (or replaced), then remembered (AC-595) and current
+    // The instruction a session starts under: built-in (or replaced), the org's rule set (AC-1567), then remembered (AC-595) and current
     // state (AC-596). `sdkAsksPermission`/`consentCardAsks` (AC-759) are the acting paragraph's two gate facts,
     // handed in by the caller so this type stays a pure formatter; both default to the safest "still asks".
     public static string Compose(
@@ -30,7 +30,8 @@ public static class AssistantStandingInstruction
         string? currentState = null,
         string? machineMemory = null,
         bool sdkAsksPermission = true,
-        bool consentCardAsks = true)
+        bool consentCardAsks = true,
+        string? orgRules = null)
     {
         // `Default` already *is* `ActingParagraph(true, true)` in place, so the common case — nothing to swap in —
         // costs no allocation beyond `Default` itself; only a call that actually needs the less-cautious wording
@@ -47,10 +48,14 @@ public static class AssistantStandingInstruction
             ? baseInstruction
             : replacesDefault ? written : baseInstruction + "\n\n" + written;
 
+        // AC-1567: the organisation's rule set sits between the built-in (or replaced) layer and the operator's own
+        // memory. It carries its own "set by" heading, written by the applier, so it goes in as it stands.
+        var organised = string.IsNullOrWhiteSpace(orgRules) ? instruction : instruction + "\n\n" + orgRules.Trim();
+
         // Last, and each under a heading of its own: this is the operator's material and the assistant's own note
         // rather than the product's rules, and one that cannot tell them apart recites a remembered line as a rule.
         return _AppendMachineMemory(
-            _Append(_Append(instruction, MemoryHeading, memory), CurrentStateHeading, currentState),
+            _Append(_Append(organised, MemoryHeading, memory), CurrentStateHeading, currentState),
             machineMemory);
     }
 

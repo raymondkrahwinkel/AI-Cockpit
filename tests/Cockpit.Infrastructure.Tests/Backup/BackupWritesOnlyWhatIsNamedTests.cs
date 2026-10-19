@@ -40,6 +40,8 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("mcp-permission.json", "{}");
         root.Write("assistant-memory.md", "what the assistant was told to remember");
         root.Write("assistant-state.md", "where it left the conversation");
+        // AC-1567: the organisation's rule set comes back from the manifest, like the provisioning record does.
+        root.Write("assistant-org-rules.md", "# Rule set of Acme");
         root.Write("project-logos/acme.png", "not really a png");
         root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
         root.Write("plugins/youtrack/Cockpit.Plugins.YouTrack.dll", "megabytes, in real life");
