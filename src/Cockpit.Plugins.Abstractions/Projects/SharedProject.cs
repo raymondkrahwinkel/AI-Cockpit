@@ -44,5 +44,5 @@ public sealed record SharedProject(string Id, string Name)
     /// own (a server) binds it. A host may disable "add" on a project without one. True by default: a source that
     /// does not say stays addable, and the host's own refusal is the answer.
     /// </summary>
-    public bool HasRepository { get; init; } = true;
+    public bool HasRepository { get; init; }
 }
