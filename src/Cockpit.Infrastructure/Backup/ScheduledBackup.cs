@@ -133,9 +133,13 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
                 new BackupOptions(),
                 cancellationToken).ConfigureAwait(false);
 
+            // Remembered before anything else can go wrong, so a backup this installation made is always one it may prune.
+            var state = await _store.LoadStateAsync(cancellationToken).ConfigureAwait(false);
+            var owned = (state.Written ?? []).Append(written).Distinct(StringComparer.Ordinal).ToList();
+
             // A backup that is made but not pruned is still a backup: it counts, and the prune says what it could not do.
-            var note = await _TryPruneAsync(target, written, schedule.KeepAtLeastOne, cancellationToken).ConfigureAwait(false);
-            await _store.SaveStateAsync(new BackupScheduleState(now, note), cancellationToken).ConfigureAwait(false);
+            var (note, gone) = await _TryPruneAsync(target, written, owned, schedule.KeepAtLeastOne, cancellationToken).ConfigureAwait(false);
+            await _store.SaveStateAsync(new BackupScheduleState(now, note, [.. owned.Where(id => !gone.Contains(id))]), cancellationToken).ConfigureAwait(false);
             _Report(note);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -154,27 +158,41 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
     }
 
     // A prune that throws must not undo the backup before it: the clock would never move and every tick would write another.
-    private async Task<string?> _TryPruneAsync(IBackupTarget target, string written, int keep, CancellationToken cancellationToken)
+    private async Task<(string? Note, IReadOnlySet<string> Gone)> _TryPruneAsync(
+        IBackupTarget target,
+        string written,
+        IReadOnlyCollection<string> owned,
+        int keep,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await _PruneAsync(target, written, keep, cancellationToken).ConfigureAwait(false);
+            return await _PruneAsync(target, written, owned, keep, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogError(exception, "Pruning old backups failed after the scheduled backup was made.");
 
-            return $"The backup was made, but old backups could not be removed: {exception.Message}";
+            return ($"The backup was made, but old backups could not be removed: {exception.Message}", new HashSet<string>());
         }
     }
 
-    // Keeps the backup just written plus the newest others, up to `keep`. By CreatedAt, never by id: a name is not an
-    // age, and this is the one place a wrong order deletes the wrong backup. Null when nothing needed saying.
-    private static async Task<string?> _PruneAsync(IBackupTarget target, string written, int keep, CancellationToken cancellationToken)
+    // Keeps the backup just written plus the newest of the others this installation made, up to `keep`. By CreatedAt,
+    // never by id. Only `owned` is ever deleted: a manual backup, or another installation's, is not ours to remove.
+    private static async Task<(string? Note, IReadOnlySet<string> Gone)> _PruneAsync(
+        IBackupTarget target,
+        string written,
+        IReadOnlyCollection<string> owned,
+        int keep,
+        CancellationToken cancellationToken)
     {
         var entries = await target.ListAsync(cancellationToken).ConfigureAwait(false);
+        var listed = entries.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+
+        // Gone from the target already (removed by hand): off the list, so the list does not grow for ever.
+        var gone = owned.Where(id => !listed.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var stale = entries
-            .Where(entry => entry.Id != written)
+            .Where(entry => entry.Id != written && owned.Contains(entry.Id))
             .OrderByDescending(entry => entry.CreatedAt)
             .ThenByDescending(entry => entry.Id, StringComparer.Ordinal)
             .Skip(keep - 1)
@@ -184,11 +202,13 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         {
             if (!await target.DeleteAsync(entry.Id, cancellationToken).ConfigureAwait(false))
             {
-                return "The backup was made, but this target cannot remove old backups, so all of them are kept.";
+                return ("The backup was made, but this target cannot remove old backups, so all of them are kept.", gone);
             }
+
+            gone.Add(entry.Id);
         }
 
-        return null;
+        return (null, gone);
     }
 
     private async Task _StartAsync()

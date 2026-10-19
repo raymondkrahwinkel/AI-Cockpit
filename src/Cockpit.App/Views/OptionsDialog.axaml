@@ -2325,7 +2325,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="How many to keep" Width="140" FontSize="11" VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding ScheduledBackupSettings.Keep}" Minimum="1" Maximum="365" Increment="1" FormatString="0" Width="104"
-                                               ToolTip.Tip="The oldest backups beyond this number are removed from the target after each new one, every backup it holds counted, those you made by hand too. A target that cannot remove backups keeps them all, and says so."/>
+                                               ToolTip.Tip="The oldest backups beyond this number are removed from the target after each new one. Only backups this scheduled backup made are ever counted or removed. Backups you made by hand, or that another cockpit put on the same target, stay. A target that cannot remove backups keeps them all, and says so."/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>

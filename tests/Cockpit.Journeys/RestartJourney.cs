@@ -88,6 +88,41 @@ public sealed class RestartJourney
         }
     }
 
+    // AC-1502: the scheduled backup set in Options -> Backup is still set after a restart, which is what a planner that
+    // runs on every start (and on a server) reads it from.
+    [Fact]
+    public async Task AfterARestart_TheScheduledBackupIsStillSwitchedOnWithItsKeep()
+    {
+        var stateRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-restart-{Guid.NewGuid():N}")).FullName;
+        try
+        {
+            await using (var before = JourneyHost.Desktop(stateRoot: stateRoot))
+            {
+                await before.StartDesktopAsync();
+                var schedule = HeadlessAvalonia.Run(() => before.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
+                await HeadlessAvalonia.RunAsync(async () =>
+                {
+                    await schedule.LoadAsync();
+                    schedule.Enabled = true;
+                    schedule.Interval = BackupScheduleViewModel.Weekly;
+                    schedule.Keep = 3;
+                    await schedule.Saving;
+                });
+            }
+
+            await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
+            await after.StartDesktopAsync();
+            var restored = HeadlessAvalonia.Run(() => after.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
+            await HeadlessAvalonia.RunAsync(() => restored.LoadAsync());
+
+            Assert.Equal((true, BackupScheduleViewModel.Weekly, 3), HeadlessAvalonia.Run(() => (restored.Enabled, restored.Interval, restored.Keep)));
+        }
+        finally
+        {
+            JourneyHost.RemoveStateRoot(stateRoot);
+        }
+    }
+
     private static string[] _Blocks(SessionViewModel session) =>
         [.. session.Transcript.Where(row => row.TurnResult is not null).Select(row => row.TurnResult!.Title)];
 }

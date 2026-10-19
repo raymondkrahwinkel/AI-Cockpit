@@ -20,6 +20,10 @@ public sealed record BackupSchedule(
     public int KeepAtLeastOne => Math.Max(1, Keep);
 }
 
-// What the last scheduled runs left behind: when one last succeeded (the next one is due an interval after), and why
-// the last one failed, until a later one succeeds. Kept on disk so a failure outlives the session that saw it.
-public sealed record BackupScheduleState(DateTimeOffset? LastSuccess = null, string? LastFailure = null);
+// What the last scheduled runs left behind: when one last succeeded (the next one is due an interval after), why the
+// last one failed until a later one succeeds, and the ids of the backups this installation made itself. Retention only
+// ever touches those: a manual backup, or one another installation put on a shared target, is never pruned.
+public sealed record BackupScheduleState(
+    DateTimeOffset? LastSuccess = null,
+    string? LastFailure = null,
+    IReadOnlyList<string>? Written = null);

@@ -90,7 +90,7 @@ public sealed class ScheduledBackupTests : IDisposable
     /// <summary>
     /// Acceptance 3 and 4, the data-loss one. With Keep 3 and a fourth backup the oldest by <c>CreatedAt</c> goes —
     /// the ids are laid out so that the oldest sorts last by name, the newest first, and sorting by id would delete a newer one. A target
-    /// that cannot delete keeps all four and says so once.
+    /// that cannot delete keeps all four and says so once. A manual backup and another installation's stay either way, even above Keep.
     /// </summary>
     [Theory]
     [InlineData(true)]
@@ -101,13 +101,18 @@ public sealed class ScheduledBackupTests : IDisposable
         _target.Entries["z-oldest"] = Start.AddDays(-3);
         _target.Entries["m-middle"] = Start.AddDays(-2);
         _target.Entries["a-newest"] = Start.AddDays(-1);
+
+        // Older than all of them and above Keep, but not ours: a manual backup and another installation's.
+        _target.Entries["manual-before-the-risky-change"] = Start.AddDays(-10);
+        _target.Entries["other-installation"] = Start.AddDays(-9);
+        await _store.SaveStateAsync(new BackupScheduleState(Written: ["z-oldest", "m-middle", "a-newest"]));
         await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24, Keep: 3));
 
         await _scheduled.RunOnceAsync();
 
         if (canDelete)
         {
-            Assert.Equal(3, _target.Entries.Count);
+            Assert.Equal(5, _target.Entries.Count);
             Assert.DoesNotContain("z-oldest", _target.Entries.Keys);
             Assert.Contains("m-middle", _target.Entries.Keys);
             Assert.Contains("a-newest", _target.Entries.Keys);
@@ -115,9 +120,12 @@ public sealed class ScheduledBackupTests : IDisposable
         }
         else
         {
-            Assert.Equal(4, _target.Entries.Count);
+            Assert.Equal(6, _target.Entries.Count);
             Assert.Single(_toasts.Messages);
         }
+
+        Assert.Contains("manual-before-the-risky-change", _target.Entries.Keys);
+        Assert.Contains("other-installation", _target.Entries.Keys);
     }
 
     private sealed class _Toasts : IToastService

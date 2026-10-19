@@ -36,6 +36,9 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
     [ObservableProperty]
     private string _status = string.Empty;
 
+    // The last save in flight, for the journey to await: the schedule is written in the background.
+    public Task Saving { get; private set; } = Task.CompletedTask;
+
     public async Task LoadAsync()
     {
         _loading = true;
@@ -75,7 +78,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
             Keep = Math.Max(1, Keep),
         };
 
-        _ = _SaveAsync(_loaded);
+        Saving = _SaveAsync(_loaded);
     }
 
     // Said, not swallowed: a schedule that silently did not stick is a backup the operator thinks they have.

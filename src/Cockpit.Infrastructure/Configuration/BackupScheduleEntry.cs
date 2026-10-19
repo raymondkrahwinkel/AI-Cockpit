@@ -19,6 +19,8 @@ internal sealed class BackupScheduleEntry
 
     public string? LastFailure { get; set; }
 
+    public List<string> Written { get; set; } = [];
+
     public BackupSchedule ToSchedule() => new(
         Enabled,
         Math.Max(1, IntervalHours),
@@ -26,7 +28,7 @@ internal sealed class BackupScheduleEntry
         string.IsNullOrWhiteSpace(TargetId) ? BackupSchedule.LocalFolderTargetId : TargetId,
         string.IsNullOrWhiteSpace(Folder) ? null : Folder);
 
-    public BackupScheduleState ToState() => new(LastSuccess, LastFailure);
+    public BackupScheduleState ToState() => new(LastSuccess, LastFailure, Written);
 
     // Only the half being saved is replaced: the settings and the state are written by different callers.
     public void Apply(BackupSchedule schedule)
@@ -42,5 +44,6 @@ internal sealed class BackupScheduleEntry
     {
         LastSuccess = state.LastSuccess;
         LastFailure = state.LastFailure;
+        Written = [.. state.Written ?? []];
     }
 }
