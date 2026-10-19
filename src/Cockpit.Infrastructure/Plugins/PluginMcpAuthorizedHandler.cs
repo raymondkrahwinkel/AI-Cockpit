@@ -24,7 +24,7 @@ internal sealed class PluginMcpAuthorizedHandler(
 
         // Read once: the plugin still owns the request and could point it elsewhere while a credential is fetched.
         var target = request.RequestUri;
-        if (!_IsOriginOf(server, target))
+        if (!_IsOriginOf(server, target) && target is null)
         {
             throw new HttpRequestException($"Refused: the request is not for the origin of MCP server '{serverName}'.");
         }
