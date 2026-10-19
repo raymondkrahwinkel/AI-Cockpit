@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: after a restore, the next start tells you which sign-ins came back empty and asks for each of them, with a
+  **Sign in** button that opens that plugin's settings. A backup made with its credentials, or one with nothing left
+  out, asks for nothing.
+
 - added: **managed settings** from a provisioning manifest. A setting, plugin or profile an organisation locks is
   read-only in Options with "Managed by <organisation>", any change to it is refused and logged, and your own value is
   kept aside and comes back when the lock is lifted. Applying a manifest again no longer overwrites a value you chose
