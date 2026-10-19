@@ -120,6 +120,8 @@ internal static class ServerAdminScene
         var admin = new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins())
         {
             IsPluginOnDesktop = row => installed || row.Id != "depot",
+            // A plugin's own settings view comes from its UI part on this desktop, so Depot has none until it restarts.
+            HasPluginSettings = row => row.Id != "depot",
         };
         admin.LoadCommand.Execute(null);
         if (installed)

@@ -15,31 +15,36 @@ public class InstallOnDesktopTests
 {
     private static readonly PluginStoreConfig _LocalStore = PluginStoreConfig.Remote("https://desktop-store.example/index.json");
 
-    [Fact]
-    public async Task APluginInTheDesktopStore_IsInstalledFromThatStore_AndAsksForARestart()
+    // A plugin the desktop store has is installed from that store and asks for a restart; one no store has keeps its
+    // button, asks for no restart, and says why.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheButton_InstallsFromTheDesktopStore_OrSaysWhyItCannot(bool storeHasIt)
     {
-        var local = _LocalAdministration(_Entry("depot"));
+        var local = _LocalAdministration(_Entry(storeHasIt ? "depot" : "something-else"));
+        var manager = _Manager(local);
+        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], Substitute.For<IPluginAdministration>())
+        {
+            InstallPluginOnDesktop = row => manager.InstallFromStoreByIdAsync(row.Id),
+        };
+        var row = new ServerPluginRowViewModel(_ServerPlugin("depot")) { OnDesktop = false };
 
-        var outcome = await _Manager(local).InstallFromStoreByIdAsync("depot");
+        await admin.InstallPluginOnDesktopCommand.ExecuteAsync(row);
 
-        Assert.True(outcome.Installed);
-        Assert.True(outcome.NeedsRestart);
-        await local.Received(1).InstallFromStoreAsync(
-            Arg.Is<PluginProvisionRequest>(request => request.Id == "depot" && request.Store.SameStoreAs(_LocalStore)),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task APluginNoDesktopStoreHas_IsNotInstalled_AndSaysWhy()
-    {
-        var local = _LocalAdministration(_Entry("something-else"));
-
-        var outcome = await _Manager(local).InstallFromStoreByIdAsync("depot");
-
-        Assert.False(outcome.Installed);
-        Assert.False(outcome.NeedsRestart);
-        Assert.Contains("'depot' is not in any of this desktop's plugin stores", outcome.Message);
-        await local.DidNotReceive().InstallFromStoreAsync(Arg.Any<PluginProvisionRequest>(), Arg.Any<CancellationToken>());
+        Assert.Equal(!storeHasIt, row.MissingOnDesktop);
+        Assert.Equal(storeHasIt, admin.DesktopNeedsRestart);
+        Assert.Equal(storeHasIt ? 1 : 0, local.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPluginAdministration.InstallFromStoreAsync)));
+        if (storeHasIt)
+        {
+            await local.Received(1).InstallFromStoreAsync(
+                Arg.Is<PluginProvisionRequest>(request => request.Id == "depot" && request.Store.SameStoreAs(_LocalStore)),
+                Arg.Any<CancellationToken>());
+        }
+        else
+        {
+            Assert.Contains("'depot' is not in any of this desktop's plugin stores", admin.Status);
+        }
     }
 
     // The tegenproef: there is no way for the server's side to take part. The server's administration is the only
@@ -63,23 +68,6 @@ public class InstallOnDesktopTests
         await local.DidNotReceive().InstallFromZipAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         Assert.True(admin.DesktopNeedsRestart);
         Assert.False(row.MissingOnDesktop);
-    }
-
-    [Fact]
-    public async Task APluginThatCouldNotBeInstalled_KeepsItsButton_AndAsksForNoRestart()
-    {
-        var manager = _Manager(_LocalAdministration());
-        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], Substitute.For<IPluginAdministration>())
-        {
-            InstallPluginOnDesktop = row => manager.InstallFromStoreByIdAsync(row.Id),
-        };
-        var row = new ServerPluginRowViewModel(_ServerPlugin("depot")) { OnDesktop = false };
-
-        await admin.InstallPluginOnDesktopCommand.ExecuteAsync(row);
-
-        Assert.True(row.MissingOnDesktop);
-        Assert.False(admin.DesktopNeedsRestart);
-        Assert.Contains("not in any", admin.Status);
     }
 
     private static PluginManagerViewModel _Manager(IPluginAdministration local) =>
