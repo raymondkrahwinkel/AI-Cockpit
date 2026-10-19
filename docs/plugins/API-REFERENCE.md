@@ -114,7 +114,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.SetStatusText`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
-| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
+| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ShowSystemNotification`, `ICockpitUiHost.ConfirmAsync` |
 | `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitUiHost.CreateMarkdownView`, `ICockpitUiHost.CreateHelpHint`, `ICockpitUiHost.OpenHelp`, `ICockpitUiHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
@@ -1140,6 +1140,23 @@ host.ShowToast(
     PluginToastSeverity.Information,
     "Open in browser",
     () => OpenInBrowser(pullRequest.Url));
+```
+
+### `void ShowSystemNotification(string title, string body, Action? onClick)`
+A silent **operating-system notification**, for news the operator should see while they are not looking at the
+cockpit, such as a new invitation. *(Added in UI SDK 3.5.0, AC-1588; default no-op.)*
+- Nothing is shown while the cockpit window is active, so pair it with `ShowToast` for that case. Nothing is shown
+  either when the operator turned local notifications off, or muted your plugin with **Mute notifications** in its
+  row under Options → Plugins.
+- A click brings the cockpit to the front and then runs `onClick` on the UI thread: open the place it is about.
+- It is a member of the UI host because the UI part always runs on the operator's desktop. A backend part, which
+  may run on a server, tells its UI part over the channel and lets the UI part raise it; that works the same
+  whether the backend is local or remote.
+- Local only: it never goes to the Discord webhook, since a plugin's text has no business leaving the machine.
+
+```csharp
+ui.Channel.Subscribe("inbox-changed", payload =>
+    ui.ShowSystemNotification("Depot", "New invitation: Weekly sync", () => OpenInboxTab()));
 ```
 
 ### `Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)` {#taskconsentdecision-requestconsentasyncconsentrequest-request}

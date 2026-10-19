@@ -22,6 +22,14 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         ? "Show this plugin's buttons and sections in the left menu again."
         : "Keep this plugin's buttons and sections out of the left menu. The plugin keeps running: its shortcut and command-palette entry still work — that is the difference with disabling it.";
 
+    // AC-1588: whether the operator muted this plugin's system notifications; the label names the action.
+    public bool NotificationsMuted => installed.Registration?.NotificationsMuted ?? false;
+
+    public string NotificationsToggleLabel => NotificationsMuted ? "Allow notifications" : "Mute notifications";
+
+    public string NotificationsToggleTip => NotificationsMuted
+        ? "Let this plugin show desktop notifications again."
+        : "Stop this plugin from showing desktop notifications. Its messages inside the cockpit stay.";
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 
