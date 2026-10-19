@@ -43,14 +43,10 @@ internal static class ServerAdminScene
         return dialog;
     }
 
-    // AC-1585: Profiles on the server in the editor Options › Profiles uses, open on the Claude profile.
+    // AC-1585: Profiles on the server in the editor Options › Profiles uses; the dialog loads them when it opens.
     public static OptionsDialog Profiles(int width, int height)
     {
         var admin = _Admin(profiles: new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())));
-        var profiles = admin.Profiles ?? throw new InvalidOperationException("The scene's admin has no Profiles page.");
-        profiles.LoadCommand.Execute(null);
-        var editor = profiles.Editor ?? throw new InvalidOperationException("The scene's profiles did not load.");
-        editor.SelectedProfile = editor.Profiles.First(profile => profile.Label == "server (Claude)");
         var dialog = OptionsDialog.ForServer(admin);
         dialog.Width = width;
         dialog.Height = height;
@@ -257,7 +253,12 @@ internal static class ServerAdminScene
             _Profile("local-qwen", "ollama", "qwen2.5-coder:14b", null, null, []) with
             {
                 ConfiguredOnServer = false,
-                Full = new SessionProfile("local-qwen", new OllamaConfig("http://ollama:11434", "qwen2.5-coder:14b")),
+                Full = new SessionProfile("local-qwen", new OllamaConfig("http://ollama:11434", "qwen2.5-coder:14b"), "Cheap bulk work on the server's GPU")
+                {
+                    DefaultWorkingDirectory = "/data/projects",
+                    Assistant = "Olaf",
+                    MemoryCapMegabytes = 4096,
+                },
             },
         ];
 
