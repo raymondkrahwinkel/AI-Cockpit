@@ -17,6 +17,8 @@ public static class RestoredSignIns
         // The last restore has the last word: a file an earlier one left behind must not outlive a restore with nothing to ask.
         if (signIns.Count == 0)
         {
+            File.Delete(file);
+
             return;
         }
 
