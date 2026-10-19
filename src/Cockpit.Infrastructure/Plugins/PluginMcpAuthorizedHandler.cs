@@ -71,7 +71,7 @@ internal sealed class PluginMcpAuthorizedHandler(
 
     private async Task<HttpResponseMessage> _SendWithAsync(HttpRequestMessage request, Uri? target, string accessToken, CancellationToken cancellationToken)
     {
-        var copy = new HttpRequestMessage(request.Method, target)
+        var copy = new HttpRequestMessage(request.Method, request.RequestUri ?? target)
         {
             Version = request.Version,
             VersionPolicy = request.VersionPolicy,
