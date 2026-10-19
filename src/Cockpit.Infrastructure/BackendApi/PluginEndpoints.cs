@@ -277,7 +277,7 @@ internal static class PluginEndpoints
         var writes = new List<Task>();
         var storage = new PluginStorage(
             await store.LoadDataAsync(folderId, cancellationToken).ConfigureAwait(false),
-            data => writes.Add(data.Count < 0 ? store.SaveDataAsync(folderId, data, CancellationToken.None) : Task.CompletedTask),
+            data => writes.Add(store.SaveDataAsync(folderId, data, CancellationToken.None)),
             key =>
             {
                 SecretKeyHolder.Shared.Declare([key]);
