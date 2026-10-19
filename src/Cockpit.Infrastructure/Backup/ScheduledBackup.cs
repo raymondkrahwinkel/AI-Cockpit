@@ -144,7 +144,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "The scheduled backup failed; the next check will try again.");
+            if (exception is not null) { return; }
 
             var message = $"The scheduled backup failed: {exception.Message} It will be tried again.";
             var state = await _store.LoadStateAsync(CancellationToken.None).ConfigureAwait(false);
