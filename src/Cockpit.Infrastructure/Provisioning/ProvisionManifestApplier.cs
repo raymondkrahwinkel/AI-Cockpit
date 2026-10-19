@@ -187,15 +187,13 @@ public static class ProvisionManifestApplier
         foreach (var want in wanted)
         {
             var local = ManagedConfigKeys.Read(file, want.Key);
-            // Back at the built-in value after an apply is a choice too; only a key never applied can be unset.
-            var unset = local is null || (!state.Applied.ContainsKey(want.Key) && ManagedConfigKeys.IsUnset(want.Key, local));
+            var unset = ManagedConfigKeys.IsUnset(want.Key, local);
             var hash = ManagedConfigKeys.Hash(want.Value);
             if (want.Locked)
             {
                 if (local != want.Value)
                 {
-                    // A lock moving to a new value replaces the previous lock's value, not the operator's.
-                    if (!unset && local is not null && local != state.Managed.GetValueOrDefault(want.Key)?.Value)
+                    if (!unset && local is not null)
                     {
                         state.Displaced.TryAdd(want.Key, local);
                         report.Add(new(want.Key, ReplacedManaged, want.By, $"replaced by {want.By}'s management; your own value is kept"));
