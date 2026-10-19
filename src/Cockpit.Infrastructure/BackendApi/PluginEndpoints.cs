@@ -230,9 +230,23 @@ internal static class PluginEndpoints
             await _AuditAsync(services, "api:set_plugin_storage", cancellationToken, $"{pluginId}: {changed}").ConfigureAwait(false);
             return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
+
+        // AC-1571: what a plugin's settings view asks its host about an MCP server it registered, answered by that plugin's
+        // host here: the state only, never a token. Depot's rows show it (AC-1572).
+        api.MapGet("/plugins/{folderId}/mcp-servers/{name}/auth-state", async (string folderId, string name, CancellationToken cancellationToken) =>
+        {
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host)
+            {
+                return _NotRunning();
+            }
+
+            var state = await host.GetMcpServerAuthStateAsync(name, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new { state }, ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("get_plugin_mcp_auth_state", services);
     }
 
     private static bool _IsSecret(string name) => SecretKeyHolder.Shared.Fields.IsSecret(name);
+
 
     private static IResult _NotRunning() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not running on the server; enable it and restart the server first.");

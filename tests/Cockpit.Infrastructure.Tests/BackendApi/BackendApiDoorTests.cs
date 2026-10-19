@@ -140,6 +140,10 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"maxTokens\":4096", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"a","label":"b"}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"secrets":["url"]}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        // AC-1571: what the plugin's host on the server says about one of its MCP servers: the state alone.
+        { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.OK, "", "{\"state\":\"unknown\"}", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },

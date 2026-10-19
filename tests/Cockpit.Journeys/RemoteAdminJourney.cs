@@ -269,7 +269,10 @@ public sealed class RemoteAdminJourney
             // there, not here. The echo fixture's credential reads as set on the server, reopens as only that, survives an
             // untouched Save and clears when emptied; no answer, audit line or log holds it.
             await _SaveServerSettingsAsync(admin, "git-status", window => window.GetLogicalDescendants().OfType<CheckBox>().Any(), window =>
-                window.GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false);
+            {
+                window.GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false;
+                return Task.CompletedTask;
+            });
             var gitStatusOnServer = await setup.GetAsync<JsonObject>("api/v1/plugins/git-status/storage");
             var gitStatusHere = cockpit.Services.GetRequiredService<PluginUiManager>().UiPartOf("git-status")?.Host.Storage.Get<bool?>("showBranchName");
 
@@ -278,13 +281,22 @@ public sealed class RemoteAdminJourney
             {
                 _Box(window, "Greeting").Text = "hello from the desktop";
                 _Box(window, "API token").Text = echoKey;
+                return Task.CompletedTask;
             });
             var afterSave = await _ReadEchoSettingsAsync(setup);
             var reopened = "";
-            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window => reopened = _Box(window, "API token").Text ?? "");
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                reopened = _Box(window, "API token").Text ?? "";
+                return Task.CompletedTask;
+            });
             var afterKeep = await _ReadEchoSettingsAsync(setup);
             var echoOnServer = (await setup.GetAsync<JsonObject>($"api/v1/plugins/{StorePlugin}/storage")).ToJsonString();
-            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window => _Box(window, "API token").Text = "");
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                _Box(window, "API token").Text = "";
+                return Task.CompletedTask;
+            });
             var afterClear = await _ReadEchoSettingsAsync(setup);
 
             Assert.Equal((false, (bool?)null), (gitStatusOnServer["showBranchName"]?.GetValue<bool>(), gitStatusHere));
@@ -300,40 +312,39 @@ public sealed class RemoteAdminJourney
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
-            // AC-1511: Admin → Plugins → Depot → Settings opens Depot's own view for the server. An installation token signs
-            // the server's connection in at a fake Depot without a browser; the same token again is refused and adds nothing.
+            // AC-1572 through AC-1571: Depot's own local view over the server. A browser sign-in is not on offer there (the
+            // row reads back what the server stored first); a token signs Work in at a fake Depot, the same token on Spare is
+            // refused, Remove takes Spare off the server, and the view reopened lists Work alone, signed in.
             var installToken = $"journey-install-{Guid.NewGuid():N}";
             await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
             var depotUrl = depot.BaseUrl.TrimEnd('/');
-            var depotOpened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watchDepot = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+            var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
+            var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
-                if (window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "Installation token"))
-                {
-                    depotOpened.TrySetResult(window);
-                }
+                var work = _DepotRows(window)[0];
+                _FillDepotRow(work, "Work", depotUrl, "");
+                browser = await _PressDepotAsync(work, "Sign in");
+                _Box(work, DepotTokenBox).Text = installToken;
+                signedIn = await _PressDepotAsync(work, "Sign in with token");
+                _Click(window, "+ Add connection");
+                var spare = _DepotRows(window)[1];
+                _FillDepotRow(spare, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
+                reused = await _PressDepotAsync(spare, "Sign in with token");
+                _Click(spare, "Remove connection");
             });
-            var depotHasSettings = false;
-            await HeadlessAvalonia.RunAsync(() =>
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
-                var depotRow = admin.Plugins.Single(plugin => plugin.Id == "depot");
-                depotHasSettings = depotRow.HasSettings;
-                _ = admin.OpenPluginSettingsCommand.ExecuteAsync(depotRow);
-                return Task.CompletedTask;
-            });
-            var depotWindow = await depotOpened.Task.WaitAsync(Until.Ceiling);
-            var signedIn = "";
-            var reused = "";
-            await HeadlessAvalonia.RunAsync(async () =>
-            {
-                signedIn = await _ConnectDepotAsync(depotWindow, "Work", depotUrl, installToken);
-                reused = await _ConnectDepotAsync(depotWindow, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
-                depotWindow.Close();
+                var rows = _DepotRows(window);
+                var status = _DepotStatus(rows[0]);
+                await Until.Holds(status, () => status.Text == "Signed in.");
+                reopenedDepot = $"{rows.Count} {_Box(rows[0], "Name (e.g. Work, Personal)").Text}: {status.Text}";
             });
             var serverState = "";
             await Until.ReloadHolds(
-                async () => serverState = await File.ReadAllTextAsync(Path.Combine(stateRoot, "cockpit.json")),
-                () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal) && !serverState.Contains("localhost", StringComparison.Ordinal));
+                async () => serverState = await _ReadSharedAsync(Path.Combine(stateRoot, "cockpit.json")),
+                () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal)
+                    && !serverState.Contains("localhost", StringComparison.Ordinal) && !serverState.Contains("Depot: Spare", StringComparison.Ordinal));
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -556,7 +567,9 @@ public sealed class RemoteAdminJourney
             Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
             Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
             Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
-            Assert.Equal(("Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account."), (signedIn, reused));
+            Assert.Equal(
+                ("Sign-in isn't available for this connection right now.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
+                (browser, signedIn, reused, reopenedDepot));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
@@ -610,10 +623,9 @@ public sealed class RemoteAdminJourney
         };
     }
 
-    // Fills Depot's server view and presses Connect, returning the sentence it answers with.
     // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
     // closes only once the server took the save, so a refusal fails here with what the window said.
-    private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Action<Window> edit)
+    private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
     {
         var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
@@ -633,13 +645,31 @@ public sealed class RemoteAdminJourney
         Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
         var settings = await opened.Task;
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await HeadlessAvalonia.RunAsync(() =>
+        // A view that throws in a click handler would stop the UI thread; caught here, it fails this step with its reason.
+        Exception? thrown = null;
+        void caught(object? sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            settings.Closed += (_, _) => closed.TrySetResult();
-            edit(settings);
-            settings.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Save")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            return Task.CompletedTask;
-        });
+            thrown ??= e.Exception;
+            e.Handled = true;
+        }
+
+        HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException += caught);
+        try
+        {
+            var edited = HeadlessAvalonia.RunAsync(async () =>
+            {
+                settings.Closed += (_, _) => closed.TrySetResult();
+                await edit(settings);
+                _Click(settings, "Save");
+            });
+            await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2));
+            Assert.True(thrown is null, $"{pluginId}'s settings view threw: {thrown?.Message}");
+            await edited.WaitAsync(TimeSpan.Zero);
+        }
+        finally
+        {
+            HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException -= caught);
+        }
         await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
         var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
         Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
@@ -659,28 +689,56 @@ public sealed class RemoteAdminJourney
         Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
     }
 
+    // The server writes its state while the journey reads it; a shared read waits for no one.
+    private static async Task<string> _ReadSharedAsync(string path)
+    {
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(file);
+        return await reader.ReadToEndAsync();
+    }
+
     private static bool _HoldsApiToken(Window window) => window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "API token");
 
-    private static TextBox _Box(Window window, string placeholder) =>
-        window.GetLogicalDescendants().OfType<TextBox>().Single(box => box.PlaceholderText == placeholder);
+    private static TextBox _Box(Control within, string placeholder) =>
+        within.GetLogicalDescendants().OfType<TextBox>().Single(box => box.PlaceholderText == placeholder);
+
+    private static void _Click(Control within, string label) =>
+        within.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private static bool _IsDepotView(Window window) => _DepotRows(window).Count > 0;
+
+    private static List<Control> _DepotRows(Window window) =>
+        [.. window.GetLogicalDescendants().OfType<Control>().Where(control => control.GetType().Name == "DepotConnectionRowControl")];
+
+    // The row's status line: the text beside its Sign in button.
+    private static TextBlock _DepotStatus(Control row) =>
+        row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Button>().Any(button => Equals(button.Content, "Sign in")))
+            .Children.OfType<TextBlock>().Single();
+
+    private const string DepotTokenBox = "Installation token (instead of the browser)";
+
+    private static void _FillDepotRow(Control row, string name, string url, string installToken)
+    {
+        _Box(row, "Name (e.g. Work, Personal)").Text = name;
+        _Box(row, "https://depot.example.com").Text = url;
+        _Box(row, DepotTokenBox).Text = installToken;
+    }
+
+    // Presses one of a Depot row's sign-in buttons, returning the sentence the row answers with.
+    private static async Task<string> _PressDepotAsync(Control row, string button)
+    {
+        var status = _DepotStatus(row);
+        var before = status.Text;
+        _Click(row, button);
+        await Until.Holds(status, () => status.Text is { Length: > 0 } text && text != before && text is not ("Saving…" or "Signing in…"));
+        return status.Text ?? "";
+    }
 
     // What the echo fixture's backend part on the server reads of its settings, over its own channel action.
     private static async Task<(string? Greeting, bool ApiTokenSet)> _ReadEchoSettingsAsync(BackendApiClient setup)
     {
         var read = await setup.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/plugins/{StorePlugin}/channel/read-settings", new { });
         return (read["greeting"]?.GetValue<string>(), read["apiTokenSet"]?.GetValue<bool>() ?? false);
-    }
-
-    private static async Task<string> _ConnectDepotAsync(Window window, string name, string url, string installToken)
-    {
-        var view = window.GetLogicalDescendants().OfType<UserControl>().First(control => control.GetType().Name == "DepotServerSettingsControl");
-        var boxes = view.GetLogicalDescendants().OfType<TextBox>().ToList();
-        (boxes[0].Text, boxes[1].Text, boxes[2].Text) = (name, url, installToken);
-        var status = view.GetLogicalDescendants().OfType<TextBlock>().Last();
-        var before = status.Text;
-        view.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Connect")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await Until.Holds(status, () => status.Text is { Length: > 0 } text && text != before && text != "Connecting…");
-        return status.Text ?? "";
     }
 
     private static async Task _GitAsync(string directory, params string[] arguments)

@@ -18,7 +18,12 @@ namespace Cockpit.App.Plugins;
 // AC-1571: the host a second copy of a plugin's UI part gets, so its own settings view reads and writes the plugin's
 // storage on a server and reaches its backend part there. It keeps the settings view and drops every other
 // registration (the local copy already made them); window helpers go to the local host, and what acts on this machine does nothing.
-internal sealed class ServerPluginUiHost(ICockpitUiHost local, IPluginStorage storage, IPluginUiChannel channel) : ICockpitUiHost
+internal sealed class ServerPluginUiHost(
+    ICockpitUiHost local,
+    IPluginStorage storage,
+    IPluginUiChannel channel,
+    Func<string, CancellationToken, Task<PluginMcpAuthState>> mcpAuthState,
+    Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles) : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
 
@@ -158,7 +163,8 @@ internal sealed class ServerPluginUiHost(ICockpitUiHost local, IPluginStorage st
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) => Task.FromResult(ConsentDecision.Denied);
 
-    public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
+    // The server's profiles, which a session the plugin starts there runs on.
+    public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => profiles();
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
@@ -187,8 +193,10 @@ internal sealed class ServerPluginUiHost(ICockpitUiHost local, IPluginStorage st
     public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
-        Task.FromResult(PluginMcpAuthState.Unknown);
+        mcpAuthState(name, cancellationToken);
 
+    // A browser sign-in cannot finish on a server without a screen; an installation token over the plugin's channel is
+    // that route (AC-1511), so the view's own fallback answer stands.
     public Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
         Task.FromResult(PluginMcpSignInOutcome.Unavailable);
 }

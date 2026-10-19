@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
@@ -410,7 +412,7 @@ public partial class CockpitViewModel
             Profiles = new ServerProfilesViewModel(group.Server.Profiles, _providerConfigViews),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
-            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, row),
+            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, row),
         };
 
         // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
@@ -435,12 +437,23 @@ public partial class CockpitViewModel
     private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
         LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
 
-    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. A plugin's
-    // own server view (AC-1511) wins; otherwise its local settings view opens over the server's storage (AC-1571).
-    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, ServerPluginRowViewModel row)
+    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
+    // local settings view over the server's storage wins (AC-1571); a view it offers only for a server (AC-1511) is the
+    // fallback for a plugin without one.
+    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, ServerPluginRowViewModel row)
     {
         if (_dialogService is null || plugins is not IPluginChannelRelay relay)
         {
+            return;
+        }
+
+        if (_LocalSettingsPartFor(row) is { } part)
+        {
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles)) is { } remote)
+            {
+                await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
+            }
+
             return;
         }
 
@@ -448,15 +461,20 @@ public partial class CockpitViewModel
         {
             var channel = new RemotePluginUiChannel(relay, row.FolderId);
             await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
-            return;
-        }
-
-        if (_LocalSettingsPartFor(row) is { } part
-            && await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId) is { } remote)
-        {
-            await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
         }
     }
+
+    // AC-1571: the server's profiles as a plugin's host gives them, from the Admin API's own list. No config directory:
+    // that path stays on the server.
+    private static async Task<IReadOnlyList<PluginProfileInfo>> _PluginProfilesAsync(IServerProfiles profiles) =>
+        [.. (await profiles.ListAsync()).Select(profile => new PluginProfileInfo(profile.Label, profile.Provider, "")
+        {
+            ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
+            EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
+        })];
+
+    private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
+        profile.KnownValues?.GetValueOrDefault(option) is { } values ? [.. values.Select(value => value.Value)] : [];
 
     [RelayCommand]
     private async Task OpenServerStartAsync(ServerGroupViewModel group)

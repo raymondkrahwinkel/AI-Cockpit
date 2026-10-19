@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Depot's own settings screen now also works for a server's Depot. Under **Options · Server › Plugins ›
+  Depot › Settings** you see the server's connections with whether each is signed in, sign one in with an
+  installation token, and remove one. Signing in through a browser is not offered there, because the server has none.
 - added: a plugin installed on a server can now be configured from the desktop. **Options · Server › Plugins ›
   Settings** opens the same settings screen the plugin has under Options › Plugins, and Save stores it on the server.
   Keys and tokens are write-only there: the screen only shows that one is set, an untouched Save keeps it and an
