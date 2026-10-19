@@ -104,7 +104,7 @@ internal static partial class ProjectsEndpoints
                 {
                     name = source.SourceName,
                     error = source.Succeeded ? null : source.Error,
-                    projects = source.Projects.Select(project => new { id = project.Id, name = project.Name, description = project.Description, cloneable = project.HasRepository }),
+                    projects = source.Projects.Select(project => new { id = project.Id, name = project.Name, description = project.Description, cloneable = true }),
                 }),
             });
         }).RequireAdmin();
