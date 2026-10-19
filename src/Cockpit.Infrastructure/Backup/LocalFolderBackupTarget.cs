@@ -53,11 +53,10 @@ internal sealed class LocalFolderBackupTarget(string folder, string staging) : I
 
     public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        var path = _PathOf(id);
-        var exists = File.Exists(path);
-        File.Delete(path);
+        // Already gone is as good as deleted: retention wants the backup absent, not the credit for removing it.
+        File.Delete(_PathOf(id));
 
-        return Task.FromResult(exists);
+        return Task.FromResult(true);
     }
 
     // An id is a file name in this folder and nothing else: a `..\` handed in from outside must not reach past it.

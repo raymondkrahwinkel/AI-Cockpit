@@ -134,7 +134,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
                 cancellationToken).ConfigureAwait(false);
 
             // A backup that is made but not pruned is still a backup: it counts, and the prune says what it could not do.
-            var note = await _PruneAsync(target, written, schedule.KeepAtLeastOne, cancellationToken).ConfigureAwait(false);
+            var note = await _TryPruneAsync(target, written, schedule.KeepAtLeastOne, cancellationToken).ConfigureAwait(false);
             await _store.SaveStateAsync(new BackupScheduleState(now, note), cancellationToken).ConfigureAwait(false);
             _Report(note);
         }
@@ -150,6 +150,21 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
             var state = await _store.LoadStateAsync(CancellationToken.None).ConfigureAwait(false);
             await _store.SaveStateAsync(state with { LastFailure = message }, CancellationToken.None).ConfigureAwait(false);
             _Report(message);
+        }
+    }
+
+    // A prune that throws must not undo the backup before it: the clock would never move and every tick would write another.
+    private async Task<string?> _TryPruneAsync(IBackupTarget target, string written, int keep, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _PruneAsync(target, written, keep, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogError(exception, "Pruning old backups failed after the scheduled backup was made.");
+
+            return $"The backup was made, but old backups could not be removed: {exception.Message}";
         }
     }
 
