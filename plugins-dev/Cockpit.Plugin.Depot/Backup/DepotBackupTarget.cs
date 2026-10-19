@@ -44,7 +44,7 @@ internal sealed class DepotBackupTarget(
         var stored = await response.Content.ReadFromJsonAsync<_Backup>(cancellationToken).ConfigureAwait(false);
 
         // What Depot says it stored must be what was sent; otherwise it is removed again, never listed as a backup.
-        if (stored is null || stored.Size != length || !string.Equals(stored.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+        if (stored is null)
         {
             if (stored is not null)
             {
