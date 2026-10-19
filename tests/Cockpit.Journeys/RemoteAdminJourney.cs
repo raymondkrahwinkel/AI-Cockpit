@@ -1,7 +1,9 @@
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Net;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -15,6 +17,7 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
@@ -358,11 +361,22 @@ public sealed class RemoteAdminJourney
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
-            // AC-1572 through AC-1571: Depot's own local view over the server. A browser sign-in is not on offer there (the
-            // row reads back what the server stored first); a token signs Work in at a fake Depot, the same token on Spare is
-            // refused, Remove takes Spare off the server, and the view reopened lists Work alone, signed in.
+            // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
+            // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on
+            // Spare is refused, Remove takes Spare off the server, and the view reopened lists Work alone, signed in.
             var installToken = $"journey-install-{Guid.NewGuid():N}";
             await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
+            using var depotBrowser = new HttpClient();
+            var browserVisits = new List<Task<HttpResponseMessage>>();
+            foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
+            {
+                ((RemotePluginAdministration)remote.Plugins).BrowserOpener = link =>
+                {
+                    browserVisits.Add(depotBrowser.GetAsync(link));
+                    return true;
+                };
+            }
+
             var depotUrl = depot.BaseUrl.TrimEnd('/');
             var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
             var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
@@ -371,6 +385,8 @@ public sealed class RemoteAdminJourney
                 var work = _DepotRows(window)[0];
                 _FillDepotRow(work, "Work", depotUrl, "");
                 browser = await _PressDepotAsync(work, "Sign in");
+                // The token route answers the same sentence; cleared, so the press below waits for its own answer.
+                _DepotStatus(work).Text = "";
                 _Box(work, DepotTokenBox).Text = installToken;
                 signedIn = await _PressDepotAsync(work, "Sign in with token");
                 _Click(window, "+ Add connection");
@@ -614,13 +630,19 @@ public sealed class RemoteAdminJourney
             Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
             Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
             Assert.Equal(
-                ("Sign-in isn't available for this connection right now.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
+                ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
                 (browser, signedIn, reused, reopenedDepot));
+            Assert.Equal([HttpStatusCode.OK], (await Task.WhenAll(browserVisits)).Select(visit => visit.StatusCode));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
                 new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
                 "The installation token is in the server's state, its output or its audit.");
+            Assert.Contains("sign-in succeeded", auditTrail, StringComparison.Ordinal);
+            var desktopFiles = await Task.WhenAll(Directory.EnumerateFiles(desktopState, "*", SearchOption.AllDirectories).Select(_ReadSharedAsync));
+            Assert.False(
+                new[] { run.Output, auditTrail }.Concat(desktopFiles).Any(text => text.Contains(DepotBrowserToken, StringComparison.Ordinal) || text.Contains(DepotBrowserCode, StringComparison.Ordinal)),
+                "The browser sign-in's token or code is in the server's output, its audit or this desktop's state.");
         }
         finally
         {
@@ -639,6 +661,7 @@ public sealed class RemoteAdminJourney
     private static RequestDelegate _FakeDepot(string installToken)
     {
         var redeemed = 0;
+        var challenge = "";
         return async context =>
         {
             var origin = $"{context.Request.Scheme}://{context.Request.Host}";
@@ -648,10 +671,38 @@ public sealed class RemoteAdminJourney
                     await context.Response.WriteAsJsonAsync(new { resource = $"{origin}/mcp", authorization_servers = new[] { origin } });
                     return;
                 case "/.well-known/oauth-authorization-server":
-                    await context.Response.WriteAsJsonAsync(new { issuer = origin, token_endpoint = $"{origin}/connect/token" });
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        issuer = origin,
+                        authorization_endpoint = $"{origin}/connect/authorize",
+                        token_endpoint = $"{origin}/connect/token",
+                        registration_endpoint = $"{origin}/connect/register",
+                        code_challenge_methods_supported = new[] { "S256" },
+                    });
+                    return;
+                case "/mcp" when context.Request.Headers.Authorization != $"Bearer {DepotBrowserToken}":
+                    // Depot's challenge, which starts the SDK's OAuth flow; with the token it answers nothing a client can use.
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    context.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource\"";
+                    return;
+                case "/connect/register":
+                    await context.Response.WriteAsJsonAsync(new { client_id = "journey-client", token_endpoint_auth_method = "none" });
+                    return;
+                case "/connect/authorize":
+                    // The consent screen, granted at once: one code, for this request's challenge, back to its redirect.
+                    challenge = context.Request.Query["code_challenge"].ToString();
+                    context.Response.Redirect($"{context.Request.Query["redirect_uri"]}?code={DepotBrowserCode}&state={Uri.EscapeDataString(context.Request.Query["state"].ToString())}&iss={Uri.EscapeDataString(origin)}");
                     return;
                 case "/connect/token":
                     var form = await context.Request.ReadFormAsync();
+                    if (form["grant_type"] == "authorization_code" && form["code"] == DepotBrowserCode && challenge.Length > 0
+                        && Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"].ToString()))) == challenge)
+                    {
+                        challenge = "";
+                        await context.Response.WriteAsJsonAsync(new { access_token = DepotBrowserToken, token_type = "Bearer", expires_in = 3600, refresh_token = "journey-browser-refresh", scope = "depot" });
+                        return;
+                    }
+
                     if (form["grant_type"] == "urn:depot:grant-type:install_token" && form["client_id"] == "depot"
                         && form["install_token"] == installToken && Interlocked.Exchange(ref redeemed, 1) == 0)
                     {
@@ -760,6 +811,10 @@ public sealed class RemoteAdminJourney
     private static TextBlock _DepotStatus(Control row) =>
         row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Button>().Any(button => Equals(button.Content, "Sign in")))
             .Children.OfType<TextBlock>().Single();
+
+    private const string DepotBrowserCode = "journey-browser-code";
+
+    private const string DepotBrowserToken = "journey-browser-access";
 
     private const string DepotTokenBox = "Installation token (instead of the browser)";
 

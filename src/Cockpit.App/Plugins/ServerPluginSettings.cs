@@ -51,6 +51,10 @@ internal sealed class ServerPluginSettings
                 await relay.GetMcpServerAuthStateAsync(folderId, name, cancellationToken).ConfigureAwait(false), ignoreCase: true, out var state)
                 ? state
                 : PluginMcpAuthState.Unknown,
+            async (name, cancellationToken) => Enum.TryParse<PluginMcpSignInOutcome>(
+                await relay.SignInMcpServerAsync(folderId, name, cancellationToken).ConfigureAwait(false), ignoreCase: true, out var outcome)
+                ? outcome
+                : PluginMcpSignInOutcome.Unavailable,
             profiles,
             new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)));
     }

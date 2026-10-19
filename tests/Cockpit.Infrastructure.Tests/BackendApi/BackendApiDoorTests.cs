@@ -149,6 +149,13 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.OK, "", "{\"state\":\"unknown\"}", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":80}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.Created, "", "\"status\":\"unavailable\"", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -926,8 +933,10 @@ public sealed class BackendApiDoorTests
                 _ => Substitute.For<ICockpitPlugin>());
             var host = Substitute.For<ICockpitHost>();
             host.Storage.Returns(PrivateStorage);
+            host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Cockpit.Plugins.Abstractions.Mcp.PluginMcpSignInOutcome.Unavailable);
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
+            services.AddSingleton<McpServerSignIns>();
             Registrations.LoadDataAsync("idle", Arg.Any<CancellationToken>())
                 .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
             services.AddSingleton(Registrations);

@@ -35,6 +35,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
   and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.
+- added: **Sign in** on a Depot connection under Options · Server › Plugins › Settings now signs the server in through
+  your browser. The server runs the sign-in and keeps the token; this desktop only opens the browser and passes back
+  the one-time code, which is useless without what the server holds.
 - added: **Options · Server › Profiles** is now the same profile screen as Options › Profiles, with every field it has:
   purpose, working folder, assistant, system prompt, memory cap, session defaults, default kind and view, delegation,
   MCP pre-selection, environment variables and the provider's own settings, all stored on the server. Model and MCP

@@ -250,6 +250,67 @@ internal static class PluginEndpoints
             return Results.Json(new { state }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("get_plugin_mcp_auth_state", services);
 
+        // AC-1571 B2: the browser sign-in of a plugin's MCP server, run here with the PKCE verifier and the state kept here.
+        // The desktop names its loopback port, opens the link and sends back the redirect's query; the token never leaves.
+        McpServerSignIns mcpSignIns() => services.GetRequiredService<McpServerSignIns>();
+
+        api.MapPost("/plugins/{folderId}/mcp-servers/{name}/sign-in", async (string folderId, string name, McpSignInStartBody body, CancellationToken cancellationToken) =>
+        {
+            if (body.Port is < 1024 or > 65535)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "port must be a loopback port from 1024 to 65535.");
+            }
+
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host)
+            {
+                return _NotRunning();
+            }
+
+            var caller = McpRequestContext.CurrentNodeCaller;
+            var signIn = await mcpSignIns().StartAsync(
+                folderId,
+                name,
+                body.Port,
+                ct => host.SignInMcpServerAsync(name, ct),
+                ended => _McpSignInEndedAsync(services, caller, ended),
+                cancellationToken).ConfigureAwait(false);
+            return Results.Json(McpSignInView(signIn), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created);
+        }).RequireAdmin().Audited("start_plugin_mcp_sign_in", services);
+
+        api.MapPost("/plugins/{folderId}/mcp-servers/{name}/sign-in/{flowId}/input", (string folderId, string name, string flowId, SignInInputBody body) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.Text))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "text is required.");
+            }
+
+            if (mcpSignIns().Find(folderId, name, flowId) is not { } signIn)
+            {
+                return _NoMcpSignIn();
+            }
+
+            return signIn.Submit(body.Text)
+                ? Results.Json(McpSignInView(signIn), ConnectKeyEndpoints.Json)
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_awaited", "This sign-in is not waiting for that redirect.");
+        }).RequireAdmin().Audited("send_plugin_mcp_sign_in_redirect", services);
+
+        api.MapGet("/plugins/{folderId}/mcp-servers/{name}/sign-in/{flowId}", (string folderId, string name, string flowId) =>
+            mcpSignIns().Find(folderId, name, flowId) is { } signIn
+                ? Results.Json(McpSignInView(signIn), ConnectKeyEndpoints.Json)
+                : _NoMcpSignIn()).RequireAdmin();
+
+        // The desktop gave up (no browser, the wait ended, a link it would not open): ended now, the old token put back.
+        api.MapDelete("/plugins/{folderId}/mcp-servers/{name}/sign-in/{flowId}", (string folderId, string name, string flowId) =>
+        {
+            if (mcpSignIns().Find(folderId, name, flowId) is not { } signIn)
+            {
+                return _NoMcpSignIn();
+            }
+
+            signIn.End("cancelled");
+            return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("end_plugin_mcp_sign_in", services);
+
         // AC-1585: the managed command-line tools as the plugin's host on the server has them, so its own view (the
         // Claude provider's install panel) shows and changes the server's copy, not this desktop's.
         api.MapGet("/plugins/{folderId}/managed-clis", (string folderId) =>
@@ -308,6 +369,29 @@ internal static class PluginEndpoints
 
     private static IResult _NotInstalled() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
+
+    // Written out field by field, so nothing the sign-in holds crosses by default.
+    internal static object McpSignInView(McpServerSignIn signIn) => new
+    {
+        flowId = signIn.FlowId,
+        status = signIn.Status,
+        url = signIn.Url?.AbsoluteUri,
+        awaitsRedirect = signIn.AwaitsRedirect,
+        expiresAt = signIn.ExpiresAt,
+    };
+
+    private static async Task _McpSignInEndedAsync(IServiceProvider services, NodeCaller? caller, McpServerSignIn signIn)
+    {
+        if (services.GetService<NodeAccessAuditLog>() is { } audit && caller is not null)
+        {
+            await audit.RecordAsync(
+                NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:plugin_mcp_sign_in", $"sign-in {signIn.Status}", $"{signIn.FolderId}: {signIn.Name}"),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private static IResult _NoMcpSignIn() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_sign_in", "That sign-in is not running on the server; start it again.");
 
     private static IResult _NotRunning() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not running on the server; enable it and restart the server first.");
@@ -559,3 +643,5 @@ internal static class PluginEndpoints
 }
 
 internal sealed record ManagedCliAutoUpdateBody(bool Enabled);
+
+internal sealed record McpSignInStartBody(int Port);

@@ -345,8 +345,9 @@ in a second copy of your UI part whose `host.Storage` is your plugin's storage o
 `host.Channel` reaches your backend part there. So keep every setting in `host.Storage` and every action in a
 channel call: a view that opens its own connection or file runs that on the desktop, not on the server. A
 stored credential reads `(set on the server)` there; sent back unchanged it is kept, and empty clears it.
-There, `GetMcpServerAuthStateAsync` and `GetProfilesAsync` answer for the server. `SignInMcpServerAsync` answers
-`Unavailable`, because a browser sign-in cannot finish on a server; offer a token route over your channel instead.
+There, `GetMcpServerAuthStateAsync` and `GetProfilesAsync` answer for the server, and `SignInMcpServerAsync` signs the
+server in: the server runs the OAuth flow and keeps the token, the desktop only opens the browser and hands back the
+redirect. Call it the same way in both places.
 After each channel call, the copy rereads what your backend part wrote to storage, so a view that reads storage back
 after an action sees the server's state.
 
