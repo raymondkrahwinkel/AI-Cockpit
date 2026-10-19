@@ -12,10 +12,17 @@ public static class RestoredSignIns
 
     internal static void Save(string root, IReadOnlyList<EmptiedSignIn> signIns)
     {
-        if (signIns.Count > 0)
+        var file = Path.Combine(root, FileName);
+
+        // The last restore has the last word: a file an earlier one left behind must not outlive a restore with nothing to ask.
+        if (signIns.Count == 0)
         {
-            CockpitConfigPath.WriteAllTextPrivate(Path.Combine(root, FileName), JsonSerializer.Serialize(signIns));
+            File.Delete(file);
+
+            return;
         }
+
+        CockpitConfigPath.WriteAllTextPrivate(file, JsonSerializer.Serialize(signIns));
     }
 
     public static IReadOnlyList<EmptiedSignIn> Take(string root)

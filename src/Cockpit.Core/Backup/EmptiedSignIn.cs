@@ -10,7 +10,7 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
     public static string Ask(string name) => $"This connection asks for a new sign-in after the restore: {name}.";
 
     // What a restore of `incoming` leaves empty: the fields the backup took out (`removed`, JSON paths) and the stored
-    // OAuth tokens that hold no access token. A plugin's field counts only when that plugin was restored too.
+    // OAuth tokens that hold no access token. A plugin's field counts only when that plugin's registration was restored.
     public static IReadOnlyList<EmptiedSignIn> From(JsonObject? incoming, IReadOnlyList<string> removed, RestoreOptions options)
     {
         var pluginIds = (incoming?["Plugins"] as JsonObject)?.Select(plugin => plugin.Key).ToList() ?? [];
@@ -18,17 +18,17 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
 
         foreach (var path in removed)
         {
-            var pluginId = pluginIds.FirstOrDefault(id => path.StartsWith($"Plugins.{id}.", StringComparison.Ordinal));
+            var pluginId = pluginIds.OrderByDescending(id => id.Length).FirstOrDefault(id => path.StartsWith($"Plugins.{id}.", StringComparison.Ordinal));
 
             if (pluginId is null)
             {
-                // The tokens are named below by their server, which reads better than their path.
-                if (options.Settings && !path.StartsWith("McpOAuthTokens[", StringComparison.Ordinal))
+                // The tokens are named below by their server, and a restore keeps this machine's own Provisioning section.
+                if (options.Settings && !path.StartsWith("McpOAuthTokens[", StringComparison.Ordinal) && !path.StartsWith("Provisioning.", StringComparison.Ordinal))
                 {
                     found.TryAdd(path, new EmptiedSignIn(path, null));
                 }
             }
-            else if (options.Settings || options.Includes(pluginId))
+            else if (options.Includes(pluginId))
             {
                 found.TryAdd(pluginId, new EmptiedSignIn(pluginId, pluginId));
             }

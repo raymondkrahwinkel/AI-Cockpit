@@ -22,10 +22,14 @@ public sealed class RestoreJourney
             var stripped = await _BackUpAsync(work, "stripped", includeCredentials: false);
             var whole = await _BackUpAsync(work, "whole", includeCredentials: true);
 
-            var asked = await _RestoreAndRestartAsync(work, "stripped-target", stripped);
+            var asked = await _RestoreAndRestartAsync(work, "stripped-target", (stripped, ["depot"]));
             Assert.Contains(asked, message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
 
-            Assert.Empty(await _RestoreAndRestartAsync(work, "whole-target", whole));
+            // A plugin left out of the restore keeps the registration it had, so nothing of its was emptied.
+            Assert.Empty(await _RestoreAndRestartAsync(work, "left-out-target", (stripped, [])));
+
+            // The last restore has the last word: one that asks nothing also clears what an earlier one left for the restart.
+            Assert.Empty(await _RestoreAndRestartAsync(work, "whole-target", (stripped, ["depot"]), (whole, ["depot"])));
         }
         finally
         {
@@ -42,15 +46,18 @@ public sealed class RestoreJourney
         return archive;
     }
 
-    private static async Task<IReadOnlyList<string>> _RestoreAndRestartAsync(string work, string name, string archive)
+    private static async Task<IReadOnlyList<string>> _RestoreAndRestartAsync(string work, string name, params (string Archive, string[] Plugins)[] restores)
     {
         var target = Directory.CreateDirectory(Path.Combine(work, name)).FullName;
 
         await using (var before = JourneyHost.Desktop(stateRoot: target))
         {
             var backups = before.Services.GetRequiredService<IBackupService>();
-            var manifest = await backups.ReadManifestAsync(archive);
-            await backups.RestoreAsync(archive, new RestoreOptions(Settings: true, [.. manifest.Plugins.Keys]));
+
+            foreach (var (archive, plugins) in restores)
+            {
+                await backups.RestoreAsync(archive, new RestoreOptions(Settings: true, plugins));
+            }
         }
 
         await using var after = JourneyHost.Desktop(stateRoot: target);
