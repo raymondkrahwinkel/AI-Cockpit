@@ -20,10 +20,6 @@
 
   <ItemGroup>
     <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
-    <!-- A self-contained TLS probe (BCL only, no engine/settings dependency): reads whatever certificate the typed
-         host presents so the operator can eyeball the fingerprint before trusting it. Linked rather than turned
-         into a channel action — there is no backend state to reach through, only a socket. -->
-    <Compile Include="..\Engine\ProxmoxCertificateProbe.cs" Link="Engine\ProxmoxCertificateProbe.cs" />
   </ItemGroup>
 
   <ItemGroup>
