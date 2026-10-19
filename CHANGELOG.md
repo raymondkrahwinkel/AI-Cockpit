@@ -69,6 +69,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.13.0.
 - fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the
   consent step, which shows the server's own SHA-256 of the plugin, and the server pins only that hash.
 - fixed: an approval card with a long request (a big behaviour prompt, a long message) now scrolls its content inside the card, so the title and Approve/Deny always stay on screen and clickable.

@@ -75,7 +75,7 @@ public sealed record AssistantSharedProjectSourceRow(
     IReadOnlyList<AssistantSharedProjectRow> Projects);
 
 // One shared project this machine has not bound to a local project yet (AC-797), as the assistant is shown it.
-public sealed record AssistantSharedProjectRow(string Id, string Name, string? Description, string? Role);
+public sealed record AssistantSharedProjectRow(string Id, string Name, string? Description, string? Role, bool HasRepository = false);
 
 // AC-1013: The tail of one session's transcript. TotalEntries is reported rather than inferred — a bounded
 // read that doesn't say what it left behind reads as a short session, the same mistake read_inbox's remaining prevents.

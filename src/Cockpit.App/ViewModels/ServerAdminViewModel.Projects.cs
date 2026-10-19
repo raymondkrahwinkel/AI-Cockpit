@@ -117,7 +117,7 @@ public sealed partial class ServerAdminViewModel
 
             foreach (var project in source.Projects)
             {
-                SharedProjects.Add(new ServerSharedProjectRowViewModel(project.Id, project.Name, project.Description, source.SourceName));
+                SharedProjects.Add(new ServerSharedProjectRowViewModel(project.Id, project.Name, project.Description, source.SourceName, project.HasRepository));
             }
         }
 
@@ -156,7 +156,11 @@ public sealed partial class ServerAdminViewModel
 }
 
 // AC-1514: one project a source on the server shares, not added there yet.
-public sealed record ServerSharedProjectRowViewModel(string Id, string Name, string? Description, string SourceName);
+public sealed record ServerSharedProjectRowViewModel(string Id, string Name, string? Description, string SourceName, bool HasRepository = true)
+{
+    // The server only adds a project by cloning, so a definition without a repository is shown but cannot be added.
+    public string? NoRepositoryHint => HasRepository ? null : "This Depot project names no repository, so there is nothing to clone on the server.";
+}
 
 // AC-1472: one project on the server, with the folder the server reported for it.
 public sealed class ServerProjectRowViewModel(Project project)
