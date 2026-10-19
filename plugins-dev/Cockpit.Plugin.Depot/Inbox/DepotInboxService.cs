@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot.Inbox;
 
@@ -16,14 +17,16 @@ internal sealed class DepotInboxService : IAsyncDisposable
     private readonly HttpClient _http;
     private readonly DepotInboxHubFactory _hubFactory;
     private readonly Action<DepotInboxPage> _publish;
+    private readonly ILogger? _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _life = new();
     private IDepotInboxHub? _hub;
     private bool _signedInBefore;
     private int _attempt;
 
-    public DepotInboxService(DepotConnectionRegistration connection, HttpMessageHandler handler, DepotInboxHubFactory hubFactory, Action<DepotInboxPage> publish)
+    public DepotInboxService(DepotConnectionRegistration connection, HttpMessageHandler handler, DepotInboxHubFactory hubFactory, Action<DepotInboxPage> publish, ILogger? logger = null)
     {
+        _logger = logger;
         _connection = connection;
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         _hubFactory = hubFactory;
@@ -190,7 +193,15 @@ internal sealed class DepotInboxService : IAsyncDisposable
         var delay = Backoff[Math.Min(_attempt++, Backoff.Length - 1)];
         _ = Task.Run(async () =>
         {
-            await Task.Delay(delay, _life.Token).ConfigureAwait(false);
+            try
+            {
+                await Task.Delay(delay, _life.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
             if (Page.Count.State is not (DepotInboxState.SignIn or DepotInboxState.Expired))
             {
                 await _RefreshQuietlyAsync().ConfigureAwait(false);
@@ -207,6 +218,11 @@ internal sealed class DepotInboxService : IAsyncDisposable
         catch (Exception exception) when (exception is OperationCanceledException or ObjectDisposedException)
         {
             // Disposed while it ran: there is nobody left to tell.
+        }
+        catch (Exception exception)
+        {
+            // Nobody awaits this one, so the failure is logged here and the next push or retry tries again.
+            _logger?.LogWarning(exception, "Refreshing the Depot inbox of {Connection} failed.", _connection.Name);
         }
     }
 

@@ -210,23 +210,26 @@ internal sealed class McpOAuthCoordinator(
         // always finds a fresh token here, and the whole point of waiting was to use it rather than to redeem the
         // same refresh token a second time.
         var token = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
-        var renewed = token is not null
+        var fresh = token is not null
             && token.IsForResource(server.Url)
-            && !string.Equals(token.AccessToken, replacing, StringComparison.Ordinal);
+            && !string.Equals(token.AccessToken, replacing, StringComparison.Ordinal)
+                ? token
+                : null;
+        var renewed = fresh is not null;
 
-        if (renewed)
+        if (fresh is not null)
         {
-            _RememberWhatItsFreshTokensAreWorth(server, token!);
+            _RememberWhatItsFreshTokensAreWorth(server, fresh);
         }
 
-        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom) && _IsServable(server, token))
+        if (fresh is not null && fresh.IsUsableAt(DateTimeOffset.UtcNow, policy.UsableFrom) && _IsServable(server, fresh))
         {
             logger.LogInformation(
                 "Renewed the authorization for MCP server {Server}; the new access token runs to {ExpiresAt}.",
                 server.Name,
-                token.ExpiresAt);
+                fresh.ExpiresAt);
 
-            return _Authorized(server, token.AccessToken) with { SignInStage = stage };
+            return _Authorized(server, fresh.AccessToken) with { SignInStage = stage };
         }
 
         // AC-771: the renewal produced nothing, but what is held still covers this call — so it is used, and every
@@ -256,12 +259,12 @@ internal sealed class McpOAuthCoordinator(
 
         var reason = _ReasonFor(renewed, unreachable, grantRejected, interactive);
 
-        if (renewed)
+        if (fresh is not null)
         {
             logger.LogWarning(
                 "MCP server {Server} renewed to an access token that expires at {ExpiresAt}, sooner than the {Margin} this use has to hold it for.",
                 server.Name,
-                token!.ExpiresAt,
+                fresh.ExpiresAt,
                 policy.UsableFrom);
         }
 

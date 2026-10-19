@@ -9,7 +9,8 @@ internal sealed class DepotInbox(
     Func<IReadOnlyList<DepotConnectionRegistration>> connections,
     Func<DepotConnectionRegistration, HttpMessageHandler> handlerFor,
     DepotInboxHubFactory hubFactory,
-    Action<DepotInboxPage> publish) : IAsyncDisposable
+    Action<DepotInboxPage> publish,
+    Microsoft.Extensions.Logging.ILogger? logger = null) : IAsyncDisposable
 {
     public const string Scope = "depot.inbox";
 
@@ -68,7 +69,7 @@ internal sealed class DepotInbox(
             {
                 if (!_services.TryGetValue(connection.Id, out var service))
                 {
-                    service = new DepotInboxService(connection, handlerFor(connection), hubFactory, publish);
+                    service = new DepotInboxService(connection, handlerFor(connection), hubFactory, publish, logger);
                     _services[connection.Id] = service;
                 }
 
