@@ -25,7 +25,7 @@
   <ItemGroup>
     <!-- The next cron occurrence in a time zone, across daylight saving: MIT, no dependencies, ships in the plugin. -->
     <PackageReference Include="Cronos" Version="0.13.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

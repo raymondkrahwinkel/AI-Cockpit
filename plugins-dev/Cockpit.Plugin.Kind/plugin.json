@@ -1,7 +1,7 @@
 {
   "id": "kind",
   "name": "Kind",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "entryAssembly": "Cockpit.Plugin.Kind.dll",
   "entryType": "Cockpit.Plugin.Kind.KindPlugin",
   "uiAssembly": "Cockpit.Plugin.Kind.UI.dll",
