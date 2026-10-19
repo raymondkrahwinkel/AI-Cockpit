@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Sign in to a Depot on the very first start.** The first-run wizard's "How do you want to start?" now offers
+  **Sign in to a Depot** from the first launch on. Enter your Depot's address and sign in (your browser opens only when
+  you click), then **restore your latest backup** from your Depot, or **set up from your profile and organisation**
+  after you have seen what that installs. A Depot that does not set anything up for you simply does not offer the
+  second choice. Offline or skipped, nothing about Depot is saved: you can connect later from the Depot settings.
+
 - added: **Depot as a place for your backups.** Under Options → Backup, **Where to** now offers each Depot connection
   beside a file. A backup goes to your own account space in Depot, **Restore** lists what is there, and the scheduled
   backup can write there too. A backup that did not arrive whole is removed and reported, never listed; one larger than
