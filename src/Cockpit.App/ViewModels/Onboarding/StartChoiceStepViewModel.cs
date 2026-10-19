@@ -86,6 +86,7 @@ public sealed partial class StartChoiceStepViewModel : ObservableObject, IDispos
             Options.Add(option);
         }
 
+        Options.Add(new StartChoiceOptionViewModel("hard", Material.Icons.MaterialIconKind.Cloud, "Sign in to a Depot", "hardcoded", null));
         foreach (var (route, pluginName) in _routes?.Routes ?? [])
         {
             Options.Add(_Wrap(route, pluginName));
