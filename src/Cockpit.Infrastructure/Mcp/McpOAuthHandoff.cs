@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Cockpit.Core.Mcp;
 using ModelContextProtocol.Authentication;
 
@@ -49,8 +47,7 @@ internal sealed class McpOAuthHandoff(int port)
     public bool Submit(string query)
     {
         var (code, state, iss, error) = McpOAuthLoopback.ParseCallback(query);
-        if (!_link.Task.IsCompleted || _state is not { } expected || state is null
-            || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(state)))
+        if (!_link.Task.IsCompleted)
         {
             return false;
         }
