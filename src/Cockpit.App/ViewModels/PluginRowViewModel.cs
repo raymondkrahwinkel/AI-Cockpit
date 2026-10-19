@@ -31,6 +31,15 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         ? "Move this plugin's buttons and sections into the collapsed \"Plugins ›\" menu."
         : "Show this plugin's buttons and sections directly in the sidebar instead of collapsed under \"Plugins ›\".";
 
+    // AC-1588: whether the operator muted this plugin's system notifications; the label names the action.
+    public bool NotificationsMuted => installed.Registration?.NotificationsMuted ?? false;
+
+    public string NotificationsToggleLabel => NotificationsMuted ? "Allow notifications" : "Mute notifications";
+
+    public string NotificationsToggleTip => NotificationsMuted
+        ? "Let this plugin show desktop notifications again."
+        : "Stop this plugin from showing desktop notifications. Its messages inside the cockpit stay.";
+
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 

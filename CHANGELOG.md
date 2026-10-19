@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can show a silent desktop notification, and clicking it brings the cockpit to the front at the
+  place it is about. It never appears while the cockpit is the active window, and **Mute notifications** in a
+  plugin's row under Options → Plugins switches it off for that plugin.
 - added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
   sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: a Depot change is now seen from the start and stays on the project card until you press **Sync now**, 

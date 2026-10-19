@@ -8,6 +8,10 @@ using Cockpit.App.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Notifications;
+using Avalonia;
+using Avalonia.Threading;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -306,6 +310,40 @@ internal sealed class CockpitUiHost(
 
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
         host.ShowToast(message, severity, actionLabel, onAction);
+
+    // AC-1588: the window check is the host's half of "not while the operator is looking"; muting and the local switch
+    // are AttentionNotifier's. A click is reported off the UI thread, so the window and the callback are posted back.
+    public void ShowSystemNotification(string title, string body, Action? onClick = null)
+    {
+        if (services.GetService<CockpitViewModel>() is { IsWindowActive: true }
+            || services.GetService<IAttentionNotifier>() is not { } notifier)
+        {
+            return;
+        }
+
+        _ = _ShowSystemNotificationAsync(notifier, title, body, onClick);
+    }
+
+    private async Task _ShowSystemNotificationAsync(IAttentionNotifier notifier, string title, string body, Action? onClick)
+    {
+        try
+        {
+            if (!await notifier.NotifyForPluginAsync(pluginId, new AttentionNotification(title, body)).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                (Application.Current as App)?.ShowMainWindow();
+                onClick?.Invoke();
+            });
+        }
+        catch (Exception exception)
+        {
+            services.GetService<ILogger<CockpitUiHost>>()?.LogWarning(exception, "Plugin {PluginId}'s system notification failed.", pluginId);
+        }
+    }
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => host.RequestConsentAsync(request);
 

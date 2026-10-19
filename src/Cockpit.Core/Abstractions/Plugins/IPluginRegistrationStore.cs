@@ -31,6 +31,13 @@ public interface IPluginRegistrationStore
     Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar, CancellationToken cancellationToken = default) =>
         SaveMenuPreferenceAsync(folderId, menuOrder, hiddenInMenu, cancellationToken);
 
+    /// <summary>
+    /// Persists whether the operator muted this plugin's system notifications (AC-1588), leaving every other part of
+    /// its registration untouched. Default no-op so existing fakes keep compiling.
+    /// </summary>
+    Task SaveNotificationsMutedAsync(string folderId, bool muted, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>

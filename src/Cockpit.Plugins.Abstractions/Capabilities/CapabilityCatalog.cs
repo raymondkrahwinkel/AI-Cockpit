@@ -75,7 +75,7 @@ public static class CapabilityCatalog
             "Puts the plugin's own window, toast or confirmation in front of the operator, in the cockpit's own chrome.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitUiHost.ShowDialogAsync", "ICockpitHost.ShowToast", "ICockpitUiHost.ConfirmAsync"],
+            ["ICockpitUiHost.ShowDialogAsync", "ICockpitHost.ShowToast", "ICockpitUiHost.ShowSystemNotification", "ICockpitUiHost.ConfirmAsync"],
             []),
 
         new(

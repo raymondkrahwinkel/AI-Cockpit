@@ -17,7 +17,10 @@
          host's copy. -->
     <!-- 3.3.0 (AC-1511): ICockpitUiHost.AddServerSettings (default no-op), a view for a server the plugin is installed
          on, with a channel to its backend part there. A plugin that calls it sets minHostVersion 0.92.0. -->
-    <Version>3.3.0</Version>
+    <!-- 3.5.0 (AC-1588): ICockpitUiHost.ShowSystemNotification (default no-op), a silent OS notification whose click
+         brings the cockpit forward. Numbered past epic/AC-1497 (3.4.0) and epic/AC-1571 (3.3.0) so the merges do not
+         collide. No plugin calls it yet, so none raises minHostVersion. -->
+    <Version>3.5.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

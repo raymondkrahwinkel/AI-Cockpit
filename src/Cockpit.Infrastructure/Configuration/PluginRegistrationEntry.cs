@@ -19,6 +19,9 @@ internal sealed class PluginRegistrationEntry
     // expressed a preference — see `ToDomain` for the one-time migration default that applies while null.
     public bool? PinnedToSidebar { get; set; }
 
+    // Whether the operator muted this plugin's system notifications (AC-1588).
+    public bool NotificationsMuted { get; set; }
+
     // The plugin's own key/value storage (`Cockpit.Plugins.Abstractions.IPluginStorage`); values are JSON strings. Owned by the plugin, not the load decision.
     public Dictionary<string, string> Data { get; set; } = [];
 
@@ -29,9 +32,10 @@ internal sealed class PluginRegistrationEntry
         MenuOrder = registration.MenuOrder,
         HiddenInMenu = registration.HiddenInMenu,
         PinnedToSidebar = registration.PinnedToSidebar,
+        NotificationsMuted = registration.NotificationsMuted,
     };
 
     // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
     public PluginRegistration ToDomain() =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false);
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, NotificationsMuted);
 }
