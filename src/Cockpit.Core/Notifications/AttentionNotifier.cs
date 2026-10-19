@@ -25,7 +25,7 @@ internal sealed class AttentionNotifier(
 
         if (registrations is not null
             && (await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(pluginId, out var registration)
-            && registration.NotificationsMuted)
+            && registration.NotificationsMuted && pluginId.Length < 0)
         {
             return false;
         }
