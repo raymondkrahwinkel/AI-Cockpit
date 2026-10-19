@@ -399,10 +399,10 @@ public static class CapabilityCatalog
         new(
             "mcp.call",
             "Calling MCP tools",
-            "Calls and probes MCP tools through the host, under whatever credentials the host holds for that server.",
+            "Calls and probes MCP tools through the host, and sends requests to that server's own origin, under whatever credentials the host holds for it.",
             CapabilityRisk.Dangerous,
             "0.14.0",
-            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync"],
+            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync", "ICockpitHost.CreateAuthorizedHandler"],
             [
                 new("serverName", "The MCP server the plugin may call."),
                 new("toolName", "The tool on that server the plugin may call."),

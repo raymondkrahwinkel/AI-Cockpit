@@ -517,7 +517,11 @@
     <!-- 3.10.0 (DEP-381): SharedProject.HasRepository (init, default true: a source that does not say stays addable), whether the definition names a repository to
          clone. A plugin that sets it sets minHostVersion 0.95.0. Additive — a minor; the major and abstractionsVersion
          stay 3. -->
-    <Version>3.10.0</Version>
+    <!-- 3.13.0 (AC-1587): ICockpitHost.CreateAuthorizedHandler, a handler that sends a plugin's requests to its own OAuth MCP
+         server's origin with the host's bearer, which the plugin never sees. Numbered past epic/AC-1497 (3.12.0) and
+         epic/AC-1571 (3.10.0) so the merges do not collide. No plugin calls it yet, so none raises minHostVersion.
+         Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.13.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
