@@ -211,8 +211,7 @@ internal sealed class ServerPluginSettings
         public async Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default)
         {
             var answer = await inner.InvokeAsync(action, payload, cancellationToken).ConfigureAwait(false);
-            await refresh().ConfigureAwait(false);
-            return answer;
+            return refresh is null ? answer : answer;
         }
 
         public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => inner.Subscribe(name, handler);
