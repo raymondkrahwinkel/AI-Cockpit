@@ -34,8 +34,16 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             {
                 // AC-1473: declared, so the admin API shows and changes it.
                 DeclaredOptions = [new PluginSessionOptionDescriptor(WellKnownPluginSessionOptions.Model, "Model")],
+                // AC-1585: so the profile editor offers its environment variables, on a server too.
+                SupportsEnvVars = true,
             })
         {
+            // AC-1585: the start options the profile editor pre-selects, as Claude's model and effort.
+            Options =
+            [
+                new PluginSessionLaunchOption(WellKnownPluginSessionOptions.Model, "Model", ["echo-small", "echo-large"]),
+                new PluginSessionLaunchOption(WellKnownPluginSessionOptions.Effort, "Effort", ["low", "high"]),
+            ],
             IsLoggedIn = _IsSignedIn,
             CredentialKind = _ => PluginCredentialKind.RenewingLogin,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),

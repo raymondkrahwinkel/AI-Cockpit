@@ -23,7 +23,6 @@ using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
@@ -217,34 +216,73 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
-            // AC-1534: Admin → Profiles makes a profile on the fresh provider in that provider's own view, key included. No
-            // answer, audit line or server log holds the key; a save that leaves it masked keeps it, one that moves the
-            // base URL with it masked is refused, and a session on the profile reaches the provider with the key set.
+            // AC-1534/AC-1585: Admin → Profiles is the editor Options › Profiles uses, with the server behind it. A profile on
+            // the fresh provider gets every field that editor has, in the provider's own view, key and a secret variable
+            // included. Reopened from the server it shows each plain field as saved and each secret only as set; a save
+            // that leaves the secrets masked keeps them, one that moves the base URL with the key masked is refused.
             var providerKey = $"journey-provider-{Guid.NewGuid():N}";
-            cockpit.Services.GetRequiredService<IPluginProviderConfigViews>().Register("echo-provider.echo", config => new _EchoConfigView(config));
-            var (madeStatus, keptStatus, movedStatus) = ("", "", "");
+            var variableSecret = $"journey-variable-{Guid.NewGuid():N}";
+            var workFolder = Directory.CreateDirectory(Path.Combine(root, "profile-work")).FullName;
+            var (madeStatus, keptStatus, movedStatus, editorKind) = ("", "", "", "");
+            string[] reopenedProfile = [];
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
+                dialog.SelectCategory("server-profiles");
                 await page.LoadCommand.ExecuteAsync(null);
-                page.StartNewCommand.Execute(null);
-                page.EditorLabel = "Echo keyed";
-                page.EditorProvider = "echo-provider.echo";
-                var made = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
-                (made.BaseUrl.Text, made.ApiKey.Text) = ("https://inference.example/v1", providerKey);
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ProfilesEditor>().Count() == 1);
+                editorKind = dialog.GetVisualDescendants().OfType<ProfilesEditor>().Single().DataContext?.GetType().Name ?? "";
+                var editor = page.Editor ?? throw new InvalidOperationException("The server's profiles did not load.");
+                editor.AddProfileCommand.Execute(null);
+                var made = editor.SelectedProfile ?? throw new InvalidOperationException("Add profile selected nothing.");
+                made.SelectedProvider = made.Providers.Single(provider => provider.PluginProviderId == "echo-provider.echo");
+                made.Label = "Echo keyed";
+                (_EchoField(made, "BaseUrl").Text, _EchoField(made, "ApiKey").Text) = ("https://inference.example/v1", providerKey);
+                made.Purpose = "journey purpose";
+                made.DefaultWorkingDirectory = workFolder;
+                made.Assistant = "Journey";
+                made.ProfileSystemPrompt = "journey standing instructions";
+                made.MemoryCapMegabytes = 4096;
+                made.AutoApproveTools = true;
+                made.SelectedReadingLevel = made.ReadingLevels.Last();
+                made.SelectDefaultKindSdkCommand.Execute(null);
+                made.PluginOptionDefaults.Single(option => option.Key == "model").Value = "echo-large";
+                made.PluginOptionDefaults.Single(option => option.Key == "effort").Value = "high";
+                made.AllowedAsTarget = true;
+                made.DelegationPurpose = "journey delegation";
+                made.AllowedTaskTypes = "summarize, refactor";
+                made.AllowedWorkingDirs = workFolder;
+                made.PermissionCeiling = "acceptEdits";
+                made.AllowedTools = "journey_tool";
+                made.MaxConcurrentTasks = 3;
+                made.DelegationTimeoutMinutes = 7;
+                made.MayDelegateFurther = true;
+                made.RestrictMcpServers = true;
+                made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_REGION", "eu-west", false));
+                made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_VARIABLE", variableSecret, true));
+                await page.SaveCommand.ExecuteAsync(null);
                 madeStatus = page.Status;
 
-                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                var again = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                reopenedProfile =
+                [
+                    again.Label, again.Purpose, again.DefaultWorkingDirectory, again.Assistant, again.ProfileSystemPrompt, $"{again.MemoryCapMegabytes}",
+                    $"{again.AutoApproveTools}", again.SelectedReadingLevel.Label, $"{again.SelectedDefaultKind}",
+                    string.Join(",", again.PluginOptionDefaults.Select(option => $"{option.Key}={option.Value}")),
+                    $"{again.AllowedAsTarget}", again.DelegationPurpose, again.AllowedTaskTypes, again.AllowedWorkingDirs, again.PermissionCeiling,
+                    again.AllowedTools, $"{again.MaxConcurrentTasks}", $"{again.DelegationTimeoutMinutes}", $"{again.MayDelegateFurther}", $"{again.RestrictMcpServers}",
+                    _EchoField(again, "BaseUrl").Text ?? "", _EchoField(again, "ApiKey").Text ?? "",
+                    string.Join(",", again.EnvironmentVariables.Select(variable => $"{variable.Key}={variable.Value}:{variable.IsSecret}")),
+                ];
+
+                await page.SaveCommand.ExecuteAsync(null);
                 keptStatus = page.Status;
 
-                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
-                var moved = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
-                moved.BaseUrl.Text = "https://elsewhere.example/v1";
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                var moved = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                _EchoField(moved, "BaseUrl").Text = "https://elsewhere.example/v1";
+                await page.SaveCommand.ExecuteAsync(null);
                 movedStatus = page.Status;
-                page.CancelEditorCommand.Execute(null);
+                await page.LoadCommand.ExecuteAsync(null);
             });
             var listedProfiles = (await setup.GetAsync<JsonObject>("api/v1/profiles")).ToJsonString();
             var (keyedAnswer, keyedPane) = ("", "");
@@ -257,11 +295,20 @@ public sealed class RemoteAdminJourney
                 keyedAnswer = answered.Data.GetRawText();
             }
 
-            Assert.Equal(("", "", "Enter the key again: this change sends it to a different address."), (madeStatus, keptStatus, movedStatus));
+            Assert.Equal(("ManageProfilesDialogViewModel", "Saved on the server.", "Saved on the server.", "Enter the key again: this change sends it to a different address."), (editorKind, madeStatus, keptStatus, movedStatus));
+            Assert.Equal(
+            [
+                "Echo keyed", "journey purpose", workFolder, "Journey", "journey standing instructions", "4096", "True", SessionOptionCatalog.ReadingLevels[^1].Label, "Sdk",
+                "model=echo-large,effort=high", "True", "journey delegation", "summarize, refactor", workFolder, "acceptEdits", "journey_tool", "3", "7", "True", "True",
+                "https://inference.example/v1", "(set on the server)", "JOURNEY_REGION=eu-west:False,JOURNEY_VARIABLE=(set on the server):True",
+            ], reopenedProfile);
             Assert.Contains("echo: base https://inference.example/v1", keyedAnswer, StringComparison.Ordinal);
             Assert.Contains("key set", keyedAnswer, StringComparison.Ordinal);
             Assert.Contains("\"hasApiKey\":true", listedProfiles, StringComparison.Ordinal);
             Assert.False(listedProfiles.Contains(providerKey, StringComparison.Ordinal), "GET /profiles returned the provider key.");
+            Assert.False(listedProfiles.Contains(variableSecret, StringComparison.Ordinal), "GET /profiles returned the secret variable.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(variableSecret, StringComparison.Ordinal), "The audit holds the secret variable.");
+            Assert.False(run.Output.Contains(variableSecret, StringComparison.Ordinal), "The server log holds the secret variable.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(providerKey, StringComparison.Ordinal), "The audit holds the provider key.");
             Assert.False(run.Output.Contains(providerKey, StringComparison.Ordinal), "The server log holds the provider key.");
 
@@ -492,10 +539,10 @@ public sealed class RemoteAdminJourney
             var profiles = admin.Profiles ?? throw new InvalidOperationException("Admin opened Options without its Profiles page.");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await Until.CollectionHolds(profiles.Rows, () => profiles.Rows.Any(row => row.Label == "Echo"));
-                profiles.StartEditCommand.Execute(profiles.Rows.Single(row => row.Label == "Echo"));
-                profiles.Editor.Model = "echo-large";
-                await profiles.SaveEditorCommand.ExecuteAsync(null);
+                await profiles.LoadCommand.ExecuteAsync(null);
+                var echo = profiles.Editor?.Profiles.Single(profile => profile.Label == "Echo") ?? throw new InvalidOperationException("The server's profiles did not load.");
+                echo.PluginOptionDefaults.Single(option => option.Key == "model").Value = "echo-large";
+                await profiles.SaveCommand.ExecuteAsync(null);
             });
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             var started = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
@@ -561,7 +608,7 @@ public sealed class RemoteAdminJourney
             Assert.True(File.Exists(Path.Combine(bound.SourceDirectory ?? "", "README.md")), "The shared project's clone holds no checkout.");
             Assert.Equal(bound.SourceDirectory, sharedFolder);
             Assert.Equal((false, true, false), (flagBefore, flagAfter, flagCleared));
-            Assert.Equal("", profilesStatus);
+            Assert.Equal("Saved on the server.", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
             Assert.Equal(("Running", ""), assistantState);
             Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
@@ -791,28 +838,8 @@ public sealed class RemoteAdminJourney
         }
     }
 
-    // AC-1534: a provider's own profile view, as a plugin's UI part registers one: base URL and key. It opens every echo
-    // profile, the keyless ones of the steps after it too.
-    private sealed class _EchoConfigView : IPluginProviderConfigView
-    {
-        public _EchoConfigView(string? configJson)
-        {
-            var config = configJson is null ? null : JsonNode.Parse(configJson);
-            BaseUrl.Text = config?["baseUrl"]?.GetValue<string>();
-            ApiKey.Text = config?["apiKey"]?.GetValue<string>();
-            View = new StackPanel { Children = { BaseUrl, ApiKey } };
-        }
-
-        public TextBox BaseUrl { get; } = new();
-
-        public TextBox ApiKey { get; } = new() { PasswordChar = '*' };
-
-        public Control View { get; }
-
-        public bool TryGetConfigJson(out string configJson)
-        {
-            configJson = new JsonObject { ["baseUrl"] = BaseUrl.Text ?? "", ["apiKey"] = ApiKey.Text ?? "" }.ToJsonString();
-            return true;
-        }
-    }
+    // AC-1534/AC-1585: the echo provider's own profile panel, as the fresh copy of its UI part built it for the server.
+    private static TextBox _EchoField(EditableProfileViewModel profile, string name) =>
+        (profile.PluginConfigView?.View as Panel)?.Children.OfType<TextBox>().SingleOrDefault(box => box.Name == name)
+            ?? throw new InvalidOperationException("The echo provider's own view did not open.");
 }

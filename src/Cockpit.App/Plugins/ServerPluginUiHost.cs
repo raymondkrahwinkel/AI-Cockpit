@@ -26,6 +26,9 @@ internal sealed class ServerPluginUiHost(
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles) : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
+    private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, Func<string?, IPluginProviderConfigView>> ProviderConfigViews => _providerViews;
 
     public Func<Control>? CreateSettingsView { get; private set; }
 
@@ -83,9 +86,9 @@ internal sealed class ServerPluginUiHost(
     {
     }
 
-    public void AddProviderConfigView(string providerId, Func<string?, IPluginProviderConfigView> createView)
-    {
-    }
+    // AC-1585: kept, so the profile editor opened on the server gets the provider's own view against the server.
+    public void AddProviderConfigView(string providerId, Func<string?, IPluginProviderConfigView> createView) =>
+        _providerViews[providerId] = createView;
 
     public void AddWidget(WidgetRegistration registration)
     {

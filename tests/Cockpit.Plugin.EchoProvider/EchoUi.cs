@@ -1,5 +1,7 @@
+using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.EchoProvider;
@@ -14,7 +16,35 @@ public sealed class EchoUi : ICockpitPluginUi
 
     public const string ApiTokenKey = "apiToken";
 
-    public void InitializeUi(ICockpitUiHost host) => host.AddSettings(() => new EchoSettingsView(host.Storage));
+    public void InitializeUi(ICockpitUiHost host)
+    {
+        host.AddSettings(() => new EchoSettingsView(host.Storage));
+        host.AddProviderConfigView(EchoProviderPlugin.ProviderId, configJson => new EchoConfigView(configJson));
+    }
+}
+
+// AC-1534/AC-1585: the provider's own profile panel, a base URL and a key, as an OpenAI-compatible provider has them.
+public sealed class EchoConfigView : IPluginProviderConfigView
+{
+    public EchoConfigView(string? configJson)
+    {
+        var config = configJson is null ? null : JsonNode.Parse(configJson);
+        BaseUrl.Text = config?["baseUrl"]?.GetValue<string>();
+        ApiKey.Text = config?["apiKey"]?.GetValue<string>();
+        View = new StackPanel { Children = { BaseUrl, ApiKey } };
+    }
+
+    public TextBox BaseUrl { get; } = new() { Name = "BaseUrl" };
+
+    public TextBox ApiKey { get; } = new() { Name = "ApiKey", PasswordChar = '*' };
+
+    public Control View { get; }
+
+    public bool TryGetConfigJson(out string configJson)
+    {
+        configJson = new JsonObject { ["baseUrl"] = BaseUrl.Text ?? "", ["apiKey"] = ApiKey.Text ?? "" }.ToJsonString();
+        return true;
+    }
 }
 
 public sealed class EchoSettingsView : StackPanel, IPluginSettingsView

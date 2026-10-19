@@ -409,7 +409,7 @@ public partial class CockpitViewModel
         var plugins = group.Server.Plugins;
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count)
         {
-            Profiles = new ServerProfilesViewModel(group.Server.Profiles, _providerConfigViews),
+            Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, row),

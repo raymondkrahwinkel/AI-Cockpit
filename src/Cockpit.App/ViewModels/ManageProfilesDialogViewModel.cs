@@ -46,6 +46,9 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [ObservableProperty]
     private EditableProfileViewModel? _selectedProfile;
 
+    // AC-1585: false when the profiles live on another machine, whose paths a file picker here cannot reach.
+    public bool BrowsesThisMachine { get; init; } = true;
+
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
@@ -163,7 +166,10 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         Profiles.Clear();
         foreach (var profile in profiles)
         {
-            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter));
+            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter)
+            {
+                OriginalLabel = profile.Label,
+            });
         }
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -265,6 +271,12 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         if (_profileStore is null || !Validate())
         {
             return _profileStore is null;
+        }
+
+        if (_profileStore is IProfileEditStore edits)
+        {
+            await edits.SaveEditsAsync([.. Profiles.Select(profile => (profile.OriginalLabel, profile.ToProfile()))]);
+            return true;
         }
 
         var profiles = Profiles.Select(profile => profile.ToProfile()).ToList();

@@ -80,7 +80,7 @@ internal static class ProfileEndpoints
             var signIns = health();
             // AC-1534: the providers a new profile can name, also one no profile uses yet.
             var providers = services.GetService<IPluginProviderRegistry>()?.Registrations.Select(registration => registration.ProviderId) ?? [];
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile))), providers }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile), EditorKeys(services, profile))), providers }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -175,7 +175,7 @@ internal static class ProfileEndpoints
                     return (null, refusal);
                 }
 
-                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
+                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made), EditorKeys(services, made)), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
@@ -200,7 +200,7 @@ internal static class ProfileEndpoints
 
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
-                return (next, Results.Json(ToWire(changed, health(), options(changed)), ConnectKeyEndpoints.Json));
+                return (next, Results.Json(ToWire(changed, health(), options(changed), EditorKeys(services, changed)), ConnectKeyEndpoints.Json));
             })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
@@ -295,7 +295,7 @@ internal static class ProfileEndpoints
                 next[index] = merged;
             }
 
-            return (next, Results.Json(ToWire(merged, health(), options(merged)), ConnectKeyEndpoints.Json, statusCode: index < 0 ? StatusCodes.Status201Created : StatusCodes.Status200OK));
+            return (next, Results.Json(ToWire(merged, health(), options(merged), EditorKeys(services, merged)), ConnectKeyEndpoints.Json, statusCode: index < 0 ? StatusCodes.Status201Created : StatusCodes.Status200OK));
         }
     }
 
@@ -337,7 +337,7 @@ internal static class ProfileEndpoints
         }
 
         // An option the provider does not declare never crossed, so the server's own value stays.
-        var declared = Declared(services, incoming);
+        var declared = EditorKeys(services, incoming);
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, value) in held?.Defaults?.OptionDefaults?.Where(option => !declared.Contains(option.Key)) ?? [])
         {
@@ -527,6 +527,12 @@ internal static class ProfileEndpoints
 
     internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
 
+    // AC-1585: what the profile editor reads and writes: the declared options plus the start options it offers.
+    internal static IReadOnlySet<string> EditorKeys(IServiceProvider services, SessionProfile profile) =>
+        Declared(services, profile)
+            .Concat(services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Options.Select(option => option.Key) ?? [])
+            .ToHashSet(StringComparer.Ordinal);
+
     internal static IReadOnlySet<string> Declared(IServiceProvider services, SessionProfile profile) =>
         Options(services, profile).Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
 
@@ -588,7 +594,7 @@ internal static class ProfileEndpoints
 
     // Only the option keys the profile's provider declares cross, as list_profiles reports them (AC-649); a stored
     // key it does not declare may hold anything, a plugin's credential included.
-    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions)
+    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions, IReadOnlySet<string>? editorKeys = null)
     {
         var declared = declaredOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var known = declaredOptions.Where(option => option.KnownValues is { Count: > 0 })
@@ -610,7 +616,7 @@ internal static class ProfileEndpoints
             health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
             known.Count > 0 ? known : null,
             _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null,
-            RemoteProfileWire.ToJson(Masked(profile, declared)));
+            RemoteProfileWire.ToJson(Masked(profile, editorKeys ?? declared)));
     }
 
     // AC-1585: the profile as the editor gets it. Each secret reads KeptSecret, and of the option defaults only the
