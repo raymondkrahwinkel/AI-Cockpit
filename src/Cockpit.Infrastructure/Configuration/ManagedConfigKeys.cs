@@ -29,10 +29,20 @@ internal static class ManagedConfigKeys
     {
         foreach (var (key, managed) in file.Provisioning?.Managed ?? [])
         {
-            if (Read(file, key) != managed.Value)
+            if ((Read(file, key) ?? "null") == managed.Value)
+            {
+                continue;
+            }
+
+            // A value this build cannot read back (a hand-edited record, a changed field type) must not fail every save.
+            try
             {
                 Write(file, key, managed.Value);
                 Log.LogWarning("Refused a change to {Key}: it is managed by {By}.", key, managed.By);
+            }
+            catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
+            {
+                Log.LogWarning("Could not put back {Key}, managed by {By}: {Reason}", key, managed.By, exception.Message);
             }
         }
     }
@@ -106,8 +116,9 @@ internal static class ManagedConfigKeys
 
     public static string Hash(string json) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
 
+    // Read in the shape the profile store saves (its round trip migrates a Claude profile), so a save does not read as a change.
     public static string Carried(SessionProfileEntry profile) =>
-        (JsonNode.Parse(SettingsCarrierWhitelist.Extract(new JsonObject { ["Profiles"] = new JsonArray(_Node(profile)) }))?["Profiles"]?[0])?.ToJsonString() ?? "{}";
+        (JsonNode.Parse(SettingsCarrierWhitelist.Extract(new JsonObject { ["Profiles"] = new JsonArray(_Node(SessionProfileEntry.FromDomain(profile.ToDomain()))) }))?["Profiles"]?[0])?.ToJsonString() ?? "{}";
 
     // Null for a path through a list or a dictionary: those are not one value to set.
     public static PropertyInfo[]? Chain(string path)
