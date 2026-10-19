@@ -261,7 +261,7 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         }
 
         return await _InvokePublishAsync<DepotPublishReport>(
-            DepotPublishChannel.Run, new(connection.Id, link.Project, link.Id, Confirmed: true, OverwriteConflicts: overwrite), cancellationToken).ConfigureAwait(true);
+            DepotPublishChannel.Run, new(connection.Id, link.Project, link.Id, Confirmed: true, OverwriteConflicts: overwrite, PlanFingerprint: items.Fingerprint), cancellationToken).ConfigureAwait(true);
     }
 
     // Only the operator's Sign-in click gets here; nothing else opens a browser.

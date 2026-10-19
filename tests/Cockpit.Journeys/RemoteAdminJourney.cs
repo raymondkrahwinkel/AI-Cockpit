@@ -323,7 +323,9 @@ public sealed class RemoteAdminJourney
             var linked = await setup.SendAsync<JsonObject>(
                 HttpMethod.Post, "api/v1/plugins/depot/channel/publish-add", new { connectionId = depotId, project = "cockpit", source = publishSource, targetFolder = "pub" });
             var linkId = linked["data"]?["id"]?.GetValue<string>() ?? "";
-            var firstRun = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true });
+            async Task<string?> publishFingerprint() =>
+                (await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-plan", new { connectionId = depotId, id = linkId }))["data"]?["fingerprint"]?.GetValue<string>();
+            var firstRun = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
             Assert.True(firstRun["status"]?.GetValue<string>() == "ok", firstRun.ToJsonString());
             Assert.Equal("# first\r\n", depotDocuments["pub/a.md"]);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, depotArtifacts["pub/b.png"]);
@@ -331,12 +333,12 @@ public sealed class RemoteAdminJourney
             var firstChecksum = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("# first\r\n")));
             var writesBefore = depotCalls.Count(call => call.Tool == "write" && call.Path == "pub/a.md");
             await File.WriteAllTextAsync(Path.Combine(publishSource, "a.md"), "# second\r\n");
-            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true });
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
             var rewrites = depotCalls.Where(call => call.Tool == "write" && call.Path == "pub/a.md").Skip(writesBefore).ToList();
             Assert.Equal(("# second\r\n", 1, firstChecksum), (depotDocuments["pub/a.md"], rewrites.Count, rewrites.SingleOrDefault().BaseChecksum));
 
             File.Delete(Path.Combine(publishSource, "b.png"));
-            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true });
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
             var removal = depotCalls.Single(call => call.Tool == "delete");
             Assert.Equal(("pub/b.png", "artifact", false), (removal.Path, removal.Kind, removal.Hard));
             Assert.False(depotArtifacts.ContainsKey("pub/b.png"));

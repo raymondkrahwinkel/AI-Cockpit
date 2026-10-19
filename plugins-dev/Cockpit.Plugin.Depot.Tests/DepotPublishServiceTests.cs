@@ -62,7 +62,7 @@ public sealed class DepotPublishServiceTests : IDisposable
             File.WriteAllBytes(path, content);
         }
 
-        public DepotPublishRequest Run(bool overwrite = false) => new("c1", Id: Link.Id, Confirmed: true, OverwriteConflicts: overwrite);
+        public DepotPublishRequest Run(bool overwrite = false) => new("c1", Id: Link.Id, Confirmed: true, OverwriteConflicts: overwrite, PlanFingerprint: Service.PlanAsync(PlanRequest, default).GetAwaiter().GetResult().Data?.Fingerprint);
 
         public DepotPublishRequest PlanRequest => new("c1", Id: Link.Id);
 
@@ -260,6 +260,10 @@ public sealed class DepotPublishServiceTests : IDisposable
         var unconfirmed = await rig.Service.RunAsync(rig.PlanRequest, default);
         Assert.Equal(DepotBrowserStatus.Error, unconfirmed.Status);
         Assert.Equal(0, rig.Count("list"));
+
+        var stale = await rig.Service.RunAsync(rig.Run() with { PlanFingerprint = "of another plan" }, default);
+        Assert.Equal(DepotBrowserStatus.Error, stale.Status);
+        Assert.Equal(0, rig.Count("request_upload") + rig.Count("write"));
 
         var first = (await rig.Service.RunAsync(rig.Run(), default)).Data!;
         Assert.Equal((1, 1, 1), (first.Written, first.Adopted, rig.Count("request_upload")));

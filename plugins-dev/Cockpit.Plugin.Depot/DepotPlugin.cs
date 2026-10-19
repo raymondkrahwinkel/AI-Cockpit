@@ -24,7 +24,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
     private readonly List<IDisposable> _handlers = [];
 
-    private readonly HttpClient _publishHttp = new();
+    // A 100 MiB file on a slow link must not hit the default 100 second timeout.
+    private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
 
     // DEP-264: the grant Depot redeems an installation token with, accepted only from its own built-in client.
     private const string InstallTokenGrant = "urn:depot:grant-type:install_token";

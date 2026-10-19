@@ -11,11 +11,11 @@ internal static class DepotPublishChannel
     public const string Run = "publish-run";
 }
 
-// One request shape for every action. `Confirmed` is the operator's yes to the plan; `OverwriteConflicts` the second,
+// One request shape for every action. `Confirmed` is the operator's yes to the plan, `PlanFingerprint` the plan it was given for; `OverwriteConflicts` the second,
 // separate yes for files that changed in Depot since the last publication.
 internal sealed record DepotPublishRequest(
     string ConnectionId, string? Project = null, string? Id = null, string? Source = null, string? TargetFolder = null,
-    bool Confirmed = false, bool OverwriteConflicts = false);
+    bool Confirmed = false, bool OverwriteConflicts = false, string? PlanFingerprint = null);
 
 // A link between a local folder (or file) and a folder in a Depot project. Settings, so it travels with a backup.
 internal sealed record DepotPublication(string Id, string ConnectionId, string Project, string Source, string TargetFolder);
@@ -36,7 +36,8 @@ internal static class DepotPublishAction
 // `Path` is relative to the source, with `/` as separator; `Detail` is the reason for a skipped, conflicting or failed item.
 internal sealed record DepotPublishItem(string Path, string Kind, string Action, string? Detail = null);
 
-internal sealed record DepotPublishPlan(IReadOnlyList<DepotPublishItem> Items);
+// `Fingerprint` names exactly these items; a run for a plan that has since changed is refused.
+internal sealed record DepotPublishPlan(IReadOnlyList<DepotPublishItem> Items, string Fingerprint);
 
 // `Problems` holds what a run did not do: conflicts it was not allowed to overwrite, skipped files and failures.
 internal sealed record DepotPublishReport(

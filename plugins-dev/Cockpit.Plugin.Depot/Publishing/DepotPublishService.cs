@@ -79,7 +79,8 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         DepotMcp.RunAsync(async () =>
         {
             var link = await _LinkAsync(request, cancellationToken).ConfigureAwait(false);
-            return new DepotPublishPlan([.. (await _BuildAsync(link, cancellationToken).ConfigureAwait(false)).Select(step => step.Item)]);
+            var items = (await _BuildAsync(link, cancellationToken).ConfigureAwait(false)).Select(step => step.Item).ToList();
+            return new DepotPublishPlan(items, _Fingerprint(items));
         });
 
     public Task<DepotBrowserAnswer<DepotPublishReport>> RunAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
@@ -98,7 +99,7 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
 
             try
             {
-                return await _ExecuteAsync(link, request.OverwriteConflicts, cancellationToken).ConfigureAwait(false);
+                return await _ExecuteAsync(link, request.OverwriteConflicts, request.PlanFingerprint, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -130,7 +131,16 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         }
 
         var manifest = _ReadManifest(link.Id);
-        var locals = await Task.Run(() => _Scan(link.Source, manifest, cancellationToken), cancellationToken).ConfigureAwait(false);
+        List<_Local> locals;
+        try
+        {
+            locals = await Task.Run(() => _Scan(link.Source, manifest, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "The source could not be read.");
+        }
+
         var (documents, artifacts) = await _RemoteAsync(link, cancellationToken).ConfigureAwait(false);
         string? RemoteOf(string kind, string relative) =>
             (kind == DepotBrowserKind.Document ? documents : artifacts).GetValueOrDefault(_DepotPath(link, relative));
@@ -165,9 +175,14 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         return steps;
     }
 
-    private async Task<DepotPublishReport> _ExecuteAsync(DepotPublication link, bool overwriteConflicts, CancellationToken cancellationToken)
+    private async Task<DepotPublishReport> _ExecuteAsync(DepotPublication link, bool overwriteConflicts, string? fingerprint, CancellationToken cancellationToken)
     {
         var steps = await _BuildAsync(link, cancellationToken).ConfigureAwait(false);
+        if (fingerprint != _Fingerprint(steps.Select(step => step.Item)))
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "The source or Depot changed since the plan was made. Plan again.");
+        }
+
         var manifest = _ReadManifest(link.Id);
         int written = 0, adopted = 0, deleted = 0, unchanged = 0;
         var problems = new List<DepotPublishItem>();
@@ -313,6 +328,7 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         var prefix = link.TargetFolder.Length == 0 ? string.Empty : link.TargetFolder + "/";
         var documents = new Dictionary<string, string>(StringComparer.Ordinal);
         string? cursor = null;
+        var complete = false;
         for (var page = 0; page < MaxPages; page++)
         {
             var arguments = new Dictionary<string, object?> { ["project"] = link.Project, ["includeChecksums"] = true, ["limit"] = PageSize };
@@ -331,10 +347,16 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
             var next = DepotMcp.String(listing.RootElement, "nextCursor");
             if (string.IsNullOrEmpty(next) || next == cursor)
             {
+                complete = true;
                 break;
             }
 
             cursor = next;
+        }
+
+        if (!complete)
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "This Depot folder holds too many documents to compare. Publish to a smaller folder.");
         }
 
         var artifactArguments = new Dictionary<string, object?> { ["project"] = link.Project, ["includeChecksums"] = true };
@@ -461,6 +483,9 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
 
     private static PublishManifestEntry _Entry(_Local local, string checksum) =>
         new(local.Relative, local.Kind, checksum, local.Size, local.Mtime);
+
+    private static string _Fingerprint(IEnumerable<DepotPublishItem> items) =>
+        _Sha(Encoding.UTF8.GetBytes(string.Join(';', items.Select(item => $"{item.Action}|{item.Kind}|{item.Path}"))));
 
     private static string _Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
