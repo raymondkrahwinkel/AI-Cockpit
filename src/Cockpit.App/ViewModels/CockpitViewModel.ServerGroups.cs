@@ -11,6 +11,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
@@ -407,12 +408,16 @@ public partial class CockpitViewModel
 
         var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
         var plugins = group.Server.Plugins;
+        await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count)
         {
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, row),
+            IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
+            InstallPluginOnDesktop = row => Plugins.InstallFromStoreByIdAsync(row.Id),
+            RestartDesktop = () => _appRestart?.Restart(),
         };
 
         // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).

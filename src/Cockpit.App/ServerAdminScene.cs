@@ -109,6 +109,33 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-1590: the Depot row of a server this desktop lacks the plugin for, with "Install on this desktop".
+    public static OptionsDialog PluginsDesktop(int width, int height) => _PluginsDesktop(width, height, installed: false);
+
+    // AC-1590: after that install: the row is installed here and the desktop asks to restart.
+    public static OptionsDialog PluginsDesktopRestart(int width, int height) => _PluginsDesktop(width, height, installed: true);
+
+    private static OptionsDialog _PluginsDesktop(int width, int height, bool installed)
+    {
+        var admin = new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins())
+        {
+            IsPluginOnDesktop = row => installed || row.Id != "depot",
+            // A plugin's own settings view comes from its UI part on this desktop, so Depot has none until it restarts.
+            HasPluginSettings = row => row.Id != "depot",
+        };
+        admin.LoadCommand.Execute(null);
+        if (installed)
+        {
+            admin.DesktopNeedsRestart = true;
+        }
+
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-plugins");
+        return dialog;
+    }
+
     // AC-1472: Projects after a clone, the form still holding what was cloned and the result under it.
     public static OptionsDialog Projects(int width, int height)
     {
