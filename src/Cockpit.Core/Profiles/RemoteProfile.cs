@@ -3,10 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Core.Profiles;
 
-// AC-1473 (F5.6b3): a server's profile as it crosses the admin connection, with no credential in it. AC-1475:
-// `KnownValues` lists what the provider offers per declared option; a free-form option, or an older server, has none.
-// AC-1534: `ConfigJson` is a plugin profile's own config with every secret field blank; `HasApiKey` says one is set.
-// AC-1585: `Profile` is the whole profile as the editor holds it, each secret reading as the mask; `Full` is it read back.
+// AC-1473: a server's profile over the admin connection, no credential in it. AC-1475: `KnownValues` per declared option.
+// AC-1534: `ConfigJson` is a plugin's config, secrets masked; `HasApiKey` says one is set. AC-1585: `Profile` is the
+// whole profile as the editor holds it, each secret masked; `Full` is it read back.
 public sealed record RemoteProfile(
     string Label,
     string Provider,

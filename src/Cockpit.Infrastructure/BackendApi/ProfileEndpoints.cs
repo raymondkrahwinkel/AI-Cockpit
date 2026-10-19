@@ -476,10 +476,9 @@ internal static class ProfileEndpoints
         return (merged, Results.Empty);
     }
 
-    // The body as T, or why not: a credential, a program path or a loader variable is refused before any of it is read,
-    // and a field this API does not know answers `unknownFields`. AC-1475 reads its patch through here too.
-    // AC-1585: `wholeProfile` names where a create or change carries a whole profile, whose secrets cross write-only;
-    // MergeWhole holds that part to the rules field by field, so the scan here skips it.
+    // The body as T, or why not: a credential, program path or loader variable is refused before any of it is read, an
+    // unknown field answers `unknownFields`. AC-1585: `wholeProfile` names where a whole profile sits, whose secrets cross
+    // write-only; MergeWhole holds it to these rules field by field, so the scan skips it. AC-1475 reads through here too.
     internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken, Func<JsonObject, JsonObject?>? wholeProfile = null)
         where T : class
     {

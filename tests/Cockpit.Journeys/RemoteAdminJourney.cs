@@ -216,10 +216,9 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
-            // AC-1534/AC-1585: Admin → Profiles is the editor Options › Profiles uses, with the server behind it. A profile on
-            // the fresh provider gets every field that editor has, in the provider's own view, key and a secret variable
-            // included. Reopened from the server it shows each plain field as saved and each secret only as set; a save
-            // that leaves the secrets masked keeps them, one that moves the base URL with the key masked is refused.
+            // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
+            // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
+            // one that moves the base URL with the key masked is refused.
             var providerKey = $"journey-provider-{Guid.NewGuid():N}";
             var variableSecret = $"journey-variable-{Guid.NewGuid():N}";
             var workFolder = Directory.CreateDirectory(Path.Combine(root, "profile-work")).FullName;

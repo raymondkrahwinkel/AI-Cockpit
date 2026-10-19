@@ -15,10 +15,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
 
-// AC-1571: the host a second copy of a plugin's UI part gets, so its own settings view reads and writes the plugin's
-// storage on a server and reaches its backend part there. It keeps the settings view and drops every other
-// registration (the local copy already made them); window helpers go to the local host, and what acts on this machine does nothing.
-// AC-1585: it keeps a provider's profile view too, and its managed command-line tools are the server's.
+// AC-1571: the host a second copy of a plugin's UI part gets, so its own views read and write the plugin's storage on a
+// server and reach its backend part and managed tools there (AC-1585: a provider's profile view too). Every other
+// registration is dropped (the local copy made them); window helpers go to the local host.
 internal sealed class ServerPluginUiHost(
     ICockpitUiHost local,
     IPluginStorage storage,
