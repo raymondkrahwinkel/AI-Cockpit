@@ -167,6 +167,7 @@ internal static class PluginEndpoints
             }
 
             var slice = _Slice(storage.Snapshot());
+            ProfileEndpoints.Mask(slice, _IsSecret);
             await _AuditAsync(services, "api:get_plugin_storage", cancellationToken, pluginId).ConfigureAwait(false);
             return Results.Json(slice, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
