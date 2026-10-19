@@ -38,6 +38,24 @@ internal sealed class BackupService(
 
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
+    // AC-1502: how many backups and restores are in flight, so the scheduled one can stand aside for them.
+    private int _running;
+
+    public bool IsBusy => Volatile.Read(ref _running) > 0;
+
+    private async Task<T> _WhileBusyAsync<T>(Func<Task<T>> run)
+    {
+        Interlocked.Increment(ref _running);
+        try
+        {
+            return await run().ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _running);
+        }
+    }
+
     // Backup and restore stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
     // that is a world-readable 1777 /tmp, and a restore unpacks the whole archive — every credential — there
     // for its duration. Staged here, in an owner-only directory, that window is not readable by other users.
@@ -47,13 +65,13 @@ internal sealed class BackupService(
     // whichever thread called this — the UI thread, in practice. The awaiter still marshals the continuation back
     // to the caller's dispatcher, so BackupStatus updates land on the UI thread exactly as before.
     public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
-        Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken));
 
     public Task<BackupManifest> WriteAsync(
         Func<Stream, CancellationToken, Task> deliver,
         BackupOptions options,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => WriteIntoAsync(deliver, "a stream", CockpitDirectory, options, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => WriteIntoAsync(deliver, "a stream", CockpitDirectory, options, cancellationToken), cancellationToken));
 
     // AC-1501: a path is the local folder it sits in, as a target — so the route everyone has today goes through the
     // same seam a plugin's target will, rather than beside it.
@@ -233,14 +251,14 @@ internal sealed class BackupService(
         RestoreOptions options,
         IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken));
 
     public Task<RestoreReport> RestoreAsync(
         Stream source,
         RestoreOptions options,
         IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => RestoreIntoAsync(source, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => RestoreIntoAsync(source, CockpitDirectory, options, progress, cancellationToken), cancellationToken));
 
     // AC-1501: fetched whole into the owner-only staging first (AC-45), then restored exactly as a file is — the
     // manifest check, the unpack and the aside all stay the one path. A stop while fetching is a report, as ever.

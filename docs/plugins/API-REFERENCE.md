@@ -362,6 +362,8 @@ exists, this is the only sign-in there is. A plugin that calls it sets `minHostV
 kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `ListAsync()` names what it holds as
 `BackupTargetEntry` rows, and `OpenReadAsync(id)` hands one back as a stream. A write that fails must leave nothing
 `ListAsync` shows. The host's own target is a local folder; no `ICockpitHost` method registers a plugin's target yet.
+`DeleteAsync(id)` (AC-1502, SDK 3.11.0) removes one backup for retention and returns `false` by default, meaning the
+target cannot delete: the host then keeps everything on it and says so once.
 
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The

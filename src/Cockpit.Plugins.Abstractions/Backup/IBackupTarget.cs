@@ -24,6 +24,12 @@ public interface IBackupTarget
 
     /// <summary>Opens the backup <paramref name="id"/> for reading; the caller disposes the stream.</summary>
     Task<Stream> OpenReadAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes the backup <paramref name="id"/> and returns true, or returns false when this target cannot delete —
+    /// the default, so a target written before retention (AC-1502) keeps compiling and is never pruned.
+    /// </summary>
+    Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 /// <summary>

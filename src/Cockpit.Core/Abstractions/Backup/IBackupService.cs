@@ -9,6 +9,12 @@ namespace Cockpit.Core.Abstractions.Backup;
 public interface IBackupService
 {
     /// <summary>
+    /// Whether a backup or a restore is running right now (AC-1502): a scheduled backup waits instead of starting
+    /// beside it.
+    /// </summary>
+    bool IsBusy => false;
+
+    /// <summary>
     /// Writes an archive to <paramref name="archivePath"/> and returns what it says about itself — including the secrets it stripped, which the operator will have to type in again.
     /// </summary>
     Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default);
