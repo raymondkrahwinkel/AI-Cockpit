@@ -63,7 +63,7 @@ internal static partial class ProjectsEndpoints
             var changed = services.GetService<IProjectCatalog>()?.Current.RemoteChangedProjectIds ?? new HashSet<string>();
             await _AuditAsync(services, caller, "api:list_projects", "called", null, cancellationToken).ConfigureAwait(false);
             return caller.Capability == ConnectKeyCapability.Admin
-                ? Results.Json(new { projects = known.Select(project => new { id = project.Id, name = project.Name, description = project.Description, path = project.SourceDirectory, defaultProfile = project.DefaultProfileLabel, remoteChanged = false }) })
+                ? Results.Json(new { projects = known.Select(project => new { id = project.Id, name = project.Name, description = project.Description, path = project.SourceDirectory, defaultProfile = project.DefaultProfileLabel, remoteChanged = changed.Contains(project.Id) }) })
                 : Results.Json(new { projects = known.Where(project => caller.AllowsProject(project.Id, pairing)).Select(project => new { id = project.Id, name = project.Name, remoteChanged = changed.Contains(project.Id) }) });
         }).RequireOperate();
 

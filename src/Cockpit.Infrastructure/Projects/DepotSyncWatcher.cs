@@ -74,7 +74,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             return;
         }
 
-        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
+        _timer = _time.CreateTimer(_ => _OnTick(), null, TimeSpan.Zero, Interval);
     }
 
     // One pass over every bound project. Public because the tests drive it directly rather than waiting 15 minutes
@@ -162,7 +162,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         if (OnChecked is not null)
         {
-            await OnChecked(bound.ProjectId, changed, result.Binding!.LogoBytes).ConfigureAwait(true);
+            await OnChecked(bound.ProjectId, _changed.ContainsKey(bound.ProjectId), result.Binding!.LogoBytes).ConfigureAwait(true);
         }
     }
 
