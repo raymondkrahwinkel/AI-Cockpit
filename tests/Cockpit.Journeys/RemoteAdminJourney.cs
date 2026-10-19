@@ -15,6 +15,7 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
@@ -88,7 +89,9 @@ public sealed class RemoteAdminJourney
             var laptopKey = laptop["secret"]?.GetValue<string>() ?? throw new InvalidOperationException("The server issued no key.");
 
             // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
-            await using var cockpit = JourneyHost.Desktop(_ => _InstallLocally(Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory"));
+            var desktopState = Path.Combine(root, "desktop-state");
+            await _InstallLocallyAsync(desktopState, Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory");
+            await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
             [
                 new McpServerConfig
@@ -642,7 +645,8 @@ public sealed class RemoteAdminJourney
         Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
     }
 
-    private static void _InstallLocally(string bundled, string id, string directory)
+    // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
+    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory)
     {
         var plugin = Directory.CreateDirectory(Path.Combine(bundled, id)).FullName;
         foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata(directory)))
@@ -650,7 +654,9 @@ public sealed class RemoteAdminJourney
             File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
         }
 
-        Assert.Equal([id], new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot).GetAwaiter().GetResult());
+        Directory.CreateDirectory(stateRoot);
+        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+        Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
     }
 
     private static bool _HoldsApiToken(Window window) => window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "API token");
