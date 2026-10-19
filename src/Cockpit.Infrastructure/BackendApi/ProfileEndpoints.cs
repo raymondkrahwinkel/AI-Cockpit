@@ -42,12 +42,12 @@ internal static class ProfileEndpoints
     private static readonly string[] CredentialFields = ["apiKey"];
 
     // The fields of a plugin's config whose change sends a key the server keeps somewhere else (AC-1484's host pin).
-    private static readonly string[] AddressWords = ["url", "uri", "host", "endpoint", "address", "origin"];
+    private static readonly string[] AddressWords = ["url", "uri", "host", "endpoint", "address", "origin", "proxy", "gateway", "domain"];
 
     private static SecretFields Secrets => SecretKeyHolder.Shared.Fields;
 
     // AC-1473 (Codex): a variable named like a credential is one, whatever it is marked; B4 lets none cross.
-    private static readonly string[] CredentialWords = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH"];
+    private static readonly string[] CredentialWords = ["KEY", "TOKEN", "SECRET", "PASS", "CREDENTIAL", "AUTH", "JWT", "BEARER", "COOKIE", "PRIVATE"];
 
     private static readonly HashSet<string> LoaderVariables = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -55,6 +55,9 @@ internal static class ProfileEndpoints
         "GLIBC_TUNABLES", "NLSPATH", "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONWARNINGS",
         "PYTHONBREAKPOINT", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "JAVA_TOOL_OPTIONS", "GIT_SSH", "GIT_SSH_COMMAND",
         "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS", "DOTNET_STARTUP_HOOKS", "DOTNET_ADDITIONAL_DEPS", "_JAVA_OPTIONS",
+        // AC-1585 (review): what moves a provider's folder (B3 by another door), its traffic or what it trusts.
+        "CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NODE_EXTRA_CA_CERTS",
+        "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
     };
 
     private static readonly string[] LoaderPrefixes = ["LD_", "DYLD_", "BASH_FUNC_", "MALLOC_", "GIT_CONFIG_", "CORECLR_", "COR_PROFILER"];
@@ -125,7 +128,7 @@ internal static class ProfileEndpoints
         // A key that reads KeptSecret is the one the named profile holds, and only for the address it holds it for.
         api.MapPost("/profiles/models", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
-            var (body, refused) = await ReadBodyAsync<RemoteModelsRequest>(request, "The body names only baseUrl, apiKey and label.", cancellationToken, root => root).ConfigureAwait(false);
+            var (body, refused) = await ReadBodyAsync<RemoteModelsRequest>(request, "The body names only baseUrl, apiKey and label.", cancellationToken, root => root, "apiKey").ConfigureAwait(false);
             if (body is null)
             {
                 return refused;
@@ -373,7 +376,16 @@ internal static class ProfileEndpoints
             case LmStudioConfig:
                 return (incoming, Results.Empty);
             case PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId } claudeConfig:
-                return _ClaudeRefusal(held?.Claude, ClaudePluginProfile.ReadClaudeConfig(claudeConfig.ConfigJson), claude) is { } refusal ? (null, refusal) : (claudeConfig, Results.Empty);
+                // The JSON the plugin gets is rebuilt from what was checked, so no case variant or second key slips past.
+                if (!string.IsNullOrWhiteSpace(claudeConfig.ConfigJson) && _ParseObject(claudeConfig.ConfigJson) is null)
+                {
+                    return (null, _Invalid("configJson must hold a JSON object."));
+                }
+
+                var checkedConfig = ClaudePluginProfile.ReadClaudeConfig(claudeConfig.ConfigJson);
+                return _ClaudeRefusal(held?.Claude, checkedConfig, claude) is { } refusal
+                    ? (null, refusal)
+                    : (ClaudePluginProfile.Create(checkedConfig.ConfigDir, checkedConfig.ExecutablePath), Results.Empty);
             case PluginProviderConfig plugin:
                 var (merged, mergeRefusal) = MergeConfig(held?.ProviderConfig is PluginProviderConfig heldPlugin ? heldPlugin.ConfigJson : "{}", plugin.ConfigJson);
                 return merged is null ? (null, mergeRefusal) : (plugin with { ConfigJson = merged }, Results.Empty);
@@ -479,7 +491,7 @@ internal static class ProfileEndpoints
     // The body as T, or why not: a credential, program path or loader variable is refused before any of it is read, an
     // unknown field answers `unknownFields`. AC-1585: `wholeProfile` names where a whole profile sits, whose secrets cross
     // write-only; MergeWhole holds it to these rules field by field, so the scan skips it. AC-1475 reads through here too.
-    internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken, Func<JsonObject, JsonObject?>? wholeProfile = null)
+    internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken, Func<JsonObject, JsonObject?>? wholeProfile = null, string writeOnly = "profile")
         where T : class
     {
         // A key given twice in two casings throws on first read, as ArgumentException; neither names a value.
@@ -488,7 +500,7 @@ internal static class ProfileEndpoints
         try
         {
             node = await JsonNode.ParseAsync(request.Body, new JsonNodeOptions { PropertyNameCaseInsensitive = true }, cancellationToken: cancellationToken).ConfigureAwait(false);
-            refused = Refusal(wholeProfile is not null && node is JsonObject root ? _Without(root, wholeProfile) : node);
+            refused = Refusal(wholeProfile is not null && node is JsonObject root ? _Without(root, wholeProfile, writeOnly) : node);
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
@@ -519,10 +531,10 @@ internal static class ProfileEndpoints
         return body is null ? (null, _Invalid(unknownFields)) : (body, Results.Empty);
     }
 
-    private static JsonObject _Without(JsonObject root, Func<JsonObject, JsonObject?> holder)
+    private static JsonObject _Without(JsonObject root, Func<JsonObject, JsonObject?> holder, string writeOnly)
     {
         var copy = (JsonObject)root.DeepClone();
-        holder(copy)?.Remove("profile");
+        holder(copy)?.Remove(writeOnly);
         return copy;
     }
 
@@ -579,6 +591,8 @@ internal static class ProfileEndpoints
     internal static IResult? CopyRefusal(SessionProfile profile) =>
         profile.ProviderConfig is ClaudeConfig { ExecutablePath.Length: > 0 }
             || (profile.ProviderConfig is PluginProviderConfig plugin && ClaudePluginProfile.ReadClaudeConfig(plugin.ConfigJson).ExecutablePath is not null)
+            || (profile.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId } claude
+                && !string.IsNullOrWhiteSpace(claude.ConfigJson) && _ParseObject(claude.ConfigJson) is null)
             ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal)
             : (profile.EnvironmentVariables ?? []).Any(variable => IsLoaderVariable(variable.Key))
                 ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal)
@@ -741,9 +755,32 @@ internal static class ProfileEndpoints
             }
         }
 
-        var addresses = heldConfig.Select(property => property.Key).Concat(nextConfig.Select(property => property.Key))
-            .Where(name => AddressWords.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)));
-        return !kept || addresses.All(name => JsonNode.DeepEquals(heldConfig[name], nextConfig[name]));
+        return !kept || _Addresses(heldConfig).OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .SequenceEqual(_Addresses(nextConfig).OrderBy(entry => entry.Key, StringComparer.Ordinal));
+    }
+
+    // AC-1585 (review): every address-named value in an object and the objects below it, by path; a list item is its
+    // own scope, so changing one entry's host does not ask for another entry's key again.
+    private static Dictionary<string, string> _Addresses(JsonObject config, string path = "")
+    {
+        Dictionary<string, string> found = new(StringComparer.Ordinal);
+        foreach (var (name, value) in config)
+        {
+            var at = $"{path}/{name.ToLowerInvariant()}";
+            if (value is JsonObject inner)
+            {
+                foreach (var (key, text) in _Addresses(inner, at))
+                {
+                    found[key] = text;
+                }
+            }
+            else if (value is not JsonArray && AddressWords.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)))
+            {
+                found[at] = value?.ToJsonString() ?? "null";
+            }
+        }
+
+        return found;
     }
 
     private static void _ClearKept(JsonNode? node)
@@ -788,7 +825,9 @@ internal static class ProfileEndpoints
     {
         try
         {
-            return JsonNode.Parse(json, new JsonNodeOptions { PropertyNameCaseInsensitive = true }) as JsonObject;
+            // Counting builds the object, which is where a key given twice in two casings throws.
+            var parsed = JsonNode.Parse(json, new JsonNodeOptions { PropertyNameCaseInsensitive = true }) as JsonObject;
+            return parsed?.Count >= 0 ? parsed : null;
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
