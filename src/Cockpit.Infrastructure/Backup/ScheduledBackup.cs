@@ -160,7 +160,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         var entries = await target.ListAsync(cancellationToken).ConfigureAwait(false);
         var stale = entries
             .Where(entry => entry.Id != written)
-            .OrderByDescending(entry => entry.CreatedAt)
+            .OrderByDescending(entry => entry.Id, StringComparer.Ordinal)
             .ThenByDescending(entry => entry.Id, StringComparer.Ordinal)
             .Skip(keep - 1)
             .ToList();
