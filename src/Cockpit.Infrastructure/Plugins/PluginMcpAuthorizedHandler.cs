@@ -22,7 +22,7 @@ internal sealed class PluginMcpAuthorizedHandler(
         var server = resolveServer()
             ?? throw new HttpRequestException($"'{serverName}' is not an OAuth MCP server this plugin contributed.");
 
-        if (!_IsOriginOf(server, request.RequestUri) && request.RequestUri is null)
+        if (!_IsOriginOf(server, request.RequestUri))
         {
             throw new HttpRequestException($"Refused: the request is not for the origin of MCP server '{serverName}'.");
         }
