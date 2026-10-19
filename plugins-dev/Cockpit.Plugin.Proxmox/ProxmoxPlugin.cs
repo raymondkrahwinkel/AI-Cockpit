@@ -52,8 +52,18 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         {
             var request = payload.Deserialize<ProxmoxFingerprintRequest>(ProxmoxChannel.Json)
                 ?? throw new InvalidOperationException("A fingerprint request needs a host and port.");
-            var (fingerprint, error) = await ProxmoxCertificateProbe.FetchFingerprintAsync(request.Host, request.Port, cancellationToken).ConfigureAwait(false);
-            return _Serialize(new ProxmoxFingerprintAnswer(fingerprint, error));
+            // A host that never answers would hold the connection open; ten seconds is ample for one TLS handshake.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                var (fingerprint, error) = await ProxmoxCertificateProbe.FetchFingerprintAsync(request.Host, request.Port, timeout.Token).ConfigureAwait(false);
+                return _Serialize(new ProxmoxFingerprintAnswer(fingerprint, error));
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return _Serialize(new ProxmoxFingerprintAnswer(null, $"{request.Host}:{request.Port} did not present a certificate within ten seconds."));
+            }
         }));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.InvalidateTarget, (_, _) =>
         {

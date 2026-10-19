@@ -20,8 +20,10 @@ internal static class ProxmoxCertificateProbe
             // Deliberately accept whatever is presented here — the point of this probe is to read it and show it,
             // not to validate it. No data beyond the handshake is exchanged, and nothing is persisted as trusted
             // until the operator explicitly confirms the fingerprint shown.
-            using var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false, (_, _, _, _) => true);
-            await sslStream.AuthenticateAsClientAsync(host);
+            using var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false);
+            await sslStream.AuthenticateAsClientAsync(
+                new SslClientAuthenticationOptions { TargetHost = host, RemoteCertificateValidationCallback = (_, _, _, _) => true },
+                cancellationToken);
 
             if (sslStream.RemoteCertificate is null)
             {

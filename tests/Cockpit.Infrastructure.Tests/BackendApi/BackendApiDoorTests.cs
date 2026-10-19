@@ -131,10 +131,11 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/private/storage", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"apiToken\":\"(set on the server)\"", _Door.ProfileSecret },
-        // AC-1571: an installed plugin that is not running reads and writes its slice of cockpit.json, its manifest's
-        // declared credential masked like any other; a plugin the server does not have is refused.
-        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.OK, "", "\"pin\":\"(set on the server)\"", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/fresh/storage", """{"values":{"pin":"(set on the server)","label":"new"}}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        // AC-1571: a consented plugin that is not running reads and writes its slice of cockpit.json, its manifest's declared
+        // credential masked like any other; one awaiting consent, or one the server does not have, is refused.
+        { "GET", "/api/v1/plugins/idle/storage", null, "admin", HttpStatusCode.OK, "", "\"pin\":\"(set on the server)\"", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/idle/storage", """{"values":{"pin":"(set on the server)","label":"new"}}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/absent/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"botToken":"{secret}","label":"new"},"secrets":["botToken"]}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"instances":[{"url":"https://elsewhere.example","apiToken":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
@@ -287,11 +288,11 @@ public sealed class BackendApiDoorTests
         await using var door = new _Door();
         await door.StartAsync();
 
-        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/plugins/fresh/storage", Bootstrap, """{"values":{"pin":"(set on the server)","label":"new"}}""");
+        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/plugins/idle/storage", Bootstrap, """{"values":{"pin":"(set on the server)","label":"new"}}""");
 
         Assert.Equal(HttpStatusCode.OK, answer.Status);
         await door.Registrations.Received().SaveDataAsync(
-            "fresh",
+            "idle",
             Arg.Is<IReadOnlyDictionary<string, string>>(data => data["pin"] == JsonSerializer.Serialize(_Door.ProfileSecret, (JsonSerializerOptions?)null) && data["label"] == "\"new\""),
             Arg.Any<CancellationToken>());
     }
@@ -751,8 +752,14 @@ public sealed class BackendApiDoorTests
                     null,
                     null),
                 new InstalledPlugin(
-                    new DiscoveredPlugin("C:\\server\\plugins\\fresh", "fresh", new PluginManifest("fresh", "Fresh", "1.0.0", null, 0, null, null, null, null, SecretKeys: ["pin"]), "fresh-hash", PluginLoadDecision.NeedsConsent),
+                    new DiscoveredPlugin("C:\\server\\plugins\\fresh", "fresh", new PluginManifest("fresh", "Fresh", "1.0.0", null, 0, null, null, null, null), "fresh-hash", PluginLoadDecision.NeedsConsent),
                     null,
+                    null,
+                    null,
+                    null),
+                new InstalledPlugin(
+                    new DiscoveredPlugin("C:\\server\\plugins\\idle", "idle", new PluginManifest("idle", "Idle", "1.0.0", null, 0, null, null, null, null, SecretKeys: ["pin"]), "idle-hash", PluginLoadDecision.Disabled),
+                    new PluginRegistration(false, "idle-hash"),
                     null,
                     null,
                     null),
@@ -880,7 +887,7 @@ public sealed class BackendApiDoorTests
             host.Storage.Returns(PrivateStorage);
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
-            Registrations.LoadDataAsync("fresh", Arg.Any<CancellationToken>())
+            Registrations.LoadDataAsync("idle", Arg.Any<CancellationToken>())
                 .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
             services.AddSingleton(Registrations);
             services.AddSingleton(Substitute.For<IPluginSecretFieldStore>());
