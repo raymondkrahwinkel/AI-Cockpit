@@ -256,7 +256,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // already holds one, UpdateNowAsync's own or a CockpitConfigWriteBatch's held across the whole scope.
     internal async Task WriteNowAsync(CockpitConfigFile configFile)
     {
-        // ManagedConfigKeys.Enforce(configFile);
+        ManagedConfigKeys.Enforce(configFile);
         var document = JsonSerializer.SerializeToNode(configFile, SerializerOptions)
             ?? throw new InvalidOperationException("The cockpit configuration serialized to nothing.");
 
