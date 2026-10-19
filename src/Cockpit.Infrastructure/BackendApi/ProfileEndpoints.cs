@@ -38,7 +38,7 @@ internal static class ProfileEndpoints
     private static readonly string[] CredentialFields = ["apiKey"];
 
     // The fields of a plugin's config whose change sends a key the server keeps somewhere else (AC-1484's host pin).
-    private static readonly string[] AddressWords = ["url", "host", "endpoint"];
+    private static readonly string[] AddressWords = ["url", "uri", "host", "endpoint", "address", "origin"];
 
     private static SecretFields Secrets => SecretKeyHolder.Shared.Fields;
 
@@ -326,13 +326,12 @@ internal static class ProfileEndpoints
     internal static string Redacted(string configJson)
     {
         var config = _ParseObject(configJson) ?? [];
-        _Mask(config);
+        Mask(config, Secrets.IsSecret);
         return config.ToJsonString();
     }
 
     // A secret that reads KeptSecret, or is left out, stays as stored; empty clears it. A kept one never follows a changed
-    // address, or an admin key could send it to a host of its own. ponytail: top-level secrets only; upgrade when a
-    // provider nests one.
+    // address, or an admin key could send it to a host of its own.
     internal static (string? Config, IResult Refusal) MergeConfig(string stored, string incoming)
     {
         if (_ParseObject(incoming) is not { } next)
@@ -345,31 +344,125 @@ internal static class ProfileEndpoints
             return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal));
         }
 
-        var held = _ParseObject(stored) ?? [];
-        var kept = false;
-        foreach (var (name, value) in held)
+        return KeepSecrets(_ParseObject(stored) ?? [], next, Secrets.IsSecret)
+            ? (next.ToJsonString(), Results.Empty)
+            : (null, KeyAgain);
+    }
+
+    internal static IResult KeyAgain => BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "key_required", KeyAgainRefusal);
+
+    // Puts each secret `next` reads as KeptSecret (or leaves out) back from `held`, at any depth (AC-1571: a plugin's
+    // storage nests them). False when an object holding a kept one, itself or below it, changed its address.
+    // ponytail: array items pair up by position, so a reordered list asks for its keys again; match by id if that grates.
+    internal static bool KeepSecrets(JsonNode? held, JsonNode? next, Func<string, bool> isSecret) => _Keep(held, next, isSecret, out _);
+
+    private static bool _Keep(JsonNode? held, JsonNode? next, Func<string, bool> isSecret, out bool kept)
+    {
+        kept = false;
+        if (held is JsonArray heldItems && next is JsonArray nextItems)
         {
-            if (Secrets.IsSecret(name) && _IsFilled(value) && (!next.ContainsKey(name) || _IsKept(next[name])))
+            for (var index = 0; index < nextItems.Count; index++)
             {
-                next[name] = value?.DeepClone();
+                if (index < heldItems.Count && _IsKept(nextItems[index]) && _HoldsSecretAsText(heldItems[index], isSecret))
+                {
+                    nextItems[index] = heldItems[index]?.DeepClone();
+                    kept = true;
+                }
+                else if (index >= heldItems.Count || _IsKept(nextItems[index]))
+                {
+                    _ClearKept(nextItems, index);
+                }
+                else if (!_Keep(heldItems[index], nextItems[index], isSecret, out var below))
+                {
+                    return false;
+                }
+                else
+                {
+                    kept |= below;
+                }
+            }
+
+            return true;
+        }
+
+        if (held is not JsonObject heldConfig || next is not JsonObject nextConfig)
+        {
+            _ClearKept(next);
+            return true;
+        }
+
+        foreach (var (name, value) in nextConfig.ToList())
+        {
+            var stored = heldConfig.TryGetPropertyValue(name, out var heldValue) ? heldValue : null;
+            if (_IsKept(value) && _Hides(name, stored, isSecret))
+            {
+                nextConfig[name] = stored?.DeepClone();
+                kept = true;
+            }
+            else if (_IsKept(value))
+            {
+                // One that reads KeptSecret with nothing behind it is not a key.
+                nextConfig[name] = "";
+            }
+            else if (!_Keep(stored, value, isSecret, out var below))
+            {
+                return false;
+            }
+            else
+            {
+                kept |= below;
+            }
+        }
+
+        foreach (var (name, value) in heldConfig.Where(property => !nextConfig.ContainsKey(property.Key)).ToList())
+        {
+            if (_Hides(name, value, isSecret))
+            {
+                nextConfig[name] = value?.DeepClone();
                 kept = true;
             }
         }
 
-        // One that reads KeptSecret with nothing behind it is not a key.
-        foreach (var name in next.Where(property => _IsKept(property.Value)).Select(property => property.Key).ToList())
-        {
-            next[name] = "";
-        }
-
-        var addresses = held.Select(property => property.Key).Concat(next.Select(property => property.Key))
+        var addresses = heldConfig.Select(property => property.Key).Concat(nextConfig.Select(property => property.Key))
             .Where(name => AddressWords.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)));
-        if (kept && addresses.Any(name => !JsonNode.DeepEquals(held[name], next[name])))
-        {
-            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "key_required", KeyAgainRefusal));
-        }
+        return !kept || addresses.All(name => JsonNode.DeepEquals(heldConfig[name], nextConfig[name]));
+    }
 
-        return (next.ToJsonString(), Results.Empty);
+    private static void _ClearKept(JsonNode? node)
+    {
+        if (node is JsonArray array)
+        {
+            for (var index = 0; index < array.Count; index++)
+            {
+                _ClearKept(array, index);
+            }
+        }
+        else if (node is JsonObject config)
+        {
+            foreach (var (name, value) in config.ToList())
+            {
+                if (_IsKept(value))
+                {
+                    config[name] = "";
+                }
+                else
+                {
+                    _ClearKept(value);
+                }
+            }
+        }
+    }
+
+    private static void _ClearKept(JsonArray array, int index)
+    {
+        if (_IsKept(array[index]))
+        {
+            array[index] = "";
+        }
+        else
+        {
+            _ClearKept(array[index]);
+        }
     }
 
     // Case-insensitive, as the providers read their own config.
@@ -389,35 +482,74 @@ internal static class ProfileEndpoints
 
     private static bool _IsKept(JsonNode? value) => value is JsonValue text && text.TryGetValue<string>(out var content) && content == KeptSecret;
 
-    private static void _Mask(JsonNode? node)
+    // Every set secret at any depth reads as KeptSecret: whatever a secret name holds but a yes/no, and JSON text that
+    // carries one (a plugin storing its config as a string), whole.
+    internal static void Mask(JsonNode? node, Func<string, bool> isSecret)
     {
         if (node is JsonArray array)
         {
-            foreach (var item in array)
+            for (var index = 0; index < array.Count; index++)
             {
-                _Mask(item);
+                if (_HoldsSecretAsText(array[index], isSecret))
+                {
+                    array[index] = KeptSecret;
+                }
+                else
+                {
+                    Mask(array[index], isSecret);
+                }
             }
         }
         else if (node is JsonObject config)
         {
             foreach (var (name, value) in config.ToList())
             {
-                if (Secrets.IsSecret(name) && _IsFilled(value))
+                if (_Hides(name, value, isSecret))
                 {
                     config[name] = KeptSecret;
                 }
                 else
                 {
-                    _Mask(value);
+                    Mask(value, isSecret);
                 }
             }
         }
     }
 
-    private static bool _HoldsSecret(JsonNode? node) => node switch
+    private static bool _Hides(string name, JsonNode? value, Func<string, bool> isSecret) =>
+        (isSecret(name) && _IsSet(value)) || _HoldsSecretAsText(value, isSecret);
+
+    // Text, or a list holding text ("tokens": [...]); a number under such a name is a limit ("maxTokens"), not a key.
+    private static bool _IsSet(JsonNode? value) => value switch
     {
-        JsonArray array => array.Any(_HoldsSecret),
-        JsonObject config => config.Any(property => (Secrets.IsSecret(property.Key) && _IsFilled(property.Value)) || _HoldsSecret(property.Value)),
+        JsonValue scalar when scalar.TryGetValue<string>(out var content) => content.Length > 0,
+        JsonArray items => items.Any(_IsSet),
+        _ => false,
+    };
+
+    private static bool _HoldsSecretAsText(JsonNode? value, Func<string, bool> isSecret)
+    {
+        if (value is not JsonValue text || !text.TryGetValue<string>(out var content) || content.TrimStart() is not ['{' or '[', ..])
+        {
+            return false;
+        }
+
+        try
+        {
+            return _HoldsSecret(JsonNode.Parse(content), isSecret);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool _HoldsSecret(JsonNode? node) => _HoldsSecret(node, Secrets.IsSecret);
+
+    private static bool _HoldsSecret(JsonNode? node, Func<string, bool> isSecret) => node switch
+    {
+        JsonArray array => array.Any(item => _HoldsSecretAsText(item, isSecret) || _HoldsSecret(item, isSecret)),
+        JsonObject config => config.Any(property => _Hides(property.Key, property.Value, isSecret) || _HoldsSecret(property.Value, isSecret)),
         _ => false,
     };
 

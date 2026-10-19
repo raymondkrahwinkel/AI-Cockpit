@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin installed on a server can now be configured from the desktop. **Options · Server › Plugins ›
+  Settings** opens the same settings screen the plugin has under Options › Plugins, and Save stores it on the server.
+  Keys and tokens are write-only there: the screen only shows that one is set, an untouched Save keeps it and an
+  emptied field clears it. Every change shows in the server's audit log by setting name, never by value. The plugin
+  has to be running on the server and installed on this desktop too.
 - added: a Depot change is now seen from the start and stays on the project card until you press **Sync now**, 
   instead of showing up 15 to 30 minutes late and vanishing at the next check. A server reports the flag in its project
   list and runs **Sync now** for a connected desktop, and its log says when Depot reported a change or a check started failing.

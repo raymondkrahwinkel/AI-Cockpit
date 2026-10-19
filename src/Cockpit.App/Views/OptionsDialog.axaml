@@ -242,9 +242,9 @@
                                                         VerticalAlignment="Top" Margin="0,1,10,0"
                                                         Foreground="{DynamicResource CockpitAccentBrush}"/>
                             <StackPanel Spacing="2">
-                                <TextBlock Text="Provider credentials never cross this connection." FontWeight="SemiBold"/>
+                                <TextBlock Text="Keys and tokens you enter here are write-only." FontWeight="SemiBold"/>
                                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                           Text="Sign a profile in on the server itself (Server health › Sign in without a browser), or mount the credentials as a container secret. Nothing you type here can carry a password or token to a provider."/>
+                                           Text="The server stores them and only tells you whether one is set; nothing shows them again. Provider sign-ins still happen on the server itself (Server health › Sign in without a browser) or come from a container secret."/>
                             </StackPanel>
                         </DockPanel>
                     </Border>

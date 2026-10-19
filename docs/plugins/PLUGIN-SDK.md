@@ -340,6 +340,12 @@ happened.
 You don't add your own Save button — every plugin's settings screen gets the same Save/Close behaviour. A view
 that applies changes live can skip the interface and just gets a Close button.
 
+**The same view configures a server's copy.** Admin › Plugins › Settings for a server opens your view as it is,
+in a second copy of your UI part whose `host.Storage` is your plugin's storage on that server and whose
+`host.Channel` reaches your backend part there. So keep every setting in `host.Storage` and every action in a
+channel call: a view that opens its own connection or file runs that on the desktop, not on the server. A
+stored credential reads `(set on the server)` there; sent back unchanged it is kept, and empty clears it.
+
 **Refuse with a reason.** A `false` with an `error` keeps the screen open and shows your line to the operator,
 on your own settings page — beside the fields it is about, not in the dialog's chrome. Say what is wrong and
 what to do about it ("Two connections are named 'work'. Rename one of them."). The host has nothing better to

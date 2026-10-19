@@ -15,11 +15,13 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
@@ -86,7 +88,10 @@ public sealed class RemoteAdminJourney
             var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
             var laptopKey = laptop["secret"]?.GetValue<string>() ?? throw new InvalidOperationException("The server issued no key.");
 
-            await using var cockpit = JourneyHost.Desktop();
+            // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
+            var desktopState = Path.Combine(root, "desktop-state");
+            await _InstallLocallyAsync(desktopState, Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory");
+            await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
             [
                 new McpServerConfig
@@ -259,6 +264,36 @@ public sealed class RemoteAdminJourney
             Assert.False(listedProfiles.Contains(providerKey, StringComparison.Ordinal), "GET /profiles returned the provider key.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(providerKey, StringComparison.Ordinal), "The audit holds the provider key.");
             Assert.False(run.Output.Contains(providerKey, StringComparison.Ordinal), "The server log holds the provider key.");
+
+            // AC-1571: a plugin's own settings view, unchanged, over the server's storage. Git status (nobody adapted it) saves
+            // there, not here. The echo fixture's credential reads as set on the server, reopens as only that, survives an
+            // untouched Save and clears when emptied; no answer, audit line or log holds it.
+            await _SaveServerSettingsAsync(admin, "git-status", window => window.GetLogicalDescendants().OfType<CheckBox>().Any(), window =>
+                window.GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false);
+            var gitStatusOnServer = await setup.GetAsync<JsonObject>("api/v1/plugins/git-status/storage");
+            var gitStatusHere = cockpit.Services.GetRequiredService<PluginUiManager>().UiPartOf("git-status")?.Host.Storage.Get<bool?>("showBranchName");
+
+            var echoKey = $"journey-plugin-key-{Guid.NewGuid():N}";
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                _Box(window, "Greeting").Text = "hello from the desktop";
+                _Box(window, "API token").Text = echoKey;
+            });
+            var afterSave = await _ReadEchoSettingsAsync(setup);
+            var reopened = "";
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window => reopened = _Box(window, "API token").Text ?? "");
+            var afterKeep = await _ReadEchoSettingsAsync(setup);
+            var echoOnServer = (await setup.GetAsync<JsonObject>($"api/v1/plugins/{StorePlugin}/storage")).ToJsonString();
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window => _Box(window, "API token").Text = "");
+            var afterClear = await _ReadEchoSettingsAsync(setup);
+
+            Assert.Equal((false, (bool?)null), (gitStatusOnServer["showBranchName"]?.GetValue<bool>(), gitStatusHere));
+            Assert.Equal(
+                (("hello from the desktop", true), "(set on the server)", ("hello from the desktop", true), ("hello from the desktop", false)),
+                (afterSave, reopened, afterKeep, afterClear));
+            Assert.False(echoOnServer.Contains(echoKey, StringComparison.Ordinal), "GET /storage returned the plugin's key.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
+            Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
 
             await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
@@ -576,6 +611,66 @@ public sealed class RemoteAdminJourney
     }
 
     // Fills Depot's server view and presses Connect, returning the sentence it answers with.
+    // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
+    // closes only once the server took the save, so a refusal fails here with what the window said.
+    private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Action<Window> edit)
+    {
+        var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+        {
+            if (isTheView(window))
+            {
+                opened.TrySetResult(window);
+            }
+        });
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            _ = admin.OpenPluginSettingsCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == pluginId));
+            return Task.CompletedTask;
+        });
+        await Task.WhenAny(opened.Task, Task.Delay(Until.Ceiling));
+        var rows = HeadlessAvalonia.Run(() => string.Join(", ", admin.Plugins.Select(plugin => $"{plugin.Id}:{plugin.HasSettings}")));
+        Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
+        var settings = await opened.Task;
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            settings.Closed += (_, _) => closed.TrySetResult();
+            edit(settings);
+            settings.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Save")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            return Task.CompletedTask;
+        });
+        await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
+        var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
+        Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
+    }
+
+    // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
+    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory)
+    {
+        var plugin = Directory.CreateDirectory(Path.Combine(bundled, id)).FullName;
+        foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata(directory)))
+        {
+            File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
+        }
+
+        Directory.CreateDirectory(stateRoot);
+        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+        Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+    }
+
+    private static bool _HoldsApiToken(Window window) => window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "API token");
+
+    private static TextBox _Box(Window window, string placeholder) =>
+        window.GetLogicalDescendants().OfType<TextBox>().Single(box => box.PlaceholderText == placeholder);
+
+    // What the echo fixture's backend part on the server reads of its settings, over its own channel action.
+    private static async Task<(string? Greeting, bool ApiTokenSet)> _ReadEchoSettingsAsync(BackendApiClient setup)
+    {
+        var read = await setup.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/plugins/{StorePlugin}/channel/read-settings", new { });
+        return (read["greeting"]?.GetValue<string>(), read["apiTokenSet"]?.GetValue<bool>() ?? false);
+    }
+
     private static async Task<string> _ConnectDepotAsync(Window window, string name, string url, string installToken)
     {
         var view = window.GetLogicalDescendants().OfType<UserControl>().First(control => control.GetType().Name == "DepotServerSettingsControl");

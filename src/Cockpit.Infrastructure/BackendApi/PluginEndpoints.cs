@@ -1,12 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -154,7 +156,147 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status500InternalServerError, "plugin_failed", "The plugin could not handle that request.");
             }
         }).RequireAdmin();
+
+        // AC-1571: the storage slice a plugin's own settings view reads, from the storage its running backend part reads, so
+        // the next Set of that plugin cannot overwrite what was saved here. Every set credential reads as KeptSecret.
+        api.MapGet("/plugins/{folderId}/storage", async (string folderId, CancellationToken cancellationToken) =>
+        {
+            if (_LiveStorage(services, folderId) is not var (pluginId, storage))
+            {
+                return _NotRunning();
+            }
+
+            var slice = _Slice(storage.Snapshot());
+            ProfileEndpoints.Mask(slice, _IsSecret);
+            await _AuditAsync(services, "api:get_plugin_storage", cancellationToken, pluginId).ConfigureAwait(false);
+            return Results.Json(slice, ConnectKeyEndpoints.Json);
+        }).RequireAdmin();
+
+        // AC-1571: the keys a settings view changed. A kept secret stays as stored and an empty one clears it (AC-1534);
+        // `secrets` names what the view wrote with SetSecret, so the server declares it as it would locally. The audit
+        // names the keys, never a value.
+        api.MapPut("/plugins/{folderId}/storage", async (string folderId, HttpRequest request, CancellationToken cancellationToken) =>
+        {
+            if (await _TryReadStorageAsync(request, cancellationToken).ConfigureAwait(false) is not var (values, removed, secrets))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The storage request is invalid.");
+            }
+
+            if (_LiveStorage(services, folderId) is not var (pluginId, storage))
+            {
+                return _NotRunning();
+            }
+
+            // The whole slice as it reads after the change, untouched credentials as kept: the address rule then also sees a
+            // `url` key changed beside a `token` key the request left alone.
+            bool isSecret(string name) => _IsSecret(name) || secrets.Contains(name);
+            var held = _Slice(storage.Snapshot());
+            foreach (var key in removed)
+            {
+                held.Remove(key);
+            }
+
+            var next = (JsonObject)held.DeepClone();
+            ProfileEndpoints.Mask(next, isSecret);
+            foreach (var (key, value) in values)
+            {
+                next[key] = value?.DeepClone();
+            }
+
+            if (!ProfileEndpoints.KeepSecrets(held, next, isSecret))
+            {
+                return ProfileEndpoints.KeyAgain;
+            }
+
+            foreach (var key in values.Select(property => property.Key))
+            {
+                var value = next[key];
+                if (secrets.Contains(key) && value is JsonValue text && text.TryGetValue<string>(out var secret))
+                {
+                    storage.SetSecret(key, secret);
+                }
+                else
+                {
+                    storage.Set(key, value);
+                }
+            }
+
+            foreach (var key in removed)
+            {
+                storage.Remove(key);
+            }
+
+            var changed = string.Join(", ", values.Select(property => property.Key).Concat(removed));
+            await _AuditAsync(services, "api:set_plugin_storage", cancellationToken, $"{pluginId}: {changed}").ConfigureAwait(false);
+            return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
+        }).RequireAdmin();
     }
+
+    private static bool _IsSecret(string name) => SecretKeyHolder.Shared.Fields.IsSecret(name);
+
+    private static IResult _NotRunning() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not running on the server; enable it and restart the server first.");
+
+    // The storage the plugin's backend part holds, only while it runs: writing the file under a running plugin would be
+    // undone by its next Set, and a plugin that is not running has no one to read it yet.
+    private static (string PluginId, PluginStorage Storage)? _LiveStorage(IServiceProvider services, string folderId) =>
+        services.GetService<PluginManager>() is { } manager
+        && manager.HostOf(folderId)?.Storage is PluginStorage storage
+        && manager.Loaded.FirstOrDefault(plugin => string.Equals(plugin.FolderId, folderId, StringComparison.Ordinal)) is { } loaded
+            ? (loaded.Manifest.Id, storage)
+            : null;
+
+    // Each stored value is JSON text; a value that does not parse goes as the text it is.
+    private static JsonObject _Slice(IReadOnlyDictionary<string, string> values)
+    {
+        var slice = new JsonObject();
+        foreach (var (key, json) in values)
+        {
+            try
+            {
+                slice[key] = JsonNode.Parse(json);
+            }
+            catch (JsonException)
+            {
+                slice[key] = json;
+            }
+        }
+
+        return slice;
+    }
+
+    private static async Task<(JsonObject Values, IReadOnlyList<string> Removed, IReadOnlySet<string> Secrets)?> _TryReadStorageAsync(HttpRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (await JsonNode.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false) is not JsonObject root
+                || root.Any(property => property.Key is not ("values" or "removed" or "secrets"))
+                || root["values"] is not JsonObject values
+                || _Names(root["removed"]) is not { } removed
+                || _Names(root["secrets"]) is not { } secrets
+                || values.Any(property => property.Key.Length == 0)
+                || secrets.Any(name => !values.ContainsKey(name)))
+            {
+                return null;
+            }
+
+            return (values, removed, secrets.ToHashSet(StringComparer.Ordinal));
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
+        {
+            // ArgumentException: a key twice in one object.
+            return null;
+        }
+    }
+
+    // A missing list is empty; anything but an array of non-empty strings is not a list of keys.
+    private static List<string>? _Names(JsonNode? node) => node switch
+    {
+        null => [],
+        JsonArray names when names.All(name => name is JsonValue value && value.TryGetValue<string>(out var text) && text.Length > 0) =>
+            [.. names.Select(name => name?.GetValue<string>() ?? "")],
+        _ => null,
+    };
 
     private static async Task _AuditAsync(IServiceProvider services, string action, CancellationToken cancellationToken, string? subject = null)
     {

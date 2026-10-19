@@ -14,6 +14,9 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 {
     private readonly Dictionary<DiscoveredPlugin, ICockpitPluginUi> _ui = [];
 
+    // AC-1571: the host each UI part was given, which a server's copy of that part borrows its window helpers from.
+    private readonly Dictionary<DiscoveredPlugin, ICockpitUiHost> _hosts = [];
+
     // AC-1033: the assembly each loaded plugin came out of, which is where the knowledge base reads its embedded
     // documentation. AC-1389: a plugin that is only a UI part has an assembly once InitializeUi activated it.
     public IReadOnlyList<(DiscoveredPlugin Discovered, Assembly Assembly)> LoadedWithAssemblies =>
@@ -46,7 +49,9 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
                 }
 
                 _ui[discovered] = ui;
-                ui.InitializeUi(hostFor(discovered, ui));
+                var host = hostFor(discovered, ui);
+                _hosts[discovered] = host;
+                ui.InitializeUi(host);
             }
             catch (Exception exception)
             {
@@ -55,6 +60,15 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
             }
         }
     }
+
+    // AC-1571: the UI part type and host of the plugin with manifest id `pluginId`, when that part is its own type. One the
+    // backend entry type plays too is left out: a fresh copy of it would run InitializeUi without its Initialize.
+    public (Type UiType, ICockpitUiHost Host)? UiPartOf(string pluginId) =>
+        backend.LoadedParts
+            .Where(entry => string.Equals(entry.Discovered.Manifest.Id, pluginId, StringComparison.Ordinal)
+                && _ui.TryGetValue(entry.Discovered, out var ui) && !ReferenceEquals(ui, entry.Plugin))
+            .Select(entry => ((Type, ICockpitUiHost)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered]))
+            .FirstOrDefault();
 
     // AC-1389: the plugin's UI part, or null when it has none. Without a uiAssembly that is the backend entry type
     // itself when it implements ICockpitPluginUi too (a plugin moving its UI over before it splits); with one, the
@@ -123,5 +137,6 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         }
 
         _ui.Clear();
+        _hosts.Clear();
     }
 }
