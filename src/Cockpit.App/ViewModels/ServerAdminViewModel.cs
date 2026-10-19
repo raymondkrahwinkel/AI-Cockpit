@@ -353,11 +353,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        if (_plugins is not null)
-        {
-            await _plugins.FetchStoreIndexAsync(PluginStoreConfig.Remote("server"));
-        }
-
         var outcome = await InstallPluginOnDesktop(row);
         Status = outcome.Message;
         row.OnDesktop = outcome.Installed;
