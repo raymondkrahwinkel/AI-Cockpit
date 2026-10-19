@@ -71,7 +71,7 @@ public sealed class ProvisioningJourney
             // Applied again on top of the running cockpit: set, not added, and nothing to say.
             var again = (await ProvisioningEntry.ProvisionAsync(url, true, cockpit.StateRoot, NullLogger.Instance))!;
             Assert.Null(again.Failure);
-            Assert.DoesNotContain(again.Report, line => line.Reason is ProvisionManifestApplier.Applied or ProvisionManifestApplier.ReplacedManaged or ProvisionManifestApplier.KeptLocal);
+            Assert.DoesNotContain(again.Report, line => line.Reason is ProvisionManifestApplier.Applied or ProvisionManifestApplier.ReplacedManaged or ProvisionManifestApplier.KeptLocal or ProvisionManifestApplier.RestoredUnmanaged);
             Assert.Single(await cockpit.Services.GetRequiredService<ISessionProfileStore>().LoadAsync(), profile => profile.Label == "Acme dev");
         }
         finally

@@ -962,6 +962,7 @@
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
+                                     IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontFamily}"
                                      PlaceholderText="e.g. JetBrains Mono, monospace"
                                      ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
                         </StackPanel>
