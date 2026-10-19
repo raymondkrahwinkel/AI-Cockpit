@@ -37,6 +37,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // The projects whose last check failed, so a lasting failure is logged once, on the way in, not every tick.
     private readonly ConcurrentDictionary<string, byte> _failing = new(StringComparer.Ordinal);
 
+    // What each project was bound to when last seen, so an unbind or a rebind drops its baseline and its flag.
+    private readonly ConcurrentDictionary<string, string> _boundTo = new(StringComparer.Ordinal);
+
     private ITimer? _timer;
 
     // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
@@ -59,7 +62,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     // The projects to poll, asked fresh every tick: which local projects are bound to a Depot source right now, and
     // through which one. Set by the cockpit, which owns the project list; nothing is polled until it is.
-    public Func<IReadOnlyList<DepotBoundProject>>? BoundProjects { get; set; }
+    public Func<Task<IReadOnlyList<DepotBoundProject>>>? BoundProjects { get; set; }
 
     // Told about every check that completed: project id, whether it is flagged changed (AC-1570: sticky until "Sync now"), and the logo bytes
     // `PrepareBindingAsync` re-downloaded regardless (AC-1054) — awaited, so "Sync now" only returns once
@@ -90,7 +93,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         try
         {
-            foreach (var bound in BoundProjects())
+            var current = await BoundProjects().ConfigureAwait(true);
+            await _ForgetStaleAsync(current).ConfigureAwait(true);
+            foreach (var bound in current)
             {
                 await _CheckAsync(bound, cancellationToken);
             }
@@ -102,15 +107,55 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     }
 
     // The "Sync now" button's own seam: one project, checked immediately, outside the timer entirely.
-    public Task SyncNowAsync(string projectId, CancellationToken cancellationToken = default)
+    public async Task SyncNowAsync(string projectId, CancellationToken cancellationToken = default)
     {
-        var bound = BoundProjects?.Invoke().FirstOrDefault(candidate => candidate.ProjectId == projectId);
-        if (bound is null)
+        if (BoundProjects is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        return _CheckAsync(bound, cancellationToken, clearFlag: true);
+        var current = await BoundProjects().ConfigureAwait(true);
+        await _ForgetStaleAsync(current).ConfigureAwait(true);
+        if (current.FirstOrDefault(candidate => candidate.ProjectId == projectId) is { } bound)
+        {
+            await _CheckAsync(bound, cancellationToken, clearFlag: true).ConfigureAwait(true);
+        }
+    }
+
+    // A project that is no longer bound, or is bound to another shared project, starts over: no baseline, no flag, and
+    // the catalog is told the flag is gone.
+    private async Task _ForgetStaleAsync(IReadOnlyList<DepotBoundProject> current)
+    {
+        var stale = new List<string>();
+        foreach (var (projectId, sharedId) in _boundTo)
+        {
+            if (!current.Any(bound => bound.ProjectId == projectId && bound.SharedId == sharedId))
+            {
+                stale.Add(projectId);
+            }
+        }
+
+        foreach (var projectId in stale)
+        {
+            bool wasFlagged;
+            lock (_lastChecksum)
+            {
+                _boundTo.TryRemove(projectId, out _);
+                _lastChecksum.TryRemove(projectId, out _);
+                _failing.TryRemove(projectId, out _);
+                wasFlagged = _changed.TryRemove(projectId, out _);
+            }
+
+            if (wasFlagged && OnChecked is not null)
+            {
+                await OnChecked(projectId, false, null).ConfigureAwait(true);
+            }
+        }
+
+        foreach (var bound in current)
+        {
+            _boundTo[bound.ProjectId] = bound.SharedId;
+        }
     }
 
     private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken, bool clearFlag = false)

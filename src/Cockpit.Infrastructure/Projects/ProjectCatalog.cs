@@ -53,7 +53,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         // AC-894: the watcher asks which projects to poll every tick and reports each check back here.
         if (_depotSync is not null)
         {
-            _depotSync.BoundProjects = DepotBoundProjects;
+            _depotSync.BoundProjects = DepotBoundProjectsAsync;
             _depotSync.OnChecked = SetRemoteChangeStateAsync;
         }
     }
@@ -140,10 +140,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     public Task SyncNowAsync(string projectId) => _depotSync?.SyncNowAsync(projectId) ?? Task.CompletedTask;
 
     // AC-894: every local project genuinely bound to a source right now, and the id the watcher should ask it about.
-    internal IReadOnlyList<DepotBoundProject> DepotBoundProjects()
+    internal async Task<IReadOnlyList<DepotBoundProject>> DepotBoundProjectsAsync()
     {
         var bound = new List<DepotBoundProject>();
-        foreach (var project in Volatile.Read(ref _settings).Projects)
+        foreach (var project in (await _ReadSettingsAsync().ConfigureAwait(false)).Projects)
         {
             var sharedId = _BoundTo(project);
             if (sharedId is { Length: > 0 } && _ResolveSharedSource(project) is { } source)

@@ -13,14 +13,15 @@ public sealed class DepotSyncWatcherTests : IDisposable
     private readonly DepotSyncWatcher _watcher;
     private readonly BlockingCollection<bool> _reports = [];
     private string _checksum = "a";
+    private bool _bound = true;
 
     public DepotSyncWatcherTests()
     {
-        _source.PrepareBindingAsync("shared", Arg.Any<CancellationToken>())
+        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = _checksum })));
         _watcher = new DepotSyncWatcher(null, _time)
         {
-            BoundProjects = () => [new DepotBoundProject("p", _source, "shared")],
+            BoundProjects = () => Task.FromResult<IReadOnlyList<DepotBoundProject>>(_bound ? [new DepotBoundProject("p", _source, "shared")] : []),
             OnChecked = (_, changed, _) =>
             {
                 _reports.Add(changed);
@@ -60,6 +61,26 @@ public sealed class DepotSyncWatcherTests : IDisposable
 
         Assert.True(afterQuietTick);
         Assert.False(afterSyncNow);
+    }
+
+    [Fact]
+    public void UnboundProject_LosesItsFlagAndItsBaseline()
+    {
+        _watcher.Start();
+        _time.Advance(TimeSpan.Zero);
+        _Next();
+        _checksum = "b";
+        _time.Advance(TimeSpan.FromMinutes(15));
+        _Next();
+
+        _bound = false;
+        _time.Advance(TimeSpan.FromMinutes(15));
+        var afterUnbind = _Next();
+        _bound = true;
+        _time.Advance(TimeSpan.FromMinutes(15));
+
+        Assert.False(afterUnbind);
+        Assert.False(_Next());
     }
 
     public void Dispose()
