@@ -160,6 +160,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "first-start.routes",
+            "A way to begin on the first start",
+            "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",
+            CapabilityRisk.Ambient,
+            "0.94.0",
+            ["ICockpitUiHost.AddFirstStartRoute"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",

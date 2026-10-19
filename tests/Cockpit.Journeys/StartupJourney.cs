@@ -74,7 +74,7 @@ public sealed class StartupJourney
         var cockpitViewModel = cockpit.Cockpit;
         Assert.True(HeadlessAvalonia.Run(() => cockpitViewModel.CanBackUp && cockpitViewModel.CanBackUpAssistantMemory && cockpitViewModel.CanCheckForUpdates));
         var steps = services.GetServices<IFirstRunWizardStep>().Select(step => step.GetType()).ToList();
-        Assert.Subset(steps.ToHashSet(), new HashSet<Type> { typeof(WelcomeStep), typeof(WorkKindStep), typeof(RestoreStep), typeof(ProviderStep) });
+        Assert.Subset(steps.ToHashSet(), new HashSet<Type> { typeof(WelcomeStep), typeof(WorkKindStep), typeof(StartChoiceStep), typeof(ProviderStep) });
 
         var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var watch = Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));

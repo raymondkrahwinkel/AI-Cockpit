@@ -9,7 +9,11 @@ public sealed partial class WizardStepBarItemViewModel(string title, bool isSkip
 {
     public string Title { get; } = title;
 
-    public bool IsSkipped { get; } = isSkipped;
+    // Changes while the wizard is open: the choice step can settle a later question (AC-1504).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TextDecorations))]
+    [NotifyPropertyChangedFor(nameof(Opacity))]
+    private bool _isSkipped = isSkipped;
 
     public bool NotBuiltYet { get; } = notBuilt;
 

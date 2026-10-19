@@ -622,14 +622,12 @@ internal static class Screenshotter
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
-        // AC-1280: the restore step in the shell it lives in, claiming slot 10. Staged without a container — the
-        // page does nothing until a file is chosen, so there is no archive for a scene to depend on.
-        ["first-run-restore"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
-        {
-            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
-                [new Views.Onboarding.RestoreStep(new ViewModels.Onboarding.RestoreStepViewModel())],
-                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
-        },
+        // AC-1280: the restore page in the shell it lives in, on the choice step's "Restore a backup file" (AC-1504), in
+        // slot 10. Staged without a container — the page does nothing until a file is chosen, so there is no archive.
+        ["first-run-restore"] = (_, _) => _StartChoiceWizard(pickRestore: true, withPluginRoute: false),
+
+        // AC-1504: the choice step with a route a plugin offers, picked — the three choices of the design.
+        ["first-run-start-choice"] = (_, _) => _StartChoiceWizard(pickRestore: false, withPluginRoute: true),
 
         // AC-585: the assistant step in the shell it lives in, claiming slot 25 — no store wired, so it renders the
         // design-time AssistantStepViewModel (off, no profile, local-only note showing).
@@ -660,6 +658,33 @@ internal static class Screenshotter
         // this is the half of that sentence the two scenes above cannot show.
         ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
     };
+
+    private static Window _StartChoiceWizard(bool pickRestore, bool withPluginRoute)
+    {
+        var routes = new Plugins.FirstStartRouteRegistry();
+        if (withPluginRoute)
+        {
+            routes.Register(
+                new Cockpit.Plugins.Abstractions.UI.Onboarding.FirstStartRoute(
+                    "depot.sign-in",
+                    "Sign in to a Depot",
+                    "Restore your latest backup, or set up from your profile and your organisation.",
+                    () => new Avalonia.Controls.TextBlock { Text = "The plugin's own sign-in goes here.", Margin = new Avalonia.Thickness(4, 0) })
+                {
+                    IconKind = Material.Icons.MaterialIconKind.Cloud,
+                },
+                "Depot");
+        }
+
+        var step = new Views.Onboarding.StartChoiceStep(new ViewModels.Onboarding.RestoreStepViewModel(), routes);
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+        step.ViewModel.ChooseCommand.Execute(step.ViewModel.Options[pickRestore ? 1 : withPluginRoute ? 2 : 0]);
+
+        return window;
+    }
 
     private static Window _WorkKindWizard(int pluginCount)
     {

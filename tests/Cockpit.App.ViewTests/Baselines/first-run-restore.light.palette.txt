@@ -10,7 +10,9 @@
 #FF7C8391  CockpitTextFaintColor
 #FFD5DAE3  CockpitHairlineColor
 #FFE4E7EE  CockpitHairlineSoftColor
+#FFEDEFF5  CockpitInsetBgColor
 #FFF8F9FC  CockpitChromeBgColor
 #FFFFFFFF  CockpitPanelBgColor, CockpitTextOnAccentColor, CockpitTextOnStatusColor
 radius  0,0,0,0
+radius  8,8,8,8
 radius  9,9,9,9

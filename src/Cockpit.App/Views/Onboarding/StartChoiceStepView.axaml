@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels.Onboarding"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="380"
+             x:Class="Cockpit.App.Views.Onboarding.StartChoiceStepView"
+             x:DataType="vm:StartChoiceStepViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.startChoice">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+        </Style>
+        <Style Selector="Border.startChoice.on">
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- AC-1504: slot 10 asks how to begin before any later question is asked. The picked choice's own content hangs
+         under the choices; the host's "Start fresh" has none, because the next pages are its content. -->
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="14" Margin="4,8">
+            <StackPanel Spacing="2">
+                <TextBlock Text="How do you want to start?" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                           Text="Pick what fits. Nothing on this machine changes until you confirm."/>
+            </StackPanel>
+
+            <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="12"
+                       IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+
+            <ItemsControl ItemsSource="{Binding Options}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="8"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StartChoiceOptionViewModel">
+                        <Button Padding="0" Background="Transparent" BorderThickness="0"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                Command="{Binding $parent[ItemsControl].((vm:StartChoiceStepViewModel)DataContext).ChooseCommand}"
+                                CommandParameter="{Binding}">
+                            <Border Classes="startChoice" Classes.on="{Binding IsSelected}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                    <materialIcons:MaterialIcon Grid.Column="0" Kind="{Binding IconKind}" Width="20" Height="20"
+                                                                VerticalAlignment="Top" Margin="0,2,0,0"
+                                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"/>
+                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="11.5"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding OfferedByLabel}" FontSize="11" Margin="0,4,0,0"
+                                                   IsVisible="{Binding OfferedByLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ContentControl Content="{Binding SelectedContent}"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

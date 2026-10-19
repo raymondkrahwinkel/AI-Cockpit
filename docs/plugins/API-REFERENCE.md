@@ -120,6 +120,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
 | `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
+| `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -369,6 +370,14 @@ The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (A
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
 (admin keys only); it carries invokes, not events, and its audit line names the plugin and the action, never the payload.
+
+The UI host's `AddFirstStartRoute(FirstStartRoute route)` (AC-1504, host 0.94.0, SDK UI 3.4.0, namespace
+`Cockpit.Plugins.Abstractions.UI.Onboarding`) offers a way to begin on the first-run wizard's "How do you want to start?" step,
+next to the host's own "Start fresh" and "Restore a backup file". A route has an `Id`, a `Title`, a `Description` and a
+`CreateContent` factory; the content hangs under the choices once the route is picked. `AnswersWorkKind` (false by default)
+says the route settles "What you work on": the wizard strikes that step through and leaves it out of "Step n of N". The
+provider step is never skipped, because signing in to a provider is local. A route never picks a slot, so two plugins cannot collide; a second route with the
+same `Id` is ignored. Without a plugin that registers one, the step offers only the host's two choices.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:

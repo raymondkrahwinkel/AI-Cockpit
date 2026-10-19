@@ -22,6 +22,7 @@ using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -145,6 +146,16 @@ internal sealed class CockpitUiHost(
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, host.Storage, host.Sessions))
         {
             _Logger()?.LogWarning("Workspace type '{WorkspaceTypeId}' is already contributed by another plugin; this registration is ignored", registration.Id);
+        }
+    }
+
+    // The registry keeps the plugin's display name beside the route: the wizard says who offers a choice, and the
+    // route itself (a plugin's own type) cannot be trusted to name its owner.
+    public void AddFirstStartRoute(FirstStartRoute route)
+    {
+        if (!services.GetRequiredService<IFirstStartRouteRegistry>().Register(route, pluginName))
+        {
+            _Logger()?.LogWarning("First-start route '{RouteId}' is already contributed by another plugin; this registration is ignored", route.Id);
         }
     }
 

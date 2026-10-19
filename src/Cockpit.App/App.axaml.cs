@@ -191,12 +191,12 @@ public partial class App : Application
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
         IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
 
-        // AC-1505: a failed --provision lands on slot 10 with its reason, where AC-1504's choice step will stand.
+        // AC-1505: a failed --provision lands on slot 10 with its reason, on the choice step (AC-1504).
         int? startAtOrder = null;
-        if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<RestoreStep>().FirstOrDefault() is { } restoreStep)
+        if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<StartChoiceStep>().FirstOrDefault() is { } choiceStep)
         {
-            restoreStep.ViewModel.Status = provisioningFailure;
-            startAtOrder = restoreStep.Order;
+            choiceStep.Notice = provisioningFailure;
+            startAtOrder = choiceStep.Order;
         }
 
         var viewModel = new FirstRunWizardViewModel(steps, FirstRunWizardViewModel.EpicPlan, startAtOrder);
