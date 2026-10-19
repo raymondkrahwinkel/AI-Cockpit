@@ -94,7 +94,6 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         try
         {
             var current = await BoundProjects().ConfigureAwait(true);
-            await _ForgetStaleAsync(current).ConfigureAwait(true);
             foreach (var bound in current)
             {
                 await _CheckAsync(bound, cancellationToken);
