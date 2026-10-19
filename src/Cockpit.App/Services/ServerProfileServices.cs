@@ -42,7 +42,7 @@ public sealed class ServerProfileServices(
 
     // The editor, with this server behind every service it asks.
     public ManageProfilesDialogViewModel CreateEditor() =>
-        new(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<ISessionProfileStore>(Program.Services), this, this, this, this, this, this, this, this) { BrowsesThisMachine = false };
+        new(this, this, this, this, this, this, this, this, this) { BrowsesThisMachine = false };
 
     public async Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default)
     {
