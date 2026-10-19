@@ -86,6 +86,44 @@ public class DepotBrowserServiceTests
         Assert.Equal(0, viewer.Count("share_artifact") + viewer.Count("unshare_artifact"));
     }
 
+    // AC-1573: a binary file asks for a ticket without a share (the default would leave one behind on a failed PUT);
+    // a text file is a document, which the artifact store refuses.
+    [Theory]
+    [InlineData("img/a.png", "request_upload", "write")]
+    [InlineData("docs/a.md", "write", "request_upload")]
+    public async Task Upload_RoutesByKind_AndAskedForNoShare(string path, string used, string unused)
+    {
+        var rig = new _Rig();
+        rig.Tools["request_upload"] = _ => PluginMcpToolCallResult.Success("""{"uploadUrl":"https://d/blob/upload/abc"}""");
+        rig.Tools["write"] = _ => PluginMcpToolCallResult.Success("{}");
+
+        var answer = await rig.Service.UploadAsync(_Request(path) with { Content = "# hi", ContentType = "image/png", Size = 3 }, default);
+
+        Assert.Equal(DepotBrowserStatus.Ok, answer.Status);
+        Assert.Equal(1, rig.Count(used));
+        Assert.Equal(0, rig.Count(unused));
+        if (used == "request_upload")
+        {
+            var arguments = rig.Calls.Single(call => call.Tool == "request_upload").Arguments;
+            Assert.Equal(("none", path), (arguments["share"], arguments["path"]));
+            Assert.Equal("https://d/blob/upload/abc", answer.Data!.UploadUrl);
+        }
+    }
+
+    [Fact]
+    public async Task Upload_NeedsTheEditorRole_AViewerWritesNothing()
+    {
+        var viewer = new _Rig("Viewer");
+        viewer.Tools["request_upload"] = _ => PluginMcpToolCallResult.Success("""{"uploadUrl":"https://d/u"}""");
+        viewer.Tools["write"] = _ => PluginMcpToolCallResult.Success("{}");
+
+        var binary = await viewer.Service.UploadAsync(_Request("a.png"), default);
+        var text = await viewer.Service.UploadAsync(_Request("a.md") with { Content = "x" }, default);
+
+        Assert.Equal((DepotBrowserStatus.Error, DepotBrowserStatus.Error), (binary.Status, text.Status));
+        Assert.Equal(0, viewer.Count("request_upload") + viewer.Count("write"));
+    }
+
     [Theory]
     [InlineData(PluginMcpToolCallOutcome.AuthorizationRequired, DepotBrowserStatus.SignIn, "Sign in to Work")]
     [InlineData(PluginMcpToolCallOutcome.Failed, DepotBrowserStatus.Error, "[Forbidden] no access to cockpit")]

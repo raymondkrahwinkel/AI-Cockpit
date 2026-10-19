@@ -266,7 +266,8 @@ public sealed class RemoteAdminJourney
             // AC-1511: Admin → Plugins → Depot → Settings opens Depot's own view for the server. An installation token signs
             // the server's connection in at a fake Depot without a browser; the same token again is refused and adds nothing.
             var installToken = $"journey-install-{Guid.NewGuid():N}";
-            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
+            var depotDocuments = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken, depotDocuments));
             var depotUrl = depot.BaseUrl.TrimEnd('/');
             var depotOpened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchDepot = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
@@ -297,6 +298,18 @@ public sealed class RemoteAdminJourney
             await Until.ReloadHolds(
                 async () => serverState = await File.ReadAllTextAsync(Path.Combine(stateRoot, "cockpit.json")),
                 () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal) && !serverState.Contains("localhost", StringComparison.Ordinal));
+
+            // AC-1573: the file browser's upload reaches the server's Depot connection through the channel relay, and the file
+            // is in the browser's tree afterwards.
+            // The plugin's storage holds the connection list as an escaped JSON string; its id is a fresh guid.
+            var depotId = System.Text.RegularExpressions.Regex.Match(serverState, @"Id\\u0022:\\u0022(?<id>[0-9a-f]{32})\\u0022,\\u0022Name\\u0022:\\u0022Work").Groups["id"].Value;
+            var uploaded = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-upload", new { connectionId = depotId, project = "cockpit", path = "notes/journey.md", content = "# from the journey" });
+            var depotTree = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-tree", new { connectionId = depotId, project = "cockpit" });
+            Assert.True(uploaded["status"]?.GetValue<string>() == "ok", uploaded.ToJsonString());
+            Assert.Equal("# from the journey", depotDocuments["notes/journey.md"]);
+            Assert.Contains(depotTree["data"]?["nodes"]?.AsArray() ?? [], node => node?["path"]?.GetValue<string>() == "notes/journey.md");
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -515,7 +528,7 @@ public sealed class RemoteAdminJourney
 
     // Depot as the server reaches it (AC-1511, DEP-264 not yet rolled out): its OAuth metadata and a token endpoint that
     // redeems one installation token once, for Depot's own client.
-    private static RequestDelegate _FakeDepot(string installToken)
+    private static RequestDelegate _FakeDepot(string installToken, System.Collections.Concurrent.ConcurrentDictionary<string, string> documents)
     {
         var redeemed = 0;
         return async context =>
@@ -523,6 +536,9 @@ public sealed class RemoteAdminJourney
             var origin = $"{context.Request.Scheme}://{context.Request.Host}";
             switch (context.Request.Path.Value)
             {
+                case "/mcp":
+                    await _FakeDepotMcpAsync(context, documents);
+                    return;
                 case "/.well-known/oauth-protected-resource":
                     await context.Response.WriteAsJsonAsync(new { resource = $"{origin}/mcp", authorization_servers = new[] { origin } });
                     return;
@@ -546,6 +562,62 @@ public sealed class RemoteAdminJourney
                     return;
             }
         };
+    }
+
+    // Just enough of Depot's MCP (one JSON answer per POST) for the file browser: one Editor project, `write` keeping the
+    // document and `list` handing it back.
+    private static async Task _FakeDepotMcpAsync(HttpContext context, System.Collections.Concurrent.ConcurrentDictionary<string, string> documents)
+    {
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+
+        using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+        var root = request.RootElement;
+        if (!root.TryGetProperty("id", out var id))
+        {
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+            return;
+        }
+
+        object result;
+        switch (root.GetProperty("method").GetString())
+        {
+            case "initialize":
+                result = new
+                {
+                    protocolVersion = root.GetProperty("params").GetProperty("protocolVersion").GetString(),
+                    capabilities = new { tools = new { } },
+                    serverInfo = new { name = "fake-depot", version = "1" },
+                };
+                break;
+            case "tools/call":
+                var arguments = root.GetProperty("params").TryGetProperty("arguments", out var given) ? given : default;
+                var text = root.GetProperty("params").GetProperty("name").GetString() switch
+                {
+                    "list_projects" => """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Editor"}]}""",
+                    "write" => _Stored(documents, arguments),
+                    "list" => System.Text.Json.JsonSerializer.Serialize(new { entries = documents.Keys.Select(path => new { path, size = documents[path].Length }) }),
+                    "list_artifacts" => """{"entries":[]}""",
+                    "list_shares" => """{"shares":[]}""",
+                    _ => "{}",
+                };
+                result = new { content = new[] { new { type = "text", text } } };
+                break;
+            default:
+                result = new { tools = Array.Empty<object>() };
+                break;
+        }
+
+        await context.Response.WriteAsJsonAsync(new { jsonrpc = "2.0", id, result });
+    }
+
+    private static string _Stored(System.Collections.Concurrent.ConcurrentDictionary<string, string> documents, System.Text.Json.JsonElement arguments)
+    {
+        documents[arguments.GetProperty("path").GetString() ?? ""] = arguments.GetProperty("content").GetString() ?? "";
+        return "{}";
     }
 
     // Fills Depot's server view and presses Connect, returning the sentence it answers with.

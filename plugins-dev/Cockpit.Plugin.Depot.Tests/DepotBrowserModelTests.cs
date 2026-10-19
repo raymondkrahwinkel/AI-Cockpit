@@ -100,6 +100,34 @@ public class DepotBrowserModelTests
         }
     }
 
+    // AC-1573: an existing path is replaced only after a yes; the bytes then go to the ticket's URL exactly as read.
+    [Fact]
+    public async Task Upload_OverAnExistingPath_AsksFirst_ThenPutsTheExactBytes()
+    {
+        var rig = new Rig();
+        rig.Answers["browser-upload"] = _Ok(new { uploadUrl = "https://depot.example.com/blob/upload/abc" });
+        byte[]? put = null;
+        var model = rig.Model(request =>
+        {
+            put = request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+        var declined = await model.UploadAsync("cockpit", "img", "../a.png", new MemoryStream([1, 2, 3]), exists: true);
+
+        Assert.Null(declined);
+        Assert.Empty(rig.Invokes);
+        Assert.Null(put);
+
+        rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var accepted = await model.UploadAsync("cockpit", "img", "../a.png", new MemoryStream([1, 2, 3]), exists: true);
+
+        Assert.True(accepted!.Data);
+        Assert.Equal("img/a.png", rig.Invokes.Single().Payload.GetProperty("path").GetString());
+        Assert.Equal([1, 2, 3], put);
+    }
+
     [Fact]
     public async Task Download_WithAnExpiredLink_ReportsWhyAndNeverPrintsTheUrlOrAsksWhereToSave()
     {

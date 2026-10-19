@@ -50,7 +50,33 @@ public class DepotBrowserPanelTests
         }
 
         Assert.True(frame.PixelSize.Width > 0);
+        Assert.True(_UploadButton(panel).IsVisible);
     }
+
+    // AC-1573: the backend's reading of the role (`canShare`) decides whether the Upload button is there at all.
+    [Fact]
+    public void Panel_HidesUpload_ForAViewer()
+    {
+        var rig = new DepotBrowserModelTests.Rig();
+        rig.Answers["browser-projects"] = DepotBrowserModelTests._Ok(new[] { new { project = "cockpit", name = "Cockpit", role = "Viewer" } });
+        rig.Answers["browser-tree"] = DepotBrowserModelTests._Ok(new
+        {
+            nodes = new object[] { new { path = "docs/Notes.md", kind = "document", size = 2048, modified = "2026-10-17T10:00:00+00:00", contentType = "text/markdown" } },
+            canShare = false,
+        });
+        rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
+        Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
+        var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
+        var window = new Window { Width = 1000, Height = 640, Content = panel };
+        window.Show();
+
+        _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
+
+        Assert.False(_UploadButton(panel).IsVisible);
+    }
+
+    private static Button _UploadButton(DepotBrowserPanel panel) =>
+        panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Upload"));
 
     // Synchronous on purpose: the panel's awaits come back through the dispatcher, which only runs while this polls.
     private static void _Until(Func<bool> condition)

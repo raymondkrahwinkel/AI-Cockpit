@@ -10,12 +10,15 @@ internal static class DepotBrowserChannel
     public const string DownloadUrl = "browser-download-url";
     public const string Share = "browser-share";
     public const string Unshare = "browser-unshare";
+    public const string Upload = "browser-upload";
 }
 
 // One request shape for every action; each action reads the fields it needs. `Project` is the `project` argument
-// as Depot addresses it (org/slug, or a bare slug on an older Depot).
+// as Depot addresses it (org/slug, or a bare slug on an older Depot). An upload sets `Content` for a text file
+// (written as a document) or `ContentType`/`Size` for the rest (a ticket back); `Replace` is the operator's yes.
 internal sealed record DepotBrowserRequest(
-    string ConnectionId, string? Project = null, string? Path = null, string? Mode = null, string? ShareId = null);
+    string ConnectionId, string? Project = null, string? Path = null, string? Mode = null, string? ShareId = null,
+    string? Content = null, string? ContentType = null, long Size = 0, bool Replace = false);
 
 internal static class DepotBrowserStatus
 {
@@ -50,3 +53,19 @@ internal sealed record DepotBrowserNode(
 internal sealed record DepotBrowserTree(IReadOnlyList<DepotBrowserNode> Nodes, bool CanShare);
 
 internal sealed record DepotBrowserShare(string ShareId, string Url, bool IsPublic);
+
+// `UploadUrl` is the pre-signed PUT target for a binary file; null when the file was a document and is already written.
+internal sealed record DepotBrowserUpload(string? UploadUrl);
+
+// What Depot's web UI sends to the document store instead of the artifact store (DEP-92, BlobKinds.TextExtensions).
+internal static class DepotUploadKinds
+{
+    public const long MaxInlineBytes = 8 * 1024 * 1024;
+
+    private static readonly HashSet<string> _TextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".md", ".txt", ".csv", ".json", ".log", ".xml", ".yaml", ".yml",
+    };
+
+    public static bool IsText(string path) => _TextExtensions.Contains(System.IO.Path.GetExtension(path));
+}

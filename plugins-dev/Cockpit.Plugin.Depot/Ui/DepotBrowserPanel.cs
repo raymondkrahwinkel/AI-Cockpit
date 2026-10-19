@@ -21,6 +21,7 @@ internal sealed class DepotBrowserPanel : UserControl
     private readonly ComboBox _projectBox = new() { MinWidth = 200 };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _signIn = new() { IsVisible = false };
+    private readonly Button _upload = new() { Content = "Upload", IsVisible = false };
     private readonly TreeView _tree = new();
     private readonly StackPanel _detail = new() { Spacing = 8, Margin = new Thickness(12) };
     private DepotBrowserModel? _model;
@@ -54,7 +55,8 @@ internal sealed class DepotBrowserPanel : UserControl
             }
         };
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh } };
+        _upload.Click += async (_, _) => await UploadAsync().ConfigureAwait(true);
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh, _upload } };
         var banner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 0, 12, 6), Children = { _message, _signIn } };
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("360,*") };
         body.Children.Add(new Border { BorderBrush = _Brush("CockpitHairlineBrush"), BorderThickness = new Thickness(0, 1, 1, 0), Child = _tree });
@@ -131,6 +133,7 @@ internal sealed class DepotBrowserPanel : UserControl
         }
 
         _loaded = answer.Data ?? new([], false);
+        _upload.IsVisible = _loaded.CanShare;
         _message.Text = _loaded.Nodes.Count == 0 ? "This project has no documents or artifacts yet." : string.Empty;
         _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
         _detail.Children.Clear();
@@ -309,6 +312,46 @@ internal sealed class DepotBrowserPanel : UserControl
         if (_Accepted(answer) && answer.Data)
         {
             _host.ShowToast($"Saved {DepotDownload.SafeFileName(node.Path)}.");
+        }
+    }
+
+    // Into the folder of the selected row (the root when nothing is selected), one file at a time.
+    private async Task UploadAsync()
+    {
+        if (_model is null || _project is null || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+
+        var folder = _tree.SelectedItem is TreeViewItem { Tag: DepotTreeItem selected }
+            ? (selected.Kind == DepotTreeKind.Folder ? selected.Path : selected.Path[..Math.Max(selected.Path.LastIndexOf('/'), 0)])
+            : string.Empty;
+        var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = true }).ConfigureAwait(true);
+        var sent = 0;
+        foreach (var file in files)
+        {
+            var name = DepotDownload.SafeFileName(file.Name);
+            var target = folder.Length == 0 ? name : $"{folder}/{name}";
+            await using var stream = await file.OpenReadAsync().ConfigureAwait(true);
+            var answer = await _model.UploadAsync(_project, folder, file.Name, stream, _loaded.Nodes.Any(node => node.Path == target)).ConfigureAwait(true);
+            if (answer is null)
+            {
+                continue;
+            }
+
+            if (!_Accepted(answer))
+            {
+                _host.ShowToast(answer.Message ?? "Upload failed.");
+                break;
+            }
+
+            sent++;
+        }
+
+        if (sent > 0)
+        {
+            await LoadTreeAsync(folder.Length == 0 ? null : folder).ConfigureAwait(true);
+            _host.ShowToast(sent == 1 ? "Uploaded 1 file." : $"Uploaded {sent} files.");
         }
     }
 
