@@ -23,6 +23,7 @@ internal sealed class ServerPluginUiHost(
     IPluginStorage storage,
     IPluginUiChannel channel,
     Func<string, CancellationToken, Task<PluginMcpAuthState>> mcpAuthState,
+    Func<string, CancellationToken, Task<PluginMcpSignInOutcome>> mcpSignIn,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     ServerManagedClis managedClis) : ICockpitUiHost
 {
@@ -202,8 +203,7 @@ internal sealed class ServerPluginUiHost(
     public Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
         mcpAuthState(name, cancellationToken);
 
-    // A browser sign-in cannot finish on a server without a screen; an installation token over the plugin's channel is
-    // that route (AC-1511), so the view's own fallback answer stands.
+    // AC-1571 B2: the server runs the sign-in and keeps the token; this desktop only does the browser step.
     public Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
-        Task.FromResult(PluginMcpSignInOutcome.Unavailable);
+        mcpSignIn(name, cancellationToken);
 }

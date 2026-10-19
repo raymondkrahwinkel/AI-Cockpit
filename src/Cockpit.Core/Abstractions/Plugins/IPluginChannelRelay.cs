@@ -21,6 +21,12 @@ public interface IPluginChannelRelay
     Task<string> GetMcpServerAuthStateAsync(string folderId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Signs an MCP server that plugin registered in on the server (AC-1571 B2): the server runs the OAuth flow and keeps
+    /// the token, this machine opens the browser and hands back the redirect. Answers the outcome's name; never a token.
+    /// </summary>
+    Task<string> SignInMcpServerAsync(string folderId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes the keys a settings view changed and removes the ones it removed; <paramref name="secrets"/> names those it
     /// wrote as a credential. A value still reading "(set on the server)" keeps what the server holds.
     /// </summary>
