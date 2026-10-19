@@ -409,7 +409,7 @@ public partial class CockpitViewModel
         {
             Profiles = new ServerProfilesViewModel(group.Server.Profiles, _providerConfigViews),
             Assistant = assistant,
-            HasPluginSettings = row => plugins is IPluginChannelRelay && _ServerSettingsFor(row) is not null,
+            HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, row),
         };
 
@@ -428,16 +428,34 @@ public partial class CockpitViewModel
         : PluginServerSettings.TryGetValue(row.FolderId, out var byFolder) ? byFolder
         : null;
 
-    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server.
-    private Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, ServerPluginRowViewModel row)
+    // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
+    // Set once the UI parts have initialized.
+    internal Func<string, (Type UiType, ICockpitUiHost Host)?> LocalPluginUiPart { get; set; } = _ => null;
+
+    private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
+        LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
+
+    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. A plugin's
+    // own server view (AC-1511) wins; otherwise its local settings view opens over the server's storage (AC-1571).
+    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, ServerPluginRowViewModel row)
     {
-        if (_dialogService is null || plugins is not IPluginChannelRelay relay || _ServerSettingsFor(row) is not { } settings)
+        if (_dialogService is null || plugins is not IPluginChannelRelay relay)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var channel = new RemotePluginUiChannel(relay, row.FolderId);
-        return _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
+        if (_ServerSettingsFor(row) is { } settings)
+        {
+            var channel = new RemotePluginUiChannel(relay, row.FolderId);
+            await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
+            return;
+        }
+
+        if (_LocalSettingsPartFor(row) is { } part
+            && await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId) is { } remote)
+        {
+            await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
+        }
     }
 
     [RelayCommand]

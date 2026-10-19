@@ -48,6 +48,30 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
         client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<string, string>> GetStorageAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        var slice = await client.SendAsync<JsonObject>(HttpMethod.Get, _StoragePath(folderId), null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        return slice.ToDictionary(property => property.Key, property => property.Value?.ToJsonString() ?? "null", StringComparer.Ordinal);
+    }
+
+    public async Task SaveStorageAsync(
+        string folderId,
+        IReadOnlyDictionary<string, string> changed,
+        IReadOnlyCollection<string> removed,
+        IReadOnlyCollection<string> secrets,
+        CancellationToken cancellationToken = default)
+    {
+        var values = new JsonObject();
+        foreach (var (key, json) in changed)
+        {
+            values[key] = JsonNode.Parse(json);
+        }
+
+        await client.SendAsync<JsonObject>(HttpMethod.Put, _StoragePath(folderId), new { values, removed, secrets }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string _StoragePath(string folderId) => $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/storage";
+
     public async Task RestartAsync(CancellationToken cancellationToken = default)
     {
         await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);

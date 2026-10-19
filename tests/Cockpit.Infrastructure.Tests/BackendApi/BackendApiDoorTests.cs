@@ -35,6 +35,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Tests.Mcp;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -125,6 +126,15 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "admin", HttpStatusCode.OK, "", "\"connected\":true", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/channel/elsewhere", """{"token":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_action", "", _Door.ProfileSecret },
+        // AC-1571: a plugin's storage reads every set credential, nested ones too, as kept; a kept one sent to another address
+        // asks for the key again, and the audit of a write names its keys and never a value.
+        { "GET", "/api/v1/plugins/private/storage", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"apiToken\":\"(set on the server)\"", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"botToken":"{secret}","label":"new"},"secrets":["botToken"]}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"instances":[{"url":"https://elsewhere.example","apiToken":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -731,6 +741,15 @@ public sealed class BackendApiDoorTests
         // hold this value, beside the stub's profiles.
         public const string ProfileSecret = "sk-door-profile-secret-7f3a9c21";
 
+        public PluginStorage PrivateStorage { get; } = new(
+            new Dictionary<string, string>
+            {
+                ["botToken"] = JsonSerializer.Serialize(ProfileSecret),
+                ["instances"] = $$"""[{"url":"https://tracker.example","apiToken":"{{ProfileSecret}}"}]""",
+                ["label"] = "\"old\"",
+            },
+            _ => { });
+
         public const string KeyedProfile = "Keyed";
 
         public static IReadOnlyList<ProfileEnvironmentVariable> KeyedVariables { get; } =
@@ -813,6 +832,16 @@ public sealed class BackendApiDoorTests
             var channels = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
             channels.Handle("private", "connect", (_, _) => Task.FromResult(JsonDocument.Parse("""{"connected":true}""").RootElement));
             services.AddSingleton(channels);
+            // AC-1571: "private" runs, with a credential at the top and one nested under an address, as YouTrack keeps its.
+            var manager = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics(false));
+            manager.LoadAndConfigure(
+                [new DiscoveredPlugin(@"C:\server\plugins\private", "private", new PluginManifest("private", "Private", "1.0.0", "Private.dll", 3, null, null, null, null), "private-hash", PluginLoadDecision.Load)],
+                new ServiceCollection(),
+                _ => Substitute.For<ICockpitPlugin>());
+            var host = Substitute.For<ICockpitHost>();
+            host.Storage.Returns(PrivateStorage);
+            manager.Initialize((_, _) => host);
+            services.AddSingleton(manager);
             services.AddSingleton(Restart);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
