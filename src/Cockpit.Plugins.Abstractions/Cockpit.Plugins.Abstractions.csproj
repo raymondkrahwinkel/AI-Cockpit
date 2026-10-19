@@ -523,7 +523,10 @@
     <!-- 3.11.0 (AC-1502): IBackupTarget.DeleteAsync (default false, "cannot delete"), so retention can prune a target.
          No plugin registers a target yet, so none raises minHostVersion. Additive — a minor; the major and
          abstractionsVersion stay 3. (3.10.0 is taken on main.) -->
-    <Version>3.11.0</Version>
+    <!-- 3.12.0 (AC-1504): the capability first-start.routes in CapabilityCatalog, the row for ICockpitUiHost.AddFirstStartRoute
+         (Cockpit.Plugins.Abstractions.UI 3.4.0). A plugin that calls it sets minHostVersion 0.94.0. Additive — a minor; the
+         major and abstractionsVersion stay 3. -->
+    <Version>3.12.0</Version>
     <AssemblyVersion>1.11.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
