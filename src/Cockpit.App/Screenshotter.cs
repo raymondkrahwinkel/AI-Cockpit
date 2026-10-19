@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -1321,7 +1322,7 @@ internal static class Screenshotter
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
-        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+        var profileList = dialog.GetLogicalDescendants().OfType<ProfilesEditor>().FirstOrDefault()?.FindControl<ListBox>("ProfilesList")
             ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
         profileList.SelectedItem = profiles.SelectedProfile;
 
@@ -1368,7 +1369,7 @@ internal static class Screenshotter
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
-        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+        var profileList = dialog.GetLogicalDescendants().OfType<ProfilesEditor>().FirstOrDefault()?.FindControl<ListBox>("ProfilesList")
             ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
         profileList.SelectedItem = profiles.SelectedProfile;
         if (focusProfile)

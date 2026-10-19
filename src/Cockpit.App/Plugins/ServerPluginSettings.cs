@@ -6,7 +6,9 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.App.Plugins;
@@ -34,7 +36,8 @@ internal sealed class ServerPluginSettings
         string folderId,
         IReadOnlyDictionary<string, string> seed,
         ICockpitUiHost local,
-        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+        IReadOnlyDictionary<string, string?> managedClis)
     {
         _relay = relay;
         _folderId = folderId;
@@ -48,7 +51,8 @@ internal sealed class ServerPluginSettings
                 await relay.GetMcpServerAuthStateAsync(folderId, name, cancellationToken).ConfigureAwait(false), ignoreCase: true, out var state)
                 ? state
                 : PluginMcpAuthState.Unknown,
-            profiles);
+            profiles,
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)));
     }
 
     public Func<Control> CreateView => _host.CreateSettingsView ?? throw new InvalidOperationException("The plugin registered no settings view.");
@@ -61,7 +65,7 @@ internal sealed class ServerPluginSettings
         string folderId,
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, await ServerManagedClis.ReadAsync(relay, folderId));
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return null;
@@ -69,6 +73,24 @@ internal sealed class ServerPluginSettings
 
         ui.InitializeUi(settings._host);
         return settings._host.HasSettings ? settings : null;
+    }
+
+    // AC-1585: the profile config views a fresh copy of the UI part registers, each reaching the plugin on the server.
+    public static async Task<IReadOnlyDictionary<string, Func<string?, IPluginProviderConfigView>>> OpenProviderViewsAsync(
+        Type uiType,
+        ICockpitUiHost local,
+        IPluginChannelRelay relay,
+        string folderId,
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
+    {
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, await ServerManagedClis.ReadAsync(relay, folderId));
+        if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
+        {
+            return new Dictionary<string, Func<string?, IPluginProviderConfigView>>();
+        }
+
+        ui.InitializeUi(settings._host);
+        return settings._host.ProviderConfigViews;
     }
 
     // Runs after the view's own commit wrote into the copy's storage; the reason when the server refused or failed.

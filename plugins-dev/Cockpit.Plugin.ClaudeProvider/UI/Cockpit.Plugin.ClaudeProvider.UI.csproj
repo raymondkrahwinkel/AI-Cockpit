@@ -18,6 +18,7 @@
     <Compile Include="..\ClaudeProviderConfig.cs" Link="Contracts\ClaudeProviderConfig.cs" />
     <Compile Include="..\ClaudeManagedCli.cs" Link="Contracts\ClaudeManagedCli.cs" />
     <Compile Include="..\ClaudeExecutableLocator.cs" Link="Contracts\ClaudeExecutableLocator.cs" />
+    <Compile Include="..\ClaudeProviderChannel.cs" Link="Contracts\ClaudeProviderChannel.cs" />
     <Compile Include="..\ClaudeProviderIds.cs" Link="Contracts\ClaudeProviderIds.cs" />
   </ItemGroup>
 

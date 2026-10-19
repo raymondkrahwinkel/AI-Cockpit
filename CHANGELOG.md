@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Options · Server › Profiles** is now the same profile screen as Options › Profiles, with every field it has:
+  purpose, working folder, assistant, system prompt, memory cap, session defaults, default kind and view, delegation,
+  MCP pre-selection, environment variables and the provider's own settings, all stored on the server. Model and MCP
+  lists, the token estimate and the provider's checks come from the server. API keys and secret variables are
+  write-only there; a provider sign-in runs on the server. A Claude profile's config folder and program are picked
+  from what the server itself has.
 - added: a plugin on a server can now be configured before it runs. Settings for a disabled plugin, or one waiting
   for a server restart, are saved on the server and used once it starts.
 - added: Depot's own settings screen now also works for a server's Depot. Under **Options · Server › Plugins ›

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
@@ -13,8 +14,13 @@ namespace Cockpit.Plugin.ClaudeProvider.UI;
 // common case, so nothing is required.
 internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
 {
-    private readonly TextBox _configDir;
-    private readonly TextBox _executablePath;
+    private const string _CheckFailedText = "Could not check this on the machine that runs the profile.";
+
+    private readonly AutoCompleteBox _configDir;
+    private readonly AutoCompleteBox _executablePath;
+    private readonly CancellationTokenSource _lifetime = new();
+    private int _checkTicket;
+    private (string ConfigDir, bool Ok)? _checkedConfigDir;
     private readonly TextBlock _configDirStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _executableStatus = ProviderConfigStatus.CreateLine();
 
@@ -28,17 +34,21 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         _host = host;
         var existing = ClaudeProviderConfig.Parse(existingConfigJson);
         // The panel refreshes the executable-status line after install/remove, so the two never disagree.
-        _managedCli = new ManagedCliConfigSection(host, ClaudeManagedCli.CliName, "Claude CLI", _UpdateExecutableStatus);
+        _managedCli = new ManagedCliConfigSection(host, ClaudeManagedCli.CliName, "Claude CLI", _RequestCheck);
 
-        _configDir = new TextBox
+        _configDir = new AutoCompleteBox
         {
+            MinimumPrefixLength = 0,
+            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
             Text = existing.ConfigDir ?? string.Empty,
             PlaceholderText = "Blank = the machine's own ~/.claude login",
         };
-        _executablePath = new TextBox
+        _executablePath = new AutoCompleteBox
         {
+            MinimumPrefixLength = 0,
+            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
             Text = existing.ExecutablePath ?? string.Empty,
-            PlaceholderText = "Blank = \"claude\" resolved against PATH",
+            PlaceholderText = "Blank = automatic: the managed copy, else \"claude\" on PATH",
         };
 
         View = new StackPanel
@@ -58,57 +68,106 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
 
         // Live per-field feedback (#45): auto-detect the claude executable on PATH and flag a config directory that
         // does not exist — the two things that silently make a profile unusable.
-        _configDir.TextChanged += (_, _) => _UpdateConfigDirStatus();
-        _executablePath.TextChanged += (_, _) => _UpdateExecutableStatus();
-        _UpdateConfigDirStatus();
-        _UpdateExecutableStatus();
+        _configDir.TextChanged += (_, _) => _RequestCheck();
+        _executablePath.TextChanged += (_, _) => _RequestCheck();
+        _RequestCheck();
+        _ = _LoadChoicesAsync();
     }
 
-    // Flags a non-empty config directory that does not exist (the one field that blocks saving); blank is fine (the machine's own ~/.claude login).
-    private void _UpdateConfigDirStatus()
+    // The profile may live on another machine than this view, so the backend part does the file-system checks.
+    private void _RequestCheck()
     {
-        var configDir = _configDir.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrEmpty(configDir))
+        var request = new ClaudeCheckConfigRequest(_configDir.Text?.Trim(), _executablePath.Text?.Trim());
+        var ticket = ++_checkTicket;
+        _checkedConfigDir = null;
+        _ = _CheckAsync(request, ticket);
+    }
+
+    private async Task _CheckAsync(ClaudeCheckConfigRequest request, int ticket)
+    {
+        ClaudeCheckConfigAnswer? answer = null;
+        try
         {
-            _configDirStatus.IsVisible = false;
+            var payload = JsonSerializer.SerializeToElement(request, ClaudeProviderChannel.Json);
+            var raw = await _host.Channel.InvokeAsync(ClaudeProviderChannel.CheckConfig, payload, _lifetime.Token);
+            answer = raw.Deserialize<ClaudeCheckConfigAnswer>(ClaudeProviderChannel.Json);
+        }
+        catch (Exception)
+        {
+            // Not blocking: an unreachable backend must not stop the operator from saving.
+        }
+
+        // Posted, so nothing awaits it: a failure shows on the status line instead of stopping the UI thread.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ticket != _checkTicket)
+            {
+                return;
+            }
+
+            try
+            {
+                _ApplyAnswer(request, answer);
+            }
+            catch (Exception)
+            {
+                _executableStatus.IsVisible = true;
+                ProviderConfigStatus.Set(_executableStatus, _CheckFailedText, isOk: true);
+            }
+        });
+    }
+
+    private void _ApplyAnswer(ClaudeCheckConfigRequest request, ClaudeCheckConfigAnswer? answer)
+    {
+        if (answer is null)
+        {
+            _checkedConfigDir = null;
+            _configDirStatus.IsVisible = !string.IsNullOrEmpty(request.ConfigDir);
+            ProviderConfigStatus.Set(_configDirStatus, _CheckFailedText, isOk: true);
+            _executableStatus.IsVisible = true;
+            ProviderConfigStatus.Set(_executableStatus, _CheckFailedText, isOk: true);
             return;
         }
 
-        _configDirStatus.IsVisible = true;
-        if (Directory.Exists(configDir))
+        _checkedConfigDir = (request.ConfigDir ?? string.Empty, answer.ConfigDirOk);
+        _configDirStatus.IsVisible = answer.ConfigDirText is not null;
+        if (answer.ConfigDirText is not null)
         {
-            ProviderConfigStatus.Set(_configDirStatus, "Folder found.", isOk: true);
+            ProviderConfigStatus.Set(_configDirStatus, answer.ConfigDirText, answer.ConfigDirOk);
         }
-        else
-        {
-            ProviderConfigStatus.Set(_configDirStatus, "Folder does not exist — the profile cannot be saved until it does.", isOk: false);
-        }
+
+        _executableStatus.IsVisible = true;
+        ProviderConfigStatus.Set(_executableStatus, answer.ExecutableText, answer.ExecutableOk);
     }
 
-    // Resolves the claude executable exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
-    // line, what will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
-    private void _UpdateExecutableStatus()
+    private async Task _LoadChoicesAsync()
     {
-        var command = _executablePath.Text?.Trim() is { Length: > 0 } path ? path : "claude";
-        var isPinned = Path.IsPathRooted(command);
-        var resolved = ClaudeExecutableLocator.Resolve(command, _host.ResolveManagedCliPath);
-        var managedPath = _host.ResolveManagedCliPath(ClaudeManagedCli.CliName);
+        try
+        {
+            var raw = await _host.Channel.InvokeAsync(ClaudeProviderChannel.ConfigChoices, JsonSerializer.SerializeToElement(new { }), _lifetime.Token);
+            var answer = raw.Deserialize<ClaudeConfigChoicesAnswer>(ClaudeProviderChannel.Json);
+            if (answer is null)
+            {
+                return;
+            }
 
-        if (!isPinned && !string.IsNullOrEmpty(managedPath) && string.Equals(resolved, managedPath, StringComparison.Ordinal))
-        {
-            ProviderConfigStatus.Set(_executableStatus, $"Managed by Cockpit — this copy is used: {resolved}", isOk: true);
+            var dirs = answer.ConfigDirs.Select(choice => choice.ConfigDir).Where(dir => dir.Length > 0).Distinct().ToList();
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    _configDir.ItemsSource = dirs;
+                    _executablePath.ItemsSource = answer.Executables;
+                }
+                catch (Exception)
+                {
+                    // Suggestions are a convenience; the fields still take free text.
+                }
+            });
         }
-        else if (isPinned && File.Exists(resolved))
+        catch (Exception)
         {
-            ProviderConfigStatus.Set(_executableStatus, $"Using pinned path (not managed): {resolved}", isOk: true);
-        }
-        else if (Path.IsPathRooted(resolved) && File.Exists(resolved))
-        {
-            ProviderConfigStatus.Set(_executableStatus, $"Found on PATH (not managed): {resolved}", isOk: true);
-        }
-        else
-        {
-            ProviderConfigStatus.Set(_executableStatus, "Not found — install it below, put claude on PATH, or paste an absolute path.", isOk: false);
+            // Suggestions are a convenience; free text still works without them.
         }
     }
 
@@ -118,8 +177,8 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         var executablePath = _executablePath.Text?.Trim();
 
         // A given config directory must exist — a typo here silently sends the CLI to an empty config and a
-        // logged-out session, so it is the one thing worth validating. Both fields blank is valid (a default session).
-        if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+        // logged-out session. Only a finished check for the current text can say no; a pending or failed one never blocks.
+        if (!string.IsNullOrEmpty(configDir) && _checkedConfigDir is { Ok: false } checkedDir && checkedDir.ConfigDir == configDir)
         {
             configJson = string.Empty;
             return false;
