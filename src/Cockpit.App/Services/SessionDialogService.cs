@@ -569,7 +569,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             {
                 var footer = PluginDialogHost.BuildSettingsFooter(window, view, onSaved: null, persist);
                 DockPanel.SetDock(footer, Dock.Bottom);
-                window.Content = new DockPanel { Children = { footer, new ScrollViewer { Content = view, Padding = new Thickness(16) } } };
+                (window.Width, window.Height) = (720, 560);
+                window.Content = new DockPanel { Children = { footer, PluginSettingsBodyBuilder.Build(view).Content } };
             }
 
             CockpitWindowChrome.Apply(window, title);
