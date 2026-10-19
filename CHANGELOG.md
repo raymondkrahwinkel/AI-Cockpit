@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin on a server can now be configured before it runs. Settings for a disabled plugin, or one waiting
+  for a server restart, are saved on the server and used once it starts.
 - added: Depot's own settings screen now also works for a server's Depot. Under **Options · Server › Plugins ›
   Depot › Settings** you see the server's connections with whether each is signed in, sign one in with an
   installation token, and remove one. Signing in through a browser is not offered there, because the server has none.
@@ -80,6 +82,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's
+  Proxmox that is the server, not this desktop.
 - fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.12.1.
 - fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the
   consent step, which shows the server's own SHA-256 of the plugin, and the server pins only that hash.

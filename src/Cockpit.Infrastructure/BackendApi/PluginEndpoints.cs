@@ -157,18 +157,19 @@ internal static class PluginEndpoints
             }
         }).RequireAdmin();
 
-        // AC-1571: the storage slice a plugin's own settings view reads, from the storage its running backend part reads, so
-        // the next Set of that plugin cannot overwrite what was saved here. Every set credential reads as KeptSecret.
+        // AC-1571: the storage slice a plugin's own settings view reads. Every set credential reads as KeptSecret.
         api.MapGet("/plugins/{folderId}/storage", async (string folderId, CancellationToken cancellationToken) =>
         {
-            if (_LiveStorage(services, folderId) is not var (pluginId, storage))
+            if (await _OpenStorageAsync(services, folderId, cancellationToken).ConfigureAwait(false) is not { } opened)
             {
-                return _NotRunning();
+                return _NotInstalled();
             }
 
-            var slice = _Slice(storage.Snapshot());
-            ProfileEndpoints.Mask(slice, _IsSecret);
-            await _AuditAsync(services, "api:get_plugin_storage", cancellationToken, pluginId).ConfigureAwait(false);
+            using var hold = opened;
+
+            var slice = _Slice(opened.Storage.Snapshot());
+            ProfileEndpoints.Mask(slice, opened.IsSecret);
+            await _AuditAsync(services, "api:get_plugin_storage", cancellationToken, opened.PluginId).ConfigureAwait(false);
             return Results.Json(slice, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
@@ -182,14 +183,17 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The storage request is invalid.");
             }
 
-            if (_LiveStorage(services, folderId) is not var (pluginId, storage))
+            if (await _OpenStorageAsync(services, folderId, cancellationToken).ConfigureAwait(false) is not { } opened)
             {
-                return _NotRunning();
+                return _NotInstalled();
             }
+
+            using var hold = opened;
 
             // The whole slice as it reads after the change, untouched credentials as kept: the address rule then also sees a
             // `url` key changed beside a `token` key the request left alone.
-            bool isSecret(string name) => _IsSecret(name) || secrets.Contains(name);
+            var (pluginId, storage) = (opened.PluginId, opened.Storage);
+            bool isSecret(string name) => opened.IsSecret(name) || secrets.Contains(name);
             var held = _Slice(storage.Snapshot());
             foreach (var key in removed)
             {
@@ -226,6 +230,7 @@ internal static class PluginEndpoints
                 storage.Remove(key);
             }
 
+            await opened.Written().ConfigureAwait(false);
             var changed = string.Join(", ", values.Select(property => property.Key).Concat(removed));
             await _AuditAsync(services, "api:set_plugin_storage", cancellationToken, $"{pluginId}: {changed}").ConfigureAwait(false);
             return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
@@ -247,18 +252,69 @@ internal static class PluginEndpoints
 
     private static bool _IsSecret(string name) => SecretKeyHolder.Shared.Fields.IsSecret(name);
 
+    private static IResult _NotInstalled() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
 
     private static IResult _NotRunning() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not running on the server; enable it and restart the server first.");
 
-    // The storage the plugin's backend part holds, only while it runs: writing the file under a running plugin would be
-    // undone by its next Set, and a plugin that is not running has no one to read it yet.
-    private static (string PluginId, PluginStorage Storage)? _LiveStorage(IServiceProvider services, string folderId) =>
-        services.GetService<PluginManager>() is { } manager
-        && manager.HostOf(folderId)?.Storage is PluginStorage storage
-        && manager.Loaded.FirstOrDefault(plugin => string.Equals(plugin.FolderId, folderId, StringComparison.Ordinal)) is { } loaded
-            ? (loaded.Manifest.Id, storage)
-            : null;
+    // AC-1571: a running plugin's own storage, so its next Set cannot overwrite what was saved here; for an installed one
+    // that is not running (disabled, or waiting for a restart) and was consented to, its slice in the server's cockpit.json,
+    // read when it starts. `Written` waits for those file writes; a credential its manifest declares counts as one either way.
+    private static async Task<OpenedStorage?> _OpenStorageAsync(IServiceProvider services, string folderId, CancellationToken cancellationToken)
+    {
+        var manager = services.GetService<PluginManager>();
+        if (manager?.HostOf(folderId)?.Storage is PluginStorage live
+            && manager.Loaded.FirstOrDefault(plugin => string.Equals(plugin.FolderId, folderId, StringComparison.Ordinal)) is { } loaded)
+        {
+            return new OpenedStorage(loaded.Manifest.Id, live, _IsSecret, () => Task.CompletedTask, null);
+        }
+
+        // A plugin awaiting consent has no registration; writing its slice would make one and change what it awaits.
+        var installed = await services.GetRequiredService<IPluginAdministration>().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
+        if (installed.FirstOrDefault(plugin => string.Equals(plugin.Discovered.FolderId, folderId, StringComparison.Ordinal)) is not { Registration: not null } plugin)
+        {
+            return null;
+        }
+
+        // The file has no Set of its own to serialise writes: one load-change-write at a time, or two saves lose one.
+        // ponytail: one gate for every not-running plugin; per plugin if admins ever configure several at once.
+        await SliceFiles.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Declared before anything is written, as a loaded plugin's are at startup, so an encrypted store protects them.
+            var declared = plugin.Discovered.Manifest.SecretKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (declared.Count > 0)
+            {
+                SecretKeyHolder.Shared.Declare(declared);
+            }
+
+            var store = services.GetRequiredService<IPluginRegistrationStore>();
+            var secretFields = services.GetRequiredService<IPluginSecretFieldStore>();
+            var writes = new List<Task>();
+            var storage = new PluginStorage(
+                await store.LoadDataAsync(folderId, cancellationToken).ConfigureAwait(false),
+                data => writes.Add(store.SaveDataAsync(folderId, data, CancellationToken.None)),
+                key =>
+                {
+                    SecretKeyHolder.Shared.Declare([key]);
+                    writes.Add(secretFields.DeclareAsync(folderId, [key], CancellationToken.None));
+                });
+            return new OpenedStorage(plugin.Discovered.Manifest.Id, storage, name => _IsSecret(name) || declared.Contains(name), () => Task.WhenAll(writes), SliceFiles);
+        }
+        catch
+        {
+            SliceFiles.Release();
+            throw;
+        }
+    }
+
+    private static readonly SemaphoreSlim SliceFiles = new(1, 1);
+
+    private sealed record OpenedStorage(string PluginId, PluginStorage Storage, Func<string, bool> IsSecret, Func<Task> Written, SemaphoreSlim? Gate) : IDisposable
+    {
+        public void Dispose() => Gate?.Release();
+    }
 
     // Each stored value is JSON text; a value that does not parse goes as the text it is.
     private static JsonObject _Slice(IReadOnlyDictionary<string, string> values)

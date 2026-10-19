@@ -24,7 +24,7 @@ plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	6
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
-plugins-dev/Cockpit.Plugin.Proxmox.Tests	12
+plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
 plugins-dev/Cockpit.Plugin.Schedules.Tests	23
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
 plugins-dev/Cockpit.Plugin.Slack.Tests	26
@@ -35,6 +35,6 @@ plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1477
 tests/Cockpit.Backend.Tests	71
 tests/Cockpit.Core.Tests	1001
-tests/Cockpit.Infrastructure.Tests	668
+tests/Cockpit.Infrastructure.Tests	669
 tests/Cockpit.Journeys	13
 tests/Cockpit.PluginEndpointAnnotations.Tests	2
