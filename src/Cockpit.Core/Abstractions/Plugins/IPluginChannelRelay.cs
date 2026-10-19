@@ -16,6 +16,11 @@ public interface IPluginChannelRelay
     Task<IReadOnlyDictionary<string, string>> GetStorageAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// What the plugin's host on the server says about an MCP server that plugin registered, as the name of its auth state; never a token.
+    /// </summary>
+    Task<string> GetMcpServerAuthStateAsync(string folderId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes the keys a settings view changed and removes the ones it removed; <paramref name="secrets"/> names those it
     /// wrote as a credential. A value still reading "(set on the server)" keeps what the server holds.
     /// </summary>

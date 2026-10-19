@@ -70,6 +70,19 @@ internal sealed class RemotePluginAdministration(BackendApiClient client) : IPlu
         await client.SendAsync<JsonObject>(HttpMethod.Put, _StoragePath(folderId), new { values, removed, secrets }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<string> GetMcpServerAuthStateAsync(string folderId, string name, CancellationToken cancellationToken = default)
+    {
+        var answer = await client.SendAsync<RemoteAuthState>(
+            HttpMethod.Get,
+            $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/auth-state",
+            null,
+            ConnectKeyEndpoints.Json,
+            cancellationToken).ConfigureAwait(false);
+        return answer.State;
+    }
+
+    private sealed record RemoteAuthState(string State);
+
     private static string _StoragePath(string folderId) => $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/storage";
 
     public async Task RestartAsync(CancellationToken cancellationToken = default)
