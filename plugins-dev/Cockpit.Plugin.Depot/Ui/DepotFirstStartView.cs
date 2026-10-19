@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -88,7 +89,7 @@ internal sealed class DepotFirstStartView : UserControl
         var latest = answer.Backups?.FirstOrDefault();
         _restore.Content = _Choice(
             "Restore my latest backup",
-            latest is null ? "There is no backup in your Depot yet." : $"Made {latest.CreatedAt.ToLocalTime():d MMM yyyy, HH:mm}, {_Size(latest.Size)}. The cockpit restarts with it.");
+            latest is null ? "There is no backup in your Depot yet." : $"Made {latest.CreatedAt.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)}, {_Size(latest.Size)}. The cockpit restarts with it.");
         _restore.IsEnabled = latest is not null;
         _setUp.Content = _Choice("Set up from my profile and organisation", "Installs what your organisation chose for you, after you have seen what that is.");
         _setUp.IsVisible = answer.Manifest is not null;
@@ -167,7 +168,7 @@ internal sealed class DepotFirstStartView : UserControl
         },
     };
 
-    private static string _Size(long bytes) => bytes < 1024 * 1024 ? $"{Math.Max(1, bytes / 1024)} KB" : $"{bytes / (1024.0 * 1024):0.#} MB";
+    private static string _Size(long bytes) => bytes < 1024 * 1024 ? $"{Math.Max(1, bytes / 1024)} KB" : string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.#} MB");
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 }
