@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Backup;
+using Cockpit.Plugins.Abstractions.Backup;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
@@ -17,8 +19,10 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
 
     public IReadOnlyList<string> Intervals { get; } = [Daily, Weekly];
 
-    // One target until a plugin can register another (AC-1508); the list is here so that is a row, not a redesign.
-    public IReadOnlyList<string> Targets { get; } = ["Local folder"];
+    private static readonly BackupDestination LocalFolder = new("Local folder", BackupSchedule.LocalFolderTargetId);
+
+    // The local folder plus what plugins registered (AC-1508), refreshed when Options opens.
+    public ObservableCollection<BackupDestination> Targets { get; } = [LocalFolder];
 
     [ObservableProperty]
     private bool _enabled;
@@ -30,7 +34,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
     private int _keep = 7;
 
     [ObservableProperty]
-    private string _target = "Local folder";
+    private BackupDestination? _target = LocalFolder;
 
     // What the last scheduled run left behind: the failure that is still standing, or nothing.
     [ObservableProperty]
@@ -50,6 +54,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
             Enabled = _loaded.Enabled;
             Interval = _loaded.IntervalHours >= BackupSchedule.WeeklyHours ? Weekly : Daily;
             Keep = _loaded.KeepAtLeastOne;
+            Target = _TargetFor(_loaded.TargetId);
             Status = state.LastFailure ?? string.Empty;
         }
         finally
@@ -64,6 +69,41 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
 
     partial void OnKeepChanged(int value) => _Save();
 
+    partial void OnTargetChanged(BackupDestination? value) => _Save();
+
+    public void RefreshTargets(IEnumerable<IBackupTarget> registered)
+    {
+        _loading = true;
+        try
+        {
+            Targets.Clear();
+            Targets.Add(LocalFolder);
+            foreach (var target in registered)
+            {
+                Targets.Add(new BackupDestination(target.DisplayName, target.Id, target));
+            }
+
+            Target = _TargetFor(_loaded.TargetId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // A saved target whose plugin is not here stays chosen under its id, rather than quietly becoming the local folder.
+    private BackupDestination _TargetFor(string id)
+    {
+        if (Targets.FirstOrDefault(target => target.Id == id) is { } known)
+        {
+            return known;
+        }
+
+        var missing = new BackupDestination($"{id} (not available)", id);
+        Targets.Add(missing);
+        return missing;
+    }
+
     private void _Save()
     {
         if (_loading)
@@ -76,6 +116,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
             Enabled = Enabled,
             IntervalHours = Interval == Weekly ? BackupSchedule.WeeklyHours : BackupSchedule.DailyHours,
             Keep = Math.Max(1, Keep),
+            TargetId = Target?.Id ?? BackupSchedule.LocalFolderTargetId,
         };
 
         Saving = _SaveAsync(_loaded);

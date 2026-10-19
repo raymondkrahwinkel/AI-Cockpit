@@ -2312,6 +2312,18 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <StackPanel x:Name="BackupDestinationRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,10,0,0">
+                            <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding BackupDestinations}" SelectedItem="{Binding BackupDestination}" MinWidth="240"
+                                      ToolTip.Tip="A file you pick on this machine, or a place a plugin keeps backups for you, such as your Depot account. Create backup writes there; Restore reads from there."/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsBackupToTarget}">
+                            <TextBlock Text="Backup to restore" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding TargetBackups}" SelectedItem="{Binding TargetBackup}" MinWidth="240"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TargetBackupsStatus}" IsVisible="{Binding TargetBackupsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
                             <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
@@ -2345,7 +2357,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>
-                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Targets}" SelectedItem="{Binding ScheduledBackupSettings.Target}" Width="140"/>
+                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Targets}" SelectedItem="{Binding ScheduledBackupSettings.Target}" MinWidth="240"/>
                             </StackPanel>
                             <TextBlock Classes="immediate" Text="Saved as you change it and not undone by Cancel."/>
                             <TextBlock Text="{Binding ScheduledBackupSettings.Status}"

@@ -876,4 +876,24 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>
+    /// Registers a place a cockpit backup can be kept (AC-1508). The operator picks it beside the local file in
+    /// Options → Backup, and a scheduled backup can write to it; the host builds the archive and restores from it.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by <see cref="Backup.IBackupTarget.Id"/>: a second registration under an id already taken is ignored.
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void AddBackupTarget(Backup.IBackupTarget target)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the backup target registered under <paramref name="id"/>, for a target whose place is gone — a
+    /// connection the operator removed. An unknown id is a no-op, and so is the default.
+    /// </summary>
+    void RemoveBackupTarget(string id)
+    {
+    }
+
 }

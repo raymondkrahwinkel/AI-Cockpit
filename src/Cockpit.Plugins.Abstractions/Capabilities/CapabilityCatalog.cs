@@ -160,6 +160,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "backup.target",
+            "Keeping the cockpit's backups",
+            "Keeps whole backups of the cockpit somewhere the operator picks, and hands them back for a restore.",
+            CapabilityRisk.Sensitive,
+            "0.96.0",
+            ["ICockpitHost.AddBackupTarget", "ICockpitHost.RemoveBackupTarget"],
+            []),
+
+        new(
             "first-start.routes",
             "A way to begin on the first start",
             "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",

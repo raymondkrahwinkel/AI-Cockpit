@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
@@ -19,6 +20,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
@@ -250,6 +252,12 @@ public class PluginBackendHost(
 
     public void AddSettingsCarrier(SettingsCarrierRegistration registration) =>
         services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
+
+    public void AddBackupTarget(IBackupTarget target) =>
+        services.GetRequiredService<BackupTargets>().Add(pluginId, target);
+
+    public void RemoveBackupTarget(string id) =>
+        services.GetRequiredService<BackupTargets>().Remove(id);
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {

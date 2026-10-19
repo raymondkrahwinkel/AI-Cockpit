@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Depot as a place for your backups.** Under Options → Backup, **Where to** now offers each Depot connection
+  beside a file. A backup goes to your own account space in Depot, **Restore** lists what is there, and the scheduled
+  backup can write there too. A backup that did not arrive whole is removed and reported, never listed; one larger than
+  Depot accepts is refused with Depot's reason; a connection that is not signed in says so.
+
 - added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
   sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the
