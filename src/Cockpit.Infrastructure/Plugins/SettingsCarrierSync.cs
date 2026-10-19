@@ -94,7 +94,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     }
 
     // What a run took over, written while the backend is built: before anything reads the settings into memory, which
-    // would save the old value back. A key the operator changed after it was taken over keeps the operator's value.
+    // would save the old value back. A key changed here since, or one this build cannot write, becomes a choice instead.
     public static async Task ApplyIncomingAsync(string configFilePath, ILogger logger, CancellationToken cancellationToken = default)
     {
         var statePath = _StatePathFor(configFilePath);
@@ -106,20 +106,42 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         var configFile = new CockpitConfigFileAccess(configFilePath);
         var local = await _ReadLocalAsync(configFile, cancellationToken).ConfigureAwait(false);
-        var apply = state.Incoming
-            .Where(pair => _Same(local.Units.GetValueOrDefault(pair.Key)?.Text, pair.Value.Was) && !local.Managed.Contains(pair.Key))
-            .ToDictionary(pair => pair.Key, pair => pair.Value.Value, StringComparer.Ordinal);
+        var apply = new Dictionary<string, _Incoming>(StringComparer.Ordinal);
+        foreach (var (key, taken) in state.Incoming)
+        {
+            var mine = local.Units.GetValueOrDefault(key)?.Text;
+            if (_IsManaged(key, local.Managed))
+            {
+                continue;
+            }
+
+            if (_Same(mine, taken.Was))
+            {
+                apply[key] = taken;
+            }
+            else
+            {
+                state.Conflicts[key] = new _Conflict(mine, taken.Value, taken.Steps);
+            }
+        }
+
+        var failed = new List<string>();
         if (apply.Count > 0)
         {
-            await configFile.UpdateAsync(file => _Apply(file, apply), cancellationToken).ConfigureAwait(false);
-            logger.LogInformation("Took over {Count} settings from the settings carrier: {Keys}", apply.Count, string.Join(", ", apply.Keys));
+            await configFile.UpdateAsync(file => failed = _Apply(file, apply, logger), cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Took over {Count} settings from the settings carrier: {Keys}", apply.Count - failed.Count, string.Join(", ", apply.Keys.Except(failed)));
+        }
+
+        foreach (var key in failed)
+        {
+            state.Conflicts[key] = new _Conflict(local.Units.GetValueOrDefault(key)?.Text, apply[key].Value, apply[key].Steps);
         }
 
         state.Incoming.Clear();
         _SaveState(statePath, state);
     }
 
-    public IReadOnlyList<SettingsConflict> Conflicts => [.. _LoadState().Conflicts.Values];
+    public IReadOnlyList<SettingsConflict> Conflicts => [.. _LoadState().Conflicts.Select(pair => new SettingsConflict(pair.Key, pair.Value.Mine, pair.Value.Theirs))];
 
     // The operator's answer per key: true keeps this machine's value (pushed next), false takes the other one (at the next
     // start). A key left out stays a choice to make.
@@ -142,7 +164,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
                 _SetOrRemove(state.Base ??= new Dictionary<string, string>(StringComparer.Ordinal), key, conflict.Theirs);
                 if (!mine)
                 {
-                    state.Incoming[key] = new _Incoming(conflict.Theirs, local.Units.GetValueOrDefault(key)?.Text);
+                    state.Incoming[key] = new _Incoming(conflict.Theirs, local.Units.GetValueOrDefault(key)?.Text, conflict.Steps);
                     tookTheirs++;
                 }
             }
@@ -243,32 +265,36 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         var push = new Dictionary<string, string?>(StringComparer.Ordinal);
         var incoming = 0;
-        var newConflicts = new List<SettingsConflict>();
+        var newConflicts = 0;
         foreach (var key in remote.Keys.Union(local.Units.Keys).Union(baseline.Keys).Distinct(StringComparer.Ordinal))
         {
             // A managed key is the manifest's (AC-1507): never pushed, never taken over.
-            if (local.Managed.Contains(key) || state.Conflicts.ContainsKey(key))
+            if (_IsManaged(key, local.Managed) || state.Conflicts.ContainsKey(key))
             {
                 continue;
             }
 
-            var isElement = (remote.GetValueOrDefault(key) ?? local.Units.GetValueOrDefault(key))?.IsElement ?? _IsElementKey(key);
+            var unit = remote.GetValueOrDefault(key) ?? local.Units.GetValueOrDefault(key);
+            var isElement = unit?.IsElement ?? _IsElementKey(key);
             var theirs = remote.GetValueOrDefault(key)?.Text;
             var was = baseline.GetValueOrDefault(key);
             var mine = local.Units.GetValueOrDefault(key)?.Text;
-            if (state.Incoming.TryGetValue(key, out var taken))
+
+            // A key taken over and then changed here before the next start: the base already moved, so it is a choice.
+            if (state.Incoming.Remove(key, out var taken) && !_Same(mine, taken.Was))
             {
-                if (_Same(mine, taken.Was))
-                {
-                    mine = taken.Value;
-                }
-                else
-                {
-                    state.Incoming.Remove(key);
-                }
+                state.Conflicts[key] = new _Conflict(mine, theirs, taken.Steps);
+                newConflicts++;
+                continue;
             }
 
-            if (_Same(mine, theirs))
+            if (taken is not null)
+            {
+                state.Incoming[key] = taken;
+                mine = taken.Value;
+            }
+
+            if (_Same(mine, theirs) || unit is null)
             {
                 continue;
             }
@@ -282,14 +308,13 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             }
             else if (theirsChanged && !mineChanged && theirs is not null)
             {
-                state.Incoming[key] = new _Incoming(theirs, local.Units.GetValueOrDefault(key)?.Text);
+                state.Incoming[key] = new _Incoming(theirs, local.Units.GetValueOrDefault(key)?.Text, unit.Steps);
                 incoming++;
             }
             else if (theirsChanged)
             {
-                var conflict = new SettingsConflict(key, mine, theirs);
-                state.Conflicts[key] = conflict;
-                newConflicts.Add(conflict);
+                state.Conflicts[key] = new _Conflict(mine, theirs, unit.Steps);
+                newConflicts++;
             }
         }
 
@@ -322,7 +347,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             _toasts?.Show($"{_Count(incoming)} from your other machine take effect at the next start.", ToastSeverity.Information);
         }
 
-        _SayConflicts(state, newConflicts.Count > 0);
+        _SayConflicts(state, newConflicts > 0);
         return true;
     }
 
@@ -357,7 +382,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         _toldConflicts = true;
         if (OnConflicts is { } onConflicts)
         {
-            onConflicts([.. state.Conflicts.Values]);
+            onConflicts([.. state.Conflicts.Select(pair => new SettingsConflict(pair.Key, pair.Value.Mine, pair.Value.Theirs))]);
         }
         else
         {
@@ -377,50 +402,101 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         return new _Local(_Units(carried), carried.ToJsonString(), new HashSet<string>(file.Provisioning?.Managed.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal));
     }
 
-    private static JsonObject _Carried(JsonObject document) =>
-        JsonNode.Parse(SettingsCarrierWhitelist.Extract(document)) as JsonObject ?? new JsonObject();
-
-    // Writes the taken-over keys into their top-level sections only, so nothing else in the file is touched.
-    private static void _Apply(CockpitConfigFile file, IReadOnlyDictionary<string, string?> values)
+    // The white list's cut, less any address that carries a credential or a query: a token in a git URL stays here.
+    private static JsonObject _Carried(JsonObject document)
     {
-        foreach (var section in values.GroupBy(pair => _Steps(pair.Key)[0].Name, StringComparer.Ordinal))
+        var carried = JsonNode.Parse(SettingsCarrierWhitelist.Extract(document)) as JsonObject ?? new JsonObject();
+        _StripCredentials(carried);
+        return carried;
+    }
+
+    private static void _StripCredentials(JsonNode? node)
+    {
+        if (node is JsonArray array)
         {
-            if (typeof(CockpitConfigFile).GetProperty(section.Key) is not { CanWrite: true } property)
+            foreach (var item in array)
             {
-                continue;
+                _StripCredentials(item);
             }
+        }
 
-            var root = new JsonObject { [section.Key] = JsonSerializer.SerializeToNode(property.GetValue(file), property.PropertyType, CockpitConfigFileAccess.SerializerOptions) };
-            foreach (var (key, value) in section)
+        if (node is not JsonObject obj)
+        {
+            return;
+        }
+
+        foreach (var (name, value) in obj.ToList())
+        {
+            if (value is JsonValue text && text.TryGetValue<string>(out var address) && Uri.TryCreate(address, UriKind.Absolute, out var uri)
+                && (uri.UserInfo.Length > 0 || uri.Query.Length > 1))
             {
-                _Set(root, _Steps(key), value);
+                obj.Remove(name);
             }
-
-            property.SetValue(file, root[section.Key]?.Deserialize(property.PropertyType, CockpitConfigFileAccess.SerializerOptions));
+            else
+            {
+                _StripCredentials(value);
+            }
         }
     }
 
-    // A unit is a white-listed leaf, or one whole profile or project, addressed by its label or id.
+    // Writes each taken-over key into its own top-level section, one key at a time; a key this build cannot write is
+    // returned rather than thrown, so a value from a newer build never stops the cockpit from starting.
+    private static List<string> _Apply(CockpitConfigFile file, IReadOnlyDictionary<string, _Incoming> values, ILogger logger)
+    {
+        var failed = new List<string>();
+        foreach (var (key, taken) in values)
+        {
+            if (typeof(CockpitConfigFile).GetProperty(taken.Steps[0].Name) is not { CanWrite: true } property)
+            {
+                failed.Add(key);
+                continue;
+            }
+
+            try
+            {
+                var root = new JsonObject { [property.Name] = JsonSerializer.SerializeToNode(property.GetValue(file), property.PropertyType, CockpitConfigFileAccess.SerializerOptions) };
+                _Set(root, taken.Steps, taken.Value);
+                property.SetValue(file, root[property.Name]?.Deserialize(property.PropertyType, CockpitConfigFileAccess.SerializerOptions));
+            }
+            catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException or ArgumentException)
+            {
+                logger.LogWarning("Could not take over {Key} from the settings carrier: {Reason}", key, exception.Message);
+                failed.Add(key);
+            }
+        }
+
+        return failed;
+    }
+
+    // A unit is a white-listed leaf as a whole, or one whole profile or project addressed by its label or id.
     private static Dictionary<string, _Unit> _Units(JsonObject carried)
     {
         var units = new Dictionary<string, _Unit>(StringComparer.Ordinal);
-        _Walk(carried, [], units);
+        _Walk(carried, [], string.Empty, units);
         return units;
     }
 
-    private static void _Walk(JsonNode? node, List<_Step> steps, Dictionary<string, _Unit> units)
+    // `pattern` is the white-list path the node sits at, with `*` for a dictionary key.
+    private static void _Walk(JsonNode? node, List<_Step> steps, string pattern, Dictionary<string, _Unit> units)
     {
+        if (steps.Count > 0 && SettingsCarrierWhitelist.IsLeaf(pattern))
+        {
+            units.TryAdd(_Key(steps), new _Unit(steps, node?.ToJsonString() ?? "null", false));
+            return;
+        }
+
         if (node is JsonObject obj)
         {
             foreach (var (name, value) in obj)
             {
-                _Walk(value, [.. steps, new _Step(name, null)], units);
+                var named = pattern.Length == 0 ? name : $"{pattern}.{name}";
+                _Walk(value, [.. steps, new _Step(name, null)], SettingsCarrierWhitelist.Reaches(named) ? named : $"{pattern}.*", units);
             }
 
             return;
         }
 
-        if (node is JsonArray array && steps.Count == 1 && _IsElementKey(steps[0].Name + "."))
+        if (node is JsonArray array && steps.Count == 1)
         {
             foreach (var item in array)
             {
@@ -430,16 +506,16 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
                     units.TryAdd(_Key(at), new _Unit(at, item?.ToJsonString() ?? "null", true));
                 }
             }
-
-            return;
         }
-
-        units.TryAdd(_Key(steps), new _Unit(steps, node?.ToJsonString() ?? "null", false));
     }
 
     // The lists whose items are synced one by one: those the white list reaches into with `[]`.
     private static bool _IsElementKey(string key) =>
         SettingsCarrierWhitelist.Carried.Any(path => path.Contains("[].", StringComparison.Ordinal) && key.StartsWith(path[..path.IndexOf("[]", StringComparison.Ordinal)] + ".", StringComparison.Ordinal));
+
+    // A manifest may manage a whole section or dictionary as well as one leaf in it.
+    private static bool _IsManaged(string key, HashSet<string> managed) =>
+        managed.Contains(key) || managed.Any(path => key.StartsWith(path + ".", StringComparison.Ordinal));
 
     private static string? _ElementId(JsonNode? item) =>
         item is JsonObject obj && (obj["Id"] ?? obj["Label"]) is JsonValue id && id.TryGetValue<string>(out var text) && text.Length > 0 ? text : null;
@@ -447,16 +523,8 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     private static string _Key(IEnumerable<_Step> steps) => string.Join('.', steps.Select(step => step.Element is null ? step.Name : $"{step.Name}.{step.Element}"));
 
     private static List<_Step> _UnitFor(string key, _Local local, Dictionary<string, _Unit> remote) =>
-        (local.Units.GetValueOrDefault(key) ?? remote.GetValueOrDefault(key))?.Steps ?? _Steps(key);
-
-    // Rebuilt from a key alone (a base or incoming entry), where a profile or project is "<list>.<label>".
-    private static List<_Step> _Steps(string key)
-    {
-        var parts = key.Split('.');
-        return _IsElementKey(key)
-            ? [new _Step(parts[0], key[(parts[0].Length + 1)..])]
-            : [.. parts.Select(part => new _Step(part, null))];
-    }
+        (local.Units.GetValueOrDefault(key) ?? remote.GetValueOrDefault(key))?.Steps
+        ?? throw new InvalidOperationException($"No unit for {key}.");
 
     // Null removes. A profile or project is laid over what is there, so what only this machine has stays as it is.
     private static void _Set(JsonObject root, List<_Step> steps, string? json)
@@ -505,7 +573,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         }
         else if (existing is JsonObject target && value is JsonObject source)
         {
-            _Overlay(target, source);
+            _Overlay(target, source, $"{last.Name}[]");
         }
         else
         {
@@ -513,13 +581,16 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         }
     }
 
-    private static void _Overlay(JsonObject target, JsonObject source)
+    // A white-listed leaf is replaced whole, so an entry removed from a dictionary in it stays removed; only the objects
+    // that lead to a leaf are walked into.
+    private static void _Overlay(JsonObject target, JsonObject source, string pattern)
     {
         foreach (var (name, value) in source)
         {
-            if (value is JsonObject inner && target[name] is JsonObject existing)
+            var path = $"{pattern}.{name}";
+            if (!SettingsCarrierWhitelist.IsLeaf(path) && value is JsonObject inner && target[name] is JsonObject existing)
             {
-                _Overlay(existing, inner);
+                _Overlay(existing, inner, path);
             }
             else
             {
@@ -553,7 +624,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         {
             return File.Exists(statePath) ? JsonSerializer.Deserialize<_State>(File.ReadAllText(statePath), StateJson) ?? new _State() : new _State();
         }
-        catch (JsonException exception)
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
         {
             // An unreadable state is a first contact again: a difference becomes a choice, never an overwrite.
             logger.LogWarning(exception, "Settings sync state {Path} is unreadable; starting from no base", statePath);
@@ -571,7 +642,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     private sealed record _Local(Dictionary<string, _Unit> Units, string Text, HashSet<string> Managed);
 
-    private sealed record _Incoming(string? Value, string? Was);
+    private sealed record _Incoming(string? Value, string? Was, List<_Step> Steps);
+
+    private sealed record _Conflict(string? Mine, string? Theirs, List<_Step> Steps);
 
     private sealed class _State
     {
@@ -580,6 +653,6 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         public Dictionary<string, _Incoming> Incoming { get; set; } = new(StringComparer.Ordinal);
 
-        public Dictionary<string, SettingsConflict> Conflicts { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, _Conflict> Conflicts { get; set; } = new(StringComparer.Ordinal);
     }
 }

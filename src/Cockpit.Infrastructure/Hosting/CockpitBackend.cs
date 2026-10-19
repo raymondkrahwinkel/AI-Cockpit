@@ -109,7 +109,16 @@ public sealed class CockpitBackend
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
 
         // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
-        SettingsCarrierSync.ApplyIncomingAsync(CockpitConfigPath.Default, loggerFactory.CreateLogger<SettingsCarrierSync>()).GetAwaiter().GetResult();
+        // A failure is logged and the start goes on: the next run of the sync finds the same difference again.
+        var syncLogger = loggerFactory.CreateLogger<SettingsCarrierSync>();
+        try
+        {
+            SettingsCarrierSync.ApplyIncomingAsync(CockpitConfigPath.Default, syncLogger).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            syncLogger.LogWarning(exception, "Applying the settings taken over from another machine failed");
+        }
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();

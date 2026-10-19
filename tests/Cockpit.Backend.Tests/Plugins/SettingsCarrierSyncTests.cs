@@ -33,6 +33,12 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Equal(new SettingsConflict("Terminal.FontSize", "19", "18"), Assert.Single(b.Sync.Conflicts));
         Assert.Equal(19, _Local(b)["Terminal"]?["FontSize"]?.GetValue<int>());
 
+        // Taken over, then changed here again before the next start: still a choice, never a push over the other value.
+        await b.Sync.ResolveAsync(new Dictionary<string, bool> { ["Terminal.FontSize"] = false });
+        _Write(b, """{"Terminal":{"FontSize":20}}""");
+        await b.Sync.RunOnceAsync();
+        Assert.Equal((new SettingsConflict("Terminal.FontSize", "20", "18"), 18), (Assert.Single(b.Sync.Conflicts), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
+
         // Taking the other machine's value lands at the next start; the carrier is left as it is.
         await b.Sync.ResolveAsync(new Dictionary<string, bool> { ["Terminal.FontSize"] = false });
         await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
@@ -40,15 +46,17 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Equal((18, 18), (_Local(b)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
     }
 
-    // Acceptance 4: a key the manifest manages (AC-1507) is neither pushed nor taken over, while the rest syncs.
+    // Acceptance 4: a key the manifest manages (AC-1507), a leaf or a whole dictionary, is neither pushed nor taken over.
     [Fact]
     public async Task AManagedSetting_IsNeverPushed_NorTakenOver()
     {
         _space.Blob = Encoding.UTF8.GetBytes("""{"Terminal":{"FontSize":20}}""");
         var managed = _Machine("managed", """
             {
-              "Terminal": { "FontSize": 15 }, "Layout": { "ThemeMode": "Light" },
-              "Provisioning": { "Managed": { "Terminal.FontSize": { "By": "Acme", "Value": "15" } } }
+              "Terminal": { "FontSize": 15 }, "Layout": { "ThemeMode": "Light" }, "Shortcuts": { "Gestures": { "NewSession": "Ctrl+Alt+N" } },
+              "Provisioning": { "Managed": {
+                "Terminal.FontSize": { "By": "Acme", "Value": "15" },
+                "Shortcuts.Gestures": { "By": "Acme", "Value": "{\"NewSession\":\"Ctrl+Alt+N\"}" } } }
             }
             """);
 
@@ -59,6 +67,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
 
         Assert.Equal(("Light", 21), (_Remote()["Layout"]?["ThemeMode"]?.GetValue<string>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
         Assert.Equal(15, _Local(managed)["Terminal"]?["FontSize"]?.GetValue<int>());
+        Assert.Null(_Remote()["Shortcuts"]?["Gestures"]);
         Assert.Empty(managed.Sync.Conflicts);
     }
 

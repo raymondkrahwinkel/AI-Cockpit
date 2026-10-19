@@ -72,8 +72,8 @@ internal static class SettingsCarrierWhitelist
                 foreach (var (key, value) in obj)
                 {
                     var named = path.Length == 0 ? key : $"{path}.{key}";
-                    var child = _Reaches(named) ? named : $"{path}.*";
-                    if (_Reaches(child))
+                    var child = Reaches(named) ? named : $"{path}.*";
+                    if (Reaches(child))
                     {
                         kept[key] = _Keep(value, child);
                     }
@@ -87,5 +87,8 @@ internal static class SettingsCarrierWhitelist
         }
     }
 
-    private static bool _Reaches(string path) => _Leaves.Contains(path) || _Ancestors.Contains(path);
+    // Whether a path is a carried leaf, or lies on the way to one.
+    public static bool Reaches(string path) => _Leaves.Contains(path) || _Ancestors.Contains(path);
+
+    public static bool IsLeaf(string path) => _Leaves.Contains(path);
 }
