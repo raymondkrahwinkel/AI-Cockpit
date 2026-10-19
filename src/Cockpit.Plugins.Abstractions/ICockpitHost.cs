@@ -333,7 +333,8 @@ public interface ICockpitHost
     /// </summary>
     /// <remarks>
     /// The host sets the bearer on its own copy of each request, so neither the plugin's request, the response nor
-    /// an exception ever carries the token (Iron Law #8). Only the origin of that server's URL is served (scheme,
+    /// an exception ever carries the token (Iron Law #8); this guards the handler's own surface, not an in-process
+    /// plugin that goes around it. Only the origin of that server's URL is served (scheme,
     /// host and port; <c>ws</c>/<c>wss</c> count as <c>http</c>/<c>https</c>). A request for any other origin, or
     /// for a name that is not one of this plugin's own OAuth servers, throws <see cref="HttpRequestException"/>.
     /// Redirects come back as they are and are never followed. Without a usable credential the answer is a 401

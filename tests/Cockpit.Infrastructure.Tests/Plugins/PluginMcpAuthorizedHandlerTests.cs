@@ -67,6 +67,37 @@ public sealed class PluginMcpAuthorizedHandlerTests
     }
 
     [Fact]
+    public async Task Send_TheRequestIsPointedElsewhereWhileTheCredentialIsFetched_StillGoesOnlyToTheCheckedOrigin()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://depot.example.com/cockpit/inbox");
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Depot, interactive: false, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            request.RequestUri = new Uri("https://evil.example.com/steal");
+            return McpOAuthAccess.Authorized(Token);
+        });
+        var upstream = new _RecordingUpstream();
+        using var invoker = new HttpMessageInvoker(_Handler(coordinator, upstream));
+
+        using var _ = await invoker.SendAsync(request, CancellationToken.None);
+
+        Assert.Equal("depot.example.com", Assert.Single(upstream.Requests).Target?.Host);
+    }
+
+    [Fact]
+    public async Task Send_TheCredentialCannotBeFetched_ThrowsAFixedMessageWithoutTheCause()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Depot, interactive: false, Arg.Any<CancellationToken>())
+            .Returns<McpOAuthAccess>(_ => throw new InvalidOperationException($"token endpoint said {Token}"));
+        using var client = new HttpClient(_Handler(coordinator, new _RecordingUpstream()));
+
+        var refusal = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("https://depot.example.com/cockpit/inbox"));
+
+        Assert.DoesNotContain(Token, refusal.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Send_WithAHostHeaderNamingAnotherSite_DoesNotPassThatHeaderOn()
     {
         var upstream = new _RecordingUpstream();
@@ -198,7 +229,7 @@ public sealed class PluginMcpAuthorizedHandlerTests
             response.RequestMessage?.Headers,
             response.ToString());
 
-    private sealed record _Sent(string? Authorization, string? PluginHeader, string? Host);
+    private sealed record _Sent(string? Authorization, string? PluginHeader, string? Host, Uri? Target);
 
     private sealed class _RecordingUpstream : HttpMessageHandler
     {
@@ -211,7 +242,8 @@ public sealed class PluginMcpAuthorizedHandlerTests
             Requests.Add(new _Sent(
                 request.Headers.Authorization?.ToString(),
                 request.Headers.TryGetValues("X-Plugin", out var values) ? values.Single() : null,
-                request.Headers.Host));
+                request.Headers.Host,
+                request.RequestUri));
 
             // Like SocketsHttpHandler, the response points back at the request it answers: here, the copy.
             var status = RefuseFirst && Requests.Count == 1 ? HttpStatusCode.Unauthorized : HttpStatusCode.OK;

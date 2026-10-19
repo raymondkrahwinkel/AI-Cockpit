@@ -22,7 +22,9 @@ internal sealed class PluginMcpAuthorizedHandler(
         var server = resolveServer()
             ?? throw new HttpRequestException($"'{serverName}' is not an OAuth MCP server this plugin contributed.");
 
-        if (!_IsOriginOf(server, request.RequestUri))
+        // Read once: the plugin still owns the request and could point it elsewhere while a credential is fetched.
+        var target = request.RequestUri;
+        if (!_IsOriginOf(server, target))
         {
             throw new HttpRequestException($"Refused: the request is not for the origin of MCP server '{serverName}'.");
         }
@@ -32,23 +34,23 @@ internal sealed class PluginMcpAuthorizedHandler(
             return _Unauthorized(request);
         }
 
-        var access = await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+        var access = await _AskAsync(() => coordinator.AcquireAsync(server, interactive: false, cancellationToken)).ConfigureAwait(false);
         if (_TokenOf(access) is not { } accessToken)
         {
             return _Unauthorized(request);
         }
 
-        var response = await _SendWithAsync(request, accessToken, cancellationToken).ConfigureAwait(false);
+        var response = await _SendWithAsync(request, target, accessToken, cancellationToken).ConfigureAwait(false);
 
         // ponytail: only a request without a body is sent again, since content may not be readable twice; the
         // credential is renewed either way, so the plugin's own retry carries the new one.
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var renewed = await coordinator.RenewRejectedAsync(server, accessToken, cancellationToken).ConfigureAwait(false);
+            var renewed = await _AskAsync(() => coordinator.RenewRejectedAsync(server, accessToken, cancellationToken)).ConfigureAwait(false);
             if (request.Content is null && _TokenOf(renewed) is { } renewedToken)
             {
                 response.Dispose();
-                response = await _SendWithAsync(request, renewedToken, cancellationToken).ConfigureAwait(false);
+                response = await _SendWithAsync(request, target, renewedToken, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -67,9 +69,9 @@ internal sealed class PluginMcpAuthorizedHandler(
         base.Dispose(disposing);
     }
 
-    private async Task<HttpResponseMessage> _SendWithAsync(HttpRequestMessage request, string accessToken, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> _SendWithAsync(HttpRequestMessage request, Uri? target, string accessToken, CancellationToken cancellationToken)
     {
-        var copy = new HttpRequestMessage(request.Method, request.RequestUri)
+        var copy = new HttpRequestMessage(request.Method, target)
         {
             Version = request.Version,
             VersionPolicy = request.VersionPolicy,
@@ -104,6 +106,19 @@ internal sealed class PluginMcpAuthorizedHandler(
             // The content is the plugin's; disposing the copy must not take it along.
             copy.Content = null;
             copy.Dispose();
+        }
+    }
+
+    // A credential failure can carry a fragment of the token exchange, so the plugin gets a fixed message instead.
+    private static async Task<McpOAuthAccess> _AskAsync(Func<Task<McpOAuthAccess>> ask)
+    {
+        try
+        {
+            return await ask().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new HttpRequestException("The cockpit could not get a credential for this MCP server.");
         }
     }
 
