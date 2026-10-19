@@ -1,8 +1,12 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Cockpit.Core.Profiles;
 
 // AC-1473 (F5.6b3): a server's profile as it crosses the admin connection, with no credential in it. AC-1475:
 // `KnownValues` lists what the provider offers per declared option; a free-form option, or an older server, has none.
 // AC-1534: `ConfigJson` is a plugin profile's own config with every secret field blank; `HasApiKey` says one is set.
+// AC-1585: `Profile` is the whole profile as the editor holds it, each secret reading as the mask; `Full` is it read back.
 public sealed record RemoteProfile(
     string Label,
     string Provider,
@@ -16,7 +20,12 @@ public sealed record RemoteProfile(
     bool ConfiguredOnServer,
     ProfileSignInKind? SignIn,
     IReadOnlyDictionary<string, IReadOnlyList<RemoteOptionValue>>? KnownValues = null,
-    string? ConfigJson = null);
+    string? ConfigJson = null,
+    JsonElement? Profile = null)
+{
+    [JsonIgnore]
+    public SessionProfile? Full { get; init; }
+}
 
 // AC-1475: one value a provider offers for an option, as its descriptor names it.
 public sealed record RemoteOptionValue(string Value, string Label);
@@ -40,6 +49,9 @@ public sealed record RemoteProfilePatch
     public DelegationPolicy? Delegation { get; init; }
 
     public string? ConfigJson { get; init; }
+
+    // AC-1585: the whole profile; the server keeps each secret that reads as the mask. Its label renames.
+    public JsonElement? Profile { get; init; }
 }
 
 // `Names` null is every enabled server, as `SessionProfile.EnabledMcpServerNames` has it.
@@ -47,3 +59,16 @@ public sealed record RemoteMcpSelection(IReadOnlyList<string>? Names);
 
 // AC-1473: a new profile on a server: one of its plugin providers, configured there, plus the settings a change names.
 public sealed record RemoteNewProfile(string Label, string Provider, RemoteProfilePatch? Settings = null);
+
+// AC-1585: a provider a profile on the server can name, as the profile editor needs it. `Owner` is the folder of the
+// plugin that registered it there; none for a provider built into the cockpit.
+public sealed record RemoteProviderInfo(
+    string Id,
+    string Label,
+    string? Owner,
+    bool SupportsEnvVars,
+    bool SupportsPermissions,
+    bool HasTty,
+    IReadOnlyList<RemoteProviderOption> Options);
+
+public sealed record RemoteProviderOption(string Key, string Label, IReadOnlyList<string> Choices, IReadOnlyDictionary<string, string>? ChoiceLabels = null);

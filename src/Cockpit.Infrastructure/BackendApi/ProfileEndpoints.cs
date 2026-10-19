@@ -6,7 +6,11 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -93,9 +97,66 @@ internal static class ProfileEndpoints
             });
         }).RequireOperate();
 
-        api.MapPost("/profiles", (HttpRequest request, CancellationToken cancellationToken) =>
-            _ChangeAsync<RemoteNewProfile>(request, cancellationToken, (body, profiles) =>
+        // AC-1585: what the profile editor offers, read from the server rather than from the desktop that edits.
+        api.MapGet("/profiles/providers", () =>
+        {
+            var registry = services.GetService<IPluginProviderRegistry>();
+            var tty = services.GetService<IPluginTtyProviderRegistry>();
+            return Results.Json((registry?.Registrations ?? []).Select(registration => new RemoteProviderInfo(
+                registration.ProviderId,
+                registration.DisplayName,
+                registry?.OwnerOf(registration.ProviderId),
+                registration.Capabilities.SupportsEnvVars,
+                registration.Capabilities.SupportsPermissions,
+                tty?.Resolve(registration.ProviderId) is not null,
+                [.. registration.Options.Select(option => new RemoteProviderOption(option.Key, option.Label, option.Choices, option.ChoiceLabels))])), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("list_profile_providers", services);
+
+        api.MapGet("/profiles/mcp-servers", async (CancellationToken cancellationToken) =>
+            Results.Json(services.GetService<IMcpServerCatalog>() is { } catalog
+                ? McpServerRegistryFilter.OfferedToOperator(await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false)).Select(server => server.Name)
+                : [], ConnectKeyEndpoints.Json)).RequireAdmin().Audited("list_profile_mcp_servers", services);
+
+        api.MapGet("/profiles/mcp-servers/{name}/estimate", async (string name, bool? refresh, CancellationToken cancellationToken) =>
+            Results.Json(services.GetService<IMcpToolTokenEstimator>() is { } estimator
+                ? await estimator.EstimateAsync(name, refresh ?? false, cancellationToken).ConfigureAwait(false)
+                : McpServerToolEstimate.Unavailable(name), ConnectKeyEndpoints.Json)).RequireAdmin().Audited("estimate_profile_mcp_server", services);
+
+        // A key that reads KeptSecret is the one the named profile holds, and only for the address it holds it for.
+        api.MapPost("/profiles/models", async (HttpRequest request, CancellationToken cancellationToken) =>
+        {
+            var (body, refused) = await ReadBodyAsync<RemoteModelsRequest>(request, "The body names only baseUrl, apiKey and label.", cancellationToken, root => root).ConfigureAwait(false);
+            if (body is null)
             {
+                return refused;
+            }
+
+            if (services.GetService<IModelCatalog>() is not { } catalog)
+            {
+                return Results.Json(Array.Empty<string>(), ConnectKeyEndpoints.Json);
+            }
+
+            var key = body.ApiKey;
+            if (key == KeptSecret)
+            {
+                var profiles = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
+                var index = body.Label is { } label ? IndexOf(profiles, label) : -1;
+                key = index >= 0 && profiles[index].ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } held && held.BaseUrl == body.BaseUrl
+                    ? held.ApiKey
+                    : null;
+            }
+
+            return Results.Json(await catalog.ListModelsAsync(body.BaseUrl, string.IsNullOrWhiteSpace(key) ? null : key, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("list_profile_models", services);
+
+        api.MapPost("/profiles", (HttpRequest request, CancellationToken cancellationToken) =>
+            _ChangeAsync<RemoteNewProfile>(request, cancellationToken, root => root["settings"] as JsonObject, async (body, profiles) =>
+            {
+                if (body.Settings?.Profile is { } whole)
+                {
+                    return await _WholeAsync(profiles, -1, whole, body.Provider, cancellationToken).ConfigureAwait(false);
+                }
+
                 if (string.IsNullOrWhiteSpace(body.Label) || string.IsNullOrWhiteSpace(body.Provider)
                     || services.GetService<IPluginProviderRegistry>()?.Resolve(body.Provider) is null)
                 {
@@ -118,12 +179,17 @@ internal static class ProfileEndpoints
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
-            _ChangeAsync<RemoteProfilePatch>(request, cancellationToken, (patch, profiles) =>
+            _ChangeAsync<RemoteProfilePatch>(request, cancellationToken, root => root, async (patch, profiles) =>
             {
                 var index = IndexOf(profiles, label);
                 if (index < 0)
                 {
                     return (null, NoProfile());
+                }
+
+                if (patch.Profile is { } whole)
+                {
+                    return await _WholeAsync(profiles, index, whole, null, cancellationToken).ConfigureAwait(false);
                 }
 
                 var (changed, refusal) = Apply(profiles[index], patch, declared(profiles[index]));
@@ -165,10 +231,10 @@ internal static class ProfileEndpoints
         }).RequireAdmin().Audited("delete_profile", services);
 
         // Read, refuse, then load, change and save under the one lock.
-        async Task<IResult> _ChangeAsync<T>(HttpRequest request, CancellationToken cancellationToken, Func<T, IReadOnlyList<SessionProfile>, (IReadOnlyList<SessionProfile>? Next, IResult Answer)> change)
+        async Task<IResult> _ChangeAsync<T>(HttpRequest request, CancellationToken cancellationToken, Func<JsonObject, JsonObject?> wholeProfile, Func<T, IReadOnlyList<SessionProfile>, Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)>> change)
             where T : class
         {
-            var (body, refused) = await ReadBodyAsync<T>(request, "A profile names only label, provider, settings, model, permissionMode, mcpServers, environment, delegation and configJson.", cancellationToken).ConfigureAwait(false);
+            var (body, refused) = await ReadBodyAsync<T>(request, "A profile names only label, provider, settings, model, permissionMode, mcpServers, environment, delegation, configJson and profile.", cancellationToken, wholeProfile).ConfigureAwait(false);
             if (body is null)
             {
                 return refused;
@@ -177,7 +243,7 @@ internal static class ProfileEndpoints
             await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var (next, answer) = change(body, await store().LoadAsync(cancellationToken).ConfigureAwait(false));
+                var (next, answer) = await change(body, await store().LoadAsync(cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
                 if (next is not null)
                 {
                     await store().SaveAsync(next, cancellationToken).ConfigureAwait(false);
@@ -190,11 +256,229 @@ internal static class ProfileEndpoints
                 Gate.Release();
             }
         }
+
+        // AC-1585: a whole profile made (`index` -1) or put in place of the one at `index`, which may rename it.
+        async Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)> _WholeAsync(IReadOnlyList<SessionProfile> profiles, int index, JsonElement json, string? provider, CancellationToken cancellationToken)
+        {
+            if (RemoteProfileWire.FromJson(json) is not { } incoming)
+            {
+                return (null, _Invalid("profile must hold a profile."));
+            }
+
+            if (provider is not null && !string.Equals(provider, SessionsEndpoints.ProviderId(incoming), StringComparison.Ordinal))
+            {
+                return (null, _Invalid("The profile names a different provider than the request."));
+            }
+
+            var choices = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
+                ? await _ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
+                : null;
+            var (merged, refusal) = MergeWhole(index < 0 ? null : profiles[index], incoming, services, choices);
+            if (merged is null)
+            {
+                return (null, refusal);
+            }
+
+            var clash = IndexOf(profiles, merged.Label);
+            if (clash >= 0 && clash != index)
+            {
+                return (null, BackendApiRoutes.Error(StatusCodes.Status409Conflict, "profile_exists", "The server already has a profile with that label."));
+            }
+
+            List<SessionProfile> next = [.. profiles];
+            if (index < 0)
+            {
+                next.Add(merged);
+            }
+            else
+            {
+                next[index] = merged;
+            }
+
+            return (next, Results.Json(ToWire(merged, health(), options(merged)), ConnectKeyEndpoints.Json, statusCode: index < 0 ? StatusCodes.Status201Created : StatusCodes.Status200OK));
+        }
+    }
+
+    private const string ConfigDirRefusal = "Pick one of the server's own Claude folders; a profile cannot name another folder over this connection.";
+
+    private const string WorkingDirectoryRefusal = "The server has no such folder for the default working directory.";
+
+    // AC-1585: `incoming` as the editor sent it, held to what a change field by field is held to. Each secret that reads
+    // KeptSecret is put back from `held`, and only where its address did not change; a new profile has none to put back.
+    internal static (SessionProfile? Profile, IResult Refusal) MergeWhole(SessionProfile? held, SessionProfile incoming, IServiceProvider services, ClaudeChoices? claude = null)
+    {
+        var provider = SessionsEndpoints.ProviderId(incoming);
+        if (string.IsNullOrWhiteSpace(incoming.Label))
+        {
+            return (null, _Invalid("A profile needs a label."));
+        }
+
+        if (held is not null ? provider != SessionsEndpoints.ProviderId(held)
+            : incoming.ProviderConfig is not (OllamaConfig or LmStudioConfig) && services.GetService<IPluginProviderRegistry>()?.Resolve(provider) is null)
+        {
+            return (null, _Invalid(held is null ? "A new profile needs one of the server's providers." : "A profile's provider is fixed once it is made."));
+        }
+
+        var (config, configRefusal) = _MergeProviderConfig(held, incoming.ProviderConfig, claude ?? ClaudeChoices.None);
+        if (config is null)
+        {
+            return (null, configRefusal);
+        }
+
+        var (variables, variableRefusal) = _MergeEnvironment(held?.EnvironmentVariables ?? [], incoming.EnvironmentVariables ?? []);
+        if (variables is null)
+        {
+            return (null, variableRefusal);
+        }
+
+        if (incoming.DefaultWorkingDirectory is { Length: > 0 } folder && folder != held?.DefaultWorkingDirectory && !Directory.Exists(folder))
+        {
+            return (null, _Invalid(WorkingDirectoryRefusal));
+        }
+
+        // An option the provider does not declare never crossed, so the server's own value stays.
+        var declared = Declared(services, incoming);
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in held?.Defaults?.OptionDefaults?.Where(option => !declared.Contains(option.Key)) ?? [])
+        {
+            options[key] = value;
+        }
+
+        foreach (var (key, value) in incoming.Defaults?.OptionDefaults?.Where(option => declared.Contains(option.Key)) ?? [])
+        {
+            options[key] = value;
+        }
+
+        return (incoming with
+        {
+            Label = incoming.Label.Trim(),
+            ProviderConfig = config,
+            Defaults = incoming.Defaults is { } defaults ? defaults with { OptionDefaults = options.Count > 0 ? options : null } : null,
+            EnvironmentVariables = variables.Count > 0 ? variables : null,
+        }, Results.Empty);
+    }
+
+    private static (ProviderConfig? Config, IResult Refusal) _MergeProviderConfig(SessionProfile? held, ProviderConfig incoming, ClaudeChoices claude)
+    {
+        switch (incoming)
+        {
+            case OllamaConfig:
+                return (incoming, Results.Empty);
+            case LmStudioConfig { ApiKey: KeptSecret } lmStudio when held?.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } stored:
+                return stored.BaseUrl == lmStudio.BaseUrl ? (lmStudio with { ApiKey = stored.ApiKey }, Results.Empty) : (null, KeyAgain);
+            case LmStudioConfig { ApiKey: KeptSecret } lmStudio:
+                return (lmStudio with { ApiKey = null }, Results.Empty);
+            case LmStudioConfig:
+                return (incoming, Results.Empty);
+            case PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId } claudeConfig:
+                return _ClaudeRefusal(held?.Claude, ClaudePluginProfile.ReadClaudeConfig(claudeConfig.ConfigJson), claude) is { } refusal ? (null, refusal) : (claudeConfig, Results.Empty);
+            case PluginProviderConfig plugin:
+                var (merged, mergeRefusal) = MergeConfig(held?.ProviderConfig is PluginProviderConfig heldPlugin ? heldPlugin.ConfigJson : "{}", plugin.ConfigJson);
+                return merged is null ? (null, mergeRefusal) : (plugin with { ConfigJson = merged }, Results.Empty);
+            default:
+                return (null, _Invalid("That provider's settings do not cross this connection."));
+        }
+    }
+
+    // B3 (AC-1585): the server's own choice, not a path from the desktop. Blank is the server's own resolution; a folder
+    // or program is one the provider itself found on the server; what the profile held already passes unchanged.
+    private static IResult? _ClaudeRefusal(ClaudeConfig? held, ClaudeConfig next, ClaudeChoices choices)
+    {
+        if (next.ExecutablePath is { Length: > 0 } program && program != held?.ExecutablePath && !choices.Programs.Contains(program))
+        {
+            return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "executable_refused", ExecutableRefusal);
+        }
+
+        return next.ConfigDir is { Length: > 0 } folder && folder != held?.ConfigDir && !choices.Folders.Contains(folder)
+            ? BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "config_dir_refused", ConfigDirRefusal)
+            : null;
+    }
+
+    // What the Claude provider's own backend part answers its view (`config-choices`), asked in-process. A provider that
+    // cannot say offers nothing, so only blank and what a profile already held pass.
+    private static async Task<ClaudeChoices> _ClaudeChoicesAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (services.GetService<IPluginProviderRegistry>()?.OwnerOf(ClaudePluginProfile.ProviderId) is not { } owner
+            || services.GetService<PluginChannelHub>() is not { } channels)
+        {
+            return ClaudeChoices.None;
+        }
+
+        try
+        {
+            var answer = await channels.InvokeAsync(owner, "config-choices", JsonSerializer.SerializeToElement(new { }), cancellationToken).ConfigureAwait(false);
+            return new ClaudeChoices(_Strings(answer, "configDirs", "configDir"), _Strings(answer, "executables", null));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ClaudeChoices.None;
+        }
+    }
+
+    private static HashSet<string> _Strings(JsonElement answer, string list, string? field)
+    {
+        HashSet<string> values = new(StringComparer.Ordinal);
+        if (answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty(list, out var items) || items.ValueKind != JsonValueKind.Array)
+        {
+            return values;
+        }
+
+        foreach (var item in items.EnumerateArray())
+        {
+            var value = field is null ? item : item.ValueKind == JsonValueKind.Object && item.TryGetProperty(field, out var inner) ? inner : default;
+            if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text)
+            {
+                values.Add(text);
+            }
+        }
+
+        return values;
+    }
+
+    internal sealed record ClaudeChoices(IReadOnlySet<string> Folders, IReadOnlySet<string> Programs)
+    {
+        public static ClaudeChoices None { get; } = new(new HashSet<string>(), new HashSet<string>());
+    }
+
+    // A value that reads KeptSecret is the one the server holds under that name; a loader variable passes only unchanged.
+    private static (List<ProfileEnvironmentVariable>? Variables, IResult Refusal) _MergeEnvironment(IReadOnlyList<ProfileEnvironmentVariable> held, IReadOnlyList<ProfileEnvironmentVariable> incoming)
+    {
+        List<ProfileEnvironmentVariable> merged = [];
+        foreach (var variable in incoming)
+        {
+            if (!ProfileEnvironmentVariable.IsValidKey(variable.Key))
+            {
+                return (null, _Invalid("An environment variable's name is letters, digits and underscores, not starting with a digit."));
+            }
+
+            var stored = held.FirstOrDefault(entry => string.Equals(entry.Key, variable.Key, StringComparison.OrdinalIgnoreCase));
+            if (variable.Value == KeptSecret)
+            {
+                if (stored is null || !_IsHidden(stored))
+                {
+                    return (null, _Invalid("Enter that variable's value again: the server holds none to keep."));
+                }
+
+                merged.Add(stored);
+            }
+            else if (IsLoaderVariable(variable.Key) && stored?.Value != variable.Value)
+            {
+                return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "environment_refused", EnvironmentRefusal));
+            }
+            else
+            {
+                merged.Add(variable);
+            }
+        }
+
+        return (merged, Results.Empty);
     }
 
     // The body as T, or why not: a credential, a program path or a loader variable is refused before any of it is read,
     // and a field this API does not know answers `unknownFields`. AC-1475 reads its patch through here too.
-    internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken)
+    // AC-1585: `wholeProfile` names where a create or change carries a whole profile, whose secrets cross write-only;
+    // MergeWhole holds that part to the rules field by field, so the scan here skips it.
+    internal static async Task<(T? Body, IResult Refused)> ReadBodyAsync<T>(HttpRequest request, string unknownFields, CancellationToken cancellationToken, Func<JsonObject, JsonObject?>? wholeProfile = null)
         where T : class
     {
         // A key given twice in two casings throws on first read, as ArgumentException; neither names a value.
@@ -203,7 +487,7 @@ internal static class ProfileEndpoints
         try
         {
             node = await JsonNode.ParseAsync(request.Body, new JsonNodeOptions { PropertyNameCaseInsensitive = true }, cancellationToken: cancellationToken).ConfigureAwait(false);
-            refused = Refusal(node);
+            refused = Refusal(wholeProfile is not null && node is JsonObject root ? _Without(root, wholeProfile) : node);
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
@@ -232,6 +516,13 @@ internal static class ProfileEndpoints
         }
 
         return body is null ? (null, _Invalid(unknownFields)) : (body, Results.Empty);
+    }
+
+    private static JsonObject _Without(JsonObject root, Func<JsonObject, JsonObject?> holder)
+    {
+        var copy = (JsonObject)root.DeepClone();
+        holder(copy)?.Remove("profile");
+        return copy;
     }
 
     internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
@@ -318,8 +609,28 @@ internal static class ProfileEndpoints
             profile.ProviderConfig is PluginProviderConfig,
             health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
             known.Count > 0 ? known : null,
-            _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null);
+            _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null,
+            RemoteProfileWire.ToJson(Masked(profile, declared)));
     }
+
+    // AC-1585: the profile as the editor gets it. Each secret reads KeptSecret, and of the option defaults only the
+    // declared ones cross, as above.
+    internal static SessionProfile Masked(SessionProfile profile, IReadOnlySet<string> declared) => profile with
+    {
+        ProviderConfig = profile.ProviderConfig switch
+        {
+            LmStudioConfig { ApiKey.Length: > 0 } lmStudio => lmStudio with { ApiKey = KeptSecret },
+            PluginProviderConfig plugin => plugin with { ConfigJson = Redacted(plugin.ConfigJson) },
+            var other => other,
+        },
+        Defaults = profile.Defaults is { } defaults
+            ? defaults with { OptionDefaults = _Declared(defaults.OptionDefaults, declared) }
+            : null,
+        EnvironmentVariables = profile.EnvironmentVariables?.Select(variable => _IsHidden(variable) ? variable with { Value = KeptSecret } : variable).ToList(),
+    };
+
+    private static IReadOnlyDictionary<string, string>? _Declared(IReadOnlyDictionary<string, string>? options, IReadOnlySet<string> declared) =>
+        options?.Where(option => declared.Contains(option.Key)).ToDictionary(option => option.Key, option => option.Value) is { Count: > 0 } kept ? kept : null;
 
     // AC-1534: the config with every secret string that is set read as KeptSecret, so the provider's own view opens
     // with its key field filled (its check passes) and says only that one is set.
@@ -567,6 +878,12 @@ internal static class ProfileEndpoints
     // Only what the patch names; the provider config, and with it an API key or a plugin's own config, is never rebuilt.
     internal static (SessionProfile? Profile, IResult Refusal) Apply(SessionProfile profile, RemoteProfilePatch patch, IReadOnlySet<string> declared)
     {
+        // A whole profile goes through MergeWhole; here it would skip the secret rules.
+        if (patch.Profile is not null)
+        {
+            return (null, _Invalid("This route takes a profile field by field."));
+        }
+
         var local = profile.ProviderConfig is OllamaConfig or LmStudioConfig;
         if ((patch.Model is not null && !local && !declared.Contains(WellKnownPluginSessionOptions.Model))
             || (patch.PermissionMode is not null && !declared.Contains(WellKnownPluginSessionOptions.PermissionMode)))
@@ -673,3 +990,6 @@ internal static class ProfileEndpoints
     private static NodeCaller _Caller() =>
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A profile route ran without a connect-key caller.");
 }
+
+// AC-1585: the profile editor's model list, asked from the server.
+internal sealed record RemoteModelsRequest(string BaseUrl, string? ApiKey = null, string? Label = null);

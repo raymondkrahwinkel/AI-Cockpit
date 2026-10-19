@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Abstractions.Remote;
@@ -33,4 +34,32 @@ public interface IServerProfiles
     /// Removes the profile; false when the server had none by that label.
     /// </summary>
     Task<bool> DeleteAsync(string label, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes one whole profile (AC-1585): makes it when <paramref name="originalLabel"/> is null, else replaces that
+    /// one, renaming it to the label <paramref name="profile"/> carries. Each secret that reads as the server's mask stays
+    /// as the server holds it. Throws <see cref="ArgumentException"/> with the server's reason when it refuses.
+    /// </summary>
+    Task<RemoteProfile> SaveProfileAsync(string? originalLabel, SessionProfile profile, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The providers a profile on the server can name, with what the profile editor needs of each (AC-1585).
+    /// </summary>
+    Task<IReadOnlyList<RemoteProviderInfo>> ListProviderInfoAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The names of the MCP servers the server offers a profile to pre-select (AC-1585).
+    /// </summary>
+    Task<IReadOnlyList<string>> ListMcpServersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What one of the server's MCP servers costs a session there in tools and tokens, counted on the server.
+    /// </summary>
+    Task<McpServerToolEstimate> EstimateMcpToolsAsync(string name, bool refresh, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The models a local-model server answers with, asked from the server. When <paramref name="apiKey"/> is the mask,
+    /// the server uses the key it keeps for profile <paramref name="label"/>.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default);
 }
