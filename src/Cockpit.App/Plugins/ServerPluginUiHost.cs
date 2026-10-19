@@ -193,7 +193,7 @@ internal sealed class ServerPluginUiHost(
     public Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
-        mcpAuthState(name, cancellationToken);
+        mcpAuthState is null ? mcpAuthState(name, cancellationToken) : Task.FromResult(PluginMcpAuthState.Unknown);
 
     // A browser sign-in cannot finish on a server without a screen; an installation token over the plugin's channel is
     // that route (AC-1511), so the view's own fallback answer stands.
