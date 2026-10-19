@@ -89,7 +89,7 @@ public sealed class ScheduledBackupTests : IDisposable
 
     /// <summary>
     /// Acceptance 3 and 4, the data-loss one. With Keep 3 and a fourth backup the oldest by <c>CreatedAt</c> goes —
-    /// the ids are laid out so that the oldest sorts last by name, and sorting by id would delete a newer one. A target
+    /// the ids are laid out so that the oldest sorts last by name, the newest first, and sorting by id would delete a newer one. A target
     /// that cannot delete keeps all four and says so once.
     /// </summary>
     [Theory]
@@ -98,9 +98,9 @@ public sealed class ScheduledBackupTests : IDisposable
     public async Task Retention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDelete(bool canDelete)
     {
         _target.CanDelete = canDelete;
-        _target.Entries["a-oldest"] = Start.AddDays(-3);
-        _target.Entries["c-middle"] = Start.AddDays(-2);
-        _target.Entries["b-newest"] = Start.AddDays(-1);
+        _target.Entries["z-oldest"] = Start.AddDays(-3);
+        _target.Entries["m-middle"] = Start.AddDays(-2);
+        _target.Entries["a-newest"] = Start.AddDays(-1);
         await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24, Keep: 3));
 
         await _scheduled.RunOnceAsync();
@@ -108,9 +108,9 @@ public sealed class ScheduledBackupTests : IDisposable
         if (canDelete)
         {
             Assert.Equal(3, _target.Entries.Count);
-            Assert.DoesNotContain("a-oldest", _target.Entries.Keys);
-            Assert.Contains("c-middle", _target.Entries.Keys);
-            Assert.Contains("b-newest", _target.Entries.Keys);
+            Assert.DoesNotContain("z-oldest", _target.Entries.Keys);
+            Assert.Contains("m-middle", _target.Entries.Keys);
+            Assert.Contains("a-newest", _target.Entries.Keys);
             Assert.Empty(_toasts.Messages);
         }
         else
