@@ -37,6 +37,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // The projects whose last check failed, so a lasting failure is logged once, on the way in, not every tick.
     private readonly ConcurrentDictionary<string, byte> _failing = new(StringComparer.Ordinal);
 
+    // AC-1503: the projects `OnFailing` already told someone about, kept for the whole session so a flapping check says it once.
+    private readonly ConcurrentDictionary<string, byte> _told = new(StringComparer.Ordinal);
+
     // What each project was bound to when last seen, so an unbind or a rebind drops its baseline and its flag.
     private readonly ConcurrentDictionary<string, string> _boundTo = new(StringComparer.Ordinal);
 
@@ -68,6 +71,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // `PrepareBindingAsync` re-downloaded regardless (AC-1054) — awaited, so "Sync now" only returns once
     // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
     public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
+
+    // AC-1503: told once per project and session, the first time a check cannot get an answer (project id, reason),
+    // so "not signed in" is said to the operator and not only logged. Set by the cockpit, which owns the toasts.
+    public Action<string, string>? OnFailing { get; set; }
 
     // Starts polling the clock; the first pass runs at once so the baseline is laid at start. Idempotent.
     public void Start()
@@ -229,6 +236,11 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         if (_failing.TryAdd(projectId, 0))
         {
             _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
+
+            if (_told.TryAdd(projectId, 0))
+            {
+                OnFailing?.Invoke(projectId, reason);
+            }
         }
     }
 
@@ -251,6 +263,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         _disposed = true;
         BoundProjects = null;
         OnChecked = null;
+        OnFailing = null;
         _timer?.Dispose();
         _timer = null;
     }

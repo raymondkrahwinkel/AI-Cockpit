@@ -21,6 +21,8 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
@@ -432,6 +434,8 @@ public partial class App : Application
         mcpSignInNotice.Watch();
         _ = mcpSignInNotice.CheckAsync();
 
+        _SayWhenDepotSyncCannotCheck(Program.Services.GetRequiredService<CockpitViewModel>());
+
         // AC-1519: name the panes whose leftover session this start stopped, so a pane reading Idle says why.
         _NotifyStoppedLeftovers();
 
@@ -694,6 +698,33 @@ public partial class App : Application
                 toasts.Show(EmptiedSignIn.Ask(signIn.Label), ToastSeverity.Warning);
             }
         }
+    }
+
+    // AC-1503: a bound project whose Depot check cannot get an answer (typically: not signed in) is said once, with the way
+    // to the Depot settings, instead of the sync going quiet for good.
+    private static void _SayWhenDepotSyncCannotCheck(CockpitViewModel cockpit)
+    {
+        if (Program.Services.GetService<DepotSyncWatcher>() is not { } watcher)
+        {
+            return;
+        }
+
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        var catalog = Program.Services.GetRequiredService<IProjectCatalog>();
+        watcher.OnFailing = (projectId, reason) =>
+        {
+            var name = catalog.Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? projectId;
+            var message = $"The Depot sync cannot check {name}: {reason}";
+
+            if (cockpit.HasPluginSettings("depot"))
+            {
+                toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = cockpit.OpenPluginSettingsAsync("depot"));
+            }
+            else
+            {
+                toasts.Show(message, ToastSeverity.Warning);
+            }
+        };
     }
 
     private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)

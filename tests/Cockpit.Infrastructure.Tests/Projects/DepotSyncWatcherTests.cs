@@ -83,6 +83,25 @@ public sealed class DepotSyncWatcherTests : IDisposable
         Assert.False(_Next());
     }
 
+    [Fact]
+    public async Task ACheckThatCannotAnswer_IsToldOnce_AlsoWhenItRecoversAndFailsAgain()
+    {
+        var told = new List<(string ProjectId, string Reason)>();
+        _watcher.OnFailing = (projectId, reason) => told.Add((projectId, reason));
+
+        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(SharedProjectBindingResult.Failed("Not signed in.")));
+        await _watcher.RunOnceAsync();
+        await _watcher.RunOnceAsync();
+        await _watcher.RunOnceAsync();
+
+        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = "a" })));
+        await _watcher.RunOnceAsync();
+        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(SharedProjectBindingResult.Failed("Not signed in.")));
+        await _watcher.RunOnceAsync();
+
+        Assert.Equal([("p", "Not signed in.")], told);
+    }
+
     public void Dispose()
     {
         _watcher.Dispose();
