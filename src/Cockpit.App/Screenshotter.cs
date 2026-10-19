@@ -198,6 +198,8 @@ internal static class Screenshotter
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
         ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
+        // AC-1503: what the first start after a restore says about the sign-ins that came back empty.
+        ["restore-signins"] = (width, height) => _MainWindowAfterARestore(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
@@ -1643,6 +1645,15 @@ internal static class Screenshotter
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.Sessions.Add(new ViewModels.SessionViewModel { Title = "Session", WorkspaceId = cockpit.Workspaces.Active!.Id });
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    private static MainWindow _MainWindowAfterARestore(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Depot"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
+        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Slack"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
+
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 

@@ -98,4 +98,8 @@ public sealed record RestorePluginNote(string Id, string Note);
 
 // How a restore ended. `Stopped` is a normal outcome, not a failure: stopping during the plugin fetch leaves the
 // settings untouched and whatever landed standing, so it returns what it knows instead of throwing it away.
-public sealed record RestoreReport(bool Stopped, IReadOnlyList<RestorePluginNote> Notes);
+public sealed record RestoreReport(bool Stopped, IReadOnlyList<RestorePluginNote> Notes)
+{
+    // AC-1503: the sign-ins that came back empty, which the next start asks for.
+    public IReadOnlyList<EmptiedSignIn> EmptiedSignIns { get; init; } = [];
+}

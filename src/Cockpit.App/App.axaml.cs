@@ -19,11 +19,13 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Plugins;
@@ -660,6 +662,8 @@ public partial class App : Application
         // later launches perform only a small, non-writing config read.
         Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync().GetAwaiter().GetResult();
 
+        _AskForRestoredSignIns(cockpit);
+
         // AC-1506: provisioning's second phase, now that a connection's plugin can redeem the token. Not awaited here:
         // a plugin's sign-in may need this thread. What is left for the operator to do arrives as one toast.
         if (Program.Provisioning is { Failure: null } provisioning)
@@ -670,6 +674,26 @@ public partial class App : Application
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+    }
+
+    // AC-1503: what a restore left empty, one toast each so every line has its own button. The button opens the plugin's
+    // own settings where the existing Sign in runs; nothing opens a browser by itself (AC-1517).
+    private static void _AskForRestoredSignIns(CockpitViewModel cockpit)
+    {
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+
+        foreach (var signIn in RestoredSignIns.Take(CockpitBuild.StateRoot))
+        {
+            if (signIn.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId))
+            {
+                var name = cockpit.PluginSettings[pluginId].PluginName;
+                toasts.Show(EmptiedSignIn.Ask(name), ToastSeverity.Warning, "Sign in", () => _ = cockpit.OpenPluginSettingsAsync(pluginId));
+            }
+            else
+            {
+                toasts.Show(EmptiedSignIn.Ask(signIn.Label), ToastSeverity.Warning);
+            }
+        }
     }
 
     private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)
