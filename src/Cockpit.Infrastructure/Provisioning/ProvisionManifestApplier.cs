@@ -195,7 +195,6 @@ public static class ProvisionManifestApplier
         var staging = path + ".tmp";
         await File.WriteAllTextAsync(staging, text, cancellationToken).ConfigureAwait(false);
         File.Move(staging, path, overwrite: true);
-        await File.AppendAllTextAsync(Path.Combine(stateRoot, "assistant-memory.md"), text, cancellationToken).ConfigureAwait(false);
         report.Add(new("assistant.orgRules", Applied, Detail: existing is null ? $"rule set of {by} written" : $"rule set of {by} updated"));
     }
 
