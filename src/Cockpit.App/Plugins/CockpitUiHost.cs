@@ -336,14 +336,24 @@ internal sealed class CockpitUiHost(
             Dispatcher.UIThread.Post(() =>
             {
                 (Application.Current as App)?.ShowMainWindow();
-                onClick?.Invoke();
+                try
+                {
+                    onClick?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    _LogNotificationFailure(exception);
+                }
             });
         }
         catch (Exception exception)
         {
-            services.GetService<ILogger<CockpitUiHost>>()?.LogWarning(exception, "Plugin {PluginId}'s system notification failed.", pluginId);
+            _LogNotificationFailure(exception);
         }
     }
+
+    private void _LogNotificationFailure(Exception exception) =>
+        services.GetService<ILogger<CockpitUiHost>>()?.LogWarning(exception, "Plugin {PluginId}'s system notification failed.", pluginId);
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => host.RequestConsentAsync(request);
 
