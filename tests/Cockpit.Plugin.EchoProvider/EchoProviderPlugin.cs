@@ -95,11 +95,18 @@ internal sealed class EchoSharedProjectSource(string repository) : ISharedProjec
             {
                 GitUrl = repository,
                 BehaviorPrompt = "Answer in echoes.",
+                Checksum = _Checksum(),
                 EnabledMcpServerNames = ["cockpit-sessions"],
             }),
             BareProjectId => SharedProjectBindingResult.Success(new SharedProjectBinding("journey-bare")),
             _ => SharedProjectBindingResult.Failed("No such shared project."),
         });
+
+    // AC-1570: a journey moves the definition's checksum by rewriting this file; without it there is one fixed value.
+    private static string _Checksum() =>
+        Environment.GetEnvironmentVariable("COCKPIT_ECHO_SHARED_CHECKSUM_FILE") is { Length: > 0 } path && File.Exists(path)
+            ? File.ReadAllText(path).Trim()
+            : "echo-1";
 
     public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
         Task.FromResult(SharedProjectWriteBackResult.Failed("The echo source is read-only."));
