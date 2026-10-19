@@ -128,7 +128,7 @@ internal sealed class AssistantReadGateway(
                 result.Succeeded
                     ? [.. result.Projects
                         .Where(project => !boundIds.Contains(project.Id) && !hiddenIds.Contains(project.Id))
-                        .Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, project.Role))]
+                        .Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, project.Role, project.HasRepository))]
                     : [])),
         ];
     }

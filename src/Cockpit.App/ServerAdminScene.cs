@@ -210,7 +210,7 @@ internal static class ServerAdminScene
             [
                 new("Depot — Work", true, null,
                 [
-                    new("depot-work:handbook", "Handbook", "The team's onboarding and runbooks.", null),
+                    new("depot-work:handbook", "Handbook", "The team's onboarding and runbooks.", null, true),
                     new("depot-work:eveworkbench", "EVE Workbench", null, null),
                 ]),
                 new("Depot — Personal", false, "Not signed in to depot.example.", []),

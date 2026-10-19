@@ -75,6 +75,9 @@ internal sealed class EchoSharedProjectSource(string repository) : ISharedProjec
 {
     public const string ProjectId = "echo-shared:journey";
 
+    // A definition that names no repository, as Publish writes one for a project without a git remote.
+    public const string BareProjectId = "echo-shared:bare";
+
     public string Key => "echo-shared";
 
     public string SourceName => "Echo shared";
@@ -82,17 +85,28 @@ internal sealed class EchoSharedProjectSource(string repository) : ISharedProjec
     public bool CanPublish => false;
 
     public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(SharedProjectListResult.Success([new SharedProject(ProjectId, "journey-shared")]));
+        Task.FromResult(SharedProjectListResult.Success(
+            [new SharedProject(ProjectId, "journey-shared"), new SharedProject(BareProjectId, "journey-bare") { HasRepository = false }]));
 
     public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
-        Task.FromResult(id == ProjectId
-            ? SharedProjectBindingResult.Success(new SharedProjectBinding("journey-shared")
+        Task.FromResult(id switch
+        {
+            ProjectId => SharedProjectBindingResult.Success(new SharedProjectBinding("journey-shared")
             {
                 GitUrl = repository,
                 BehaviorPrompt = "Answer in echoes.",
+                Checksum = _Checksum(),
                 EnabledMcpServerNames = ["cockpit-sessions"],
-            })
-            : SharedProjectBindingResult.Failed("No such shared project."));
+            }),
+            BareProjectId => SharedProjectBindingResult.Success(new SharedProjectBinding("journey-bare")),
+            _ => SharedProjectBindingResult.Failed("No such shared project."),
+        });
+
+    // AC-1570: a journey moves the definition's checksum by rewriting this file; without it there is one fixed value.
+    private static string _Checksum() =>
+        Environment.GetEnvironmentVariable("COCKPIT_ECHO_SHARED_CHECKSUM_FILE") is { Length: > 0 } path && File.Exists(path)
+            ? File.ReadAllText(path).Trim()
+            : "echo-1";
 
     public Task<SharedProjectWriteBackResult> WriteBackAsync(string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) =>
         Task.FromResult(SharedProjectWriteBackResult.Failed("The echo source is read-only."));

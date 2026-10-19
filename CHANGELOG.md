@@ -49,6 +49,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: **Upload** in the Depot file browser. An Editor picks one or more files and they land in the selected folder
   (the root when none is selected); text files become documents, everything else a file in the project. A path that
   already exists is replaced only after a yes, and Depot's reason shows when it refuses a file.
+
+- added: a Depot change is now seen from the start and stays on the project card until you press **Sync now**, 
+  instead of showing up 15 to 30 minutes late and vanishing at the next check. A server reports the flag in its project
+  list and runs **Sync now** for a connected desktop, and its log says when Depot reported a change or a check started failing.
 - added: the bundled **Schedules** plugin with its engine for scheduled tasks. A task has a cron schedule in a
   required time zone, fires each slot once, also across a restart or the daylight-saving switch, and either catches up
   once or logs the slots it missed while the machine slept. Its first action is a fixed cockpit notification; the
@@ -86,6 +90,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.12.1.
 - fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the
   consent step, which shows the server's own SHA-256 of the plugin, and the server pins only that hash.
 - fixed: an approval card with a long request (a big behaviour prompt, a long message) now scrolls its content inside the card, so the title and Approve/Deny always stay on screen and clickable.

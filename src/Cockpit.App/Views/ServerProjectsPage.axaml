@@ -70,7 +70,7 @@
                                     <Button DockPanel.Dock="Right" Classes="Subtle Compact" VerticalAlignment="Center"
                                             Content="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedLabel}"
                                             Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).AddSharedCommand}"
-                                            CommandParameter="{Binding}"/>
+                                            CommandParameter="{Binding}" IsEnabled="{Binding HasRepository}"/>
                                     <StackPanel Margin="0,0,8,0">
                                         <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                                             <Run Text="{Binding Name, Mode=OneWay}"/>
@@ -80,6 +80,9 @@
                                         <TextBlock Text="{Binding Description}" FontSize="12" TextTrimming="CharacterEllipsis"
                                                    IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding NoRepositoryHint}" FontSize="12" TextWrapping="Wrap"
+                                                   IsVisible="{Binding NoRepositoryHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </StackPanel>
                                 </DockPanel>
                             </Border>

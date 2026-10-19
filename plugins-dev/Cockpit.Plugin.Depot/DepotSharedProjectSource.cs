@@ -94,6 +94,7 @@ internal sealed class DepotSharedProjectSource(
                 // AC-247: Editor/Owner may write WriteBackAsync's target; Viewer/Unknown may not — the same
                 // minimum DepotProjectRoleParser's own remarks already earmarked this enum for.
                 CanWriteBack = role.CanWrite(),
+                HasRepository = !string.IsNullOrWhiteSpace(definition.GitUrl),
             });
         }
 
