@@ -174,7 +174,16 @@ public static class CapabilityCatalog
             "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",
             CapabilityRisk.Ambient,
             "0.94.0",
-            ["ICockpitUiHost.AddFirstStartRoute"],
+            ["ICockpitUiHost.AddFirstStartRoute", "IFirstStartPluginUi.CreateFirstStartRoutes", "IFirstStartPlugin.InitializeFirstStart"],
+            []),
+
+        new(
+            "first-start.setup",
+            "Setting up the cockpit on the first start",
+            "Restores a backup from one of its backup targets, or applies a provisioning manifest after the operator agrees to it, from its first-start route.",
+            CapabilityRisk.Sensitive,
+            "0.97.0",
+            ["IFirstStartHost.RestoreBackupAsync", "IFirstStartHost.ApplyManifestAsync"],
             []),
 
         new(

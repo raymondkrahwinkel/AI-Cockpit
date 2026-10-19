@@ -121,7 +121,8 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
 | `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
 | `backup.target` | Keeping the cockpit's backups | Sensitive | 0.96.0 | — | `ICockpitHost.AddBackupTarget`, `ICockpitHost.RemoveBackupTarget` |
-| `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute` |
+| `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute`, `IFirstStartPluginUi.CreateFirstStartRoutes`, `IFirstStartPlugin.InitializeFirstStart` |
+| `first-start.setup` | Setting up the cockpit on the first start | Sensitive | 0.97.0 | — | `IFirstStartHost.RestoreBackupAsync`, `IFirstStartHost.ApplyManifestAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -394,6 +395,18 @@ next to the host's own "Start fresh" and "Restore a backup file". A route has an
 says the route settles "What you work on": the wizard strikes that step through and leaves it out of "Step n of N". The
 provider step is never skipped, because signing in to a provider is local. A route never picks a slot, so two plugins cannot collide; a second route with the
 same `Id` is ignored. Without a plugin that registers one, the step offers only the host's two choices.
+
+`AddFirstStartRoute` runs in `InitializeUi`, and on the very first start the wizard opens before that: such a route is
+there for **Run setup again** only. A route that must be there on the first start itself comes from
+`IFirstStartPluginUi.CreateFirstStartRoutes(IFirstStartHost host)` on the UI entry type (AC-1509, host 0.97.0, SDK UI
+3.5.0), which the host calls once per start before the wizard can open, in a light phase of its own: only that, and the
+backend entry type's `IFirstStartPlugin.InitializeFirstStart(ICockpitHost host)` (SDK 3.15.0) on a windowless host, so
+the backend part can register the channel handlers its route needs. `Initialize` and `InitializeUi` still run later,
+unchanged; `InitializeUi` gets the same UI part instance. The route's content reaches only what `IFirstStartHost` offers:
+`Channel`, the plugin's own channel; `RestoreBackupAsync(targetId, backupId)`, which restores a backup from a registered
+backup target the way the wizard's own restore does and restarts; and `ApplyManifestAsync(json, consent)`, which reads a
+provisioning manifest, hands what it would set up to `consent` as lines to show, and applies it only when that answers
+true. The bundled Depot plugin offers **Sign in to a Depot** this way.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:

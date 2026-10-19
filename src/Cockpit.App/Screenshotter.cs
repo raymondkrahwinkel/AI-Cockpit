@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.LogicalTree;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -635,6 +636,13 @@ internal static class Screenshotter
         // AC-1504: the choice step with a route a plugin offers, picked — the three choices of the design.
         ["first-run-start-choice"] = (_, _) => _StartChoiceWizard(pickRestore: false, withPluginRoute: true),
 
+        // AC-1509: route C as the bundled Depot draws it — the sign-in, the choice between C1 and C2 after it, and offline.
+        ["first-run-depot-sign-in"] = (_, _) => _DepotRouteWizard(null),
+        ["first-run-depot-choice"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[{"id":"a","createdAt":"2026-10-19T21:10:00+00:00","size":2168000}],"manifest":"{}","notes":[]}"""),
+        ["first-run-depot-offline"] = (_, _) => _DepotRouteWizard(
+            """{"state":"offline","message":"Couldn't reach https://depot.example.com. Check the address, or skip this and connect to Depot later from its settings."}"""),
+
         // AC-585: the assistant step in the shell it lives in, claiming slot 25 — no store wired, so it renders the
         // design-time AssistantStepViewModel (off, no profile, local-only note showing).
         ["first-run-assistant"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
@@ -690,6 +698,67 @@ internal static class Screenshotter
         step.ViewModel.ChooseCommand.Execute(step.ViewModel.Options[pickRestore ? 1 : withPluginRoute ? 2 : 0]);
 
         return window;
+    }
+
+    // The Depot plugin's UI part loaded from bundled-plugins as the app loads it, its route picked and, with `answer`, signed
+    // in: the backend part's answer is staged by the channel the scene hands the route, so no Depot is reached.
+    private static Window _DepotRouteWizard(string? answer)
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, Cockpit.Infrastructure.Plugins.BundledPluginInstaller.BundledFolderName, "depot");
+        if (!PluginManifest.TryParse(File.ReadAllText(Path.Combine(folder, "plugin.json")), out var manifest, out var error) || manifest is null)
+        {
+            throw new InvalidOperationException($"The bundled Depot plugin in {folder} has no readable plugin.json: {error}");
+        }
+
+        var discovered = new DiscoveredPlugin(folder, "depot", manifest, string.Empty, PluginLoadDecision.Load);
+        var ui = Plugins.PluginUiManager.ActivateUi(discovered, null) as Cockpit.Plugins.Abstractions.UI.Onboarding.IFirstStartPluginUi
+            ?? throw new InvalidOperationException("The bundled Depot plugin offers no first-start route.");
+        var routes = new Plugins.FirstStartRouteRegistry();
+        foreach (var route in ui.CreateFirstStartRoutes(new _SceneFirstStartHost(answer)))
+        {
+            routes.Register(route, manifest.Name);
+        }
+
+        var step = new Views.Onboarding.StartChoiceStep(new ViewModels.Onboarding.RestoreStepViewModel(), routes);
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+        step.ViewModel.ChooseCommand.Execute(step.ViewModel.Options[^1]);
+
+        var content = step.ViewModel.SelectedContent ?? throw new InvalidOperationException("The Depot route shows nothing.");
+        var controls = content.GetLogicalDescendants().OfType<Control>().ToList();
+        controls.OfType<TextBox>().First(box => box.Name == "DepotFirstStartUrl").Text = "https://depot.example.com";
+        if (answer is not null)
+        {
+            controls.OfType<Button>().First(button => button.Name == "DepotFirstStartSignIn").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        }
+
+        return window;
+    }
+
+    // What the Depot route may ask of the host, staged: its channel answers the sign-in with `answer`, and nothing restores.
+    private sealed class _SceneFirstStartHost(string? answer) : Cockpit.Plugins.Abstractions.UI.Onboarding.IFirstStartHost, Cockpit.Plugins.Abstractions.UI.IPluginUiChannel
+    {
+        public Cockpit.Plugins.Abstractions.UI.IPluginUiChannel Channel => this;
+
+        public Task<System.Text.Json.JsonElement> InvokeAsync(string action, System.Text.Json.JsonElement payload, CancellationToken cancellationToken = default) =>
+            Task.FromResult(System.Text.Json.JsonDocument.Parse(answer ?? "{}").RootElement);
+
+        public IDisposable Subscribe(string name, Action<Cockpit.Plugins.Abstractions.Channels.PluginChannelEvent> handler) => new _Nothing();
+
+        public Task<string> RestoreBackupAsync(string targetId, string backupId, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+        public Task<IReadOnlyList<string>> ApplyManifestAsync(
+            string manifestJson, Func<IReadOnlyList<string>, Task<bool>> consent, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+
+        private sealed class _Nothing : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
     }
 
     private static Window _WorkKindWizard(int pluginCount)
@@ -817,6 +886,8 @@ internal static class Screenshotter
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
+        // AC-1509: both choices under the sign-in reach below the fold, so the step is scrolled to them.
+        ["first-run-depot-choice"] = window => window.GetVisualDescendants().OfType<ScrollViewer>().First(viewer => viewer.Extent.Height > viewer.Viewport.Height).ScrollToEnd(),
     };
 
     // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.

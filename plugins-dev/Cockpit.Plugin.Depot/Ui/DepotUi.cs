@@ -4,14 +4,28 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Onboarding;
 
 namespace Cockpit.Plugin.Depot.UI;
 
 // The UI part of Depot (AC-1394): the settings view and the global-toolbar shortcut to it. The backend part,
 // DepotPlugin, keeps the project-memory-source/shared-project-source/MCP-provider registrations and syncs them
 // whenever this part reports a connection-list save over the plugin's channel.
-public sealed class DepotUi : ICockpitPluginUi
+public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
 {
+    // AC-1509: route C, there from the very first start; the wizard runs before InitializeUi.
+    public IReadOnlyList<FirstStartRoute> CreateFirstStartRoutes(IFirstStartHost host) =>
+    [
+        new(
+            "depot.sign-in",
+            "Sign in to a Depot",
+            "Restore your latest backup, or set up from your profile and your organisation.",
+            () => new DepotFirstStartView(host))
+        {
+            IconKind = MaterialIconKind.Cloud,
+        },
+    ];
+
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new DepotSettings(host.Storage);

@@ -85,7 +85,8 @@ public sealed class JourneyHost : IAsyncDisposable
 
     // As `Program.Main` builds it, up to the window. `beforeBuild` gets the state root first, for what an operator's
     // machine would already hold there (an installed plugin); a `stateRoot` of an earlier host is a restart onto it.
-    public static JourneyHost Desktop(Action<string>? beforeBuild = null, string? stateRoot = null) => new(stateRoot, (loggerFactory, drivers) =>
+    // `replace` swaps what a journey cannot run for real, such as the browser's sign-in or a process restart.
+    public static JourneyHost Desktop(Action<string>? beforeBuild = null, string? stateRoot = null, Action<IServiceCollection>? replace = null) => new(stateRoot, (loggerFactory, drivers) =>
     {
         beforeBuild?.Invoke(CockpitBuild.StateRoot);
         var backend = CockpitBackend.Build(
@@ -94,6 +95,7 @@ public sealed class JourneyHost : IAsyncDisposable
             {
                 Program.AddDesktop(services, loggerFactory);
                 services.AddSingleton<ISessionDriverFactory>(drivers);
+                replace?.Invoke(services);
             },
             PluginStartup.Load);
         Program.Services = backend.Services;

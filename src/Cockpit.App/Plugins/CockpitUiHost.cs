@@ -372,7 +372,7 @@ internal sealed class CockpitUiHost(
 
     private HelpService? _Help() => services.GetService<HelpService>();
 
-    private sealed class UiChannel(PluginChannelHub hub, string pluginId) : IPluginUiChannel
+    internal sealed class UiChannel(PluginChannelHub hub, string pluginId) : IPluginUiChannel
     {
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
             hub.InvokeAsync(pluginId, action, payload, cancellationToken);
