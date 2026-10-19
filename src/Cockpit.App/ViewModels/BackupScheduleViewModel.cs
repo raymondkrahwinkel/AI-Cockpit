@@ -75,7 +75,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
         {
             Enabled = Enabled,
             IntervalHours = Interval == Weekly ? BackupSchedule.WeeklyHours : BackupSchedule.DailyHours,
-            Keep = 7,
+            Keep = Math.Max(1, Keep),
         };
 
         Saving = _SaveAsync(_loaded);
