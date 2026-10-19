@@ -109,7 +109,8 @@ public sealed class CockpitBackend
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
 
         // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
-        // A failure is logged and the start goes on: the next run of the sync finds the same difference again.
+        // A failure is logged and the start goes on: the next run of the sync finds the same difference again. Blocking is
+        // safe: Build runs before any UI thread or synchronisation context exists, and every await inside skips the context.
         var syncLogger = loggerFactory.CreateLogger<SettingsCarrierSync>();
         try
         {

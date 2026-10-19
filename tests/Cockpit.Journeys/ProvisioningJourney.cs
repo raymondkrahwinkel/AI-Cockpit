@@ -66,7 +66,7 @@ public sealed class ProvisioningJourney
             var file = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(cockpit.StateRoot)))!;
             Assert.Equal(("false", "15", "true"), (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
             Assert.NotEqual(300, file["Layout"]?["SidebarWidth"]?.GetValue<double>());
-            Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "settings.layout.sidebarWidth", Reason: "skipped-unknown" });
+            Assert.Contains(Program.Provisioning.Report, line => line is { Path: "settings.layout.sidebarWidth", Reason: "skipped-unknown" });
             Assert.StartsWith("# Rule set of Acme", await File.ReadAllTextAsync(CockpitConfigPath.AssistantOrgRulesFor(cockpit.StateRoot)), StringComparison.Ordinal);
 
             // Used up only now that everything was applied, and kept as its hash alone.

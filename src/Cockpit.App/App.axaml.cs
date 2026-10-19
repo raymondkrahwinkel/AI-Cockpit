@@ -757,6 +757,7 @@ public partial class App : Application
         }
 
         var toasts = Program.Services.GetRequiredService<IToastService>();
+        sync.Restart = () => Program.Services.GetRequiredService<IAppRestartService>().Restart();
         sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
             $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
             ToastSeverity.Warning,

@@ -67,6 +67,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     // Told when the operator has a choice to make; set by the desktop, which owns the dialog. Without it the toast says so.
     public Action<IReadOnlyList<SettingsConflict>>? OnConflicts { get; set; }
 
+    // Restarts the cockpit, offered beside "active after a restart"; set by the desktop, which owns the restart.
+    public Action? Restart { get; set; }
+
     // The run in flight, for the tests to await.
     internal Task Running => _lastRun;
 
@@ -179,7 +182,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         if (tookTheirs > 0)
         {
-            _toasts?.Show($"{_Count(tookTheirs)} from your other machine take effect at the next start.", ToastSeverity.Information);
+            _SayFetched();
         }
 
         _lastRun = _RunLoggedAsync(onlyWhenChanged: false);
@@ -348,7 +351,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
         if (incoming > 0)
         {
-            _toasts?.Show($"{_Count(incoming)} from your other machine take effect at the next start.", ToastSeverity.Information);
+            _SayFetched();
         }
 
         _SayConflicts(state, newConflicts > 0);
@@ -391,6 +394,20 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         else
         {
             _toasts?.Show($"{_Count(state.Conflicts.Count)} changed both here and on your other machine; nothing was overwritten.", ToastSeverity.Warning);
+        }
+    }
+
+    // Once per pull that brought something new: the change waits for a restart, so it is never a surprise at the next start.
+    private void _SayFetched()
+    {
+        var message = $"Settings fetched from {_carriers.Carrier?.DisplayName ?? "your other machine"}; active after a restart.";
+        if (Restart is { } restart)
+        {
+            _toasts?.Show(message, ToastSeverity.Information, "Restart now", restart);
+        }
+        else
+        {
+            _toasts?.Show(message, ToastSeverity.Information);
         }
     }
 

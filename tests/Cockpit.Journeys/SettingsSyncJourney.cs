@@ -53,7 +53,7 @@ public sealed class SettingsSyncJourney
                 await _SignedInAsync(first, url);
                 await first.Services.GetRequiredService<SettingsCarrierSync>().RunOnceAsync();
                 await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(first.Cockpit.Toasts, () =>
-                    first.Cockpit.Toasts.Any(toast => toast.Message == "1 setting from your other machine take effect at the next start.")));
+                    first.Cockpit.Toasts.Any(toast => toast.Message == "Settings fetched from Depot: Journey; active after a restart.")));
             }
 
             await using var restarted = JourneyHost.Desktop(stateRoot: b);
@@ -74,9 +74,13 @@ public sealed class SettingsSyncJourney
                 restarted.Cockpit.Toasts.Any(toast => toast.Message.StartsWith("Your settings could not be synced with Depot: Journey", StringComparison.Ordinal))));
             Assert.NotEqual(16, space.Document?["Terminal"]?["FontSize"]?.GetValue<int>());
 
+            // Back online, and another machine writes just before this push: Depot answers 412, the plugin says so, and the
+            // host reads again and pushes over the new version, keeping what the other machine wrote.
             space.Offline = false;
+            space.BeforeNextWrite = other => other["Projects"] = new JsonArray(new JsonObject { ["Id"] = "from-a", ["Name"] = "From A" });
             await sync.RunOnceAsync();
-            Assert.Equal(16, space.Document?["Terminal"]?["FontSize"]?.GetValue<int>());
+            Assert.Equal((16, "From A"), (space.Document?["Terminal"]?["FontSize"]?.GetValue<int>(), space.Document?["Projects"]?[0]?["Name"]?.GetValue<string>()));
+            Assert.Equal(1, space.Refused);
         }
         finally
         {
@@ -104,6 +108,12 @@ public sealed class SettingsSyncJourney
         private byte[]? _stored;
 
         public bool Offline { get; set; }
+
+        // Another machine's write, landing once just before the next one arrives.
+        public Action<JsonObject>? BeforeNextWrite { get; set; }
+
+        // How many writes were refused as stale (412).
+        public int Refused { get; private set; }
 
         public JsonObject? Document
         {
@@ -139,10 +149,19 @@ public sealed class SettingsSyncJourney
                 return;
             }
 
+            if (BeforeNextWrite is { } other && Document is { } document)
+            {
+                BeforeNextWrite = null;
+                other(document);
+                Document = document;
+                current = Convert.ToHexStringLower(SHA256.HashData(_stored ?? []));
+            }
+
             var expected = request.Headers.IfMatch.FirstOrDefault()?.Trim('"');
             var createOnly = request.Headers.IfNoneMatch == "*";
             if (createOnly ? current is not null : expected is null || expected != current)
             {
+                Refused += expected is null && !createOnly ? 0 : 1;
                 context.Response.StatusCode = expected is null && !createOnly ? 428 : 412;
                 return;
             }
