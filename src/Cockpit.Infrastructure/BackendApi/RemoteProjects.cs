@@ -27,8 +27,14 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
 
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        var projects = await ReadAsync(client, cancellationToken).ConfigureAwait(false);
-        Volatile.Write(ref _current, ProjectCatalogSnapshot.Empty with { Settings = ProjectSettings.Empty with { Projects = projects } });
+        var list = await client.GetAsync<RemoteProjectList>("api/v1/projects", cancellationToken).ConfigureAwait(false);
+        var projects = _ToProjects(list);
+        var changed = list.Projects.Where(row => row.RemoteChanged).Select(row => row.Id).ToHashSet(StringComparer.Ordinal);
+        Volatile.Write(ref _current, ProjectCatalogSnapshot.Empty with
+        {
+            Settings = ProjectSettings.Empty with { Projects = projects },
+            RemoteChangedProjectIds = changed,
+        });
         Changed?.Invoke();
     }
 
@@ -36,7 +42,19 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     // sync runs on the server itself.
     public Task RefreshSharedProjectsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task SyncNowAsync(string projectId) => Task.CompletedTask;
+    // AC-1570: the server runs the check, then the list is read again for the flag. An operate key may not ask for it.
+    public async Task SyncNowAsync(string projectId)
+    {
+        try
+        {
+            await client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/projects/{Uri.EscapeDataString(projectId)}/sync", null).ConfigureAwait(false);
+        }
+        catch (BackendApiException exception) when (exception.Status is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
+        {
+        }
+
+        await LoadAsync().ConfigureAwait(false);
+    }
 
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await ReadAsync(client, CancellationToken.None).ConfigureAwait(false)).FirstOrDefault(project => project.Id == projectId);
@@ -94,7 +112,7 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
                 source.Name,
                 source.Error is null,
                 source.Error,
-                [.. source.Projects.Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, null))])),
+                [.. source.Projects.Select(project => new AssistantSharedProjectRow(project.Id, project.Name, project.Description, null, project.Cloneable))])),
         ];
     }
 
@@ -164,6 +182,11 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     internal static async Task<IReadOnlyList<Project>> ReadAsync(BackendApiClient client, CancellationToken cancellationToken)
     {
         var list = await client.GetAsync<RemoteProjectList>("api/v1/projects", cancellationToken).ConfigureAwait(false);
+        return _ToProjects(list);
+    }
+
+    private static IReadOnlyList<Project> _ToProjects(RemoteProjectList list)
+    {
         return
         [
             .. list.Projects.Select(row => new Project(row.Id, row.Name)
@@ -186,8 +209,9 @@ internal sealed record RemoteSharedList(IReadOnlyList<RemoteSharedSource> Source
 
 internal sealed record RemoteSharedSource(string Name, string? Error, IReadOnlyList<RemoteSharedRow> Projects);
 
-internal sealed record RemoteSharedRow(string Id, string Name, string? Description = null);
+// A server that predates `cloneable` sends none; the row then stays addable and the server's own refusal is the answer.
+internal sealed record RemoteSharedRow(string Id, string Name, string? Description = null, bool Cloneable = true);
 
 internal sealed record RemoteProjectList(IReadOnlyList<RemoteProjectRow> Projects);
 
-internal sealed record RemoteProjectRow(string Id, string Name, string? Description = null, string? Path = null, string? DefaultProfile = null);
+internal sealed record RemoteProjectRow(string Id, string Name, string? Description = null, string? Path = null, string? DefaultProfile = null, bool RemoteChanged = false);

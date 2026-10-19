@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
@@ -274,7 +275,9 @@ public sealed class CockpitBackend
         // AC-1502: the scheduled backup, here so a headless server makes it too.
         Services.GetService<ScheduledBackup>()?.Start();
 
-        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere.
+        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
+        // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.
+        _ = Services.GetService<IProjectCatalog>();
         Services.GetService<DepotSyncWatcher>()?.Start();
 
         // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.

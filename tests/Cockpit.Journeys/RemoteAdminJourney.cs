@@ -43,6 +43,7 @@ public sealed class RemoteAdminJourney
 
     // AC-1514: the echo fixture's one shared definition (Cockpit.Plugin.EchoProvider's EchoSharedProjectSource).
     private const string SharedProject = "echo-shared:journey";
+    private const string BareProject = "echo-shared:bare";
 
     private const string SharedName = "journey-shared";
 
@@ -69,12 +70,13 @@ public sealed class RemoteAdminJourney
         await _GitAsync(root, "clone", "--bare", origin, shared);
         // AC-1525: one door port across the restart, as a container keeps its own. The door listens on every address one
         // above the pairing port, so that is the port found free.
+        var checksumFile = Path.Combine(root, "echo-checksum.txt");
         var port = _FreeDoorPort();
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,
-            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1", ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri });
+            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1", ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri, ["COCKPIT_ECHO_SHARED_CHECKSUM_FILE"] = checksumFile });
         var run = startServer();
         try
         {
@@ -423,12 +425,17 @@ public sealed class RemoteAdminJourney
             // AC-1514: From Depot offers the fixture source's project; "Add on" clones the repository its definition names
             // and stores it bound, it leaves the list, a second add is refused, and "+ Start on" starts a session in it.
             var sharedOffered = new List<string>();
+            var cloneable = ((await setup.GetAsync<JsonObject>("api/v1/projects/shared"))["sources"]?.AsArray() ?? [])
+                .SelectMany(source => source?["projects"]?.AsArray() ?? [])
+                .ToDictionary(project => project?["id"]?.GetValue<string>() ?? "", project => project?["cloneable"]?.GetValue<bool>() ?? false);
+            ServerSharedProjectRowViewModel? bareRow = null;
             var sharedResult = "";
             var sharedAfter = new List<string>();
             var sharedPane = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
+                bareRow = admin.SharedProjects.Single(project => project.Id == BareProject);
                 admin.SharedProfile = "Echo";
                 await admin.AddSharedCommand.ExecuteAsync(admin.SharedProjects.Single(project => project.Id == SharedProject));
                 sharedResult = admin.CloneResult;
@@ -442,12 +449,25 @@ public sealed class RemoteAdminJourney
                 await view.StartOnServerCommand.ExecuteAsync(group);
                 sharedPane = group.Sessions.Single(session => !running.Contains(session.Handle.PaneId)).Handle.PaneId;
             });
+            var bareAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
+                setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = BareProject, profile = "Echo" }));
             var secondAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
                 setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/projects/shared", new { sharedProjectId = SharedProject, profile = "Echo" }));
             var bound = (await new ProjectStore(CockpitConfigPath.For(stateRoot)).LoadAsync()).Projects.Single(project => project.Name == SharedName);
             var sharedFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
                 .Select(line => JsonNode.Parse(line))
                 .Last(record => record?["PaneId"]?.GetValue<string>() == sharedPane)?["WorkingDirectory"]?.GetValue<string>();
+            // AC-1570: the first "Sync now" lays the baseline, the definition's checksum moves, the second reports it, and
+            // the list says so; a third, with nothing new, clears the flag again.
+            var syncRoute = $"api/v1/projects/{Uri.EscapeDataString(bound.Id)}/sync";
+            JsonNode? _FlagOf(JsonObject list) => list["projects"]?.AsArray().Single(project => project?["id"]?.GetValue<string>() == bound.Id)?["remoteChanged"];
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, syncRoute, null);
+            var flagBefore = _FlagOf(await setup.GetAsync<JsonObject>("api/v1/projects"))?.GetValue<bool>();
+            await File.WriteAllTextAsync(checksumFile, "echo-2");
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, syncRoute, null);
+            var flagAfter = _FlagOf(await setup.GetAsync<JsonObject>("api/v1/projects"))?.GetValue<bool>();
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, syncRoute, null);
+            var flagCleared = _FlagOf(await setup.GetAsync<JsonObject>("api/v1/projects"))?.GetValue<bool>();
             var listed = (await setup.GetAsync<JsonObject>("api/v1/projects"))["projects"]?.AsArray().Single(project => project?["name"]?.GetValue<string>() == Project);
             var clonePath = listed?["path"]?.GetValue<string>() ?? "";
             var sessionFolder = (await File.ReadAllLinesAsync(Path.Combine(stateRoot, "session-state.jsonl")))
@@ -525,6 +545,12 @@ public sealed class RemoteAdminJourney
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Contains(SharedProject, sharedOffered);
+            // DEP-381: a definition without a repository is offered as not cloneable, its "Add on" is disabled with the reason,
+            // and the server still refuses it.
+            Assert.Equal((true, false), (cloneable[SharedProject], cloneable[BareProject]));
+            Assert.Contains("names no repository", bareRow?.NoRepositoryHint, StringComparison.Ordinal);
+            Assert.False(bareRow?.HasRepository);
+            Assert.Equal(HttpStatusCode.BadRequest, bareAdd.Status);
             Assert.StartsWith($"Cloned into {bound.SourceDirectory} · ", sharedResult, StringComparison.Ordinal);
             Assert.DoesNotContain(SharedProject, sharedAfter);
             Assert.Equal(HttpStatusCode.Conflict, secondAdd.Status);
@@ -533,6 +559,7 @@ public sealed class RemoteAdminJourney
             Assert.Equal(("Answer in echoes.", "Echo"), (bound.BehaviorPrompt, bound.DefaultProfileLabel));
             Assert.True(File.Exists(Path.Combine(bound.SourceDirectory ?? "", "README.md")), "The shared project's clone holds no checkout.");
             Assert.Equal(bound.SourceDirectory, sharedFolder);
+            Assert.Equal((false, true, false), (flagBefore, flagAfter, flagCleared));
             Assert.Equal("", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
             Assert.Equal(("Running", ""), assistantState);
