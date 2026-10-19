@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Depot-bound project whose check cannot get an answer, typically because the connection is not signed in,
+  now says so once with a **Open Depot settings** button, instead of the Depot sync going silent.
+
 - added: after a restore, the next start tells you which sign-ins came back empty and asks for each of them, with a
   **Sign in** button that opens that plugin's settings. A backup made with its credentials, or one with nothing left
   out, asks for nothing.

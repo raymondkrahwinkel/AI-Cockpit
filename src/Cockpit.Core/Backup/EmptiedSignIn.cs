@@ -25,7 +25,7 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
                 // The tokens are named below by their server, and a restore keeps this machine's own Provisioning section.
                 if (options.Settings && !path.StartsWith("McpOAuthTokens[", StringComparison.Ordinal) && !path.StartsWith("Provisioning.", StringComparison.Ordinal))
                 {
-                    found.TryAdd(path, new EmptiedSignIn(path, null));
+                    found.TryAdd(path, new EmptiedSignIn(_Named(incoming, path), null));
                 }
             }
             else if (options.Includes(pluginId))
@@ -44,5 +44,24 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
         }
 
         return [.. found.Values];
+    }
+
+    // "Providers[2].ApiKey" reads as "Work (Providers[2].ApiKey)" when the entry holding the field names itself.
+    private static string _Named(JsonObject? incoming, string path)
+    {
+        JsonNode? node = incoming;
+        var steps = System.Text.RegularExpressions.Regex.Matches(path, @"[^.\[\]]+|\[(\d+)\]");
+
+        foreach (var step in steps.Take(steps.Count - 1))
+        {
+            // An index past the end gives the bare path: a label must never be what fails a restore that already wrote.
+            node = step.Groups[1].Success
+                ? int.TryParse(step.Groups[1].Value, out var index) && node is JsonArray array && index < array.Count ? array[index] : null
+                : (node as JsonObject)?[step.Value];
+        }
+
+        var name = (node as JsonObject)?.Select(property => property).FirstOrDefault(property => property.Key is "Name" or "Label" or "DisplayName").Value?.ToString();
+
+        return string.IsNullOrEmpty(name) ? path : $"{name} ({path})";
     }
 }
