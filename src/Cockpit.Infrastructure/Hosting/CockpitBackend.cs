@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
@@ -269,7 +270,9 @@ public sealed class CockpitBackend
             worktreeReconciler.Start();
         }
 
-        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere.
+        // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
+        // once, so the catalog is read first or it would find no bound project to lay a baseline for.
+        Services.GetService<IProjectCatalog>()?.LoadAsync().GetAwaiter().GetResult();
         Services.GetService<DepotSyncWatcher>()?.Start();
 
         // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.

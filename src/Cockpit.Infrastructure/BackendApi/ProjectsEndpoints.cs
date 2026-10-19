@@ -60,10 +60,11 @@ internal static partial class ProjectsEndpoints
             var caller = _Caller();
             var pairing = services.GetRequiredService<INodePairingBroker>();
             var known = await services.GetRequiredService<IAssistantReadGateway>().ListProjectsAsync().ConfigureAwait(false);
+            var changed = services.GetService<IProjectCatalog>()?.Current.RemoteChangedProjectIds ?? new HashSet<string>();
             await _AuditAsync(services, caller, "api:list_projects", "called", null, cancellationToken).ConfigureAwait(false);
             return caller.Capability == ConnectKeyCapability.Admin
-                ? Results.Json(new { projects = known.Select(project => new { id = project.Id, name = project.Name, description = project.Description, path = project.SourceDirectory, defaultProfile = project.DefaultProfileLabel }) })
-                : Results.Json(new { projects = known.Where(project => caller.AllowsProject(project.Id, pairing)).Select(project => new { id = project.Id, name = project.Name }) });
+                ? Results.Json(new { projects = known.Select(project => new { id = project.Id, name = project.Name, description = project.Description, path = project.SourceDirectory, defaultProfile = project.DefaultProfileLabel, remoteChanged = changed.Contains(project.Id) }) })
+                : Results.Json(new { projects = known.Where(project => caller.AllowsProject(project.Id, pairing)).Select(project => new { id = project.Id, name = project.Name, remoteChanged = changed.Contains(project.Id) }) });
         }).RequireOperate();
 
         api.MapPost("/projects", async (CloneProjectBody body, CancellationToken cancellationToken) =>
@@ -187,6 +188,22 @@ internal static partial class ProjectsEndpoints
             return Clones.TryGetValue(id, out var state)
                 ? Results.Json(state)
                 : BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_clone", "This server knows no clone with that id.");
+        }).RequireAdmin();
+
+        // AC-1570: "Sync now" for a project bound to a Depot source — the same check the desktop's button runs.
+        api.MapPost("/projects/{id}/sync", async (string id, CancellationToken cancellationToken) =>
+        {
+            var caller = _Caller();
+            if (await editor().FindProjectAsync(id).ConfigureAwait(false) is null)
+            {
+                await _AuditAsync(services, caller, "api:sync_project", "not found", null, cancellationToken).ConfigureAwait(false);
+                return _NoProject();
+            }
+
+            var catalog = services.GetRequiredService<IProjectCatalog>();
+            await catalog.SyncNowAsync(id).ConfigureAwait(false);
+            await _AuditAsync(services, caller, "api:sync_project", "called", id, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new { id, remoteChanged = catalog.Current.RemoteChangedProjectIds.Contains(id) });
         }).RequireAdmin();
 
         // Name and settings only: a body that names a path has nowhere to put it.

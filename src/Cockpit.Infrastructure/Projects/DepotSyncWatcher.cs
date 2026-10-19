@@ -30,6 +30,13 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // from the UI thread while a tick can reach it from the threadpool, on the same or a different project's key.
     private readonly ConcurrentDictionary<string, string> _lastChecksum = new(StringComparer.Ordinal);
 
+    // AC-1570: the projects Depot reported changed and nobody has acted on. A tick only ever adds to it; only "Sync now"
+    // clears an entry, so the hint outlives the interval instead of vanishing unseen.
+    private readonly ConcurrentDictionary<string, byte> _changed = new(StringComparer.Ordinal);
+
+    // The projects whose last check failed, so a lasting failure is logged once, on the way in, not every tick.
+    private readonly ConcurrentDictionary<string, byte> _failing = new(StringComparer.Ordinal);
+
     private ITimer? _timer;
 
     // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
@@ -54,12 +61,12 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // through which one. Set by the cockpit, which owns the project list; nothing is polled until it is.
     public Func<IReadOnlyList<DepotBoundProject>>? BoundProjects { get; set; }
 
-    // Told about every check that completed: project id, whether its checksum moved, and the logo bytes
+    // Told about every check that completed: project id, whether it is flagged changed (AC-1570: sticky until "Sync now"), and the logo bytes
     // `PrepareBindingAsync` re-downloaded regardless (AC-1054) — awaited, so "Sync now" only returns once
     // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
     public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
 
-    // Starts polling the clock. Idempotent.
+    // Starts polling the clock; the first pass runs at once so the baseline is laid at start. Idempotent.
     public void Start()
     {
         if (_timer is not null || _disposed)
@@ -67,7 +74,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             return;
         }
 
-        _timer = _time.CreateTimer(_ => _OnTick(), null, Interval, Interval);
+        _timer = _time.CreateTimer(_ => _OnTick(), null, TimeSpan.Zero, Interval);
     }
 
     // One pass over every bound project. Public because the tests drive it directly rather than waiting 15 minutes
@@ -98,7 +105,13 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     public Task SyncNowAsync(string projectId, CancellationToken cancellationToken = default)
     {
         var bound = BoundProjects?.Invoke().FirstOrDefault(candidate => candidate.ProjectId == projectId);
-        return bound is null ? Task.CompletedTask : _CheckAsync(bound, cancellationToken);
+        if (bound is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _changed.TryRemove(projectId, out _);
+        return _CheckAsync(bound, cancellationToken);
     }
 
     private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken)
@@ -112,6 +125,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             if (completed != bindingTask)
             {
                 timeoutCts.Cancel();
+                _NoteFailure(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.");
                 return;
             }
 
@@ -122,6 +136,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             // Not signed in, unreachable, the project no longer exists. None of that is news every tick, and
             // nothing has been remembered that did not happen — the next tick tries again.
             _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed; the next check will try again.", bound.ProjectId);
+            _NoteFailure(bound.ProjectId, exception.Message);
             return;
         }
 
@@ -129,21 +144,33 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         {
             // Said rather than swallowed: "not signed in" is the reason a restored cockpit never syncs again, and
             // this used to return on it without a word anywhere.
-            _logger.LogDebug(
-                "Checking {ProjectId} for a Depot change returned nothing usable: {Reason}",
-                bound.ProjectId,
-                result.Error is { Length: > 0 } reason ? reason : "no checksum came back.");
-
+            var reason = result.Error is { Length: > 0 } error ? error : "no checksum came back.";
+            _logger.LogDebug("Checking {ProjectId} for a Depot change returned nothing usable: {Reason}", bound.ProjectId, reason);
+            _NoteFailure(bound.ProjectId, reason);
             return;
         }
+
+        _failing.TryRemove(bound.ProjectId, out _);
 
         var changed = _lastChecksum.TryGetValue(bound.ProjectId, out var previous)
             && !string.Equals(previous, checksum, StringComparison.Ordinal);
         _lastChecksum[bound.ProjectId] = checksum;
+        if (changed && _changed.TryAdd(bound.ProjectId, 0))
+        {
+            _logger.LogInformation("Depot reported a change to {ProjectId}.", bound.ProjectId);
+        }
 
         if (OnChecked is not null)
         {
-            await OnChecked(bound.ProjectId, changed, result.Binding!.LogoBytes).ConfigureAwait(true);
+            await OnChecked(bound.ProjectId, _changed.ContainsKey(bound.ProjectId), result.Binding!.LogoBytes).ConfigureAwait(true);
+        }
+    }
+
+    private void _NoteFailure(string projectId, string reason)
+    {
+        if (_failing.TryAdd(projectId, 0))
+        {
+            _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
         }
     }
 

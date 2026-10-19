@@ -167,6 +167,7 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         // DEP-381: the backstop behind the disabled "Add on" — a definition without a repository is still refused, with the reason.
         { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:bare","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "names no repository", _Door.ProfileSecret },
+        { "POST", "/api/v1/projects/p/sync", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         // AC-1473 criteria 2 and 3: no profile answer holds a secret, a request with one, a program path or a loader
         // variable is refused without repeating it, and an operate key reads only its own profiles.
         { "GET", "/api/v1/profiles", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
