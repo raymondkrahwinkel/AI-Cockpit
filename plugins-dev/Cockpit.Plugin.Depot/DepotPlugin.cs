@@ -24,6 +24,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
     private readonly List<IDisposable> _handlers = [];
 
+    private readonly HttpClient _publishHttp = new();
+
     // DEP-264: the grant Depot redeems an installation token with, accepted only from its own built-in client.
     private const string InstallTokenGrant = "urn:depot:grant-type:install_token";
 
@@ -69,6 +71,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _HandleBrowser(host, DepotBrowserChannel.Unshare, browser.UnshareAsync);
         _HandleBrowser(host, DepotBrowserChannel.Upload, browser.UploadAsync);
 
+        // AC-1574: publishing a local folder or file to a Depot project, one handler per action.
+        var publisher = new Publishing.DepotPublishService(new Browser.DepotMcp(host, () => settings.Connections), settings, host.Cache, _publishHttp);
+        _HandlePublish(host, DepotPublishChannel.List, publisher.ListAsync);
+        _HandlePublish(host, DepotPublishChannel.Add, publisher.AddAsync);
+        _HandlePublish(host, DepotPublishChannel.Remove, publisher.RemoveAsync);
+        _HandlePublish(host, DepotPublishChannel.Plan, publisher.PlanAsync);
+        _HandlePublish(host, DepotPublishChannel.Run, publisher.RunAsync);
+
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
         host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily(DepotMemorySource.Scheme, "Depot")
@@ -106,6 +116,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotBrowserRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandlePublish<T>(
+        ICockpitHost host, string action, Func<DepotPublishRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotPublishRequest>(DepotChannel.Json)
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
@@ -364,6 +383,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         {
             handler.Dispose();
         }
+
+        _publishHttp.Dispose();
 
         _handlers.Clear();
     }

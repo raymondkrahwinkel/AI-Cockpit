@@ -1,9 +1,7 @@
-using System.Text;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.Browser;
 
@@ -16,12 +14,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     // Stops a server that keeps handing back a cursor; 500 pages is 100k documents.
     private const int MaxPages = 500;
 
-    private sealed class _Failure(string status, string message) : Exception(message)
-    {
-        public string Status { get; } = status;
-    }
-
-    private sealed record _Row(string Argument, string Name, DepotProjectRole Role);
+    private readonly DepotMcp _mcp = new(host, connections);
+    private readonly DepotUploader _uploader = new(new DepotMcp(host, connections));
 
     public Task<DepotBrowserAnswer<IReadOnlyList<DepotBrowserProject>>> ProjectsAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync<IReadOnlyList<DepotBrowserProject>>(async () =>
@@ -35,7 +29,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<DepotBrowserTree>> TreeAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = _Required(request.Project, "project");
+            var project = DepotMcp.Required(request.Project, "project");
             var nodes = new List<DepotBrowserNode>();
             string? cursor = null;
             for (var page = 0; page < MaxPages; page++)
@@ -46,9 +40,9 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                     arguments["after"] = cursor;
                 }
 
-                using var listing = _Parse(await _CallAsync(request, "list", arguments, cancellationToken).ConfigureAwait(false));
-                nodes.AddRange(_Entries(listing.RootElement).Select(entry => _Node(entry, DepotBrowserKind.Document)));
-                var next = _String(listing.RootElement, "nextCursor");
+                using var listing = DepotMcp.Parse(await _CallAsync(request, "list", arguments, cancellationToken).ConfigureAwait(false));
+                nodes.AddRange(DepotMcp.Entries(listing.RootElement).Select(entry => _Node(entry, DepotBrowserKind.Document)));
+                var next = DepotMcp.String(listing.RootElement, "nextCursor");
                 if (string.IsNullOrEmpty(next) || next == cursor)
                 {
                     break;
@@ -57,11 +51,11 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                 cursor = next;
             }
 
-            using var artifacts = _Parse(await _CallAsync(request, "list_artifacts", new Dictionary<string, object?> { ["project"] = project }, cancellationToken).ConfigureAwait(false));
+            using var artifacts = DepotMcp.Parse(await _CallAsync(request, "list_artifacts", new Dictionary<string, object?> { ["project"] = project }, cancellationToken).ConfigureAwait(false));
             var shares = (await _SharesAsync(request, project, cancellationToken).ConfigureAwait(false))
                 .GroupBy(share => share.Path, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-            nodes.AddRange(_Entries(artifacts.RootElement).Select(entry =>
+            nodes.AddRange(DepotMcp.Entries(artifacts.RootElement).Select(entry =>
             {
                 var node = _Node(entry, DepotBrowserKind.Artifact);
                 return shares.TryGetValue(node.Path, out var share)
@@ -75,56 +69,56 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<string>> ReadAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            using var document = _Parse(await _CallAsync(
+            using var document = DepotMcp.Parse(await _CallAsync(
                 request, "read", _Arguments(request), cancellationToken).ConfigureAwait(false));
-            return _String(document.RootElement, "content") ?? string.Empty;
+            return DepotMcp.String(document.RootElement, "content") ?? string.Empty;
         });
 
     // The URL goes straight back to the UI part; it is not stored and not logged here.
     public Task<DepotBrowserAnswer<string>> DownloadUrlAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            using var document = _Parse(await _CallAsync(
+            using var document = DepotMcp.Parse(await _CallAsync(
                 request, "request_download", _Arguments(request), cancellationToken).ConfigureAwait(false));
-            return _String(document.RootElement, "downloadUrl") is { Length: > 0 } url
+            return DepotMcp.String(document.RootElement, "downloadUrl") is { Length: > 0 } url
                 ? url
-                : throw new _Failure(DepotBrowserStatus.Error, "Depot did not return a download URL.");
+                : throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return a download URL.");
         });
 
     // A write, so it needs the Editor role: checked here against Depot's own role for the caller, not left to the UI.
     public Task<DepotBrowserAnswer<DepotBrowserShare>> ShareAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = _Required(request.Project, "project");
-            var path = _Required(request.Path, "path");
+            var project = DepotMcp.Required(request.Project, "project");
+            var path = DepotMcp.Required(request.Path, "path");
             if (request.Mode is not ("members" or "public"))
             {
-                throw new _Failure(DepotBrowserStatus.Error, "Choose Members only or Public.");
+                throw new DepotFailure(DepotBrowserStatus.Error, "Choose Members only or Public.");
             }
 
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
-            using var document = _Parse(await _CallAsync(
+            using var document = DepotMcp.Parse(await _CallAsync(
                 request,
                 "share_artifact",
                 new Dictionary<string, object?> { ["project"] = project, ["path"] = path, ["mode"] = request.Mode },
                 cancellationToken).ConfigureAwait(false));
             var root = document.RootElement;
-            if (_String(root, "shareId") is { Length: > 0 } id && _String(root, "url") is { Length: > 0 } url)
+            if (DepotMcp.String(root, "shareId") is { Length: > 0 } id && DepotMcp.String(root, "url") is { Length: > 0 } url)
             {
                 return new DepotBrowserShare(id, url, root.TryGetProperty("isPublic", out var isPublic) ? isPublic.ValueKind == JsonValueKind.True : request.Mode == "public");
             }
 
             // The answer carried no link: the project's share list is where Depot says what exists.
             var found = (await _SharesAsync(request, project, cancellationToken).ConfigureAwait(false)).FirstOrDefault(share => share.Path == path)
-                ?? throw new _Failure(DepotBrowserStatus.Error, "Depot did not return the share link.");
+                ?? throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return the share link.");
             return new DepotBrowserShare(found.ShareId, found.Url, found.IsPublic);
         });
 
     public Task<DepotBrowserAnswer<bool>> UnshareAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = _Required(request.Project, "project");
-            var shareId = _Required(request.ShareId, "shareId");
+            var project = DepotMcp.Required(request.Project, "project");
+            var shareId = DepotMcp.Required(request.ShareId, "shareId");
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
             await _CallAsync(
                 request,
@@ -139,49 +133,26 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<DepotBrowserUpload>> UploadAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = _Required(request.Project, "project");
-            var path = _Required(request.Path, "path");
+            var project = DepotMcp.Required(request.Project, "project");
+            var path = DepotMcp.Required(request.Path, "path");
             await _RequireEditorAsync(request, project, "Uploading", cancellationToken).ConfigureAwait(false);
-            if (DepotUploadKinds.IsText(path))
+            string? baseChecksum = null;
+            if (request.Replace && DepotUploadKinds.IsText(path))
             {
-                if (request.Content is null || Encoding.UTF8.GetByteCount(request.Content) > DepotUploadKinds.MaxInlineBytes)
-                {
-                    throw new _Failure(DepotBrowserStatus.Error, "A text file can be at most 8 MiB.");
-                }
-
-                var arguments = new Dictionary<string, object?> { ["project"] = project, ["path"] = path, ["content"] = request.Content };
-                if (request.Replace)
-                {
-                    using var current = _Parse(await _CallAsync(request, "read", _Arguments(request), cancellationToken).ConfigureAwait(false));
-                    arguments["baseChecksum"] = _String(current.RootElement, "checksum");
-                }
-
-                await _CallAsync(request, "write", arguments, cancellationToken).ConfigureAwait(false);
-                return new DepotBrowserUpload(null);
+                using var current = DepotMcp.Parse(await _CallAsync(request, "read", _Arguments(request), cancellationToken).ConfigureAwait(false));
+                baseChecksum = DepotMcp.String(current.RootElement, "checksum");
             }
 
-            using var ticket = _Parse(await _CallAsync(
-                request,
-                "request_upload",
-                new Dictionary<string, object?>
-                {
-                    ["project"] = project,
-                    ["path"] = path,
-                    ["contentType"] = request.ContentType is { Length: > 0 } type ? type : "application/octet-stream",
-                    ["size"] = request.Size,
-                    ["share"] = "none",
-                },
-                cancellationToken).ConfigureAwait(false));
-            return _String(ticket.RootElement, "uploadUrl") is { Length: > 0 } url
-                ? new DepotBrowserUpload(url)
-                : throw new _Failure(DepotBrowserStatus.Error, "Depot did not return an upload URL.");
+            var started = await _uploader.StartAsync(
+                request.ConnectionId, project, path, request.Content, request.ContentType ?? string.Empty, request.Size, baseChecksum, cancellationToken).ConfigureAwait(false);
+            return new DepotBrowserUpload(started.UploadUrl);
         });
 
     private sealed record _Share(string ShareId, string Path, string Url, bool IsPublic);
 
     private async Task<IReadOnlyList<_Share>> _SharesAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken)
     {
-        using var document = _Parse(await _CallAsync(
+        using var document = DepotMcp.Parse(await _CallAsync(
             request, "list_shares", new Dictionary<string, object?> { ["project"] = project }, cancellationToken).ConfigureAwait(false));
         if (!document.RootElement.TryGetProperty("shares", out var shares) || shares.ValueKind != JsonValueKind.Array)
         {
@@ -189,105 +160,42 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         }
 
         return [.. shares.EnumerateArray()
-            .Where(share => _String(share, "shareId") is not null && _String(share, "path") is not null && _String(share, "url") is not null)
+            .Where(share => DepotMcp.String(share, "shareId") is not null && DepotMcp.String(share, "path") is not null && DepotMcp.String(share, "url") is not null)
             .Select(share => new _Share(
-                _String(share, "shareId")!,
-                _String(share, "path")!,
-                _String(share, "url")!,
+                DepotMcp.String(share, "shareId")!,
+                DepotMcp.String(share, "path")!,
+                DepotMcp.String(share, "url")!,
                 share.TryGetProperty("isPublic", out var isPublic) && isPublic.ValueKind == JsonValueKind.True))];
     }
 
     private Task _RequireEditorAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken) =>
         _RequireEditorAsync(request, project, "Sharing", cancellationToken);
 
-    private async Task _RequireEditorAsync(DepotBrowserRequest request, string project, string action, CancellationToken cancellationToken)
-    {
-        if (!(await _RoleAsync(request, project, cancellationToken).ConfigureAwait(false)).CanWrite())
-        {
-            throw new _Failure(DepotBrowserStatus.Error, $"{action} needs the Editor role in this project.");
-        }
-    }
+    private Task _RequireEditorAsync(DepotBrowserRequest request, string project, string action, CancellationToken cancellationToken) =>
+        _mcp.RequireEditorAsync(request.ConnectionId, project, action, cancellationToken);
 
-    private async Task<DepotProjectRole> _RoleAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken) =>
-        (await _ListProjectsAsync(request, cancellationToken).ConfigureAwait(false))
-            .FirstOrDefault(row => row.Argument == project)?.Role ?? DepotProjectRole.Unknown;
+    private Task<DepotProjectRole> _RoleAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken) =>
+        _mcp.RoleAsync(request.ConnectionId, project, cancellationToken);
 
-    private async Task<IReadOnlyList<_Row>> _ListProjectsAsync(DepotBrowserRequest request, CancellationToken cancellationToken)
-    {
-        using var document = _Parse(await _CallAsync(request, "list_projects", null, cancellationToken).ConfigureAwait(false));
-        if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
+    private Task<IReadOnlyList<DepotProjectRow>> _ListProjectsAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
+        _mcp.ListProjectsAsync(request.ConnectionId, cancellationToken);
 
-        return [.. projects.EnumerateArray()
-            .Select(project => (Slug: _String(project, "slug"), Address: _String(project, "address"), Project: project))
-            .Where(row => row.Slug is not null)
-            .Select(row => new _Row(
-                row.Address ?? row.Slug!,
-                _String(row.Project, "name") ?? row.Slug!,
-                DepotProjectRoleParser.Parse(_String(row.Project, "role"))))];
-    }
+    private Task<string> _CallAsync(
+        DepotBrowserRequest request, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken) =>
+        _mcp.CallAsync(request.ConnectionId, tool, arguments, cancellationToken);
 
-    private async Task<string> _CallAsync(
-        DepotBrowserRequest request, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken)
-    {
-        var connection = connections().FirstOrDefault(candidate => candidate.Id == request.ConnectionId)
-            ?? throw new _Failure(DepotBrowserStatus.Error, "That Depot connection is no longer configured.");
-        var result = await host.CallMcpToolAsync(connection.McpServerName, tool, arguments, projectId: null, cancellationToken).ConfigureAwait(false);
-        return result.Outcome switch
-        {
-            PluginMcpToolCallOutcome.Success => result.Content ?? string.Empty,
-            PluginMcpToolCallOutcome.AuthorizationRequired => throw new _Failure(DepotBrowserStatus.SignIn, $"Sign in to {connection.Name}"),
-            _ => throw new _Failure(DepotBrowserStatus.Error, result.Error is { Length: > 0 } error ? error : "Depot did not answer."),
-        };
-    }
-
-    private static async Task<DepotBrowserAnswer<T>> _RunAsync<T>(Func<Task<T>> body)
-    {
-        try
-        {
-            return DepotBrowserAnswer<T>.Success(await body().ConfigureAwait(false));
-        }
-        catch (_Failure failure)
-        {
-            return DepotBrowserAnswer<T>.Failure(failure.Status, failure.Message);
-        }
-    }
+    private static Task<DepotBrowserAnswer<T>> _RunAsync<T>(Func<Task<T>> body) => DepotMcp.RunAsync(body);
 
     private static Dictionary<string, object?> _Arguments(DepotBrowserRequest request) => new()
     {
-        ["project"] = _Required(request.Project, "project"),
-        ["path"] = _Required(request.Path, "path"),
+        ["project"] = DepotMcp.Required(request.Project, "project"),
+        ["path"] = DepotMcp.Required(request.Path, "path"),
     };
 
-    private static string _Required(string? value, string name) =>
-        string.IsNullOrWhiteSpace(value) ? throw new _Failure(DepotBrowserStatus.Error, $"The request names no {name}.") : value;
-
-    private static JsonDocument _Parse(string json)
-    {
-        try
-        {
-            return JsonDocument.Parse(json);
-        }
-        catch (JsonException)
-        {
-            throw new _Failure(DepotBrowserStatus.Error, "Depot's answer came back in an unexpected shape.");
-        }
-    }
-
-    private static IEnumerable<JsonElement> _Entries(JsonElement root) =>
-        root.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array ? entries.EnumerateArray() : [];
-
     private static DepotBrowserNode _Node(JsonElement entry, string kind) => new(
-        _String(entry, "path") ?? string.Empty,
+        DepotMcp.String(entry, "path") ?? string.Empty,
         kind,
         entry.TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes) ? bytes : 0,
-        DateTimeOffset.TryParse(_String(entry, "updatedAt"), out var modified) ? modified : null,
-        _String(entry, "contentType"));
-
-    private static string? _String(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        DateTimeOffset.TryParse(DepotMcp.String(entry, "updatedAt"), out var modified) ? modified : null,
+        DepotMcp.String(entry, "contentType"));
 }

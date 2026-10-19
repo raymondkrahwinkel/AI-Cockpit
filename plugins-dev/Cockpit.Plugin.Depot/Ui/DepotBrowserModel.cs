@@ -199,7 +199,7 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
                 : DepotBrowserAnswer<bool>.Failure(text.Status, text.Message);
         }
 
-        var type = _ContentTypes.GetValueOrDefault(Path.GetExtension(name).ToLowerInvariant(), "application/octet-stream");
+        var type = DepotUploadKinds.ContentType(name);
         var ticket = await _InvokeAsync<DepotBrowserUpload>(
             DepotBrowserChannel.Upload, request with { ContentType = type, Size = content.Length }, cancellationToken).ConfigureAwait(true);
         if (ticket.Data?.UploadUrl is not { } url)
@@ -222,11 +222,47 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         }
     }
 
-    private static readonly Dictionary<string, string> _ContentTypes = new()
+    public Task<DepotBrowserAnswer<IReadOnlyList<DepotPublicationRow>>> PublicationsAsync(string project, CancellationToken cancellationToken = default) =>
+        _InvokePublishAsync<IReadOnlyList<DepotPublicationRow>>(DepotPublishChannel.List, new(connection.Id, project), cancellationToken);
+
+    public Task<DepotBrowserAnswer<DepotPublication>> AddPublicationAsync(string project, string source, string targetFolder, CancellationToken cancellationToken = default) =>
+        _InvokePublishAsync<DepotPublication>(DepotPublishChannel.Add, new(connection.Id, project, Source: source, TargetFolder: targetFolder), cancellationToken);
+
+    public Task<DepotBrowserAnswer<bool>> RemovePublicationAsync(DepotPublication link, CancellationToken cancellationToken = default) =>
+        _InvokePublishAsync<bool>(DepotPublishChannel.Remove, new(connection.Id, link.Project, link.Id), cancellationToken);
+
+    // Plan, then the operator's yes, then the run. Files that changed in Depot since the last publication are a second,
+    // separate question; "no" leaves them alone. Null when the operator declined the plan.
+    public async Task<DepotBrowserAnswer<DepotPublishReport>?> PublishAsync(DepotPublication link, CancellationToken cancellationToken = default)
     {
-        [".png"] = "image/png", [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".gif"] = "image/gif",
-        [".webp"] = "image/webp", [".pdf"] = "application/pdf", [".zip"] = "application/zip", [".html"] = "text/html",
-    };
+        var plan = await _InvokePublishAsync<DepotPublishPlan>(DepotPublishChannel.Plan, new(connection.Id, link.Project, link.Id), cancellationToken).ConfigureAwait(true);
+        if (plan.Data is not { } items)
+        {
+            return DepotBrowserAnswer<DepotPublishReport>.Failure(plan.Status, plan.Message);
+        }
+
+        int Count(params string[] actions) => items.Items.Count(item => actions.Contains(item.Action));
+        var writes = Count(DepotPublishAction.New, DepotPublishAction.Changed);
+        var removals = Count(DepotPublishAction.Delete);
+        var conflicts = Count(DepotPublishAction.Conflict);
+        var overwrite = false;
+        if (writes + removals + conflicts > 0)
+        {
+            var summary = $"{writes} to publish, {removals} to move to Depot's trash, {Count(DepotPublishAction.Unchanged, DepotPublishAction.Adopt)} already there, {Count(DepotPublishAction.Skipped)} skipped.";
+            if (!await host.ConfirmAsync("Publish to Depot?", $"{link.Source} → {(link.TargetFolder.Length == 0 ? "the project root" : link.TargetFolder)}: {summary}", "Publish").ConfigureAwait(true))
+            {
+                return null;
+            }
+
+            overwrite = conflicts > 0 && await host.ConfirmAsync(
+                "Overwrite changes made in Depot?",
+                $"{conflicts} file(s) were changed in Depot since the last publication. Depot keeps the previous version.",
+                "Overwrite").ConfigureAwait(true);
+        }
+
+        return await _InvokePublishAsync<DepotPublishReport>(
+            DepotPublishChannel.Run, new(connection.Id, link.Project, link.Id, Confirmed: true, OverwriteConflicts: overwrite), cancellationToken).ConfigureAwait(true);
+    }
 
     // Only the operator's Sign-in click gets here; nothing else opens a browser.
     public async Task<bool> SignInAsync(CancellationToken cancellationToken = default) =>
@@ -263,12 +299,18 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         }
     }
 
-    private async Task<DepotBrowserAnswer<T>> _InvokeAsync<T>(string action, DepotBrowserRequest request, CancellationToken cancellationToken)
+    private Task<DepotBrowserAnswer<T>> _InvokeAsync<T>(string action, DepotBrowserRequest request, CancellationToken cancellationToken) =>
+        _InvokeAnyAsync<T>(action, request, cancellationToken);
+
+    private Task<DepotBrowserAnswer<T>> _InvokePublishAsync<T>(string action, DepotPublishRequest request, CancellationToken cancellationToken) =>
+        _InvokeAnyAsync<T>(action, request, cancellationToken);
+
+    private async Task<DepotBrowserAnswer<T>> _InvokeAnyAsync<T>(string action, object request, CancellationToken cancellationToken)
     {
         try
         {
             var answer = await host.Channel.InvokeAsync(
-                action, JsonSerializer.SerializeToElement(request, DepotChannel.Json), cancellationToken).ConfigureAwait(true);
+                action, JsonSerializer.SerializeToElement(request, request.GetType(), DepotChannel.Json), cancellationToken).ConfigureAwait(true);
             return answer.Deserialize<DepotBrowserAnswer<T>>(DepotChannel.Json)
                 ?? DepotBrowserAnswer<T>.Failure(DepotBrowserStatus.Error, "Depot returned an empty answer.");
         }
