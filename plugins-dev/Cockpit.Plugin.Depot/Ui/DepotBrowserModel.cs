@@ -182,9 +182,18 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
                 return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"{name} is over 8 MiB, which is the most Depot takes as a document.");
             }
 
-            using var reader = new StreamReader(content, Encoding.UTF8);
-            var text = await _InvokeAsync<DepotBrowserUpload>(
-                DepotBrowserChannel.Upload, request with { Content = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(true) }, cancellationToken).ConfigureAwait(true);
+            string body;
+            try
+            {
+                using var reader = new StreamReader(content, new UTF8Encoding(false, throwOnInvalidBytes: true));
+                body = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (DecoderFallbackException)
+            {
+                return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"{name} is not UTF-8 text, which is the only text Depot stores as a document.");
+            }
+
+            var text = await _InvokeAsync<DepotBrowserUpload>(DepotBrowserChannel.Upload, request with { Content = body }, cancellationToken).ConfigureAwait(true);
             return text.Status == DepotBrowserStatus.Ok
                 ? DepotBrowserAnswer<bool>.Success(true)
                 : DepotBrowserAnswer<bool>.Failure(text.Status, text.Message);
@@ -207,9 +216,9 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
                 ? DepotBrowserAnswer<bool>.Success(true)
                 : DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, $"Depot storage refused {name} (HTTP {(int)response.StatusCode}).");
         }
-        catch (HttpRequestException)
+        catch (Exception exception) when (exception is HttpRequestException || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, "Could not reach Depot storage.");
+            return DepotBrowserAnswer<bool>.Failure(DepotBrowserStatus.Error, "Could not reach Depot storage, or it took too long.");
         }
     }
 

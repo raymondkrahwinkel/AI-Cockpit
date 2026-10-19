@@ -332,8 +332,18 @@ internal sealed class DepotBrowserPanel : UserControl
         {
             var name = DepotDownload.SafeFileName(file.Name);
             var target = folder.Length == 0 ? name : $"{folder}/{name}";
-            await using var stream = await file.OpenReadAsync().ConfigureAwait(true);
-            var answer = await _model.UploadAsync(_project, folder, file.Name, stream, _loaded.Nodes.Any(node => node.Path == target)).ConfigureAwait(true);
+            DepotBrowserAnswer<bool>? answer;
+            try
+            {
+                await using var stream = await file.OpenReadAsync().ConfigureAwait(true);
+                answer = await _model.UploadAsync(_project, folder, file.Name, stream, _loaded.Nodes.Any(node => node.Path == target)).ConfigureAwait(true);
+            }
+            catch (IOException exception)
+            {
+                _host.ShowToast($"Could not read {file.Name}: {exception.Message}");
+                break;
+            }
+
             if (answer is null)
             {
                 continue;
