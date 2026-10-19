@@ -58,9 +58,10 @@ public sealed class ProvisioningJourney
 
             // AC-1512: the first-run answers landed: Simple on open, the work kind's plugin, and the profile's reading level.
             Assert.True(cockpit.Cockpit.SimpleView);
-            Assert.Contains(Program.Provisioning!.Report, line => line is { Path: "plugins.schedules", Reason: ProvisionManifestApplier.Applied });
+            Assert.NotNull(Program.Provisioning);
+            Assert.Contains(Program.Provisioning.Report, line => line is { Path: "plugins.schedules", Reason: ProvisionManifestApplier.Applied });
             Assert.Equal(ReadingLevel.Simple, (await cockpit.Services.GetRequiredService<ISessionProfileStore>().LoadAsync()).Single(profile => profile.Label == "Acme dev").Defaults?.DefaultReadingLevel);
-            Assert.DoesNotContain(Program.Provisioning!.Report, line => line is { Reason: ProvisionManifestApplier.NotApplied, Path: var path } && path.StartsWith("firstRun", StringComparison.Ordinal));
+            Assert.DoesNotContain(Program.Provisioning.Report, line => line is { Reason: ProvisionManifestApplier.NotApplied, Path: var path } && path.StartsWith("firstRun", StringComparison.Ordinal));
 
             var file = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(cockpit.StateRoot)))!;
             Assert.Equal(("false", "15", "true"), (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));

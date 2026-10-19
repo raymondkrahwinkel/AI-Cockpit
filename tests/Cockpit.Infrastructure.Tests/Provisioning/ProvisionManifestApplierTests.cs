@@ -75,11 +75,11 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
         // AC-1512, §3.10: the first-run answers landed as defaults, not just as "the wizard was answered": Simple on open,
         // the work kind's plugin (gamma, tagged in the store), the manifest profile's reading level. Nothing to say.
-        Assert.Equal(("true", "Simple"), (file["Layout"]!["OpenInSimpleView"]!.ToString(), file["Profiles"]![1]!["Defaults"]!["DefaultReadingLevel"]!.ToString()));
+        Assert.Equal(("true", "Simple"), (file["Layout"]?["OpenInSimpleView"]?.ToString(), file["Profiles"]?[1]?["Defaults"]?["DefaultReadingLevel"]?.ToString()));
         Assert.DoesNotContain(applied.Report, line => line.Path.StartsWith("firstRun", StringComparison.Ordinal));
 
         // Off the white list: not written, and said.
-        Assert.NotEqual("Light", file["Layout"]!["ThemeMode"]!.ToString());
+        Assert.NotEqual("Light", file["Layout"]?["ThemeMode"]?.ToString());
         Assert.Contains(applied.Report, line => line is { Path: "settings.layout.themeMode", Reason: ProvisionManifestReader.SkippedUnknown });
 
         var again = await _ApplyAsync();
