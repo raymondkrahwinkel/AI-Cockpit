@@ -38,7 +38,7 @@ internal static class ProfileEndpoints
     private static readonly string[] CredentialFields = ["apiKey"];
 
     // The fields of a plugin's config whose change sends a key the server keeps somewhere else (AC-1484's host pin).
-    private static readonly string[] AddressWords = ["url", "host", "endpoint"];
+    private static readonly string[] AddressWords = ["url", "uri", "host", "endpoint", "address", "origin"];
 
     private static SecretFields Secrets => SecretKeyHolder.Shared.Fields;
 
@@ -519,12 +519,12 @@ internal static class ProfileEndpoints
     private static bool _Hides(string name, JsonNode? value, Func<string, bool> isSecret) =>
         (isSecret(name) && _IsSet(value)) || _HoldsSecretAsText(value, isSecret);
 
+    // Text, or a list holding text ("tokens": [...]); a number under such a name is a limit ("maxTokens"), not a key.
     private static bool _IsSet(JsonNode? value) => value switch
     {
-        null => false,
-        JsonValue scalar when scalar.GetValueKind() is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null => false,
         JsonValue scalar when scalar.TryGetValue<string>(out var content) => content.Length > 0,
-        _ => true,
+        JsonArray items => items.Any(_IsSet),
+        _ => false,
     };
 
     private static bool _HoldsSecretAsText(JsonNode? value, Func<string, bool> isSecret)

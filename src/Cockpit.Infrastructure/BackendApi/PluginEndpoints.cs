@@ -282,8 +282,9 @@ internal static class PluginEndpoints
 
             return (values, removed, secrets.ToHashSet(StringComparer.Ordinal));
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
+            // ArgumentException: a key twice in one object.
             return null;
         }
     }
