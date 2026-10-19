@@ -37,7 +37,7 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
                 new StartChoiceOptionViewModel(
                     "restore-backup", MaterialIconKind.Download, "Restore a backup file",
                     "Coming from another machine? Bring the backup you made there.",
-                    () => new RestoreStepView { DataContext = RestoreViewModel }),
+                    () => new RestoreStepView { DataContext = new RestoreStepViewModel() }),
             ],
             _routes);
 
