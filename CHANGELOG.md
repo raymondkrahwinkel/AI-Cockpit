@@ -98,6 +98,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the wrong type) is now refused as an invalid request instead of being reported as a plugin failure.
 - fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's
   Proxmox that is the server, not this desktop.
+- fixed: a connected server now refreshes its displayed latency, and clearly shows when its regular answer times out.
+
 - fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.12.1.
 - fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the
   consent step, which shows the server's own SHA-256 of the plugin, and the server pins only that hash.
