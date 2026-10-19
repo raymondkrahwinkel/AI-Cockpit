@@ -242,7 +242,15 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         // failure it found then must still be said by the next check.
         if (OnFailing is { } tell && _told.TryAdd(projectId, 0))
         {
-            tell(projectId, reason);
+            try
+            {
+                tell(projectId, reason);
+            }
+            catch (Exception exception)
+            {
+                // A toast that could not be shown must not cost the other projects their check.
+                _logger.LogWarning(exception, "Telling that checking {ProjectId} for a Depot change failed did not work.", projectId);
+            }
         }
     }
 

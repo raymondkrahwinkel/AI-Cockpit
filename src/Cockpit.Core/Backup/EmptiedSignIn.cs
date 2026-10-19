@@ -54,7 +54,10 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
 
         foreach (var step in steps.Take(steps.Count - 1))
         {
-            node = step.Groups[1].Success ? (node as JsonArray)?[int.Parse(step.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)] : (node as JsonObject)?[step.Value];
+            // An index past the end gives the bare path: a label must never be what fails a restore that already wrote.
+            node = step.Groups[1].Success
+                ? int.TryParse(step.Groups[1].Value, out var index) && node is JsonArray array && index < array.Count ? array[index] : null
+                : (node as JsonObject)?[step.Value];
         }
 
         var name = (node as JsonObject)?.Select(property => property).FirstOrDefault(property => property.Key is "Name" or "Label" or "DisplayName").Value?.ToString();
