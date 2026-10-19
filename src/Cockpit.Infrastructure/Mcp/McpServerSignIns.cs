@@ -112,7 +112,11 @@ internal sealed class McpServerSignIn
     internal Task Ended { get; private set; } = Task.CompletedTask;
 
     // False when the redirect is not the answer to this sign-in's own link (see McpOAuthHandoff.Submit).
-    public bool Submit(string query) => _status == "running" && _handoff.Submit(query);
+    public bool Submit(string query)
+    {
+        _logger.LogInformation("Redirect for MCP server {Server}: {Query}", Name, query);
+        return _status == "running" && _handoff.Submit(query);
+    }
 
     // Ends it unsigned; the token held before is put back.
     internal void End(string status)
