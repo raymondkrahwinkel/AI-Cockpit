@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
+  sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: a Depot change is now seen from the start and stays on the project card until you press **Sync now**, 
   instead of showing up 15 to 30 minutes late and vanishing at the next check. A server reports the flag in its project
   list and runs **Sync now** for a connected desktop, and its log says when Depot reported a change or a check started failing.
