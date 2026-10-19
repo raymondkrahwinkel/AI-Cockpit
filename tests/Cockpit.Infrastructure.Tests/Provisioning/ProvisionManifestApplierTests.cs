@@ -1,10 +1,13 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.Terminal;
 using Cockpit.Infrastructure.Provisioning;
+using Cockpit.Infrastructure.Terminal;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Provisioning;
@@ -55,9 +58,11 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Equal(["stores.acme-intern"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
         var written = File.ReadAllText(ConfigPath);
         var file = JsonNode.Parse(written)!;
+        // AC-1507: the font size of 11 was chosen here before, so the manifest's default gives way to it.
         Assert.Equal(
-            ("false", "15", "true"),
+            ("false", "11", "true"),
             (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
+        Assert.Contains(applied.Report, line => line is { Path: "Terminal.FontSize", Reason: ProvisionManifestApplier.KeptLocal });
         Assert.Equal(["Mine", "Acme dev"], file["Profiles"]!.AsArray().Select(profile => profile!["Label"]!.ToString()));
         Assert.Equal(@"D:\mine", file["Profiles"]![0]!["ConfigDir"]!.ToString());
         Assert.Equal(("acceptEdits", "claude-sonnet-5-5"), (file["Profiles"]![1]!["Defaults"]!["PermissionMode"]!.ToString(), file["Profiles"]![1]!["Provider"]!["Model"]!.ToString()));
@@ -70,13 +75,66 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Null(file["Layout"]);
         Assert.Contains(applied.Report, line => line is { Path: "settings.layout.themeMode", Reason: ProvisionManifestReader.SkippedUnknown });
 
-        Assert.Null((await _ApplyAsync()).Failure);
+        var again = await _ApplyAsync();
+        Assert.Null(again.Failure);
         Assert.Equal(written, File.ReadAllText(ConfigPath));
+        string[] changes = [ProvisionManifestApplier.Applied, ProvisionManifestApplier.KeptLocal, ProvisionManifestApplier.ReplacedManaged, ProvisionManifestApplier.RestoredUnmanaged];
+        Assert.DoesNotContain(again.Report, line => changes.Contains(line.Reason));
     }
 
-    private Task<ProvisioningOutcome> _ApplyAsync()
+    // AC-1507, manifest-v1 §4.2: the rows where a local value could be lost. Each applies `first`, lets the operator
+    // set 11 through the Options route, then applies `second` (null: the key left the manifest).
+    [Theory]
+    [InlineData("default", "default", 16, "11", ProvisionManifestApplier.KeptLocal)]
+    [InlineData("locked", null, 0, "11", ProvisionManifestApplier.RestoredUnmanaged)]
+    public async Task A_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_lifted(string first, string? second, int secondValue, string expected, string outcome)
     {
-        var read = ProvisionManifestReader.Read(Manifest);
+        var store = new TerminalSettingsStore(ConfigPath);
+        if (first == ProvisionManifestReader.LockedMode)
+        {
+            await store.SaveAsync(new TerminalSettings { FontSize = 11 });
+        }
+
+        Assert.Null((await _ApplyAsync(_FontSize(first, 15))).Failure);
+        Assert.Equal(15, (await store.LoadAsync()).FontSize);
+        if (first == ProvisionManifestReader.DefaultMode)
+        {
+            await store.SaveAsync(new TerminalSettings { FontSize = 11 });
+        }
+
+        var applied = await _ApplyAsync(second is null ? _FontSize(null, 0) : _FontSize(second, secondValue));
+
+        Assert.Equal(expected, (await store.LoadAsync()).FontSize.ToString(CultureInfo.InvariantCulture));
+        Assert.Contains(applied.Report, line => line.Path == "Terminal.FontSize" && line.Reason == outcome);
+    }
+
+    // AC-1507: a locked key is refused on the route every Options save takes, and the Options lookup names who locked it.
+    [Fact]
+    public async Task A_write_to_a_locked_key_is_refused_and_the_key_reads_as_managed_by_its_organisation()
+    {
+        Assert.Null((await _ApplyAsync(_FontSize(ProvisionManifestReader.LockedMode, 15))).Failure);
+
+        var store = new TerminalSettingsStore(ConfigPath);
+        await store.SaveAsync(new TerminalSettings { FontSize = 20, FontFamily = "Consolas" });
+
+        Assert.Equal((15, "Consolas"), ((await store.LoadAsync()).FontSize, (await store.LoadAsync()).FontFamily));
+        Assert.Equal("Acme", (await new ManagedSettings(ConfigPath).ReadAsync())["Terminal.FontSize"]);
+    }
+
+    private static string _FontSize(string? mode, int value)
+    {
+        var settings = mode is null ? "" : $$""", "settings": { "terminal.fontSize": { "value": {{value}}, "mode": "{{mode}}", "by": "org" } }""";
+        return $$"""
+            {
+              "format": "cockpit.provision", "formatVersion": 1,
+              "issuer": { "kind": "depot", "organization": { "id": "acme", "name": "Acme" } }{{settings}}
+            }
+            """;
+    }
+
+    private Task<ProvisioningOutcome> _ApplyAsync(string manifest = Manifest)
+    {
+        var read = ProvisionManifestReader.Read(manifest);
         var storeClient = Substitute.For<IPluginStoreClient>();
         storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
             .Returns(call =>

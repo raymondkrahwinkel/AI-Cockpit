@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Configuration;
 // credentials are encrypted/decrypted, covering every section including a plugin's own storage.
 internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyHolder? keyHolder = null)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
@@ -256,6 +256,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // already holds one, UpdateNowAsync's own or a CockpitConfigWriteBatch's held across the whole scope.
     internal async Task WriteNowAsync(CockpitConfigFile configFile)
     {
+        ManagedConfigKeys.Enforce(configFile);
         var document = JsonSerializer.SerializeToNode(configFile, SerializerOptions)
             ?? throw new InvalidOperationException("The cockpit configuration serialized to nothing.");
 

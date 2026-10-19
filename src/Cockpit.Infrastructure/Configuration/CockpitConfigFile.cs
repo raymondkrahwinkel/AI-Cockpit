@@ -178,4 +178,8 @@ internal sealed class CockpitConfigFile
     // AC-767: managed-CLI names excluded from auto-update — an exception list, so an absent section
     // means auto-update stays on for every CLI, existing or future, with no migration needed.
     public List<string> ManagedCliAutoUpdateDisabled { get; set; } = [];
+
+    // AC-1507: the provisioning applier's own record; absent on a machine nothing was provisioned onto.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProvisioningStateEntry? Provisioning { get; set; }
 }

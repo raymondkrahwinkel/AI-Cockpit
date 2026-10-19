@@ -950,7 +950,11 @@
                             <ComboBox ItemsSource="{Binding TerminalFontChoices}"
                                       SelectedItem="{Binding TerminalFontSelection}"
                                       Width="260"
+                                      IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontFamily}"
                                       ToolTip.Tip="Pick a common monospace font, or choose Custom… to enter your own"/>
+                            <TextBlock Text="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Label}, ConverterParameter=Terminal.FontFamily}"
+                                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="optionsHint" VerticalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding IsTerminalFontCustom}">
@@ -966,9 +970,13 @@
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
-                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"
+                                           IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontSize}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."/>
+                            <TextBlock Text="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Label}, ConverterParameter=Terminal.FontSize}"
+                                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="optionsHint" VerticalAlignment="Center"/>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

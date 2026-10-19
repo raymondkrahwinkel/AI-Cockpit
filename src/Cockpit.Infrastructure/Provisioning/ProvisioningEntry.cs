@@ -12,6 +12,9 @@ namespace Cockpit.Infrastructure.Provisioning;
 public sealed record ProvisioningOutcome(ProvisionManifest? Manifest, IReadOnlyList<ProvisionNote> Skipped, string? Failure, ProvisionToken? Token = null)
 {
     public IReadOnlyList<ProvisionNote> Report { get; init; } = [];
+
+    // Where the manifest came from, redacted; kept in the applier's record (AC-1507).
+    public string? Source { get; init; }
 }
 
 // AC-1506: the URL's one-time token, held in memory between reading and applying. Printed as its hash only, so a
@@ -145,7 +148,7 @@ public static class ProvisioningEntry
 
         // AC-1506: not used up here. The applier does that once everything was applied, so a failed apply leaves the link usable.
         logger.LogInformation("Provisioning manifest {ManifestId} revision {Revision} from {Source} is valid.", read.Manifest!.ManifestId, read.Manifest.Revision, source);
-        return new(read.Manifest, read.Skipped, null, tokenHash is null ? null : new ProvisionToken(token!, tokenHash));
+        return new(read.Manifest, read.Skipped, null, tokenHash is null ? null : new ProvisionToken(token!, tokenHash)) { Source = source };
     }
 
     // Records the token's hash, so the same link is refused from now on. Server-side it is one-time anyway (DEP-264).

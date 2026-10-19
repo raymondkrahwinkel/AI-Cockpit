@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **managed settings** from a provisioning manifest. A setting, plugin or profile an organisation locks is
+  read-only in Options with "Managed by <organisation>", any change to it is refused and logged, and your own value is
+  kept aside and comes back when the lock is lifted. Applying a manifest again no longer overwrites a value you chose
+  yourself; it keeps yours and says the default changed. What is managed stays out of a backup.
+
 - added: **Upload** in the Depot file browser. An Editor picks one or more files and they land in the selected folder
   (the root when none is selected); text files become documents, everything else a file in the project. A path that
   already exists is replaced only after a yes, and Depot's reason shows when it refuses a file.
