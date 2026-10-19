@@ -92,7 +92,7 @@ public sealed class SettingsSyncJourney
         await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
             "journey",
             "Depot: Journey",
-            new McpOAuthToken { AccessToken = _ProfileSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), ResourceUrl = $"{url}/mcp" });
+            new McpOAuthToken { AccessToken = _ProfileSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), Scope = "depot", ResourceUrl = $"{url}/mcp" });
         await cockpit.StartDesktopAsync();
     }
 
