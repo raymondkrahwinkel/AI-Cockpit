@@ -645,12 +645,20 @@ public sealed class RemoteAdminJourney
         Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
         var settings = await opened.Task;
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await HeadlessAvalonia.RunAsync(async () =>
+        var edited = HeadlessAvalonia.RunAsync(async () =>
         {
             settings.Closed += (_, _) => closed.TrySetResult();
             await edit(settings);
             _Click(settings, "Save");
         });
+
+        // A view that throws in a click handler can stop the UI thread; then nothing answers, and that is the failure.
+        if (await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2)) != edited)
+        {
+            throw new TimeoutException($"Editing {pluginId}'s settings never finished: the UI thread stopped answering.");
+        }
+
+        await edited;
         await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
         var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
         Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
