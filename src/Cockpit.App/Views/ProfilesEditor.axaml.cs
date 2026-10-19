@@ -2,11 +2,15 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Views;
 
 public partial class ProfilesEditor : UserControl
 {
+    private readonly ILogger<ProfilesEditor>? _logger = Program.Services?.GetService<ILogger<ProfilesEditor>>();
+
     public ProfilesEditor()
     {
         InitializeComponent();
@@ -34,9 +38,10 @@ public partial class ProfilesEditor : UserControl
                 profile.ConfigDir = path;
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // Picker unavailable/failed — keep the current value.
+            // Picker unavailable/failed — keep the current value. An async void handler must not let it escape.
+            _logger?.LogWarning(exception, "A profile's file picker failed.");
         }
     }
 
@@ -66,9 +71,10 @@ public partial class ProfilesEditor : UserControl
                 profile.DefaultWorkingDirectory = path;
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // Picker unavailable/failed — keep the current value.
+            // Picker unavailable/failed — keep the current value. An async void handler must not let it escape.
+            _logger?.LogWarning(exception, "A profile's file picker failed.");
         }
     }
 
@@ -93,9 +99,10 @@ public partial class ProfilesEditor : UserControl
                 profile.ExecutablePath = path;
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // Picker unavailable/failed — keep the current value.
+            // Picker unavailable/failed — keep the current value. An async void handler must not let it escape.
+            _logger?.LogWarning(exception, "A profile's file picker failed.");
         }
     }
 }

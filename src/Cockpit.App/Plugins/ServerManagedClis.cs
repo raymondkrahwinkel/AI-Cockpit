@@ -74,8 +74,9 @@ internal sealed class ServerManagedClis(IPluginChannelRelay relay, string folder
         {
             await relay.RemoveManagedCliAsync(folderId, cliName);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
+            // Nobody awaits this task, so nothing it throws may escape it.
             report(exception.Message);
         }
     }

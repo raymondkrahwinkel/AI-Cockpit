@@ -316,8 +316,10 @@ internal static class ProfileEndpoints
             return (null, _Invalid("A profile needs a label."));
         }
 
-        if (held is not null ? provider != SessionsEndpoints.ProviderId(held)
-            : incoming.ProviderConfig is not (OllamaConfig or LmStudioConfig) && services.GetService<IPluginProviderRegistry>()?.Resolve(provider) is null)
+        var providerRefused = held is not null
+            ? provider != SessionsEndpoints.ProviderId(held)
+            : incoming.ProviderConfig is not (OllamaConfig or LmStudioConfig) && services.GetService<IPluginProviderRegistry>()?.Resolve(provider) is null;
+        if (providerRefused)
         {
             return (null, _Invalid(held is null ? "A new profile needs one of the server's providers." : "A profile's provider is fixed once it is made."));
         }

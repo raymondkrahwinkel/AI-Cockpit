@@ -97,6 +97,7 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
             // Not blocking: an unreachable backend must not stop the operator from saving.
         }
 
+        // Posted, so nothing awaits it: a failure shows on the status line instead of stopping the UI thread.
         Dispatcher.UIThread.Post(() =>
         {
             if (ticket != _checkTicket)
@@ -104,7 +105,15 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
                 return;
             }
 
-            _ApplyAnswer(request, answer);
+            try
+            {
+                _ApplyAnswer(request, answer);
+            }
+            catch (Exception)
+            {
+                _executableStatus.IsVisible = true;
+                ProviderConfigStatus.Set(_executableStatus, _CheckFailedText, isOk: true);
+            }
         });
     }
 
@@ -145,8 +154,15 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
             var dirs = answer.ConfigDirs.Select(choice => choice.ConfigDir).Where(dir => dir.Length > 0).Distinct().ToList();
             Dispatcher.UIThread.Post(() =>
             {
-                _configDir.ItemsSource = dirs;
-                _executablePath.ItemsSource = answer.Executables;
+                try
+                {
+                    _configDir.ItemsSource = dirs;
+                    _executablePath.ItemsSource = answer.Executables;
+                }
+                catch (Exception)
+                {
+                    // Suggestions are a convenience; the fields still take free text.
+                }
             });
         }
         catch (Exception)
