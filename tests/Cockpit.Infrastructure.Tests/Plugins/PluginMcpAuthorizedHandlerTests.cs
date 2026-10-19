@@ -43,8 +43,8 @@ public sealed class PluginMcpAuthorizedHandlerTests
         var sent = Assert.Single(upstream.Requests);
         Assert.Equal($"Bearer {Token}", sent.Authorization);
         Assert.Equal("kept", sent.PluginHeader);
-        Assert.Same(request, response.RequestMessage);
         Assert.DoesNotContain(Token, _EverythingThePluginSees(request, response), StringComparison.Ordinal);
+        Assert.Same(request, response.RequestMessage);
     }
 
     [Theory]
