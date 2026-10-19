@@ -6,6 +6,9 @@ namespace Cockpit.Core.Backup;
 // hold the Sign in; it is null for a sign-in no plugin owns, which the operator is still told about.
 public sealed record EmptiedSignIn(string Label, string? PluginId)
 {
+    // The sentence the next start shows for one of them, named by the plugin or connection the operator will recognise.
+    public static string Ask(string name) => $"This connection asks for a new sign-in after the restore: {name}.";
+
     // What a restore of `incoming` leaves empty: the fields the backup took out (`removed`, JSON paths) and the stored
     // OAuth tokens that hold no access token. A plugin's field counts only when that plugin was restored too.
     public static IReadOnlyList<EmptiedSignIn> From(JsonObject? incoming, IReadOnlyList<string> removed, RestoreOptions options)

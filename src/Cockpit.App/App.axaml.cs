@@ -19,6 +19,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
@@ -686,11 +687,11 @@ public partial class App : Application
             if (signIn.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId))
             {
                 var name = cockpit.PluginSettings[pluginId].PluginName;
-                toasts.Show($"This connection asks for a new sign-in after the restore: {name}.", ToastSeverity.Warning, "Sign in", () => _ = cockpit.OpenPluginSettingsAsync(pluginId));
+                toasts.Show(EmptiedSignIn.Ask(name), ToastSeverity.Warning, "Sign in", () => _ = cockpit.OpenPluginSettingsAsync(pluginId));
             }
             else
             {
-                toasts.Show($"This connection asks for a new sign-in after the restore: {signIn.Label}.", ToastSeverity.Warning);
+                toasts.Show(EmptiedSignIn.Ask(signIn.Label), ToastSeverity.Warning);
             }
         }
     }
