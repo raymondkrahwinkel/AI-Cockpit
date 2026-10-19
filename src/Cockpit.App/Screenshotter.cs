@@ -216,6 +216,8 @@ internal static class Screenshotter
         ["options-apply-blocked"] = (_, _) => _OptionsApplyBlockedFooter(),
         // AC-289: a provider plugin's own page carrying the usage warnings it declared, moved there from Sessions.
         ["options-plugin-declared"] = (_, _) => _OptionsPluginDeclared(),
+        // AC-1508: Options → Backup with a Depot connection chosen under Where to, and the backups it holds.
+        ["options-backup-depot"] = (_, _) => _OptionsBackupToDepot(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
@@ -814,6 +816,7 @@ internal static class Screenshotter
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
+        ["options-backup-depot"] = _ChooseSceneDepot,
     };
 
     // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.
@@ -1692,6 +1695,39 @@ internal static class Screenshotter
             ?? throw new InvalidOperationException($"The Options sidebar has no '{header}' category.");
 
         return dialog;
+    }
+
+    private static OptionsDialog _OptionsBackupToDepot()
+    {
+        return _OptionsOnTab("backup");
+    }
+
+    // After the dialog opened: opening refreshes the destinations from the registered targets, which a scene has none of.
+    private static void _ChooseSceneDepot(Window window)
+    {
+        var cockpit = (ViewModels.CockpitViewModel)(window.DataContext ?? throw new InvalidOperationException("The Options dialog has no cockpit."));
+        var depot = new BackupDestination("Depot: Home", "depot:home", new _SceneBackupTarget());
+        cockpit.BackupDestinations.Add(depot);
+        cockpit.BackupDestination = depot;
+    }
+
+    // Two backups in a Depot account space, as its listing returns them.
+    private sealed class _SceneBackupTarget : Cockpit.Plugins.Abstractions.Backup.IBackupTarget
+    {
+        public string Id => "depot:home";
+
+        public string DisplayName => "Depot: Home";
+
+        public Task<string> WriteAsync(string name, Stream archive, CancellationToken cancellationToken = default) => Task.FromResult("scene");
+
+        public Task<IReadOnlyList<Cockpit.Plugins.Abstractions.Backup.BackupTargetEntry>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Backup.BackupTargetEntry>>(
+            [
+                new("a", new DateTimeOffset(2026, 10, 19, 21, 10, 0, TimeSpan.Zero), 2168, null),
+                new("b", new DateTimeOffset(2026, 10, 18, 9, 0, 0, TimeSpan.Zero), 2140, null),
+            ]);
+
+        public Task<Stream> OpenReadAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult<Stream>(new MemoryStream());
     }
 
     // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
