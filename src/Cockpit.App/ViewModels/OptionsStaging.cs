@@ -93,6 +93,7 @@ internal static class OptionsStaging
         "OptionsSearchText",
         "BackupIncludesCredentials",
         "BackupIncludesProfiles",
+        "ScheduledBackupSettings",
         "Security.PairWithNodeAddress",
         // AC-1352: the same shape as PairWithNodeAddress above — inputs to a one-shot connect action, not a
         // setting Apply persists or Cancel should put back.

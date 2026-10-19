@@ -90,6 +90,10 @@ internal sealed class CockpitConfigFile
     // The quick-note key (AC-492) — the desktop-wide key and whether it is armed; owned by the quick-note-settings store.
     public QuickNoteSettingsEntry? QuickNotes { get; set; }
 
+    // The scheduled backup (AC-1502) — whether it runs, how often, how many it keeps, where to, and how the last runs
+    // went; owned by the backup-schedule store.
+    public BackupScheduleEntry? Backup { get; set; }
+
     // Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.
     public TerminalSettingsEntry? Terminal { get; set; }
 

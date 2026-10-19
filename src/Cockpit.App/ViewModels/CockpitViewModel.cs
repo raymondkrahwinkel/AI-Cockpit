@@ -3231,7 +3231,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IServerSignIns? serverSignIns = null,
         // AC-1534: the providers' own profile views, so Admin › Profiles on a server opens the one this laptop shows.
         IPluginProviderConfigViews? providerConfigViews = null,
-        IManagedSettings? managedSettings = null)
+        IManagedSettings? managedSettings = null,
+        IBackupScheduleStore? backupScheduleStore = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3305,6 +3306,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // does not care — reads as not packaged, which is the answer that offers less rather than more.
         CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
+        ScheduledBackupSettings = backupScheduleStore is null ? null : new BackupScheduleViewModel(backupScheduleStore);
+        _ = ScheduledBackupSettings?.LoadAsync();
         _assistantMemory = assistantMemory;
         _appRestart = appRestartService;
         // AC-478: whether this process was launched in safe mode, read off the diagnostics plugin loading was given the
@@ -4402,6 +4405,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // services at all. The buttons bind to it, so a build that forgot to register the service shows them disabled
     // rather than showing two controls that swallow a click and do nothing.
     public bool CanBackUp => _backupService is not null;
+
+    // AC-1502: the scheduled backup's settings; null in the design-time view model, which has no store.
+    public BackupScheduleViewModel? ScheduledBackupSettings { get; }
 
     // Same reasoning as CanBackUp, for the assistant-memory-only export/restore (AC-657).
     public bool CanBackUpAssistantMemory => _assistantMemory is not null;

@@ -23,6 +23,7 @@ using Cockpit.Core.Secrets;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Hotkeys;
@@ -270,6 +271,9 @@ public sealed class CockpitBackend
             worktreeReconciler.Start();
         }
 
+        // AC-1502: the scheduled backup, here so a headless server makes it too.
+        Services.GetService<ScheduledBackup>()?.Start();
+
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere.
         Services.GetService<DepotSyncWatcher>()?.Start();
 
@@ -307,6 +311,7 @@ public sealed class CockpitBackend
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
+            Services.GetService<ScheduledBackup>(),
         ];
         foreach (var planner in planners)
         {

@@ -2313,7 +2313,31 @@
                         <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="2. ASSISTANT MEMORY ONLY"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. SCHEDULED BACKUP"/>
+                        <StackPanel x:Name="BackupScheduleSection" Spacing="6"
+                                    IsVisible="{Binding ScheduledBackupSettings, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <CheckBox Content="Back up the cockpit on a schedule" IsChecked="{Binding ScheduledBackupSettings.Enabled}"
+                                      ToolTip.Tip="Made by the cockpit itself, on a server too, with the same contents as Create backup above and without your keys and tokens. It waits while a backup or a restore is running, and a failed one is tried again at the next check."/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="How often" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Intervals}" SelectedItem="{Binding ScheduledBackupSettings.Interval}" Width="140"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="How many to keep" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding ScheduledBackupSettings.Keep}" Minimum="1" Maximum="365" Increment="1" FormatString="0" Width="104"
+                                               ToolTip.Tip="The oldest backups beyond this number are removed from the target after each new one, every backup it holds counted, those you made by hand too. A target that cannot remove backups keeps them all, and says so."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Targets}" SelectedItem="{Binding ScheduledBackupSettings.Target}" Width="140"/>
+                            </StackPanel>
+                            <TextBlock Classes="immediate" Text="Saved as you change it and not undone by Cancel."/>
+                            <TextBlock Text="{Binding ScheduledBackupSettings.Status}"
+                                       IsVisible="{Binding ScheduledBackupSettings.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT MEMORY ONLY"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Assistant memory only" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

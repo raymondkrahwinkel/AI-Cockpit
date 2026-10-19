@@ -51,6 +51,15 @@ internal sealed class LocalFolderBackupTarget(string folder, string staging) : I
     public Task<Stream> OpenReadAsync(string id, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(File.OpenRead(_PathOf(id)));
 
+    public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        var path = _PathOf(id);
+        var exists = File.Exists(path);
+        File.Delete(path);
+
+        return Task.FromResult(exists);
+    }
+
     // An id is a file name in this folder and nothing else: a `..\` handed in from outside must not reach past it.
     private string _PathOf(string name) =>
         name.Length > 0 && Path.GetFileName(name) == name

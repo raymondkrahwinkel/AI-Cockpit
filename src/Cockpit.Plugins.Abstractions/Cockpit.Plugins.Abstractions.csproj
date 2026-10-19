@@ -520,8 +520,11 @@
     <!-- 3.9.0 (AC-540): ICockpitHost.AddSettingsCarrier (default no-op) and SettingsCarrierRegistration, a place the
          cockpit's portable settings are kept as an opaque blob. No in-repo plugin calls it yet, so no plugin raises
          minHostVersion for it. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.9.0</Version>
-    <AssemblyVersion>1.9.0.0</AssemblyVersion>
+    <!-- 3.11.0 (AC-1502): IBackupTarget.DeleteAsync (default false, "cannot delete"), so retention can prune a target.
+         No plugin registers a target yet, so none raises minHostVersion. Additive — a minor; the major and
+         abstractionsVersion stay 3. (3.10.0 is taken on main.) -->
+    <Version>3.11.0</Version>
+    <AssemblyVersion>1.11.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
