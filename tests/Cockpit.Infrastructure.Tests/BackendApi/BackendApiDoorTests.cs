@@ -131,7 +131,11 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/private/storage", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"apiToken\":\"(set on the server)\"", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        // AC-1571: an installed plugin that is not running reads and writes its slice of cockpit.json, its manifest's
+        // declared credential masked like any other; a plugin the server does not have is refused.
+        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.OK, "", "\"pin\":\"(set on the server)\"", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/fresh/storage", """{"values":{"pin":"(set on the server)","label":"new"}}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/absent/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"botToken":"{secret}","label":"new"},"secrets":["botToken"]}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"instances":[{"url":"https://elsewhere.example","apiToken":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"url":"https://elsewhere.example"}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
@@ -273,6 +277,23 @@ public sealed class BackendApiDoorTests
         Assert.Equal(("qwen", _Door.ProfileSecret), (ProfileModel.Of(keyed), (keyed.ProviderConfig as LmStudioConfig)?.ApiKey));
         Assert.Equal(_Door.KeyedVariables, keyed.EnvironmentVariables);
         Assert.Contains(_Door.ProfileSecret, (plugged.ProviderConfig as PluginProviderConfig)?.ConfigJson, StringComparison.Ordinal);
+    }
+
+    // AC-1571: a plugin that is installed but not running is configured in its slice of the server's cockpit.json, which it
+    // reads when it starts; its credential, sent back masked, is what is written, not the mask.
+    [Fact]
+    public async Task AStorageSaveForAPluginThatIsNotRunning_WritesItsSliceAndKeepsItsCredential()
+    {
+        await using var door = new _Door();
+        await door.StartAsync();
+
+        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/plugins/fresh/storage", Bootstrap, """{"values":{"pin":"(set on the server)","label":"new"}}""");
+
+        Assert.Equal(HttpStatusCode.OK, answer.Status);
+        await door.Registrations.Received().SaveDataAsync(
+            "fresh",
+            Arg.Is<IReadOnlyDictionary<string, string>>(data => data["pin"] == JsonSerializer.Serialize(_Door.ProfileSecret, (JsonSerializerOptions?)null) && data["label"] == "\"new\""),
+            Arg.Any<CancellationToken>());
     }
 
     // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
@@ -730,7 +751,7 @@ public sealed class BackendApiDoorTests
                     null,
                     null),
                 new InstalledPlugin(
-                    new DiscoveredPlugin("C:\\server\\plugins\\fresh", "fresh", new PluginManifest("fresh", "Fresh", "1.0.0", null, 0, null, null, null, null), "fresh-hash", PluginLoadDecision.NeedsConsent),
+                    new DiscoveredPlugin("C:\\server\\plugins\\fresh", "fresh", new PluginManifest("fresh", "Fresh", "1.0.0", null, 0, null, null, null, null, SecretKeys: ["pin"]), "fresh-hash", PluginLoadDecision.NeedsConsent),
                     null,
                     null,
                     null,
@@ -750,6 +771,8 @@ public sealed class BackendApiDoorTests
         // AC-1473: a profile whose API key, secret variable, credential-named plain variable and undeclared option all
         // hold this value, beside the stub's profiles.
         public const string ProfileSecret = "sk-door-profile-secret-7f3a9c21";
+
+        public IPluginRegistrationStore Registrations { get; } = Substitute.For<IPluginRegistrationStore>();
 
         public PluginStorage PrivateStorage { get; } = new(
             new Dictionary<string, string>
@@ -857,6 +880,10 @@ public sealed class BackendApiDoorTests
             host.Storage.Returns(PrivateStorage);
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
+            Registrations.LoadDataAsync("fresh", Arg.Any<CancellationToken>())
+                .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
+            services.AddSingleton(Registrations);
+            services.AddSingleton(Substitute.For<IPluginSecretFieldStore>());
             services.AddSingleton(Restart);
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
