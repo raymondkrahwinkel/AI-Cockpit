@@ -645,20 +645,31 @@ public sealed class RemoteAdminJourney
         Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
         var settings = await opened.Task;
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var edited = HeadlessAvalonia.RunAsync(async () =>
+        // A view that throws in a click handler would stop the UI thread; caught here, it fails this step with its reason.
+        Exception? thrown = null;
+        void caught(object? sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            settings.Closed += (_, _) => closed.TrySetResult();
-            await edit(settings);
-            _Click(settings, "Save");
-        });
-
-        // A view that throws in a click handler can stop the UI thread; then nothing answers, and that is the failure.
-        if (await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2)) != edited)
-        {
-            throw new TimeoutException($"Editing {pluginId}'s settings never finished: the UI thread stopped answering.");
+            thrown ??= e.Exception;
+            e.Handled = true;
         }
 
-        await edited;
+        HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException += caught);
+        try
+        {
+            var edited = HeadlessAvalonia.RunAsync(async () =>
+            {
+                settings.Closed += (_, _) => closed.TrySetResult();
+                await edit(settings);
+                _Click(settings, "Save");
+            });
+            await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2));
+            Assert.True(thrown is null, $"{pluginId}'s settings view threw: {thrown?.Message}");
+            await edited.WaitAsync(TimeSpan.Zero);
+        }
+        finally
+        {
+            HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException -= caught);
+        }
         await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
         var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
         Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
