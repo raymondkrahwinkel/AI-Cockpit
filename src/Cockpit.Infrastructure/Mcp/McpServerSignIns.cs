@@ -36,11 +36,23 @@ internal sealed class McpServerSignIns(ILogger<McpServerSignIns>? logger = null)
         {
             _byServer.TryGetValue((folderId, name), out replaced);
             _byServer[(folderId, name)] = started;
-            started.Run(replaced?.Ended, signIn, ended);
+
+            // Without the request's context: the sign-in outlives the request and carries none of its state.
+            using (ExecutionContext.SuppressFlow())
+            {
+                started.Run(replaced?.Ended, signIn, ended);
+            }
         }
 
         replaced?.End("replaced");
         await started.LinkAsync(LinkWait, cancellationToken).ConfigureAwait(false);
+
+        // A caller that went away never learns the flow id, so it could never end this sign-in itself.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            started.End("cancelled");
+        }
+
         return started;
     }
 
