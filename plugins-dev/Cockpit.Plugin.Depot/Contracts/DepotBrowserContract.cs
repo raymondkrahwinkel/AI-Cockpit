@@ -63,6 +63,18 @@ internal static class DepotUploadKinds
 {
     public const long MaxInlineBytes = 8 * 1024 * 1024;
 
+    // Depot's limit on one PUT.
+    public const long MaxBlobBytes = 100 * 1024 * 1024;
+
+    private static readonly Dictionary<string, string> _ContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".png"] = "image/png", [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".gif"] = "image/gif",
+        [".webp"] = "image/webp", [".pdf"] = "application/pdf", [".zip"] = "application/zip", [".html"] = "text/html",
+    };
+
+    public static string ContentType(string path) =>
+        _ContentTypes.GetValueOrDefault(System.IO.Path.GetExtension(path), "application/octet-stream");
+
     private static readonly HashSet<string> _TextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".md", ".txt", ".csv", ".json", ".log", ".xml", ".yaml", ".yml",

@@ -37,6 +37,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   kept aside and comes back when the lock is lifted. Applying a manifest again no longer overwrites a value you chose
   yourself; it keeps yours and says the default changed. What is managed stays out of a backup.
 
+- added: **Publish folder here…** in the Depot file browser. An Editor links a folder of the machine Cockpit runs on to
+  a folder in the Depot project and presses **Publish now**: Cockpit shows what is new, changed, removed or skipped,
+  asks, and then sends only what changed. A file that was changed in Depot since the last publication is a second
+  question and is overwritten only on a yes. A file removed locally is moved to Depot's trash, and only if this link
+  published it. Dot folders, links and files without an extension are left out, with at most 1000 files per run.
 - added: **Upload** in the Depot file browser. An Editor picks one or more files and they land in the selected folder
   (the root when none is selected); text files become documents, everything else a file in the project. A path that
   already exists is replaced only after a yes, and Depot's reason shows when it refuses a file.

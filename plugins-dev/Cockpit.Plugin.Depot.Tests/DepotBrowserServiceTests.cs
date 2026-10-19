@@ -122,6 +122,20 @@ public class DepotBrowserServiceTests
 
         Assert.Equal((DepotBrowserStatus.Error, DepotBrowserStatus.Error), (binary.Status, text.Status));
         Assert.Equal(0, viewer.Count("request_upload") + viewer.Count("write"));
+
+        // AC-1574: publishing is a write path too, refused for a Viewer on add, plan and run alike.
+        var settings = new Cockpit.Plugin.Depot.Settings.DepotSettings(new FakePluginStorage());
+        settings.Publications = [new DepotPublication("p1", "c1", "cockpit", Path.GetTempPath(), "docs")];
+        var publisher = new Cockpit.Plugin.Depot.Publishing.DepotPublishService(
+            new DepotMcp(viewer.Host, () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]), settings, new InMemoryPluginCache(), new HttpClient());
+        var refusals = new[]
+        {
+            (await publisher.AddAsync(new DepotPublishRequest("c1", "cockpit", Source: Path.GetTempPath()), default)).Status,
+            (await publisher.PlanAsync(new DepotPublishRequest("c1", Id: "p1"), default)).Status,
+            (await publisher.RunAsync(new DepotPublishRequest("c1", Id: "p1", Confirmed: true), default)).Status,
+        };
+        Assert.All(refusals, status => Assert.Equal(DepotBrowserStatus.Error, status));
+        Assert.Equal(0, viewer.Count("list") + viewer.Count("list_artifacts") + viewer.Count("delete"));
     }
 
     [Theory]

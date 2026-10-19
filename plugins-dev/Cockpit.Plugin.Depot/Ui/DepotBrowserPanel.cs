@@ -22,6 +22,8 @@ internal sealed class DepotBrowserPanel : UserControl
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _signIn = new() { IsVisible = false };
     private readonly Button _upload = new() { Content = "Upload", IsVisible = false };
+    private readonly Button _publishFolder = new() { Content = "Publish folder here…", IsVisible = false };
+    private readonly StackPanel _publications = new() { Spacing = 6, Margin = new Thickness(12, 6) };
     private readonly TreeView _tree = new();
     private readonly StackPanel _detail = new() { Spacing = 8, Margin = new Thickness(12) };
     private DepotBrowserModel? _model;
@@ -56,7 +58,8 @@ internal sealed class DepotBrowserPanel : UserControl
         };
 
         _upload.Click += async (_, _) => await UploadAsync().ConfigureAwait(true);
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh, _upload } };
+        _publishFolder.Click += async (_, _) => await PublishFolderAsync().ConfigureAwait(true);
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh, _upload, _publishFolder } };
         var banner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 0, 12, 6), Children = { _message, _signIn } };
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("360,*") };
         body.Children.Add(new Border { BorderBrush = _Brush("CockpitHairlineBrush"), BorderThickness = new Thickness(0, 1, 1, 0), Child = _tree });
@@ -66,8 +69,10 @@ internal sealed class DepotBrowserPanel : UserControl
         var layout = new DockPanel();
         DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(banner, Dock.Top);
+        DockPanel.SetDock(_publications, Dock.Bottom);
         layout.Children.Add(top);
         layout.Children.Add(banner);
+        layout.Children.Add(_publications);
         layout.Children.Add(body);
         Content = layout;
 
@@ -134,10 +139,89 @@ internal sealed class DepotBrowserPanel : UserControl
 
         _loaded = answer.Data ?? new([], false);
         _upload.IsVisible = _loaded.CanShare;
+        _publishFolder.IsVisible = _loaded.CanShare;
         _message.Text = _loaded.Nodes.Count == 0 ? "This project has no documents or artifacts yet." : string.Empty;
         _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
         _detail.Children.Clear();
+        await RefreshPublicationsAsync().ConfigureAwait(true);
     }
+
+    // AC-1574: the links from local folders to this project. A failed listing only leaves the section empty.
+    private async Task RefreshPublicationsAsync()
+    {
+        _publications.Children.Clear();
+        if (_model is null || _project is null || !_loaded.CanShare)
+        {
+            return;
+        }
+
+        var answer = await _model.PublicationsAsync(_project).ConfigureAwait(true);
+        if (answer.Data is not { Count: > 0 } rows)
+        {
+            return;
+        }
+
+        _publications.Children.Add(new TextBlock { Text = "Publications", FontWeight = FontWeight.SemiBold });
+        foreach (var row in rows)
+        {
+            var link = row.Publication;
+            var last = row.Last is { } report
+                ? $"Last run {report.At.ToLocalTime():yyyy-MM-dd HH:mm}: {report.Written} published, {report.Deleted} removed, {report.Problems.Count} not done."
+                : "Not published yet.";
+            var publish = new Button { Content = "Publish now" };
+            publish.Click += async (_, _) => await PublishAsync(link).ConfigureAwait(true);
+            var remove = new Button { Content = "Remove link" };
+            remove.Click += async (_, _) => await RemovePublicationAsync(link).ConfigureAwait(true);
+            _publications.Children.Add(new TextBlock { Text = $"{link.Source} → {(link.TargetFolder.Length == 0 ? "/" : link.TargetFolder)}", TextWrapping = TextWrapping.Wrap });
+            _publications.Children.Add(_Faint(last));
+            _publications.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { publish, remove } });
+        }
+    }
+
+    private async Task PublishFolderAsync()
+    {
+        if (_model is null || _project is null || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+
+        var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions()).ConfigureAwait(true);
+        if (folders.FirstOrDefault()?.TryGetLocalPath() is not { } source)
+        {
+            return;
+        }
+
+        if (_Accepted(await _model.AddPublicationAsync(_project, source, _SelectedFolder()).ConfigureAwait(true)))
+        {
+            await RefreshPublicationsAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async Task PublishAsync(DepotPublication link)
+    {
+        if (await _model!.PublishAsync(link).ConfigureAwait(true) is not { } answer || !_Accepted(answer))
+        {
+            return;
+        }
+
+        var report = answer.Data!;
+        _host.ShowToast($"Published {report.Written}, removed {report.Deleted}, {report.Problems.Count} not done.");
+        await LoadTreeAsync().ConfigureAwait(true);
+    }
+
+    private async Task RemovePublicationAsync(DepotPublication link)
+    {
+        if (_Accepted(await _model!.RemovePublicationAsync(link).ConfigureAwait(true)))
+        {
+            await RefreshPublicationsAsync().ConfigureAwait(true);
+        }
+    }
+
+    // The folder of the selected row (the root when nothing is selected).
+    private string _SelectedFolder() =>
+        _tree.SelectedItem is TreeViewItem { Tag: DepotTreeItem selected }
+            ? (selected.Kind == DepotTreeKind.Folder ? selected.Path : selected.Path[..Math.Max(selected.Path.LastIndexOf('/'), 0)])
+            : string.Empty;
 
     private TreeViewItem _Row(DepotTreeItem item, string? selectPath)
     {
@@ -323,9 +407,7 @@ internal sealed class DepotBrowserPanel : UserControl
             return;
         }
 
-        var folder = _tree.SelectedItem is TreeViewItem { Tag: DepotTreeItem selected }
-            ? (selected.Kind == DepotTreeKind.Folder ? selected.Path : selected.Path[..Math.Max(selected.Path.LastIndexOf('/'), 0)])
-            : string.Empty;
+        var folder = _SelectedFolder();
         var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = true }).ConfigureAwait(true);
         var sent = 0;
         foreach (var file in files)
