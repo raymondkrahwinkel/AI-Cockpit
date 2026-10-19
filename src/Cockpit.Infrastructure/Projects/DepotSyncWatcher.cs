@@ -162,7 +162,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         if (OnChecked is not null)
         {
-            await OnChecked(bound.ProjectId, changed, result.Binding!.LogoBytes).ConfigureAwait(true);
+            await OnChecked(bound.ProjectId, _changed.ContainsKey(bound.ProjectId), result.Binding!.LogoBytes).ConfigureAwait(true);
         }
     }
 
