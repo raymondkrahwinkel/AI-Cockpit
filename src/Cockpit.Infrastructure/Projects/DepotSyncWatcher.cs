@@ -237,7 +237,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         {
             _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
 
-            OnFailing?.Invoke(projectId, reason);
+            if (_told.TryAdd(projectId, 0))
+            {
+                OnFailing?.Invoke(projectId, reason);
+            }
         }
     }
 
