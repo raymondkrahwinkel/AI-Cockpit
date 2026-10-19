@@ -352,21 +352,33 @@ internal static class ProfileEndpoints
     internal static IResult KeyAgain => BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "key_required", KeyAgainRefusal);
 
     // Puts each secret `next` reads as KeptSecret (or leaves out) back from `held`, at any depth (AC-1571: a plugin's
-    // storage nests them, YouTrack's instances[].token). False when a kept one's object changed its address.
+    // storage nests them). False when an object holding a kept one, itself or below it, changed its address.
     // ponytail: array items pair up by position, so a reordered list asks for its keys again; match by id if that grates.
-    internal static bool KeepSecrets(JsonNode? held, JsonNode? next, Func<string, bool> isSecret)
+    internal static bool KeepSecrets(JsonNode? held, JsonNode? next, Func<string, bool> isSecret) => _Keep(held, next, isSecret, out _);
+
+    private static bool _Keep(JsonNode? held, JsonNode? next, Func<string, bool> isSecret, out bool kept)
     {
+        kept = false;
         if (held is JsonArray heldItems && next is JsonArray nextItems)
         {
             for (var index = 0; index < nextItems.Count; index++)
             {
-                if (index >= heldItems.Count)
+                if (index < heldItems.Count && _IsKept(nextItems[index]) && _HoldsSecretAsText(heldItems[index], isSecret))
+                {
+                    nextItems[index] = heldItems[index]?.DeepClone();
+                    kept = true;
+                }
+                else if (index >= heldItems.Count || _IsKept(nextItems[index]))
                 {
                     _ClearKept(nextItems, index);
                 }
-                else if (!KeepSecrets(heldItems[index], nextItems[index], isSecret))
+                else if (!_Keep(heldItems[index], nextItems[index], isSecret, out var below))
                 {
                     return false;
+                }
+                else
+                {
+                    kept |= below;
                 }
             }
 
@@ -379,11 +391,10 @@ internal static class ProfileEndpoints
             return true;
         }
 
-        var kept = false;
         foreach (var (name, value) in nextConfig.ToList())
         {
             var stored = heldConfig.TryGetPropertyValue(name, out var heldValue) ? heldValue : null;
-            if (isSecret(name) && _IsFilled(stored) && _IsKept(value))
+            if (_IsKept(value) && _Hides(name, stored, isSecret))
             {
                 nextConfig[name] = stored?.DeepClone();
                 kept = true;
@@ -393,15 +404,19 @@ internal static class ProfileEndpoints
                 // One that reads KeptSecret with nothing behind it is not a key.
                 nextConfig[name] = "";
             }
-            else if (!KeepSecrets(stored, value, isSecret))
+            else if (!_Keep(stored, value, isSecret, out var below))
             {
                 return false;
+            }
+            else
+            {
+                kept |= below;
             }
         }
 
         foreach (var (name, value) in heldConfig.Where(property => !nextConfig.ContainsKey(property.Key)).ToList())
         {
-            if (isSecret(name) && _IsFilled(value))
+            if (_Hides(name, value, isSecret))
             {
                 nextConfig[name] = value?.DeepClone();
                 kept = true;
@@ -467,21 +482,29 @@ internal static class ProfileEndpoints
 
     private static bool _IsKept(JsonNode? value) => value is JsonValue text && text.TryGetValue<string>(out var content) && content == KeptSecret;
 
-    // Every set secret at any depth reads as KeptSecret.
+    // Every set secret at any depth reads as KeptSecret: whatever a secret name holds but a yes/no, and JSON text that
+    // carries one (a plugin storing its config as a string), whole.
     internal static void Mask(JsonNode? node, Func<string, bool> isSecret)
     {
         if (node is JsonArray array)
         {
-            foreach (var item in array)
+            for (var index = 0; index < array.Count; index++)
             {
-                Mask(item, isSecret);
+                if (_HoldsSecretAsText(array[index], isSecret))
+                {
+                    array[index] = KeptSecret;
+                }
+                else
+                {
+                    Mask(array[index], isSecret);
+                }
             }
         }
         else if (node is JsonObject config)
         {
             foreach (var (name, value) in config.ToList())
             {
-                if (isSecret(name) && _IsFilled(value))
+                if (_Hides(name, value, isSecret))
                 {
                     config[name] = KeptSecret;
                 }
@@ -493,10 +516,40 @@ internal static class ProfileEndpoints
         }
     }
 
-    private static bool _HoldsSecret(JsonNode? node) => node switch
+    private static bool _Hides(string name, JsonNode? value, Func<string, bool> isSecret) =>
+        (isSecret(name) && _IsSet(value)) || _HoldsSecretAsText(value, isSecret);
+
+    private static bool _IsSet(JsonNode? value) => value switch
     {
-        JsonArray array => array.Any(_HoldsSecret),
-        JsonObject config => config.Any(property => (Secrets.IsSecret(property.Key) && _IsFilled(property.Value)) || _HoldsSecret(property.Value)),
+        null => false,
+        JsonValue scalar when scalar.GetValueKind() is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null => false,
+        JsonValue scalar when scalar.TryGetValue<string>(out var content) => content.Length > 0,
+        _ => true,
+    };
+
+    private static bool _HoldsSecretAsText(JsonNode? value, Func<string, bool> isSecret)
+    {
+        if (value is not JsonValue text || !text.TryGetValue<string>(out var content) || content.TrimStart() is not ['{' or '[', ..])
+        {
+            return false;
+        }
+
+        try
+        {
+            return _HoldsSecret(JsonNode.Parse(content), isSecret);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool _HoldsSecret(JsonNode? node) => _HoldsSecret(node, Secrets.IsSecret);
+
+    private static bool _HoldsSecret(JsonNode? node, Func<string, bool> isSecret) => node switch
+    {
+        JsonArray array => array.Any(item => _HoldsSecretAsText(item, isSecret) || _HoldsSecret(item, isSecret)),
+        JsonObject config => config.Any(property => _Hides(property.Key, property.Value, isSecret) || _HoldsSecret(property.Value, isSecret)),
         _ => false,
     };
 

@@ -187,20 +187,30 @@ internal static class PluginEndpoints
                 return _NotRunning();
             }
 
+            // The whole slice as it reads after the change, untouched credentials as kept: the address rule then also sees a
+            // `url` key changed beside a `token` key the request left alone.
+            bool isSecret(string name) => _IsSecret(name) || secrets.Contains(name);
             var held = _Slice(storage.Snapshot());
-            var stored = new JsonObject();
-            foreach (var key in values.Select(property => property.Key))
+            foreach (var key in removed)
             {
-                stored[key] = held[key]?.DeepClone();
+                held.Remove(key);
             }
 
-            if (!ProfileEndpoints.KeepSecrets(stored, values, name => _IsSecret(name) || secrets.Contains(name)))
+            var next = (JsonObject)held.DeepClone();
+            ProfileEndpoints.Mask(next, isSecret);
+            foreach (var (key, value) in values)
+            {
+                next[key] = value?.DeepClone();
+            }
+
+            if (!ProfileEndpoints.KeepSecrets(held, next, isSecret))
             {
                 return ProfileEndpoints.KeyAgain;
             }
 
-            foreach (var (key, value) in values)
+            foreach (var key in values.Select(property => property.Key))
             {
+                var value = next[key];
                 if (secrets.Contains(key) && value is JsonValue text && text.TryGetValue<string>(out var secret))
                 {
                     storage.SetSecret(key, secret);
@@ -264,7 +274,8 @@ internal static class PluginEndpoints
                 || root["values"] is not JsonObject values
                 || _Names(root["removed"]) is not { } removed
                 || _Names(root["secrets"]) is not { } secrets
-                || values.Any(property => property.Key.Length == 0))
+                || values.Any(property => property.Key.Length == 0)
+                || secrets.Any(name => !values.ContainsKey(name)))
             {
                 return null;
             }

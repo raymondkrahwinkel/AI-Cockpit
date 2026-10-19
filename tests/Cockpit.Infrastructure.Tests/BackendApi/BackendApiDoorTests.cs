@@ -134,6 +134,10 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"botToken":"{secret}","label":"new"},"secrets":["botToken"]}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"instances":[{"url":"https://elsewhere.example","apiToken":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"url":"https://elsewhere.example"}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"cfg":{"url":"https://elsewhere.example","auth":{"clientSecret":"(set on the server)"}}}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"pinToken\":\"(set on the server)\"", "987654321" },
+        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"secrets":["url"]}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -747,6 +751,10 @@ public sealed class BackendApiDoorTests
                 ["botToken"] = JsonSerializer.Serialize(ProfileSecret),
                 ["instances"] = $$"""[{"url":"https://tracker.example","apiToken":"{{ProfileSecret}}"}]""",
                 ["label"] = "\"old\"",
+                ["url"] = "\"https://chat.example\"",
+                ["cfg"] = $$$"""{"url":"https://cfg.example","auth":{"clientSecret":"{{{ProfileSecret}}}"}}""",
+                ["pinToken"] = "987654321",
+                ["config"] = JsonSerializer.Serialize($$"""{"apiKey":"{{ProfileSecret}}"}"""),
             },
             _ => { });
 
