@@ -4,7 +4,7 @@
 # format: <project>	<count>   or   allow-growth	<project>
 allow-growth	tests/Cockpit.Journeys
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	129
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
 plugins-dev/Cockpit.Plugin.Depot.Tests	142
 plugins-dev/Cockpit.Plugin.Diagram.Tests	106
@@ -24,7 +24,7 @@ plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	6
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
-plugins-dev/Cockpit.Plugin.Proxmox.Tests	12
+plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
 plugins-dev/Cockpit.Plugin.Schedules.Tests	23
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
 plugins-dev/Cockpit.Plugin.Slack.Tests	26
@@ -34,7 +34,7 @@ plugins-dev/Cockpit.Plugin.Workflows.Tests	30
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1478
 tests/Cockpit.Backend.Tests	71
-tests/Cockpit.Core.Tests	1001
-tests/Cockpit.Infrastructure.Tests	668
+tests/Cockpit.Core.Tests	1004
+tests/Cockpit.Infrastructure.Tests	669
 tests/Cockpit.Journeys	13
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

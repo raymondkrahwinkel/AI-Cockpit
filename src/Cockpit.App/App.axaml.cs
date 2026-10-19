@@ -623,7 +623,9 @@ public partial class App : Application
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
-        Program.Services.GetRequiredService<PluginUiManager>().InitializeUi(
+        var uiParts = Program.Services.GetRequiredService<PluginUiManager>();
+        cockpit.LocalPluginUiPart = uiParts.UiPartOf;
+        uiParts.InitializeUi(
             PluginUiManager.ActivateUi,
             (discovered, ui) => new CockpitUiHost(
                 discovered.FolderId,

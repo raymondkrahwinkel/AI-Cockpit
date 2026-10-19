@@ -1,4 +1,7 @@
+using System.Buffers.Text;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -111,6 +114,7 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
         var refreshFailureStatusHolder = new int[1];
         var refreshAttemptsHolder = new int[1];
         var scopeByCode = new ConcurrentDictionary<string, string>();
+        var challengeByCode = new ConcurrentDictionary<string, string>();
         var installTokenUsed = new int[1];
 
         // Registered before any Map* call, exactly like InProcessMcpHttpServer's delay middleware — that ordering is
@@ -178,6 +182,7 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
             var redirectUri = context.Request.Query["redirect_uri"].ToString();
             var code = Guid.NewGuid().ToString("N");
             scopeByCode[code] = scope;
+            challengeByCode[code] = context.Request.Query["code_challenge"].ToString();
             Volatile.Write(ref lastRequestedScopeHolder[0], scope);
 
             return Results.Redirect($"{redirectUri}?code={code}&state={Uri.EscapeDataString(state)}");
@@ -221,6 +226,16 @@ internal sealed class InProcessOAuthMcpServer : IAsyncDisposable
                     expires_in = 3600,
                     refresh_token = RefreshToken,
                 });
+            }
+
+            // PKCE (RFC 7636) as Depot's OpenIddict holds it: a code is redeemed once, and only with the verifier of the
+            // challenge it was issued for, so a code on its own buys nothing (AC-1571 B2).
+            if (form["grant_type"] == "authorization_code"
+                && (!challengeByCode.TryGetValue(form["code"].ToString(), out var challenge)
+                    || Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"].ToString()))) != challenge
+                    || !challengeByCode.TryRemove(form["code"].ToString(), out _)))
+            {
+                return Results.BadRequest(new { error = "invalid_grant" });
             }
 
             string? scope = null;

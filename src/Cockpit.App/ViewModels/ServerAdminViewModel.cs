@@ -62,6 +62,14 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     public Func<ServerPluginRowViewModel, Task>? OpenPluginSettings { get; init; }
 
+    // AC-1590: whether this desktop has the plugin a server runs, and what installs it here from this desktop's own
+    // stores. Absent means every plugin counts as present and no row offers the install.
+    public Func<ServerPluginRowViewModel, bool> IsPluginOnDesktop { get; init; } = _ => true;
+
+    public Func<ServerPluginRowViewModel, Task<DesktopInstallOutcome>>? InstallPluginOnDesktop { get; init; }
+
+    public Action? RestartDesktop { get; init; }
+
     public ObservableCollection<ConnectKeyRowViewModel> Keys { get; } = [];
 
     public ObservableCollection<LockoutRowViewModel> Lockouts { get; } = [];
@@ -88,6 +96,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
     [ObservableProperty]
     private bool _needsRestart;
+
+    // AC-1590: a plugin installed on this desktop loads its UI part at the next start of the desktop.
+    [ObservableProperty]
+    private bool _desktopNeedsRestart;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
@@ -334,6 +346,23 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     });
 
     [RelayCommand]
+    private Task InstallPluginOnDesktopAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
+    {
+        if (InstallPluginOnDesktop is null)
+        {
+            return;
+        }
+
+        var outcome = await InstallPluginOnDesktop(row);
+        Status = outcome.Message;
+        row.OnDesktop = outcome.Installed;
+        DesktopNeedsRestart |= outcome.Installed && outcome.NeedsRestart;
+    });
+
+    [RelayCommand]
+    private void RestartDesktopNow() => RestartDesktop?.Invoke();
+
+    [RelayCommand]
     private Task OpenPluginSettingsAsync(ServerPluginRowViewModel row) =>
         _RunAsync(() => OpenPluginSettings?.Invoke(row) ?? Task.CompletedTask);
 
@@ -431,6 +460,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         {
             var row = new ServerPluginRowViewModel(plugin);
             row.HasSettings = HasPluginSettings(row);
+            row.OnDesktop = IsPluginOnDesktop(row);
             Plugins.Add(row);
         }
 
@@ -553,6 +583,13 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
     public string Sha256 { get; } = plugin.Discovered.Sha256;
 
     public bool HasSettings { get; set; }
+
+    // AC-1590: this desktop has the plugin; false offers "Install on this desktop".
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MissingOnDesktop))]
+    private bool _onDesktop = true;
+
+    public bool MissingOnDesktop => !OnDesktop;
 
     [ObservableProperty]
     private bool _enabled = plugin.Registration?.Enabled ?? false;

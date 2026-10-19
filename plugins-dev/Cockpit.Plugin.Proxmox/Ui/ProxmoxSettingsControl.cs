@@ -1,7 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Cockpit.Plugin.Proxmox.Engine;
+using System.Text.Json;
+using Cockpit.Plugin.Proxmox.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -25,9 +26,11 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
 
     private string? _fetchedFingerprint;
     private string? _pendingTrustedFingerprint;
+    private readonly ICockpitUiHost _uiHost;
 
     public ProxmoxSettingsControl(ICockpitUiHost host, ProxmoxSettings settings)
     {
+        _uiHost = host;
         _settings = settings;
         _pendingTrustedFingerprint = settings.TrustedCertFingerprint is { Length: > 0 } stored ? stored : null;
 
@@ -137,7 +140,13 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
         _trustButton.IsEnabled = false;
         _fingerprintText.Text = "Connecting…";
 
-        var (fingerprint, error) = await ProxmoxCertificateProbe.FetchFingerprintAsync(host, port, CancellationToken.None);
+        // AC-1571: through the backend part, so the certificate is read where the plugin will connect from.
+        var answer = await _uiHost.Channel.InvokeAsync(
+            ProxmoxChannel.FetchFingerprint,
+            JsonSerializer.SerializeToElement(new ProxmoxFingerprintRequest(host, port), ProxmoxChannel.Json));
+        var (fingerprint, error) = answer.Deserialize<ProxmoxFingerprintAnswer>(ProxmoxChannel.Json) is { } read
+            ? (read.Fingerprint, read.Error)
+            : (null, "The plugin gave no answer for the certificate.");
 
         trigger.IsEnabled = true;
         if (fingerprint is null)

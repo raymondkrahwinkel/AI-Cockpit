@@ -1,7 +1,9 @@
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Net;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -15,13 +17,15 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
@@ -86,7 +90,10 @@ public sealed class RemoteAdminJourney
             var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
             var laptopKey = laptop["secret"]?.GetValue<string>() ?? throw new InvalidOperationException("The server issued no key.");
 
-            await using var cockpit = JourneyHost.Desktop();
+            // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
+            var desktopState = Path.Combine(root, "desktop-state");
+            await _InstallLocallyAsync(desktopState, Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory");
+            await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
             [
                 new McpServerConfig
@@ -212,34 +219,72 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
-            // AC-1534: Admin → Profiles makes a profile on the fresh provider in that provider's own view, key included. No
-            // answer, audit line or server log holds the key; a save that leaves it masked keeps it, one that moves the
-            // base URL with it masked is refused, and a session on the profile reaches the provider with the key set.
+            // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
+            // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
+            // one that moves the base URL with the key masked is refused.
             var providerKey = $"journey-provider-{Guid.NewGuid():N}";
-            cockpit.Services.GetRequiredService<IPluginProviderConfigViews>().Register("echo-provider.echo", config => new _EchoConfigView(config));
-            var (madeStatus, keptStatus, movedStatus) = ("", "", "");
+            var variableSecret = $"journey-variable-{Guid.NewGuid():N}";
+            var workFolder = Directory.CreateDirectory(Path.Combine(root, "profile-work")).FullName;
+            var (madeStatus, keptStatus, movedStatus, editorKind) = ("", "", "", "");
+            string[] reopenedProfile = [];
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
+                dialog.SelectCategory("server-profiles");
                 await page.LoadCommand.ExecuteAsync(null);
-                page.StartNewCommand.Execute(null);
-                page.EditorLabel = "Echo keyed";
-                page.EditorProvider = "echo-provider.echo";
-                var made = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
-                (made.BaseUrl.Text, made.ApiKey.Text) = ("https://inference.example/v1", providerKey);
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ProfilesEditor>().Count() == 1);
+                editorKind = dialog.GetVisualDescendants().OfType<ProfilesEditor>().Single().DataContext?.GetType().Name ?? "";
+                var editor = page.Editor ?? throw new InvalidOperationException("The server's profiles did not load.");
+                editor.AddProfileCommand.Execute(null);
+                var made = editor.SelectedProfile ?? throw new InvalidOperationException("Add profile selected nothing.");
+                made.SelectedProvider = made.Providers.Single(provider => provider.PluginProviderId == "echo-provider.echo");
+                made.Label = "Echo keyed";
+                (_EchoField(made, "BaseUrl").Text, _EchoField(made, "ApiKey").Text) = ("https://inference.example/v1", providerKey);
+                made.Purpose = "journey purpose";
+                made.DefaultWorkingDirectory = workFolder;
+                made.Assistant = "Journey";
+                made.ProfileSystemPrompt = "journey standing instructions";
+                made.MemoryCapMegabytes = 4096;
+                made.AutoApproveTools = true;
+                made.SelectedReadingLevel = made.ReadingLevels.Last();
+                made.SelectDefaultKindSdkCommand.Execute(null);
+                made.PluginOptionDefaults.Single(option => option.Key == "model").Value = "echo-large";
+                made.PluginOptionDefaults.Single(option => option.Key == "effort").Value = "high";
+                made.AllowedAsTarget = true;
+                made.DelegationPurpose = "journey delegation";
+                made.AllowedTaskTypes = "summarize, refactor";
+                made.AllowedWorkingDirs = workFolder;
+                made.PermissionCeiling = "acceptEdits";
+                made.AllowedTools = "journey_tool";
+                made.MaxConcurrentTasks = 3;
+                made.DelegationTimeoutMinutes = 7;
+                made.MayDelegateFurther = true;
+                made.RestrictMcpServers = true;
+                made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_REGION", "eu-west", false));
+                made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_VARIABLE", variableSecret, true));
+                await page.SaveCommand.ExecuteAsync(null);
                 madeStatus = page.Status;
 
-                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                var again = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                reopenedProfile =
+                [
+                    again.Label, again.Purpose, again.DefaultWorkingDirectory, again.Assistant, again.ProfileSystemPrompt, $"{again.MemoryCapMegabytes}",
+                    $"{again.AutoApproveTools}", again.SelectedReadingLevel.Label, $"{again.SelectedDefaultKind}",
+                    string.Join(",", again.PluginOptionDefaults.Select(option => $"{option.Key}={option.Value}")),
+                    $"{again.AllowedAsTarget}", again.DelegationPurpose, again.AllowedTaskTypes, again.AllowedWorkingDirs, again.PermissionCeiling,
+                    again.AllowedTools, $"{again.MaxConcurrentTasks}", $"{again.DelegationTimeoutMinutes}", $"{again.MayDelegateFurther}", $"{again.RestrictMcpServers}",
+                    _EchoField(again, "BaseUrl").Text ?? "", _EchoField(again, "ApiKey").Text ?? "",
+                    string.Join(",", again.EnvironmentVariables.Select(variable => $"{variable.Key}={variable.Value}:{variable.IsSecret}")),
+                ];
+
+                await page.SaveCommand.ExecuteAsync(null);
                 keptStatus = page.Status;
 
-                page.StartEditCommand.Execute(page.Rows.Single(row => row.Label == "Echo keyed"));
-                var moved = page.PluginConfigView as _EchoConfigView ?? throw new InvalidOperationException("The provider's own view did not open.");
-                moved.BaseUrl.Text = "https://elsewhere.example/v1";
-                await page.SaveEditorCommand.ExecuteAsync(null);
+                var moved = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                _EchoField(moved, "BaseUrl").Text = "https://elsewhere.example/v1";
+                await page.SaveCommand.ExecuteAsync(null);
                 movedStatus = page.Status;
-                page.CancelEditorCommand.Execute(null);
+                await page.LoadCommand.ExecuteAsync(null);
             });
             var listedProfiles = (await setup.GetAsync<JsonObject>("api/v1/profiles")).ToJsonString();
             var (keyedAnswer, keyedPane) = ("", "");
@@ -252,53 +297,116 @@ public sealed class RemoteAdminJourney
                 keyedAnswer = answered.Data.GetRawText();
             }
 
-            Assert.Equal(("", "", "Enter the key again: this change sends it to a different address."), (madeStatus, keptStatus, movedStatus));
+            Assert.Equal(("ManageProfilesDialogViewModel", "Saved on the server.", "Saved on the server.", "Enter the key again: this change sends it to a different address."), (editorKind, madeStatus, keptStatus, movedStatus));
+            Assert.Equal(
+            [
+                "Echo keyed", "journey purpose", workFolder, "Journey", "journey standing instructions", "4096", "True", SessionOptionCatalog.ReadingLevels[^1].Label, "Sdk",
+                "model=echo-large,effort=high", "True", "journey delegation", "summarize, refactor", workFolder, "acceptEdits", "journey_tool", "3", "7", "True", "True",
+                "https://inference.example/v1", "(set on the server)", "JOURNEY_REGION=eu-west:False,JOURNEY_VARIABLE=(set on the server):True",
+            ], reopenedProfile);
             Assert.Contains("echo: base https://inference.example/v1", keyedAnswer, StringComparison.Ordinal);
             Assert.Contains("key set", keyedAnswer, StringComparison.Ordinal);
             Assert.Contains("\"hasApiKey\":true", listedProfiles, StringComparison.Ordinal);
             Assert.False(listedProfiles.Contains(providerKey, StringComparison.Ordinal), "GET /profiles returned the provider key.");
+            Assert.False(listedProfiles.Contains(variableSecret, StringComparison.Ordinal), "GET /profiles returned the secret variable.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(variableSecret, StringComparison.Ordinal), "The audit holds the secret variable.");
+            Assert.False(run.Output.Contains(variableSecret, StringComparison.Ordinal), "The server log holds the secret variable.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(providerKey, StringComparison.Ordinal), "The audit holds the provider key.");
             Assert.False(run.Output.Contains(providerKey, StringComparison.Ordinal), "The server log holds the provider key.");
+
+            // AC-1571: a plugin's own settings view, unchanged, over the server's storage. Git status (nobody adapted it) saves
+            // there, not here. The echo fixture's credential reads as set on the server, reopens as only that, survives an
+            // untouched Save and clears when emptied; no answer, audit line or log holds it.
+            await _SaveServerSettingsAsync(admin, "git-status", window => window.GetLogicalDescendants().OfType<CheckBox>().Any(), window =>
+            {
+                window.GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false;
+                return Task.CompletedTask;
+            });
+            var gitStatusOnServer = await setup.GetAsync<JsonObject>("api/v1/plugins/git-status/storage");
+            var gitStatusHere = cockpit.Services.GetRequiredService<PluginUiManager>().UiPartOf("git-status")?.Host.Storage.Get<bool?>("showBranchName");
+
+            var echoKey = $"journey-plugin-key-{Guid.NewGuid():N}";
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                _Box(window, "Greeting").Text = "hello from the desktop";
+                _Box(window, "API token").Text = echoKey;
+                return Task.CompletedTask;
+            });
+            var afterSave = await _ReadEchoSettingsAsync(setup);
+            var reopened = "";
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                reopened = _Box(window, "API token").Text ?? "";
+                return Task.CompletedTask;
+            });
+            var afterKeep = await _ReadEchoSettingsAsync(setup);
+            var echoOnServer = (await setup.GetAsync<JsonObject>($"api/v1/plugins/{StorePlugin}/storage")).ToJsonString();
+            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            {
+                _Box(window, "API token").Text = "";
+                return Task.CompletedTask;
+            });
+            var afterClear = await _ReadEchoSettingsAsync(setup);
+
+            Assert.Equal((false, (bool?)null), (gitStatusOnServer["showBranchName"]?.GetValue<bool>(), gitStatusHere));
+            Assert.Equal(
+                (("hello from the desktop", true), "(set on the server)", ("hello from the desktop", true), ("hello from the desktop", false)),
+                (afterSave, reopened, afterKeep, afterClear));
+            Assert.False(echoOnServer.Contains(echoKey, StringComparison.Ordinal), "GET /storage returned the plugin's key.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
+            Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
 
             await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
-            // AC-1511: Admin → Plugins → Depot → Settings opens Depot's own view for the server. An installation token signs
-            // the server's connection in at a fake Depot without a browser; the same token again is refused and adds nothing.
+            // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
+            // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on
+            // Spare is refused, Remove takes Spare off the server, and the view reopened lists Work alone, signed in.
             var installToken = $"journey-install-{Guid.NewGuid():N}";
             await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
-            var depotUrl = depot.BaseUrl.TrimEnd('/');
-            var depotOpened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watchDepot = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+            using var depotBrowser = new HttpClient();
+            var browserVisits = new List<Task<HttpResponseMessage>>();
+            foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
             {
-                if (window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "Installation token"))
+                ((RemotePluginAdministration)remote.Plugins).BrowserOpener = link =>
                 {
-                    depotOpened.TrySetResult(window);
-                }
-            });
-            var depotHasSettings = false;
-            await HeadlessAvalonia.RunAsync(() =>
+                    browserVisits.Add(depotBrowser.GetAsync(link));
+                    return true;
+                };
+            }
+
+            var depotUrl = depot.BaseUrl.TrimEnd('/');
+            var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
+            var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
-                var depotRow = admin.Plugins.Single(plugin => plugin.Id == "depot");
-                depotHasSettings = depotRow.HasSettings;
-                _ = admin.OpenPluginSettingsCommand.ExecuteAsync(depotRow);
-                return Task.CompletedTask;
+                var work = _DepotRows(window)[0];
+                _FillDepotRow(work, "Work", depotUrl, "");
+                browser = await _PressDepotAsync(work, "Sign in");
+                // The token route answers the same sentence; cleared, so the press below waits for its own answer.
+                _DepotStatus(work).Text = "";
+                _Box(work, DepotTokenBox).Text = installToken;
+                signedIn = await _PressDepotAsync(work, "Sign in with token");
+                _Click(window, "+ Add connection");
+                var spare = _DepotRows(window)[1];
+                _FillDepotRow(spare, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
+                reused = await _PressDepotAsync(spare, "Sign in with token");
+                _Click(spare, "Remove connection");
             });
-            var depotWindow = await depotOpened.Task.WaitAsync(Until.Ceiling);
-            var signedIn = "";
-            var reused = "";
-            await HeadlessAvalonia.RunAsync(async () =>
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
-                signedIn = await _ConnectDepotAsync(depotWindow, "Work", depotUrl, installToken);
-                reused = await _ConnectDepotAsync(depotWindow, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
-                depotWindow.Close();
+                var rows = _DepotRows(window);
+                var status = _DepotStatus(rows[0]);
+                await Until.Holds(status, () => status.Text == "Signed in.");
+                reopenedDepot = $"{rows.Count} {_Box(rows[0], "Name (e.g. Work, Personal)").Text}: {status.Text}";
             });
             var serverState = "";
             await Until.ReloadHolds(
-                async () => serverState = await File.ReadAllTextAsync(Path.Combine(stateRoot, "cockpit.json")),
-                () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal) && !serverState.Contains("localhost", StringComparison.Ordinal));
+                async () => serverState = await _ReadSharedAsync(Path.Combine(stateRoot, "cockpit.json")),
+                () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal)
+                    && !serverState.Contains("localhost", StringComparison.Ordinal) && !serverState.Contains("Depot: Spare", StringComparison.Ordinal));
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -446,10 +554,10 @@ public sealed class RemoteAdminJourney
             var profiles = admin.Profiles ?? throw new InvalidOperationException("Admin opened Options without its Profiles page.");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await Until.CollectionHolds(profiles.Rows, () => profiles.Rows.Any(row => row.Label == "Echo"));
-                profiles.StartEditCommand.Execute(profiles.Rows.Single(row => row.Label == "Echo"));
-                profiles.Editor.Model = "echo-large";
-                await profiles.SaveEditorCommand.ExecuteAsync(null);
+                await profiles.LoadCommand.ExecuteAsync(null);
+                var echo = profiles.Editor?.Profiles.Single(profile => profile.Label == "Echo") ?? throw new InvalidOperationException("The server's profiles did not load.");
+                echo.PluginOptionDefaults.Single(option => option.Key == "model").Value = "echo-large";
+                await profiles.SaveCommand.ExecuteAsync(null);
             });
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             var started = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
@@ -515,18 +623,26 @@ public sealed class RemoteAdminJourney
             Assert.True(File.Exists(Path.Combine(bound.SourceDirectory ?? "", "README.md")), "The shared project's clone holds no checkout.");
             Assert.Equal(bound.SourceDirectory, sharedFolder);
             Assert.Equal((false, true, false), (flagBefore, flagAfter, flagCleared));
-            Assert.Equal("", profilesStatus);
+            Assert.Equal("Saved on the server.", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
             Assert.Equal(("Running", ""), assistantState);
             Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
             Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
             Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
-            Assert.Equal(("Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account."), (signedIn, reused));
+            Assert.Equal(
+                ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
+                (browser, signedIn, reused, reopenedDepot));
+            Assert.Equal([HttpStatusCode.OK], (await Task.WhenAll(browserVisits)).Select(visit => visit.StatusCode));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
                 new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
                 "The installation token is in the server's state, its output or its audit.");
+            Assert.Contains("sign-in succeeded", auditTrail, StringComparison.Ordinal);
+            var desktopFiles = await Task.WhenAll(Directory.EnumerateFiles(desktopState, "*", SearchOption.AllDirectories).Select(_ReadSharedAsync));
+            Assert.False(
+                new[] { run.Output, auditTrail }.Concat(desktopFiles).Any(text => text.Contains(DepotBrowserToken, StringComparison.Ordinal) || text.Contains(DepotBrowserCode, StringComparison.Ordinal)),
+                "The browser sign-in's token or code is in the server's output, its audit or this desktop's state.");
         }
         finally
         {
@@ -545,6 +661,7 @@ public sealed class RemoteAdminJourney
     private static RequestDelegate _FakeDepot(string installToken)
     {
         var redeemed = 0;
+        var challenge = "";
         return async context =>
         {
             var origin = $"{context.Request.Scheme}://{context.Request.Host}";
@@ -554,10 +671,38 @@ public sealed class RemoteAdminJourney
                     await context.Response.WriteAsJsonAsync(new { resource = $"{origin}/mcp", authorization_servers = new[] { origin } });
                     return;
                 case "/.well-known/oauth-authorization-server":
-                    await context.Response.WriteAsJsonAsync(new { issuer = origin, token_endpoint = $"{origin}/connect/token" });
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        issuer = origin,
+                        authorization_endpoint = $"{origin}/connect/authorize",
+                        token_endpoint = $"{origin}/connect/token",
+                        registration_endpoint = $"{origin}/connect/register",
+                        code_challenge_methods_supported = new[] { "S256" },
+                    });
+                    return;
+                case "/mcp" when context.Request.Headers.Authorization != $"Bearer {DepotBrowserToken}":
+                    // Depot's challenge, which starts the SDK's OAuth flow; with the token it answers nothing a client can use.
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    context.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource\"";
+                    return;
+                case "/connect/register":
+                    await context.Response.WriteAsJsonAsync(new { client_id = "journey-client", token_endpoint_auth_method = "none" });
+                    return;
+                case "/connect/authorize":
+                    // The consent screen, granted at once: one code, for this request's challenge, back to its redirect.
+                    challenge = context.Request.Query["code_challenge"].ToString();
+                    context.Response.Redirect($"{context.Request.Query["redirect_uri"]}?code={DepotBrowserCode}&state={Uri.EscapeDataString(context.Request.Query["state"].ToString())}&iss={Uri.EscapeDataString(origin)}");
                     return;
                 case "/connect/token":
                     var form = await context.Request.ReadFormAsync();
+                    if (form["grant_type"] == "authorization_code" && form["code"] == DepotBrowserCode && challenge.Length > 0
+                        && Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"].ToString()))) == challenge)
+                    {
+                        challenge = "";
+                        await context.Response.WriteAsJsonAsync(new { access_token = DepotBrowserToken, token_type = "Bearer", expires_in = 3600, refresh_token = "journey-browser-refresh", scope = "depot" });
+                        return;
+                    }
+
                     if (form["grant_type"] == "urn:depot:grant-type:install_token" && form["client_id"] == "depot"
                         && form["install_token"] == installToken && Interlocked.Exchange(ref redeemed, 1) == 0)
                     {
@@ -575,17 +720,126 @@ public sealed class RemoteAdminJourney
         };
     }
 
-    // Fills Depot's server view and presses Connect, returning the sentence it answers with.
-    private static async Task<string> _ConnectDepotAsync(Window window, string name, string url, string installToken)
+    // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
+    // closes only once the server took the save, so a refusal fails here with what the window said.
+    private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
     {
-        var view = window.GetLogicalDescendants().OfType<UserControl>().First(control => control.GetType().Name == "DepotServerSettingsControl");
-        var boxes = view.GetLogicalDescendants().OfType<TextBox>().ToList();
-        (boxes[0].Text, boxes[1].Text, boxes[2].Text) = (name, url, installToken);
-        var status = view.GetLogicalDescendants().OfType<TextBlock>().Last();
+        var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+        {
+            if (isTheView(window))
+            {
+                opened.TrySetResult(window);
+            }
+        });
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            _ = admin.OpenPluginSettingsCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == pluginId));
+            return Task.CompletedTask;
+        });
+        await Task.WhenAny(opened.Task, Task.Delay(Until.Ceiling));
+        var rows = HeadlessAvalonia.Run(() => string.Join(", ", admin.Plugins.Select(plugin => $"{plugin.Id}:{plugin.HasSettings}")));
+        Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
+        var settings = await opened.Task;
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // A view that throws in a click handler would stop the UI thread; caught here, it fails this step with its reason.
+        Exception? thrown = null;
+        void caught(object? sender, DispatcherUnhandledExceptionEventArgs e)
+        {
+            thrown ??= e.Exception;
+            e.Handled = true;
+        }
+
+        HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException += caught);
+        try
+        {
+            var edited = HeadlessAvalonia.RunAsync(async () =>
+            {
+                settings.Closed += (_, _) => closed.TrySetResult();
+                await edit(settings);
+                _Click(settings, "Save");
+            });
+            await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2));
+            Assert.True(thrown is null, $"{pluginId}'s settings view threw: {thrown?.Message}");
+            await edited.WaitAsync(TimeSpan.Zero);
+        }
+        finally
+        {
+            HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException -= caught);
+        }
+        await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
+        var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
+        Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
+    }
+
+    // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
+    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory)
+    {
+        var plugin = Directory.CreateDirectory(Path.Combine(bundled, id)).FullName;
+        foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata(directory)))
+        {
+            File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
+        }
+
+        Directory.CreateDirectory(stateRoot);
+        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+        Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+    }
+
+    // The server writes its state while the journey reads it; a shared read waits for no one.
+    private static async Task<string> _ReadSharedAsync(string path)
+    {
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(file);
+        return await reader.ReadToEndAsync();
+    }
+
+    private static bool _HoldsApiToken(Window window) => window.GetLogicalDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "API token");
+
+    private static TextBox _Box(Control within, string placeholder) =>
+        within.GetLogicalDescendants().OfType<TextBox>().Single(box => box.PlaceholderText == placeholder);
+
+    private static void _Click(Control within, string label) =>
+        within.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private static bool _IsDepotView(Window window) => _DepotRows(window).Count > 0;
+
+    private static List<Control> _DepotRows(Window window) =>
+        [.. window.GetLogicalDescendants().OfType<Control>().Where(control => control.GetType().Name == "DepotConnectionRowControl")];
+
+    // The row's status line: the text beside its Sign in button.
+    private static TextBlock _DepotStatus(Control row) =>
+        row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Button>().Any(button => Equals(button.Content, "Sign in")))
+            .Children.OfType<TextBlock>().Single();
+
+    private const string DepotBrowserCode = "journey-browser-code";
+
+    private const string DepotBrowserToken = "journey-browser-access";
+
+    private const string DepotTokenBox = "Installation token (instead of the browser)";
+
+    private static void _FillDepotRow(Control row, string name, string url, string installToken)
+    {
+        _Box(row, "Name (e.g. Work, Personal)").Text = name;
+        _Box(row, "https://depot.example.com").Text = url;
+        _Box(row, DepotTokenBox).Text = installToken;
+    }
+
+    // Presses one of a Depot row's sign-in buttons, returning the sentence the row answers with.
+    private static async Task<string> _PressDepotAsync(Control row, string button)
+    {
+        var status = _DepotStatus(row);
         var before = status.Text;
-        view.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Connect")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await Until.Holds(status, () => status.Text is { Length: > 0 } text && text != before && text != "Connecting…");
+        _Click(row, button);
+        await Until.Holds(status, () => status.Text is { Length: > 0 } text && text != before && text is not ("Saving…" or "Signing in…"));
         return status.Text ?? "";
+    }
+
+    // What the echo fixture's backend part on the server reads of its settings, over its own channel action.
+    private static async Task<(string? Greeting, bool ApiTokenSet)> _ReadEchoSettingsAsync(BackendApiClient setup)
+    {
+        var read = await setup.SendAsync<JsonObject>(HttpMethod.Post, $"api/v1/plugins/{StorePlugin}/channel/read-settings", new { });
+        return (read["greeting"]?.GetValue<string>(), read["apiTokenSet"]?.GetValue<bool>() ?? false);
     }
 
     private static async Task _GitAsync(string directory, params string[] arguments)
@@ -638,28 +892,8 @@ public sealed class RemoteAdminJourney
         }
     }
 
-    // AC-1534: a provider's own profile view, as a plugin's UI part registers one: base URL and key. It opens every echo
-    // profile, the keyless ones of the steps after it too.
-    private sealed class _EchoConfigView : IPluginProviderConfigView
-    {
-        public _EchoConfigView(string? configJson)
-        {
-            var config = configJson is null ? null : JsonNode.Parse(configJson);
-            BaseUrl.Text = config?["baseUrl"]?.GetValue<string>();
-            ApiKey.Text = config?["apiKey"]?.GetValue<string>();
-            View = new StackPanel { Children = { BaseUrl, ApiKey } };
-        }
-
-        public TextBox BaseUrl { get; } = new();
-
-        public TextBox ApiKey { get; } = new() { PasswordChar = '*' };
-
-        public Control View { get; }
-
-        public bool TryGetConfigJson(out string configJson)
-        {
-            configJson = new JsonObject { ["baseUrl"] = BaseUrl.Text ?? "", ["apiKey"] = ApiKey.Text ?? "" }.ToJsonString();
-            return true;
-        }
-    }
+    // AC-1534/AC-1585: the echo provider's own profile panel, as the fresh copy of its UI part built it for the server.
+    private static TextBox _EchoField(EditableProfileViewModel profile, string name) =>
+        (profile.PluginConfigView?.View as Panel)?.Children.OfType<TextBox>().SingleOrDefault(box => box.Name == name)
+            ?? throw new InvalidOperationException("The echo provider's own view did not open.");
 }

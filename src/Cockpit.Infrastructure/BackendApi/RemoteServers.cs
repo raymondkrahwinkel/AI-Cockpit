@@ -207,7 +207,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         Profiles = new RemoteServerProfiles(_client);
         AssistantAdministration = new RemoteAssistantAdministration(_client);
             _health = new RemoteServerHealthReader(_client, name, settingsStore, logger);
-        Plugins = new RemotePluginAdministration(_client);
+        Plugins = new RemotePluginAdministration(_client, logger);
         _projects = new RemoteProjects(_client);
     }
 

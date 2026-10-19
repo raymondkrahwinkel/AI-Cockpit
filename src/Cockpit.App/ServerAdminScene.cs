@@ -1,5 +1,6 @@
 using System.Buffers.Text;
 using System.Security.Cryptography;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
@@ -42,13 +43,10 @@ internal static class ServerAdminScene
         return dialog;
     }
 
-    // AC-1473: Profiles with the mockup's four sign-ins and the editor open on the one whose key is a secret.
+    // AC-1585: Profiles on the server in the editor Options › Profiles uses; the dialog loads them when it opens.
     public static OptionsDialog Profiles(int width, int height)
     {
-        var admin = _Admin(profiles: new ServerProfilesViewModel(new SceneProfiles()));
-        var profiles = admin.Profiles ?? throw new InvalidOperationException("The scene's admin has no Profiles page.");
-        profiles.LoadCommand.Execute(null);
-        profiles.StartEditCommand.Execute(profiles.Rows.First(row => row.Label == "server (OpenRouter)"));
+        var admin = _Admin(profiles: new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())));
         var dialog = OptionsDialog.ForServer(admin);
         dialog.Width = width;
         dialog.Height = height;
@@ -111,6 +109,33 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-1590: the Depot row of a server this desktop lacks the plugin for, with "Install on this desktop".
+    public static OptionsDialog PluginsDesktop(int width, int height) => _PluginsDesktop(width, height, installed: false);
+
+    // AC-1590: after that install: the row is installed here and the desktop asks to restart.
+    public static OptionsDialog PluginsDesktopRestart(int width, int height) => _PluginsDesktop(width, height, installed: true);
+
+    private static OptionsDialog _PluginsDesktop(int width, int height, bool installed)
+    {
+        var admin = new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins())
+        {
+            IsPluginOnDesktop = row => installed || row.Id != "depot",
+            // A plugin's own settings view comes from its UI part on this desktop, so Depot has none until it restarts.
+            HasPluginSettings = row => row.Id != "depot",
+        };
+        admin.LoadCommand.Execute(null);
+        if (installed)
+        {
+            admin.DesktopNeedsRestart = true;
+        }
+
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-plugins");
+        return dialog;
+    }
+
     // AC-1472: Projects after a clone, the form still holding what was cloned and the result under it.
     public static OptionsDialog Projects(int width, int height)
     {
@@ -132,7 +157,7 @@ internal static class ServerAdminScene
         var dialog = OptionsDialog.ForServer(new ServerAdminViewModel(
             "huis-cockpit", "laptop-raymond", new SceneKeys(), ["server (Claude)"], [], new ScenePlugins())
         {
-            Profiles = new ServerProfilesViewModel(new SceneProfiles()),
+            Profiles = new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())),
             Assistant = assistant,
         });
         dialog.Width = width;
@@ -225,11 +250,43 @@ internal static class ServerAdminScene
     {
         private static readonly RemoteProfile[] Listed =
         [
-            _Profile("server (Claude)", "claude", "opus", ProfileSignInKind.SignedIn, ["depot", "youtrack"], []),
-            _Profile("server (Codex)", "codex", "gpt-5.6-terra", ProfileSignInKind.Expired, null, []),
+            _Profile("server (Claude)", "claude", "opus", ProfileSignInKind.SignedIn, ["depot", "youtrack"], []) with
+            {
+                Full = new SessionProfile("server (Claude)", ClaudePluginProfile.Create("/data/claude/server", null), "Day-to-day work on the server",
+                    new ProfileDefaults("", "", "") { OptionDefaults = new Dictionary<string, string> { ["model"] = "opus", ["permission-mode"] = "acceptEdits" } },
+                    new DelegationPolicy(AllowedAsTarget: true, MaxConcurrent: 2, Purpose: "long builds and refactors on the server"))
+                {
+                    EnabledMcpServerNames = ["depot", "youtrack"],
+                    DefaultWorkingDirectory = "/data/projects",
+                    Assistant = "Zyra",
+                    SystemPrompt = "Your memory lives in the Depot MCP; look yourself up there before answering.",
+                    MemoryCapMegabytes = 8192,
+                    EnvironmentVariables = [new ProfileEnvironmentVariable("TZ", "Europe/Amsterdam"), new ProfileEnvironmentVariable("DEPOT_TOKEN", "(set on the server)", IsSecret: true)],
+                },
+            },
+            _Profile("server (Codex)", "codex", "gpt-5.6-terra", ProfileSignInKind.Expired, null, []) with
+            {
+                Full = new SessionProfile("server (Codex)", new PluginProviderConfig("codex", "{}")),
+            },
             _Profile("server (OpenRouter)", "openrouter", "deepseek/deepseek-chat", ProfileSignInKind.Unchecked, ["depot"],
-                [new RemoteProfileVariable("OPENROUTER_API_KEY", null, true), new RemoteProfileVariable("OPENROUTER_REGION", "eu")]),
-            _Profile("local-qwen", "ollama", "qwen2.5-coder:14b", null, null, []) with { ConfiguredOnServer = false },
+                [new RemoteProfileVariable("OPENROUTER_API_KEY", null, true), new RemoteProfileVariable("OPENROUTER_REGION", "eu")]) with
+            {
+                Full = new SessionProfile("server (OpenRouter)", new PluginProviderConfig("openrouter", "{}"))
+                {
+                    EnabledMcpServerNames = ["depot"],
+                    EnvironmentVariables = [new ProfileEnvironmentVariable("OPENROUTER_API_KEY", "(set on the server)", IsSecret: true), new ProfileEnvironmentVariable("OPENROUTER_REGION", "eu")],
+                },
+            },
+            _Profile("local-qwen", "ollama", "qwen2.5-coder:14b", null, null, []) with
+            {
+                ConfiguredOnServer = false,
+                Full = new SessionProfile("local-qwen", new OllamaConfig("http://ollama:11434", "qwen2.5-coder:14b"), "Cheap bulk work on the server's GPU")
+                {
+                    DefaultWorkingDirectory = "/data/projects",
+                    Assistant = "Olaf",
+                    MemoryCapMegabytes = 4096,
+                },
+            },
         ];
 
         public Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
@@ -245,6 +302,31 @@ internal static class ServerAdminScene
             Task.FromResult(Listed.FirstOrDefault(profile => profile.Label == label));
 
         public Task<bool> DeleteAsync(string label, CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        public Task<RemoteProfile> SaveProfileAsync(string? originalLabel, SessionProfile profile, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_Profile(profile.Label, "claude", null, null, null, []) with { Full = profile });
+
+        public Task<IReadOnlyList<RemoteProviderInfo>> ListProviderInfoAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RemoteProviderInfo>>(
+            [
+                new("claude", "Claude", null, true, true, true,
+                [
+                    new("permission-mode", "Permission mode", ["default", "acceptEdits", "plan"]),
+                    new("model", "Model", ["opus", "sonnet", "haiku"]),
+                    new("effort", "Effort", ["low", "medium", "high"]),
+                ]),
+                new("codex", "Codex", null, true, true, true, [new("sandbox", "Sandbox", ["read-only", "workspace-write"])]),
+                new("openrouter", "OpenRouter", null, true, false, false, []),
+            ]);
+
+        public Task<IReadOnlyList<string>> ListMcpServersAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>(["depot", "youtrack", "github"]);
+
+        public Task<McpServerToolEstimate> EstimateMcpToolsAsync(string name, bool refresh, CancellationToken cancellationToken = default) =>
+            Task.FromResult(McpServerToolEstimate.Unavailable(name));
+
+        public Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
 
         private static RemoteProfile _Profile(string label, string provider, string? model, ProfileSignInKind? signIn, IReadOnlyList<string>? mcp, IReadOnlyList<RemoteProfileVariable> environment) =>
             new(label, provider, model, null, mcp, null, DelegationPolicy.None, environment, false, true, signIn);

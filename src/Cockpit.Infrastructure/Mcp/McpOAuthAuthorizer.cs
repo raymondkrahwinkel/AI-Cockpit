@@ -1,7 +1,4 @@
-using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Authentication;
 using Cockpit.Core.Abstractions;
@@ -43,18 +40,22 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         McpSignInStageRecorder? stageRecorder = null,
         TimeSpan renewalMargin = default)
     {
+        // AC-1571 B2: a sign-in whose browser step runs on a desktop elsewhere redirects to that desktop's loopback port.
+        var handoff = interactive && McpOAuthHandoff.Current is { } current && current.ServerName == server.Name ? current : null;
         var options = new ClientOAuthOptions
         {
             // A fresh loopback port per server avoids collisions; the redirect is registered via DCR so a
             // dynamic port is fine. The delegate derives its listener prefix from this same RedirectUri.
-            RedirectUri = new Uri($"http://127.0.0.1:{_FreeLoopbackPort()}/callback"),
+            RedirectUri = handoff?.RedirectUri ?? McpOAuthLoopback.RedirectUriAt(McpOAuthLoopback.FreePort()),
             // AuthorizationCallbackHandler, not the obsolete AuthorizationRedirectDelegate (MCP9007): the
             // latter cannot carry `state`/`iss` back to the SDK, which is what lets it validate the redirect
             // against the request it made (RFC 9207 mix-up mitigation).
-            AuthorizationCallbackHandler = interactive
-                ? (context, cancellationToken) =>
-                    _HandleAuthorizationAsync(server.Name, context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
-                : _RefuseAuthorizationAsync,
+            AuthorizationCallbackHandler = handoff is not null
+                ? (context, cancellationToken) => handoff.AwaitRedirectAsync(context.AuthorizationUri, stageRecorder, cancellationToken)
+                : interactive
+                    ? (context, cancellationToken) =>
+                        _HandleAuthorizationAsync(server.Name, context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
+                    : _RefuseAuthorizationAsync,
 
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
             // would work and then be thrown away with the connection. Storing it is what lets one login serve the
@@ -127,7 +128,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
 
         // Nothing took the URL, so no redirect can ever arrive. Waiting on the listener anyway would leave the
         // operator on a spinner with no message at all, which is worse than the wrong message this ticket removes.
-        if (!(BrowserOpener ?? _OpenBrowser)(authorizationUri))
+        if (!(BrowserOpener ?? (url => McpOAuthLoopback.OpenBrowser(url, logger)))(authorizationUri))
         {
             return null;
         }
@@ -145,8 +146,8 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // the code is in hand would tell someone who watched their own browser return that nothing came back.
             stageRecorder?.Record(McpSignInStage.AuthorizationReturned);
 
-            var (code, state, iss, error) = _ParseCallback(context.Request.Url?.Query);
-            await _RespondAsync(context, serverName, error is null).ConfigureAwait(false);
+            var (code, state, iss, error) = McpOAuthLoopback.ParseCallback(context.Request.Url?.Query);
+            await McpOAuthLoopback.RespondAsync(context, serverName, error is null).ConfigureAwait(false);
 
             if (error is not null)
             {
@@ -161,95 +162,5 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // Listener stopped (cancelled) or torn down — treat as an aborted login.
             return null;
         }
-    }
-
-    private static (string? Code, string? State, string? Iss, string? Error) _ParseCallback(string? query)
-    {
-        string? code = null;
-        string? state = null;
-        string? iss = null;
-        string? error = null;
-
-        foreach (var pair in (query ?? string.Empty).TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = pair.Split('=', 2);
-            var key = Uri.UnescapeDataString(parts[0]);
-            var value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
-
-            switch (key)
-            {
-                case "code":
-                    code = value;
-                    break;
-                case "state":
-                    state = value;
-                    break;
-                case "iss":
-                    iss = value;
-                    break;
-                case "error":
-                    error = value;
-                    break;
-            }
-        }
-
-        if (code is null && error is null)
-        {
-            error = "no_code";
-        }
-
-        return (code, state, iss, error);
-    }
-
-    // AC-1517: names the server and that this tab is Cockpit's own, since it can land next to an unrelated login.
-    // Only the first redirect gets this page: the listener stops after it, so a reload or a late, expired attempt
-    // reaches a closed port and the browser shows its own "can't connect" page — nothing here can answer that.
-    private static async Task _RespondAsync(HttpListenerContext context, string serverName, bool success)
-    {
-        var server = WebUtility.HtmlEncode(serverName);
-        var message = success
-            ? $"This tab was Cockpit's sign-in for the MCP server \"{server}\", and it has been handed back to Cockpit. You can close this tab."
-            : $"Cockpit's sign-in for the MCP server \"{server}\" failed or was cancelled. You can close this tab; "
-                + "to try again, press Sign in for that server in Cockpit.";
-        var body = Encoding.UTF8.GetBytes(
-            $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Cockpit</title></head><body style=\"font-family:sans-serif\">{message}</body></html>");
-
-        context.Response.ContentType = "text/html; charset=utf-8";
-        context.Response.ContentLength64 = body.Length;
-        await context.Response.OutputStream.WriteAsync(body).ConfigureAwait(false);
-        context.Response.Close();
-    }
-
-    // Answers whether the URL was handed over at all — not whether a window appeared, which this process cannot see.
-    // A scheme this refuses to give the shell, or a desktop with nothing on PATH to open one, throws or returns
-    // early; a handler that then declines the URL does so out of reach, and is why the stage says "requested".
-    private bool _OpenBrowser(Uri url)
-    {
-        if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
-        {
-            return false;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo { FileName = url.ToString(), UseShellExecute = true });
-            return true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not open the system browser for the MCP OAuth sign-in");
-            return false;
-        }
-    }
-
-    // Grab an ephemeral free loopback port by binding :0, reading the assigned port, then releasing it. A
-    // brief race with another process is possible but harmless — the login just fails and can be retried.
-    private static int _FreeLoopbackPort()
-    {
-        using var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return port;
     }
 }

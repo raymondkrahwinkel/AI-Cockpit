@@ -19,6 +19,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _label;
 
+    // AC-1585: the label the profile was read under; null for one added since. A store that keeps what it never
+    // handed out (a server's secrets) needs it to tell a rename from a new profile.
+    public string? OriginalLabel { get; init; }
+
     [ObservableProperty]
     private string _configDir;
 

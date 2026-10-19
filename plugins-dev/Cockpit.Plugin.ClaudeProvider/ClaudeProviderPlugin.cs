@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -12,6 +13,8 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // HTTP MCP server (`ClaudeSdkSessionDriver`) — weg A, the plugin owns its own machinery.
 public sealed class ClaudeProviderPlugin : ICockpitPlugin
 {
+    private readonly List<IDisposable> _handlers = [];
+
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude Code",
@@ -116,6 +119,17 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             StartLogin = (configJson, ct) => ClaudeLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
         });
 
+        // The config view may run on another machine than this profile, so it asks here instead of checking disks itself.
+        _handlers.Add(host.Channel.Handle(ClaudeProviderChannel.ConfigChoices, (_, _) => Task.FromResult(ClaudeConfigCheck.Serialize(
+            ClaudeConfigCheck.Choices(ClaudeProfileDiscovery.Detect(), host.ResolveManagedCliPath, File.Exists)))));
+        _handlers.Add(host.Channel.Handle(ClaudeProviderChannel.CheckConfig, (payload, _) =>
+        {
+            var request = payload.Deserialize<ClaudeCheckConfigRequest>(ClaudeProviderChannel.Json)
+                ?? throw new ArgumentException("The request carries no config.", nameof(payload));
+            return Task.FromResult(ClaudeConfigCheck.Serialize(
+                ClaudeConfigCheck.Check(request, host.ResolveManagedCliPath, Directory.Exists, File.Exists)));
+        }));
+
         // First reading now, so the first dialog has a real answer instead of a cold guess. Nothing waits for it.
         foreach (var profile in ClaudeProfileDiscovery.Detect())
         {
@@ -125,5 +139,11 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _handlers.Clear();
     }
 }
