@@ -356,10 +356,8 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     private static async Task<bool> _WriteAsync(SettingsCarrierRegistration carrier, byte[] blob, string? version, CancellationToken cancellationToken)
     {
-        if (carrier.WriteIfUnchangedAsync is { } conditional)
-        {
-            return await conditional(blob, version, cancellationToken).ConfigureAwait(false);
-        }
+        await carrier.WriteAsync(blob, cancellationToken).ConfigureAwait(false);
+        return true;
 
         // ponytail: a carrier without the conditional write leaves a window between this read and the write.
         var current = await carrier.ReadAsync(cancellationToken).ConfigureAwait(false);
