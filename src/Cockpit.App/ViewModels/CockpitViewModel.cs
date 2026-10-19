@@ -58,6 +58,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.UsagePill;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Core.Abstractions.Clones;
@@ -178,6 +179,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _samplingResources;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
+    private readonly IManagedSettings? _managedSettingsReader;
     private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
     private readonly ICloneSettingsStore? _cloneSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
@@ -1456,6 +1458,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
+
+    // AC-1507: the cockpit.json paths a manifest locks here, each with who manages it; Options marks those fields read-only.
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, string> _managedSettings = new Dictionary<string, string>();
 
     // The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.
     [ObservableProperty]
@@ -3224,8 +3230,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null,
         IServerSignIns? serverSignIns = null,
         // AC-1534: the providers' own profile views, so Admin › Profiles on a server opens the one this laptop shows.
-        IPluginProviderConfigViews? providerConfigViews = null)
+        IPluginProviderConfigViews? providerConfigViews = null,
+        IManagedSettings? managedSettings = null)
     {
+        _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
@@ -3475,6 +3483,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
+        _ = LoadManagedSettingsAsync();
         _ = LoadShortcutSettingsAsync();
         _ = LoadDebugSettingsAsync();
         _ = LoadRenderingSettingsAsync();
@@ -5334,6 +5343,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CloneSettingsStatus = "Saved";
     }
 
+    private async Task LoadManagedSettingsAsync()
+    {
+        if (_managedSettingsReader is not null)
+        {
+            ManagedSettings = await _managedSettingsReader.ReadAsync();
+        }
+    }
+
     private async Task LoadTerminalSettingsAsync()
     {
         if (_terminalSettingsStore is null)
@@ -6821,6 +6838,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _optionsStaged = true;
+        _ = LoadManagedSettingsAsync();
         Security.SuspendPersistence = true;
         AssistantOptions.SuspendPersistence = true;
         _updateChoicesAtOpen =

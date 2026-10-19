@@ -450,6 +450,13 @@ internal sealed class BackupService(
 
         result["Plugins"] = restoredPlugins;
 
+        // AC-1507: the applier's record is this machine's, so a restore keeps it, and with it what is managed here.
+        result.Remove(nameof(CockpitConfigFile.Provisioning));
+        if (current[nameof(CockpitConfigFile.Provisioning)] is { } provisioning)
+        {
+            result[nameof(CockpitConfigFile.Provisioning)] = provisioning.DeepClone();
+        }
+
         await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
     }
 
@@ -851,6 +858,9 @@ internal sealed class BackupService(
         var removed = options.IncludeCredentials
             ? []
             : SecretScrubber.Scrub(settings, SecretKeyHolder.Shared.Fields);
+
+        // AC-1507: what a manifest manages comes back from the manifest, not from an archive.
+        settings.AsObject().Remove(nameof(CockpitConfigFile.Provisioning));
 
         var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
         await using var stream = entry.Open();

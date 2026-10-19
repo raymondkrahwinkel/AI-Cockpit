@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App;
+using Cockpit.App.Converters;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
@@ -56,8 +58,20 @@ public sealed class ProvisioningJourney
             Assert.Contains(hash, await File.ReadAllTextAsync(Path.Combine(cockpit.StateRoot, "provision-tokens-used.txt")));
             Assert.All(Directory.EnumerateFiles(cockpit.StateRoot, "*.json", SearchOption.AllDirectories), path => Assert.DoesNotContain(Token, File.ReadAllText(path)));
 
-            // Applied again on top of the running cockpit: set, not added.
-            Assert.Null((await ProvisioningEntry.ProvisionAsync(url, true, cockpit.StateRoot, NullLogger.Instance))!.Failure);
+            // AC-1507: the locked font size is read-only in Options, and a save through the view model leaves it as Acme set it.
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                await Until.Holds(cockpit.Cockpit, () => cockpit.Cockpit.ManagedSettings.ContainsKey("Terminal.FontSize"));
+                Assert.Equal("Managed by Acme", ManagedSettingConverter.Label.Convert(cockpit.Cockpit.ManagedSettings, typeof(string), "Terminal.FontSize", CultureInfo.InvariantCulture));
+                cockpit.Cockpit.TerminalFontSize = 20;
+                await cockpit.Cockpit.SaveTerminalSettingsCommand.ExecuteAsync(null);
+            });
+            Assert.Equal("15", JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(cockpit.StateRoot)))!["Terminal"]!["FontSize"]!.ToString());
+
+            // Applied again on top of the running cockpit: set, not added, and nothing to say.
+            var again = (await ProvisioningEntry.ProvisionAsync(url, true, cockpit.StateRoot, NullLogger.Instance))!;
+            Assert.Null(again.Failure);
+            Assert.DoesNotContain(again.Report, line => line.Reason is ProvisionManifestApplier.Applied or ProvisionManifestApplier.ReplacedManaged or ProvisionManifestApplier.KeptLocal or ProvisionManifestApplier.RestoredUnmanaged);
             Assert.Single(await cockpit.Services.GetRequiredService<ISessionProfileStore>().LoadAsync(), profile => profile.Label == "Acme dev");
         }
         finally
@@ -109,11 +123,11 @@ public sealed class ProvisioningJourney
     private const string Manifest = """
         {
           "format": "cockpit.provision", "formatVersion": 1,
-          "issuer": { "kind": "static" },
+          "issuer": { "kind": "static", "organization": { "id": "acme", "name": "Acme" } },
           "plugins": { "required": [ { "id": "clock" }, { "id": "git-status" } ] },
           "settings": {
             "notifications.localEnabled":      { "value": false,   "mode": "default", "by": "org" },
-            "terminal.fontSize":               { "value": 15,      "mode": "default", "by": "org" },
+            "terminal.fontSize":               { "value": 15,      "mode": "locked",  "by": "org" },
             "sessionBehavior.autoCloseOnExit": { "value": true,    "mode": "default", "by": "org" },
             "layout.themeMode":                { "value": "Light", "mode": "default", "by": "org" }
           },

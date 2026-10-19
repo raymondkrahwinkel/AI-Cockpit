@@ -24,6 +24,10 @@ public static class ProvisionManifestApplier
 
     public const string KeptLocal = "kept-local";
 
+    public const string ReplacedManaged = "replaced-managed";
+
+    public const string RestoredUnmanaged = "restored-unmanaged";
+
     public const string PluginFailed = "plugin-failed";
 
     public const string ConnectionSkipped = "connection-skipped";
@@ -108,26 +112,22 @@ public static class ProvisionManifestApplier
             return outcome with { Failure = failure, Report = report };
         }
 
+        var organisation = manifest.Issuer?.Organization is { } org ? org.Name ?? org.Id : null;
         await access.UpdateAsync(file =>
         {
-            foreach (var (chain, value) in settings)
-            {
-                _Set(file, chain, value);
-            }
+            var state = file.Provisioning ??= new ProvisioningStateEntry();
+            var wanted = settings.Select(setting => new Wanted(setting.Key, setting.Locked, organisation ?? setting.By, ManagedConfigKeys.Json(setting.Value),
+                    target => ManagedConfigKeys.Set(target, setting.Chain, setting.Value)))
+                .Concat(_PluginKeys(manifest, plugins.Enable.Concat(pinned.Keys), file, state, organisation ?? "your organisation"))
+                .Concat((manifest.Profiles?.Items ?? []).Select(profile => _ProfileKey(file, profile, organisation ?? profile.By)))
+                .ToList();
+            _Merge(file, state, wanted, report);
 
-            foreach (var id in plugins.Enable.Concat(pinned.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                var entry = file.Plugins.GetValueOrDefault(id) ?? new PluginRegistrationEntry();
-                entry.Enabled = true;
-                entry.PinnedSha256 = pinned.GetValueOrDefault(id) ?? entry.PinnedSha256;
-                file.Plugins[id] = entry;
-            }
-
-            foreach (var id in manifest.Plugins?.Forbidden ?? [])
+            foreach (var (id, sha256) in pinned)
             {
                 if (file.Plugins.TryGetValue(id, out var entry))
                 {
-                    entry.Enabled = false;
+                    entry.PinnedSha256 = sha256;
                 }
             }
 
@@ -136,24 +136,21 @@ public static class ProvisionManifestApplier
                 file.PluginStores.Add(store);
             }
 
-            foreach (var profile in manifest.Profiles?.Items ?? [])
-            {
-                var entry = file.Profiles.FirstOrDefault(candidate => candidate.Label == profile.Label);
-                if (entry is null)
-                {
-                    entry = new SessionProfileEntry();
-                    file.Profiles.Add(entry);
-                }
-
-                _SetProfile(entry, profile);
-            }
-
             foreach (var project in manifest.Projects?.Own ?? [])
             {
+                var key = $"Projects.{project.Id}";
                 if (file.Projects.All(candidate => candidate.Id != project.Id))
                 {
                     file.Projects.Add(_Project(project));
+                    report.Add(new($"projects.own.{project.Id}", Applied, Detail: project.Name));
                 }
+                else if (!state.Applied.ContainsKey(key))
+                {
+                    report.Add(new($"projects.own.{project.Id}", KeptLocal, Detail: "a project with this id is already here; the local one stays"));
+                }
+
+                // A project is added once and never overwritten; this only marks that the local one was already named.
+                state.Applied[key] = ManagedConfigKeys.Hash(project.Id);
             }
 
             // The wizard's questions are answered by the manifest; the provider sign-in stays for the report (§3.10).
@@ -161,13 +158,114 @@ public static class ProvisionManifestApplier
             {
                 file.FirstRunWizardVersion = FirstRunWizardVersion.Current;
             }
+
+            state.Source = outcome.Source ?? state.Source;
+            state.ManifestId = manifest.ManifestId;
+            state.Revision = manifest.Revision;
         }, cancellationToken).ConfigureAwait(false);
 
-        report.AddRange((manifest.Profiles?.Items ?? []).Select(profile => new ProvisionNote($"profiles.{profile.Id}", Applied, profile.By, profile.Label)));
-        report.AddRange((manifest.Projects?.Own ?? []).Select(project => current.Projects.Any(candidate => candidate.Id == project.Id)
-            ? new ProvisionNote($"projects.own.{project.Id}", KeptLocal, Detail: "a project with this id is already here; the local one stays")
-            : new ProvisionNote($"projects.own.{project.Id}", Applied, Detail: project.Name)));
         return outcome with { Report = report };
+    }
+
+    // One key the manifest has a value for: its JSON as the manifest wants it, and how to write that in.
+    private sealed record Wanted(string Key, bool Locked, string By, string Value, Action<CockpitConfigFile> Write);
+
+    // manifest-v1 §4.2, per key: a default gives way to a local choice, a lock pushes it aside and keeps it, a release puts it back.
+    private static void _Merge(CockpitConfigFile file, ProvisioningStateEntry state, List<Wanted> wanted, List<ProvisionNote> report)
+    {
+        foreach (var (key, managed) in state.Managed.Where(managed => !wanted.Any(want => want.Locked && want.Key == managed.Key)).ToList())
+        {
+            state.Managed.Remove(key);
+            if (state.Displaced.Remove(key, out var displaced))
+            {
+                ManagedConfigKeys.Write(file, key, displaced);
+            }
+
+            report.Add(new(key, RestoredUnmanaged, managed.By, $"no longer managed by {managed.By}"));
+        }
+
+        foreach (var want in wanted)
+        {
+            var local = ManagedConfigKeys.Read(file, want.Key);
+            // Back at the built-in value after an apply is a choice too; only a key never applied can be unset.
+            var unset = local is null || (!state.Applied.ContainsKey(want.Key) && ManagedConfigKeys.IsUnset(want.Key, local));
+            var hash = ManagedConfigKeys.Hash(want.Value);
+            if (want.Locked)
+            {
+                if (local != want.Value)
+                {
+                    // A lock moving to a new value replaces the previous lock's value, not the operator's.
+                    if (!unset && local is not null && local != state.Managed.GetValueOrDefault(want.Key)?.Value)
+                    {
+                        state.Displaced.TryAdd(want.Key, local);
+                        report.Add(new(want.Key, ReplacedManaged, want.By, $"replaced by {want.By}'s management; your own value is kept"));
+                    }
+
+                    want.Write(file);
+                }
+
+                state.Managed[want.Key] = new ManagedKeyEntry { By = want.By, Value = ManagedConfigKeys.Read(file, want.Key) ?? want.Value };
+                state.Applied[want.Key] = state.Offered[want.Key] = hash;
+            }
+            else if (unset || local is not null && state.Applied.GetValueOrDefault(want.Key) == ManagedConfigKeys.Hash(local))
+            {
+                if (local != want.Value)
+                {
+                    want.Write(file);
+                    if (!unset)
+                    {
+                        report.Add(new(want.Key, Applied, want.By, "the default was updated"));
+                    }
+                }
+
+                state.Applied[want.Key] = state.Offered[want.Key] = ManagedConfigKeys.Hash(ManagedConfigKeys.Read(file, want.Key) ?? want.Value);
+            }
+            else if (state.Offered.GetValueOrDefault(want.Key) != hash)
+            {
+                state.Offered[want.Key] = hash;
+                report.Add(new(want.Key, KeptLocal, want.By, want.Value.StartsWith('{') ? "your choice stays; the default changed" : $"your choice stays; the default is now {want.Value}"));
+            }
+        }
+    }
+
+    // Required plugins are locked on, forbidden ones locked off where they are registered (§3.1), selected ones a default.
+    private static IEnumerable<Wanted> _PluginKeys(
+        ProvisionManifest manifest, IEnumerable<string> enable, CockpitConfigFile file, ProvisioningStateEntry state, string by)
+    {
+        var required = (manifest.Plugins?.Required ?? []).Select(plugin => plugin.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var on = enable.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(id => new Wanted($"Plugins.{id}.Enabled", required.Contains(id), by, "true", target => ManagedConfigKeys.Write(target, $"Plugins.{id}.Enabled", "true")));
+        var off = (manifest.Plugins?.Forbidden ?? [])
+            .Where(id => file.Plugins.ContainsKey(id) || state.Managed.ContainsKey($"Plugins.{id}.Enabled"))
+            .Select(id => new Wanted($"Plugins.{id}.Enabled", true, by, "false", target => ManagedConfigKeys.Write(target, $"Plugins.{id}.Enabled", "false")));
+        return on.Concat(off);
+    }
+
+    // A profile's value is its carried fields after the manifest's are set on it, so what it keeps of this machine counts too.
+    private static Wanted _ProfileKey(CockpitConfigFile file, ProvisionProfile profile, string by)
+    {
+        var key = $"Profiles.{profile.Label}";
+        var probe = new CockpitConfigFile();
+        var local = ManagedConfigKeys.Read(file, key);
+        if (local is not null)
+        {
+            ManagedConfigKeys.Write(probe, key, local);
+        }
+
+        return new Wanted(key, profile.Mode == ProvisionManifestReader.LockedMode, by, _Profiled(probe, profile), target => _Profiled(target, profile));
+    }
+
+    private static string _Profiled(CockpitConfigFile file, ProvisionProfile profile)
+    {
+        var entry = file.Profiles.FirstOrDefault(candidate => candidate.Label == profile.Label);
+        if (entry is null)
+        {
+            entry = new SessionProfileEntry();
+            file.Profiles.Add(entry);
+        }
+
+        _SetProfile(entry, profile);
+        return ManagedConfigKeys.Carried(entry);
     }
 
     // Phase 2, once plugins run. The token is used up only when nothing it was meant for failed; otherwise the link stays usable.
@@ -269,14 +367,16 @@ public static class ProvisionManifestApplier
     private static string? _String(JsonElement config, string name) =>
         config.ValueKind == JsonValueKind.Object && config.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
+    private sealed record SettingValue(string Key, PropertyInfo[] Chain, object? Value, bool Locked, string By);
+
     // Each key maps to one cockpit.json leaf on the carrier white list (AC-540); any other key is ignored and reported.
-    private static List<(PropertyInfo[] Chain, object? Value)> _Settings(ProvisionManifest manifest, List<ProvisionNote> report)
+    private static List<SettingValue> _Settings(ProvisionManifest manifest, List<ProvisionNote> report)
     {
-        var settings = new List<(PropertyInfo[], object?)>();
+        var settings = new List<SettingValue>();
         foreach (var (key, setting) in manifest.Settings ?? [])
         {
             var path = Aliases.GetValueOrDefault(key) ?? string.Join('.', key.Split('.').Select(name => name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..]));
-            var chain = SettingsCarrierWhitelist.Carried.Contains(path) ? _Chain(path) : null;
+            var chain = SettingsCarrierWhitelist.Carried.Contains(path) ? ManagedConfigKeys.Chain(path) : null;
             if (chain is null)
             {
                 report.Add(new($"settings.{key}", ProvisionManifestReader.SkippedUnknown, setting.By, "not on the settings white list, so it was not written"));
@@ -285,8 +385,7 @@ public static class ProvisionManifestApplier
 
             try
             {
-                settings.Add((chain, setting.Value.Deserialize(chain[^1].PropertyType, ValueOptions)));
-                report.Add(new($"settings.{key}", Applied, setting.By));
+                settings.Add(new(path, chain, setting.Value.Deserialize(chain[^1].PropertyType, ValueOptions), setting.Mode == ProvisionManifestReader.LockedMode, setting.By));
             }
             catch (JsonException)
             {
@@ -295,37 +394,6 @@ public static class ProvisionManifestApplier
         }
 
         return settings;
-    }
-
-    // Null for a path through a list or a dictionary: those are not one value to set.
-    private static PropertyInfo[]? _Chain(string path)
-    {
-        var chain = new List<PropertyInfo>();
-        var type = typeof(CockpitConfigFile);
-        foreach (var name in path.Split('.'))
-        {
-            if (type.GetProperty(name) is not { CanWrite: true } property)
-            {
-                return null;
-            }
-
-            chain.Add(property);
-            type = property.PropertyType;
-        }
-
-        return chain.Take(chain.Count - 1).Any(property => property.PropertyType.IsGenericType) ? null : [.. chain];
-    }
-
-    private static void _Set(object target, PropertyInfo[] chain, object? value)
-    {
-        foreach (var property in chain[..^1])
-        {
-            var section = property.GetValue(target) ?? Activator.CreateInstance(property.PropertyType)!;
-            property.SetValue(target, section);
-            target = section;
-        }
-
-        chain[^1].SetValue(target, value);
     }
 
     private static void _ReportNotApplied(ProvisionManifest manifest, List<ProvisionNote> report)
@@ -342,7 +410,7 @@ public static class ProvisionManifestApplier
         Say(manifest.Profiles?.DefaultProfile is not null, "profiles.defaultProfile", "the default profile is chosen on this machine for now");
         Say(manifest.Projects?.Shared is { Count: > 0 }, "projects.shared", "shared projects arrive with their connection's plugin");
         Say(manifest.Assistant?.OrgRules is not null, "assistant.orgRules", "the organisation's rule set is not written yet");
-        Say(manifest.Policy is not null, "policy", "policy is enforced from DB-2.6 on");
+        Say(manifest.Policy is not null, "policy", "policy is not enforced yet");
         Say(manifest.Backup is { Target: not null } or { Schedule: not null }, "backup", "the backup target and schedule are set on this machine for now");
         foreach (var project in manifest.Projects?.Own ?? [])
         {
@@ -380,7 +448,6 @@ public static class ProvisionManifestApplier
             if (installed is not null && current.Plugins.ContainsKey(id) && _Satisfies(installed, minVersion, pin))
             {
                 resolved.Enable.Add(id);
-                report.Add(new($"plugins.{id}", Applied, Detail: $"{installed} is already installed"));
                 continue;
             }
 

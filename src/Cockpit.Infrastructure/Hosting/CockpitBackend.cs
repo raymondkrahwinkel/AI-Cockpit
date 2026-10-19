@@ -104,6 +104,7 @@ public sealed class CockpitBackend
     public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null, PluginStartup plugins = PluginStartup.None)
     {
         var services = new ServiceCollection();
+        ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();

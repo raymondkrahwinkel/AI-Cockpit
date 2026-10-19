@@ -87,7 +87,8 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
               "Plugins": {
                 "youtrack": { "Enabled": true, "PinnedSha256": "aaa111", "Data": { "instance": "https://youtrack.example" } },
                 "docker": { "Enabled": true, "PinnedSha256": "bbb222", "Data": { "socket": "npipe://./pipe/docker_engine", "token": "s3cr3t" } }
-              }
+              },
+              "Provisioning": { "Managed": { "Terminal.FontSize": { "By": "Acme", "Value": "15" } } }
             }
             """);
         root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
@@ -100,7 +101,11 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
 
         using var written = ZipFile.OpenRead(archive);
         await using var settings = written.GetEntry("cockpit/cockpit.json")!.Open();
-        var docker = JsonNode.Parse(settings)!["Plugins"]!["docker"]!;
+        var archived = JsonNode.Parse(settings)!;
+        var docker = archived["Plugins"]!["docker"]!;
+
+        // AC-1507: what a manifest manages comes back from the manifest, never from an archive.
+        Assert.Null(archived["Provisioning"]);
 
         Assert.Equal("npipe://./pipe/docker_engine", docker["Data"]!["socket"]!.GetValue<string>());
         Assert.Equal("bbb222", docker["PinnedSha256"]!.GetValue<string>());
