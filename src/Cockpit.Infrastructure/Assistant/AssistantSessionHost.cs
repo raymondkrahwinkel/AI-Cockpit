@@ -499,7 +499,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 // describes the general expectation, and the per-call `approval` field (AssistantAgentMcpTools)
                 // corrects it when only one source was switched off individually.
                 consentCardAsks: !settings.ConsentBypassAll,
-                orgRules: null),
+                orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true)),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
