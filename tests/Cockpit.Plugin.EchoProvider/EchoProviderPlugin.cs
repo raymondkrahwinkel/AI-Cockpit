@@ -86,7 +86,7 @@ internal sealed class EchoSharedProjectSource(string repository) : ISharedProjec
 
     public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
         Task.FromResult(SharedProjectListResult.Success(
-            [new SharedProject(ProjectId, "journey-shared") { HasRepository = true }, new SharedProject(BareProjectId, "journey-bare")]));
+            [new SharedProject(ProjectId, "journey-shared"), new SharedProject(BareProjectId, "journey-bare") { HasRepository = false }]));
 
     public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken) =>
         Task.FromResult(id switch

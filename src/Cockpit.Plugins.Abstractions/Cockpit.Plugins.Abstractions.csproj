@@ -146,7 +146,7 @@
          carried the one bump). Nothing was removed or changed, so the major and abstractionsVersion stay 1.
          - AC-189: ICockpitHost.RegisterAutopilotTemplate (default no-op) plus the PluginAutopilotTemplate /
            RegisteredAutopilotTemplate records — a plugin contributes a reusable Autopilot run template.
-         - AC-190: PluginSessionCapabilities.ConfinesViaPermissionsOnly (init, default false) — a provider marks that its
+         - AC-190: PluginSessionCapabilities.ConfinesViaPermissionsOnly (init, default true: a source that does not say stays addable) — a provider marks that its
            worktree confinement rests on its permission system (Claude) rather than an OS sandbox, so the isolation gate
            can vouch a permission-engaged mode and refuse a bypass mode.
          - AC-195: IEmbeddedSession.IsBusy (default false) and BusyChanged (default no-op event) — an embedder lights or

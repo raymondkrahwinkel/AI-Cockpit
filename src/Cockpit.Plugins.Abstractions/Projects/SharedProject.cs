@@ -41,7 +41,8 @@ public sealed record SharedProject(string Id, string Name)
 
     /// <summary>
     /// Whether the definition names a repository the host can clone — the only way a host without a folder of its
-    /// own (a server) binds it. A host may disable "add" on a project without one. False by default.
+    /// own (a server) binds it. A host may disable "add" on a project without one. True by default: a source that
+    /// does not say stays addable, and the host's own refusal is the answer.
     /// </summary>
-    public bool HasRepository { get; init; }
+    public bool HasRepository { get; init; } = true;
 }
