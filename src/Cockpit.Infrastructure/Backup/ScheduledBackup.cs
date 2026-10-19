@@ -192,7 +192,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         // Gone from the target already (removed by hand): off the list, so the list does not grow for ever.
         var gone = owned.Where(id => !listed.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var stale = entries
-            .Where(entry => entry.Id != written)
+            .Where(entry => entry.Id != written && owned.Contains(entry.Id))
             .OrderByDescending(entry => entry.CreatedAt)
             .ThenByDescending(entry => entry.Id, StringComparer.Ordinal)
             .Skip(keep - 1)
