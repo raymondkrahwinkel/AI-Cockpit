@@ -32,6 +32,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private readonly List<IDisposable> _handlers = [];
 
     private Inbox.DepotInbox? _inbox;
+    private ILogger? _logger;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
@@ -97,7 +98,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             (connection, userId, onPush, onClosed) => new Inbox.SignalRDepotInboxHub(
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope), onPush, onClosed),
             page => host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)),
-            host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
+            _logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
         var inbox = _inbox;
         _handlers.Add(host.Channel.Handle(DepotInboxChannel.Unread, async (_, cancellationToken) =>
             JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
@@ -473,7 +474,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _publishHttp.Dispose();
         // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
-        _ = _inbox?.DisposeAsync().AsTask();
+        _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception!.GetBaseException(), "Closing the Depot inbox failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
 
         _handlers.Clear();
     }

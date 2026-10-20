@@ -4,7 +4,7 @@
 # format: <project>	<count>   or   allow-growth	<project>
 allow-growth	tests/Cockpit.Journeys
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	128
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	129
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
 plugins-dev/Cockpit.Plugin.Depot.Tests	165
 plugins-dev/Cockpit.Plugin.Diagram.Tests	106
@@ -24,7 +24,7 @@ plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	6
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
-plugins-dev/Cockpit.Plugin.Proxmox.Tests	12
+plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
 plugins-dev/Cockpit.Plugin.Schedules.Tests	23
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
 plugins-dev/Cockpit.Plugin.Slack.Tests	26
@@ -32,9 +32,9 @@ plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	5
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	30
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
-tests/Cockpit.App.ViewTests	1479
+tests/Cockpit.App.ViewTests	1480
 tests/Cockpit.Backend.Tests	73
-tests/Cockpit.Core.Tests	1003
-tests/Cockpit.Infrastructure.Tests	685
+tests/Cockpit.Core.Tests	1006
+tests/Cockpit.Infrastructure.Tests	686
 tests/Cockpit.Journeys	33
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

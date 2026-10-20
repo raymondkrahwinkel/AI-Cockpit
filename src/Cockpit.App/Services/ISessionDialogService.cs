@@ -90,7 +90,7 @@ public interface ISessionDialogService
     /// <summary>
     /// Shows a plugin's own view for a server (AC-1511), over the Admin dialog it was opened from. Default does nothing.
     /// </summary>
-    Task ShowServerPluginSettingsAsync(string title, Func<Avalonia.Controls.Control> createView) => Task.CompletedTask;
+    Task ShowServerPluginSettingsAsync(string title, Func<Avalonia.Controls.Control> createView, Func<Task<string?>>? persist = null) => Task.CompletedTask;
 
     /// <summary>
     /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.

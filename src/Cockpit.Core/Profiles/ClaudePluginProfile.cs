@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Profiles;
 
@@ -24,15 +25,15 @@ public static class ClaudePluginProfile
             return new ClaudeConfig(string.Empty);
         }
 
+        // AC-1585: case-insensitive, as the plugin reads it, so what the host checks is what the plugin runs.
         try
         {
-            using var document = JsonDocument.Parse(configJson);
-            var root = document.RootElement;
-            var configDir = root.TryGetProperty("configDir", out var dir) && dir.ValueKind == JsonValueKind.String ? dir.GetString() : null;
-            var executablePath = root.TryGetProperty("executablePath", out var exe) && exe.ValueKind == JsonValueKind.String ? exe.GetString() : null;
+            var root = JsonNode.Parse(configJson, new JsonNodeOptions { PropertyNameCaseInsensitive = true }) as JsonObject;
+            var configDir = root?["configDir"] is JsonValue dir && dir.TryGetValue<string>(out var dirText) ? dirText : null;
+            var executablePath = root?["executablePath"] is JsonValue exe && exe.TryGetValue<string>(out var exeText) ? exeText : null;
             return new ClaudeConfig(configDir ?? string.Empty, string.IsNullOrWhiteSpace(executablePath) ? null : executablePath);
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
             return new ClaudeConfig(string.Empty);
         }

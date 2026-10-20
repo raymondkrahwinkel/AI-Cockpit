@@ -73,8 +73,8 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
     // The Save/Close footer every plugin settings dialog gets, extracted so its failure branch is testable
     // without `ApplicationLifetime`. AC-1003: the immediate half of the staged contract — a standalone
-    // window stages and commits on the same click, and the refusal reason now comes from the view itself.
-    internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved)
+    // window stages and commits on the same click. AC-1571: `persist` then writes a server copy's storage there.
+    internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved, Func<Task<string?>>? persist = null)
     {
         var status = new TextBlock
         {
@@ -94,7 +94,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         if (view is IPluginSettingsView settingsView)
         {
             var save = new Button { Content = "Save", Classes = { "Accent" } };
-            save.Click += (_, _) =>
+            save.Click += async (_, _) =>
             {
                 // Through the same staging the Options screen uses (AC-1004), for the settings-saved signal rather
                 // than for the holding: staging it here and committing on the next line is what pins that signal to
@@ -115,6 +115,19 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
                     status.Text = failure.Reason;
                     status.IsVisible = true;
                     return;
+                }
+
+                if (persist is not null)
+                {
+                    save.IsEnabled = false;
+                    var refused = await persist();
+                    save.IsEnabled = true;
+                    if (refused is not null)
+                    {
+                        status.Text = refused;
+                        status.IsVisible = true;
+                        return;
+                    }
                 }
 
                 window.Close();

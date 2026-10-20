@@ -1070,6 +1070,37 @@ public partial class PluginManagerViewModel : ViewModelBase
         });
     }
 
+    // AC-1590: installs a plugin the server runs and this desktop lacks, by its id. It is found in this desktop's own
+    // stores and goes through the same provisioning (checksum, signature) and consent walk as any store install; nothing
+    // of the server but the id is used.
+    public async Task<DesktopInstallOutcome> InstallFromStoreByIdAsync(string pluginId)
+    {
+        if (_administration is null)
+        {
+            return new DesktopInstallOutcome(false, false, "Plugins cannot be installed on this desktop.");
+        }
+
+        DesktopInstallOutcome? outcome = null;
+        await _InstallExclusivelyAsync(async () =>
+        {
+            await LoadAsync();
+            await BrowseStoresAsync();
+            var row = AvailablePlugins.FirstOrDefault(candidate => string.Equals(candidate.Id, pluginId, StringComparison.OrdinalIgnoreCase));
+            if (row is null)
+            {
+                outcome = new DesktopInstallOutcome(false, false, Stores.Count == 0
+                    ? "No plugin store is configured on this desktop."
+                    : $"'{pluginId}' is not in any of this desktop's plugin stores. {StatusMessage}");
+                return;
+            }
+
+            var installed = await _DownloadAndInstallRowAsync(row);
+            outcome = new DesktopInstallOutcome(installed, NeedsRestart, StatusMessage);
+        });
+
+        return outcome ?? new DesktopInstallOutcome(false, false, "Another install is running; try again when it is done.");
+    }
+
     private PluginRowViewModel? _InstalledRowFor(StorePluginRowViewModel row) =>
         Plugins.FirstOrDefault(installed => installed.FolderId == PluginFolderName.Normalize(row.Id));
 
@@ -1170,3 +1201,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
 }
+
+// AC-1590: what "Install on this desktop" came to: whether the plugin is installed, whether it needs the desktop to
+// restart before its UI part loads, and the line to show either way.
+public sealed record DesktopInstallOutcome(bool Installed, bool NeedsRestart, string Message);
