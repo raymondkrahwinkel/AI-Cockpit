@@ -26,7 +26,12 @@ public sealed class ServerPluginsPage : UserControl
         ToolTip.SetTip(restartNow, "Restarts the server so the plugin changes take effect. Its sessions stop; this cockpit stays open.");
         var status = new TextBlock();
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
-        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, _rows, restart, restartNow, status } };
+        var desktopRestart = new TextBlock { Text = "A plugin installed on this desktop loads when the desktop restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        var desktopRestartNow = new Button { Content = "Restart the cockpit now", HorizontalAlignment = HorizontalAlignment.Left };
+        desktopRestartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartDesktopNowCommand"));
+        var desktopPrompt = new StackPanel { Spacing = 8, Children = { desktopRestart, desktopRestartNow } };
+        desktopPrompt.Bind(IsVisibleProperty, new Avalonia.Data.Binding("DesktopNeedsRestart"));
+        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, desktopPrompt, _rows, restart, restartNow, status } };
         DataContextChanged += (_, _) => _SetAdmin();
     }
 
@@ -68,6 +73,10 @@ public sealed class ServerPluginsPage : UserControl
                 actions.Children.Insert(0, new Button { Content = "Settings", Command = admin.OpenPluginSettingsCommand, CommandParameter = row });
             }
 
+            var onDesktop = new Button { Content = "Install on this desktop", Command = admin.InstallPluginOnDesktopCommand, CommandParameter = row };
+            onDesktop.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.MissingOnDesktop)) { Source = row });
+            ToolTip.SetTip(onDesktop, "This desktop does not have the plugin. Installs it from this desktop's own plugin stores, with the usual checks and consent; nothing is loaded from the server.");
+            actions.Children.Insert(0, onDesktop);
             Grid.SetColumn(actions, 1);
             var removal = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Children = { remove } };
             Grid.SetColumn(removal, 2);

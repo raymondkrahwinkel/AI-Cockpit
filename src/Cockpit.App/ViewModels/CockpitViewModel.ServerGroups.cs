@@ -4,11 +4,14 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
@@ -405,12 +408,16 @@ public partial class CockpitViewModel
 
         var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
         var plugins = group.Server.Plugins;
+        await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count)
         {
-            Profiles = new ServerProfilesViewModel(group.Server.Profiles, _providerConfigViews),
+            Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
-            HasPluginSettings = row => plugins is IPluginChannelRelay && _ServerSettingsFor(row) is not null,
-            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, row),
+            HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
+            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, row),
+            IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
+            InstallPluginOnDesktop = row => Plugins.InstallFromStoreByIdAsync(row.Id),
+            RestartDesktop = () => _appRestart?.Restart(),
         };
 
         // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
@@ -428,17 +435,51 @@ public partial class CockpitViewModel
         : PluginServerSettings.TryGetValue(row.FolderId, out var byFolder) ? byFolder
         : null;
 
-    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server.
-    private Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, ServerPluginRowViewModel row)
+    // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
+    // Set once the UI parts have initialized.
+    internal Func<string, (Type UiType, ICockpitUiHost Host)?> LocalPluginUiPart { get; set; } = _ => null;
+
+    private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
+        LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
+
+    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
+    // local settings view over the server's storage wins (AC-1571); a view it offers only for a server (AC-1511) is the
+    // fallback for a plugin without one.
+    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, ServerPluginRowViewModel row)
     {
-        if (_dialogService is null || plugins is not IPluginChannelRelay relay || _ServerSettingsFor(row) is not { } settings)
+        if (_dialogService is null || plugins is not IPluginChannelRelay relay)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var channel = new RemotePluginUiChannel(relay, row.FolderId);
-        return _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
+        if (_LocalSettingsPartFor(row) is { } part)
+        {
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles)) is { } remote)
+            {
+                await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
+            }
+
+            return;
+        }
+
+        if (_ServerSettingsFor(row) is { } settings)
+        {
+            var channel = new RemotePluginUiChannel(relay, row.FolderId);
+            await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
+        }
     }
+
+    // AC-1571: the server's profiles as a plugin's host gives them, from the Admin API's own list. No config directory:
+    // that path stays on the server.
+    private static async Task<IReadOnlyList<PluginProfileInfo>> _PluginProfilesAsync(IServerProfiles profiles) =>
+        [.. (await profiles.ListAsync()).Select(profile => new PluginProfileInfo(profile.Label, profile.Provider, "")
+        {
+            ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
+            EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
+        })];
+
+    private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
+        profile.KnownValues?.GetValueOrDefault(option) is { } values ? [.. values.Select(value => value.Value)] : [];
 
     [RelayCommand]
     private async Task OpenServerStartAsync(ServerGroupViewModel group)

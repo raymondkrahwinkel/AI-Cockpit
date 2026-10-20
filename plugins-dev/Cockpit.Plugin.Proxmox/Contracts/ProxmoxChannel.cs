@@ -23,12 +23,20 @@ internal static class ProxmoxChannel
     // ProxmoxEmptyRequest back — there is nothing to report either way.
     public const string InvalidateTarget = "invalidate-target";
 
+    // Payload: ProxmoxFingerprintRequest. Answers a ProxmoxFingerprintAnswer: the certificate the host presents, read
+    // where the backend part runs, so a server's copy of the settings view reads it from the server (AC-1571).
+    public const string FetchFingerprint = "fetch-fingerprint";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
 internal sealed record ProxmoxEmptyRequest();
 
 internal sealed record ProxmoxGuestActionRequest(string Node, string VmId, bool IsLxc);
+
+internal sealed record ProxmoxFingerprintRequest(string Host, int Port);
+
+internal sealed record ProxmoxFingerprintAnswer(string? Fingerprint, string? Error);
 
 // What the overview workspace shows in one round trip. DeniedReason is set instead of the rest when the connection
 // gate refused; ErrorMessage instead when the Proxmox API call itself failed. The engine's own records are

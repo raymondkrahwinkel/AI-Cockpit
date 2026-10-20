@@ -28,6 +28,9 @@ public sealed class PluginManager(
     // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
     private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
 
+    // AC-1571: the host each backend part was given, so the admin API writes through the storage that plugin reads.
+    private readonly Dictionary<string, ICockpitHost> _hosts = new(StringComparer.Ordinal);
+
     // Both the host's abstractions version and how to read a plugin's are seams so a test can drive the
     // drift check without a real assembly; defaults read the host's own Abstractions and the plugin's
     // compile-time assembly reference (which no manifest can misstate).
@@ -44,6 +47,9 @@ public sealed class PluginManager(
 
     // AC-1389: a plugin whose Initialize threw gets no UI part.
     public bool InitializeFailed(DiscoveredPlugin discovered) => _initializeFailed.Contains(discovered);
+
+    // AC-1571: the host of a plugin whose backend part initialized, or null.
+    public ICockpitHost? HostOf(string folderId) => _hosts.GetValueOrDefault(folderId);
 
     // Phase 1, before `BuildServiceProvider`: instantiate each `Load`-decided plugin and run its
     // `ConfigureServices` against the still-open `services`; failures are skipped (and disposed if created).
@@ -199,12 +205,15 @@ public sealed class PluginManager(
 
             try
             {
-                plugin.Initialize(hostFor(discovered, plugin));
+                var host = hostFor(discovered, plugin);
+                _hosts[discovered.FolderId] = host;
+                plugin.Initialize(host);
             }
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
                 _initializeFailed.Add(discovered);
+                _hosts.Remove(discovered.FolderId);
                 diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", _Reason(exception));
             }
         }
@@ -221,6 +230,7 @@ public sealed class PluginManager(
         }
 
         _loaded.Clear();
+        _hosts.Clear();
     }
 
     private void _DisposeQuietly(DiscoveredPlugin discovered, ICockpitPlugin part)

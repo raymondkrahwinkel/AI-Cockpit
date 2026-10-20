@@ -1,27 +1,17 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Plugins;
-using Cockpit.Core.Abstractions.Remote;
+using Cockpit.App.Services;
 using Cockpit.Core.Profiles;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// AC-1473 (F5.6b3): Options › Profiles on a server. A save sends only the fields the editor changed, since what it read
-// holds no secrets. AC-1534: a plugin profile opens in its provider's own view, as Manage profiles does; the server
-// masks the set secrets in that config and keeps the key wherever the mask comes back.
-public sealed partial class ServerProfilesViewModel(IServerProfiles profiles, IPluginProviderConfigViews? configViews = null) : ObservableObject
+// AC-1585: Options › Profiles on a server is the same editor as this cockpit's own (ManageProfilesDialogViewModel in
+// ProfilesEditor), with the server behind each of its services. The server's page has no Apply, so Save writes here.
+public sealed partial class ServerProfilesViewModel(ServerProfileServices services) : ObservableObject
 {
-    private ServerProfileRowViewModel? _editing;
-    private IReadOnlyList<string> _providers = [];
-
-    public ObservableCollection<ServerProfileRowViewModel> Rows { get; } = [];
-
-    // AC-1475: the editor's fields, shared with the Assistant page.
-    public ServerProfileEditorViewModel Editor { get; } = new();
-
-    public ObservableCollection<string> EditorProviders { get; } = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Count))]
+    private ManageProfilesDialogViewModel? _editor;
 
     [ObservableProperty]
     private string _status = "";
@@ -29,140 +19,37 @@ public sealed partial class ServerProfilesViewModel(IServerProfiles profiles, IP
     [ObservableProperty]
     private bool _isBusy;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
-    private bool _isEditorOpen;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
-    private bool _isCreating;
-
-    [ObservableProperty]
-    private string _editorLabel = "";
-
-    [ObservableProperty]
-    private string? _editorProvider;
-
-    // Null for a provider whose UI part this laptop does not have, or one that is not a plugin's.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPluginConfigView))]
-    private IPluginProviderConfigView? _pluginConfigView;
-
-    public bool HasPluginConfigView => PluginConfigView is not null;
-
-    public string EditorTitle => IsCreating ? "New profile" : $"Edit “{_editing?.Label}”";
-
-    public string EditorSaveLabel => IsCreating ? "Create" : "Save";
+    public int Count => Editor?.Profiles.Count ?? 0;
 
     [RelayCommand]
-    public Task LoadAsync() => _RunAsync(async () =>
+    public Task LoadAsync() => _RunAsync(_ReloadAsync);
+
+    [RelayCommand]
+    private Task SaveAsync() => _RunAsync(async () =>
     {
-        var listed = await profiles.ListAsync();
-        _providers = await profiles.ListProvidersAsync();
-        Rows.Clear();
-        foreach (var profile in listed)
+        if (Editor is not { } editor)
         {
-            Rows.Add(new ServerProfileRowViewModel(profile));
-        }
-    });
-
-    [RelayCommand]
-    private void StartNew()
-    {
-        _editing = null;
-        IsCreating = true;
-        EditorProviders.Clear();
-        foreach (var provider in Rows.Where(row => row.Profile.ConfiguredOnServer).Select(row => row.Profile.Provider).Concat(_providers).Distinct(StringComparer.Ordinal))
-        {
-            EditorProviders.Add(provider);
-        }
-
-        EditorLabel = "";
-        EditorProvider = EditorProviders.FirstOrDefault();
-        PluginConfigView = _ConfigView(EditorProvider, null);
-        Editor.Fill(null);
-        IsEditorOpen = true;
-    }
-
-    partial void OnEditorProviderChanged(string? value)
-    {
-        if (IsCreating)
-        {
-            PluginConfigView = _ConfigView(value, null);
-        }
-    }
-
-    [RelayCommand]
-    private void StartEdit(ServerProfileRowViewModel row)
-    {
-        _editing = row;
-        IsCreating = false;
-        EditorLabel = row.Label;
-        PluginConfigView = row.Profile.ConfigJson is { } config ? _ConfigView(row.Profile.Provider, config) : null;
-        Editor.Fill(row.Profile);
-        IsEditorOpen = true;
-    }
-
-    [RelayCommand]
-    private void CancelEditor() => IsEditorOpen = false;
-
-    [RelayCommand]
-    private Task SaveEditorAsync() => _RunAsync(async () =>
-    {
-        string? configJson = null;
-        if (PluginConfigView is { } view && !view.TryGetConfigJson(out configJson))
-        {
-            Status = "Check the provider's settings: one is missing or not valid.";
             return;
         }
 
-        var patch = configJson is null ? Editor.Patch() : (Editor.Patch() ?? new RemoteProfilePatch()) with { ConfigJson = configJson };
-        if (IsCreating)
+        if (!editor.Validate())
         {
-            var made = await profiles.CreateAsync(new RemoteNewProfile(EditorLabel.Trim(), EditorProvider ?? "", patch));
-            Rows.Add(new ServerProfileRowViewModel(made));
-        }
-        else if (_editing is { } row)
-        {
-            if (await profiles.UpdateAsync(row.Label, patch ?? new RemoteProfilePatch()) is not { } changed)
-            {
-                Status = $"The server no longer has a profile “{row.Label}”.";
-                return;
-            }
-
-            var index = Rows.IndexOf(row);
-            if (index >= 0)
-            {
-                Rows[index] = new ServerProfileRowViewModel(changed);
-            }
+            Status = editor.StatusMessage;
+            return;
         }
 
-        IsEditorOpen = false;
+        await editor.PersistAsync();
+        await _ReloadAsync();
+        Status = "Saved on the server.";
     });
 
-    [RelayCommand]
-    private Task DeleteAsync(ServerProfileRowViewModel row) => _RunAsync(async () =>
+    // Read back from the server after each save as well, so a masked secret and a renamed label show as stored.
+    private async Task _ReloadAsync()
     {
-        await profiles.DeleteAsync(row.Label);
-        Rows.Remove(row);
-    });
-
-    // As Manage profiles builds it (EditableProfileViewModel): a UI part that is not ready yet reads as none.
-    private IPluginProviderConfigView? _ConfigView(string? provider, string? configJson)
-    {
-        if (provider is null || configViews?.Find(provider) is not { } create)
-        {
-            return null;
-        }
-
-        try
-        {
-            return create(configJson);
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
-        }
+        await services.PrepareAsync();
+        var editor = services.CreateEditor();
+        await editor.LoadAsync();
+        Editor = editor;
     }
 
     private async Task _RunAsync(Func<Task> action)

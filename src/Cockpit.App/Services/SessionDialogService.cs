@@ -548,8 +548,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await _ShowSurfaceAsync((typeof(ServerAdminViewModel), viewModel.Server), owner, () => OptionsDialog.ForServer(viewModel));
     }
 
-    // AC-1511: one per plugin and server, the title naming both.
-    public async Task ShowServerPluginSettingsAsync(string title, Func<Control> createView)
+    // AC-1511: one per plugin and server, the title naming both. AC-1571: with `persist`, the plugin's own settings view
+    // gets the Save/Close footer a local one gets, and Save writes to the server after the view's own write.
+    public async Task ShowServerPluginSettingsAsync(string title, Func<Control> createView, Func<Task<string?>>? persist = null)
     {
         if (OwnerWindow() is not { } owner)
         {
@@ -558,7 +559,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         await _ShowSurfaceAsync((typeof(ServerPluginRowViewModel), title), owner, () =>
         {
-            var window = new Window { Width = 560, Height = 460, CanResize = true, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = createView() };
+            var window = new Window { Width = 560, Height = 460, CanResize = true, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+            var view = createView();
+            if (persist is null)
+            {
+                window.Content = view;
+            }
+            else
+            {
+                var footer = PluginDialogHost.BuildSettingsFooter(window, view, onSaved: null, persist);
+                DockPanel.SetDock(footer, Dock.Bottom);
+                (window.Width, window.Height) = (720, 560);
+                window.Content = new DockPanel { Children = { footer, PluginSettingsBodyBuilder.Build(view).Content } };
+            }
+
             CockpitWindowChrome.Apply(window, title);
             return window;
         });

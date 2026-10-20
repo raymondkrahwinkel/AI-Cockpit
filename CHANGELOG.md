@@ -32,6 +32,28 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
+  **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
+  and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.
+- added: **Sign in** on a Depot connection under Options · Server › Plugins › Settings now signs the server in through
+  your browser. The server runs the sign-in and keeps the token; this desktop only opens the browser and passes back
+  the one-time code, which is useless without what the server holds.
+- added: **Options · Server › Profiles** is now the same profile screen as Options › Profiles, with every field it has:
+  purpose, working folder, assistant, system prompt, memory cap, session defaults, default kind and view, delegation,
+  MCP pre-selection, environment variables and the provider's own settings, all stored on the server. Model and MCP
+  lists, the token estimate and the provider's checks come from the server. API keys and secret variables are
+  write-only there; a provider sign-in runs on the server. A Claude profile's config folder and program are picked
+  from what the server itself has.
+- added: a plugin on a server can now be configured before it runs. Settings for a disabled plugin, or one waiting
+  for a server restart, are saved on the server and used once it starts.
+- added: Depot's own settings screen now also works for a server's Depot. Under **Options · Server › Plugins ›
+  Depot › Settings** you see the server's connections with whether each is signed in, sign one in with an
+  installation token, and remove one. Signing in through a browser is not offered there, because the server has none.
+- added: a plugin installed on a server can now be configured from the desktop. **Options · Server › Plugins ›
+  Settings** opens the same settings screen the plugin has under Options › Plugins, and Save stores it on the server.
+  Keys and tokens are write-only there: the screen only shows that one is set, an untouched Save keeps it and an
+  emptied field clears it. Every change shows in the server's audit log by setting name, never by value. The plugin
+  has to be running on the server and installed on this desktop too.
 - added: **Your settings follow you between machines through Depot.** With a Depot connection, the cockpit keeps your
   portable settings (profiles, projects, theme, shortcuts, notifications and the like, never credentials or paths on
   this machine) in your own account space, and picks up what you changed on another machine at the next start. A
@@ -130,6 +152,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it asks first.
 
 ### Fixed
+
+- fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of
+  the wrong type) is now refused as an invalid request instead of being reported as a plugin failure.
+- fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's
+  Proxmox that is the server, not this desktop.
+- fixed: a connected server now refreshes its displayed latency, and clearly shows when its regular answer times out.
 
 - fixed: **From Depot** on a server offered "Add on <server>" for a Depot project whose definition names no repository, and only refused it afterwards. The button is now disabled with the reason beside it; the server still refuses such an add. Needs Cockpit 0.95.0; Depot 0.12.1.
 - fixed: installing a plugin on a server no longer reports "Install failed." when it worked. It goes on to the

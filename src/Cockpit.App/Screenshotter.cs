@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Headless;
 using Avalonia.LogicalTree;
 using Avalonia.Media.Imaging;
@@ -254,6 +255,9 @@ internal static class Screenshotter
         ["server-health"] = ServerGroupScene.Health,
         ["server-health-operate"] = ServerGroupScene.HealthOperate,
         ["server-admin-plugins"] = ServerAdminScene.Plugins,
+        // AC-1590: "Install on this desktop" on a plugin the desktop lacks, and the restart prompt after the install.
+        ["server-admin-plugins-desktop"] = ServerAdminScene.PluginsDesktop,
+        ["server-admin-plugins-desktop-restart"] = ServerAdminScene.PluginsDesktopRestart,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.
@@ -1432,7 +1436,7 @@ internal static class Screenshotter
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
-        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+        var profileList = dialog.GetLogicalDescendants().OfType<ProfilesEditor>().FirstOrDefault()?.FindControl<ListBox>("ProfilesList")
             ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
         profileList.SelectedItem = profiles.SelectedProfile;
 
@@ -1479,7 +1483,7 @@ internal static class Screenshotter
         var nav = dialog.FindControl<ListBox>("CategoryNav")
             ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
-        var profileList = dialog.FindControl<ListBox>("ProfilesList")
+        var profileList = dialog.GetLogicalDescendants().OfType<ProfilesEditor>().FirstOrDefault()?.FindControl<ListBox>("ProfilesList")
             ?? throw new InvalidOperationException("The Options dialog has no profile list to select in.");
         profileList.SelectedItem = profiles.SelectedProfile;
         if (focusProfile)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
@@ -33,8 +34,16 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             {
                 // AC-1473: declared, so the admin API shows and changes it.
                 DeclaredOptions = [new PluginSessionOptionDescriptor(WellKnownPluginSessionOptions.Model, "Model")],
+                // AC-1585: so the profile editor offers its environment variables, on a server too.
+                SupportsEnvVars = true,
             })
         {
+            // AC-1585: the start options the profile editor pre-selects, as Claude's model and effort.
+            Options =
+            [
+                new PluginSessionLaunchOption(WellKnownPluginSessionOptions.Model, "Model", ["echo-small", "echo-large"]),
+                new PluginSessionLaunchOption(WellKnownPluginSessionOptions.Effort, "Effort", ["low", "high"]),
+            ],
             IsLoggedIn = _IsSignedIn,
             CredentialKind = _ => PluginCredentialKind.RenewingLogin,
             StartLogin = (configJson, _) => new EchoLoginFlow(_SignedInFile(configJson)),
@@ -47,6 +56,13 @@ public sealed class EchoProviderPlugin : ICockpitPlugin
             "Echo",
             _ => new EchoTtyProvider(),
             []));
+
+        // AC-1571: what this backend part reads of its settings view's two fields; of the credential only whether it is set.
+        host.Channel.Handle(EchoUi.ReadSettings, (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            greeting = host.Storage.Get<string>(EchoUi.GreetingKey),
+            apiTokenSet = host.Storage.GetSecret(EchoUi.ApiTokenKey) is { Length: > 0 },
+        })));
 
         // AC-1514: a shared-project source as a Depot connection registers one, so a journey adds a shared project on a
         // server without a Depot. Only where the variable names the repository its one definition points at.
