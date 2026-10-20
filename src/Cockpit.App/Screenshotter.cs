@@ -651,6 +651,8 @@ internal static class Screenshotter
         ["first-run-depot-sign-in"] = (_, _) => _DepotRouteWizard(null),
         ["first-run-depot-choice"] = (_, _) => _DepotRouteWizard(
             """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[{"id":"a","createdAt":"2026-10-19T21:10:00+00:00","size":2168000}],"manifest":"{}","notes":[]}"""),
+        ["first-run-depot-org-choice"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[],"candidates":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}],"notes":[]}"""),
         ["first-run-depot-offline"] = (_, _) => _DepotRouteWizard(
             """{"state":"offline","message":"Couldn't reach https://depot.example.com. Check the address, or skip this and connect to Depot later from its settings."}"""),
 

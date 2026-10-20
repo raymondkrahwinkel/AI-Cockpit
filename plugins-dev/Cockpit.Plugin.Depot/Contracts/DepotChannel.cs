@@ -25,6 +25,8 @@ internal static class DepotChannel
     // none behind. Then reads what the account holds for the two choices. Answers a DepotFirstStartAnswer.
     public const string FirstStartSignIn = "first-start-sign-in";
 
+    public const string FirstStartManifest = "first-start-manifest";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
@@ -59,9 +61,16 @@ internal sealed record DepotFirstStartAnswer(
     string? TargetId = null,
     IReadOnlyList<DepotFirstStartBackup>? Backups = null,
     string? Manifest = null,
-    IReadOnlyList<string>? Notes = null);
+    IReadOnlyList<string>? Notes = null,
+    IReadOnlyList<DepotFirstStartCandidate>? Candidates = null);
 
 internal sealed record DepotFirstStartBackup(string Id, DateTimeOffset CreatedAt, long Size);
+
+internal sealed record DepotFirstStartCandidate(string Slug, string Name);
+
+internal sealed record DepotFirstStartManifestRequest(string TargetId, string Organization);
+
+internal sealed record DepotFirstStartManifestAnswer(string? Manifest, IReadOnlyList<string>? Notes = null);
 
 internal static class DepotFirstStartState
 {

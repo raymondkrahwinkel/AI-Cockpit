@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Provisioning;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Infrastructure.Tests.ManagedCli;
 
@@ -102,6 +103,30 @@ public sealed class ProvisioningEntryTests : IDisposable
             .Concat(Directory.EnumerateFiles(_stateRoot, "*", SearchOption.AllDirectories).Select(File.ReadAllText));
         Assert.All(trail, line => Assert.DoesNotContain(Token, line));
         Assert.Contains(_logs, line => line.Contains("https://depot.acme.example/cockpit/manifest", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_choice_document_from_a_provisioning_link_is_not_applied()
+    {
+        const string choice = """{"format":"cockpit.provision.choice","formatVersion":1,"organizations":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}]}""";
+        var outcome = await ProvisioningEntry.RunAsync(
+            "https://depot.acme.example/cockpit/provision?t=choice",
+            false,
+            _stateRoot,
+            _Logger(),
+            new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.MultipleChoices)
+            {
+                Content = new StringContent(choice, Encoding.UTF8, "application/vnd.cockpit.provision-choice+json"),
+            }));
+
+        if (outcome is null)
+        {
+            throw new InvalidOperationException("The provisioning outcome was empty.");
+        }
+
+        Assert.Null(outcome.Manifest);
+        Assert.Contains("did not choose an organization", outcome.Failure);
+        Assert.False(File.Exists(CockpitConfigPath.For(_stateRoot)));
     }
 
     private Task<ProvisioningOutcome?> _RunAsync(string url, string json) =>
