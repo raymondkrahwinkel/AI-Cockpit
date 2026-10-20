@@ -66,6 +66,11 @@ public sealed partial class SecurityOptionsViewModel(
 
     public string? ShellAccessManagedLabel => ShellAccessEditable ? null : $"Managed by {orgPolicy?.Current?.By}: off for every agent";
 
+    // AC-1593: the backup checkbox lives on the Backup page; the policy that locks it is read here, with the others.
+    public bool BackupCredentialsEditable => !OrgPolicyCeilings.CredentialsForbidden(orgPolicy?.Current);
+
+    public string? BackupCredentialsManagedLabel => BackupCredentialsEditable ? null : $"Managed by {orgPolicy?.Current?.By}: keys, tokens and agent logins never go in a backup";
+
     // AC-1593: shown only when the organisation sets `neverSend`; nothing on this machine turns it off.
     public bool NeverSendManaged => OrgPolicyCeilings.NeverSend(orgPolicy?.Current);
 

@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Plugins.Abstractions.Backup;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -57,6 +58,24 @@ public sealed class BackupThroughATargetTests : IDisposable
     }
 
     /// <summary>
+    /// AC-1593: an organisation that forbids keys and tokens in a backup wins over the checkbox, on every route a
+    /// backup is written through, so the archive says it carries none.
+    /// </summary>
+    [Fact]
+    public async Task AForbiddenKeyRing_StaysOutOfTheBackup_EvenWhenAskedFor()
+    {
+        _Write(_Source, "cockpit.json", """{"Profiles":"mine"}""");
+        var org = Substitute.For<IOrgPolicy>();
+        org.Current.Returns(new ProvisionPolicy("Acme", Backup: new ProvisionBackupPolicy(IncludeCredentials: "forbidden")));
+        var target = new _InMemoryTarget();
+
+        var written = await _Service(org).WriteIntoAsync(
+            (archive, token) => target.WriteAsync("backup.zip", archive, token), "memory", _Source, new BackupOptions(IncludeCredentials: true), CancellationToken.None);
+
+        Assert.False(written.IncludesCredentials);
+    }
+
+    /// <summary>
     /// The local folder, the target every cockpit has: a stream that breaks halfway leaves nothing it would list —
     /// not in the folder, and not as a <c>.partial</c> in staging either.
     /// </summary>
@@ -84,13 +103,14 @@ public sealed class BackupThroughATargetTests : IDisposable
     }
 
     // No plugins are restored, so neither the stores nor the provisioner is ever asked anything.
-    private static BackupService _Service() =>
+    private static BackupService _Service(IOrgPolicy? orgPolicy = null) =>
         new(
             new _NoProfiles(),
             Substitute.For<IPluginStoreConfigStore>(),
             Substitute.For<IPluginStoreClient>(),
             Substitute.For<IPluginProvisioningService>(),
-            NullLogger<BackupService>.Instance);
+            NullLogger<BackupService>.Instance,
+            orgPolicy);
 
     private sealed class _NoProfiles : ISessionProfileStore
     {

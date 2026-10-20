@@ -317,6 +317,8 @@ public static partial class ProvisionManifestReader
             Check(_IsKnownOrAbsent(permissions?.TerminalAccess, Switches), "policy.permissions.terminalAccess is not \"allowed\" or \"forbidden\"");
             Check(_IsKnownOrAbsent(permissions?.ShellAccess, Switches), "policy.permissions.shellAccess is not \"allowed\" or \"forbidden\"");
             Check(_IsKnownOrAbsent(policy.Backup?.IncludeCredentials, Switches), "policy.backup.includeCredentials is not \"allowed\" or \"forbidden\"");
+            Check(policy.Backup?.MaxIntervalHours is null or > 0, "policy.backup.maxIntervalHours is not a positive number of hours");
+            Check(policy.Backup?.MinKeep is null or > 0, "policy.backup.minKeep is not a positive number");
             foreach (var provider in policy.Providers?.Allowed ?? [])
             {
                 Check(_IsStarOrList(provider.Models), $"policy.providers: the models of {provider.Id} are not \"*\" or a list");

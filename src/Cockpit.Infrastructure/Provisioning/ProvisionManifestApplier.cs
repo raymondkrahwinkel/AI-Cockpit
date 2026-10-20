@@ -492,8 +492,6 @@ public static class ProvisionManifestApplier
         Say(manifest.Profiles?.AssistantProfile is not null, "profiles.assistantProfile", "the assistant's profile is chosen on this machine for now");
         Say(manifest.Profiles?.DefaultProfile is not null, "profiles.defaultProfile", "the default profile is chosen on this machine for now");
         Say(manifest.Projects?.Shared is { Count: > 0 }, "projects.shared", "shared projects arrive with their connection's plugin");
-        var policy = manifest.Policy;
-        Say(policy?.Backup is not null, "policy.backup", "the backup floor is not enforced yet");
         Say(manifest.Backup is { Target: not null } or { Schedule: not null }, "backup", "the backup target and schedule are set on this machine for now");
         foreach (var project in manifest.Projects?.Own ?? [])
         {

@@ -10,7 +10,8 @@ internal sealed class OrgPolicy : IOrgPolicy, ISingletonService
     // What an unreadable policy means to a synchronous reader: the agent switches off, never an exception in the fan-out.
     private static readonly ProvisionPolicy Unreadable = new(
         "an organisation policy that could not be read",
-        Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden));
+        Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden),
+        Backup: new ProvisionBackupPolicy(IncludeCredentials: OrgPolicyCeilings.Forbidden));
 
     private readonly CockpitConfigFileAccess _configFile;
     private readonly ILogger<OrgPolicy>? _logger;

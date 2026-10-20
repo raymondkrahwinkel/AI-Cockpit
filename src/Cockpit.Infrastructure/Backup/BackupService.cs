@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -24,7 +25,8 @@ internal sealed class BackupService(
     IPluginStoreConfigStore stores,
     IPluginStoreClient storeClient,
     IPluginProvisioningService provisioning,
-    ILogger<BackupService> logger) : IBackupService, ISingletonService
+    ILogger<BackupService> logger,
+    IOrgPolicy? orgPolicy = null) : IBackupService, ISingletonService
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -96,6 +98,14 @@ internal sealed class BackupService(
         BackupOptions options,
         CancellationToken cancellationToken)
     {
+        // AC-1593: one guard where every backup is written, so a forbidden key ring stays out whatever the checkboxes said;
+        // the profiles' own config directories hold the agents' logins, so they stay out with it.
+        if ((options.IncludeCredentials || options.IncludeProfileConfigs) && OrgPolicyCeilings.CredentialsForbidden(orgPolicy?.Current))
+        {
+            logger.LogInformation("Keys, tokens and agent logins are left out of this backup: {By} forbids them", orgPolicy?.Current?.By);
+            options = options with { IncludeCredentials = false, IncludeProfileConfigs = false };
+        }
+
         if (!Directory.Exists(root))
         {
             throw new InvalidOperationException("There is nothing to back up: this cockpit has never saved anything.");

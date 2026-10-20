@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Plugins.Abstractions.Backup;
@@ -23,6 +24,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
     private readonly IToastService? _toasts;
     private readonly ILogger<ScheduledBackup> _logger;
     private readonly TimeProvider _time;
+    private readonly IOrgPolicy? _orgPolicy;
     private readonly CancellationTokenSource _stopping = new();
 
     private ITimer? _timer;
@@ -36,10 +38,12 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         IBackupScheduleStore store,
         IToastService? toasts = null,
         ILogger<ScheduledBackup>? logger = null,
-        BackupTargets? targets = null)
-        : this(backups, store, toasts, logger, TimeProvider.System)
+        BackupTargets? targets = null,
+        IOrgPolicy? orgPolicy = null)
+        : this(backups, store, toasts, logger, TimeProvider.System, orgPolicy)
     {
         TargetFor = schedule => _LocalFolderFor(schedule) ?? targets?.Find(schedule.TargetId);
+        RegisteredTargets = () => [BackupSchedule.LocalFolderTargetId, .. targets?.All.Select(target => target.Id) ?? []];
     }
 
     // Test seam: a controllable clock, so a due backup is provable without waiting a day for it.
@@ -48,17 +52,22 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         IBackupScheduleStore store,
         IToastService? toasts,
         ILogger<ScheduledBackup>? logger,
-        TimeProvider time)
+        TimeProvider time,
+        IOrgPolicy? orgPolicy = null)
     {
         _backups = backups;
         _store = store;
         _toasts = toasts;
         _logger = logger ?? NullLogger<ScheduledBackup>.Instance;
         _time = time;
+        _orgPolicy = orgPolicy;
     }
 
     // Where a schedule's backups go: the local folder, or a target a plugin registered (AC-1508). Replaced by the tests.
     internal Func<BackupSchedule, IBackupTarget?> TargetFor { get; set; } = _LocalFolderFor;
+
+    // The target ids an organisation's allowed list can fall back to (AC-1593). Replaced by the tests.
+    internal Func<IReadOnlyList<string>> RegisteredTargets { get; set; } = () => [BackupSchedule.LocalFolderTargetId];
 
     // The tick in flight, for the tests to await.
     internal Task Ticking => _lastTick;
@@ -93,7 +102,9 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
 
         try
         {
-            var schedule = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            // AC-1593: the organisation's floor, applied to this run only; the operator's own schedule is not rewritten.
+            var policy = _orgPolicy is null ? null : await _orgPolicy.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var (schedule, refusal) = OrgBackupFloor.Apply(policy, await _store.LoadAsync(cancellationToken).ConfigureAwait(false), RegisteredTargets());
             if (!schedule.Enabled)
             {
                 return;
@@ -111,6 +122,16 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
             // A manual backup or a restore is running: this one stands aside and the next tick looks again.
             if (_backups.IsBusy)
             {
+                return;
+            }
+
+            // No target the organisation allows is set up here: said, kept on disk for the Backup page, and nothing else is
+            // held up (B7). The clock does not move, so a target registered later is used on the next tick.
+            if (refusal is not null)
+            {
+                _logger.LogWarning("{Refusal}", refusal);
+                await _store.SaveStateAsync(state with { LastFailure = refusal }, cancellationToken).ConfigureAwait(false);
+                _Report(refusal);
                 return;
             }
 
