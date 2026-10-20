@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Formatting;
@@ -28,8 +29,14 @@ internal sealed class SessionStatusTools(
     IProjectJobHistory? jobHistory = null,
     // AC-1335: null only in a test graph that never runs anything as administrator; without a broker nothing runs.
     IConsentBroker? consent = null,
-    IElevatedCommandRunner? elevated = null)
+    IElevatedCommandRunner? elevated = null,
+    // AC-1593: an organisation's shell ban covers these tools too; the shell switch alone does not, as it never did.
+    IOrgPolicy? orgPolicy = null)
 {
+    private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
+        ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
+        : null;
+
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     // AC-1094: who a run's completion is delivered from — not a pane, the cockpit itself noticed this, same
@@ -126,6 +133,11 @@ internal sealed class SessionStatusTools(
             return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
         }
 
+        if (_ShellRefusal() is { } shellRefusal)
+        {
+            return shellRefusal;
+        }
+
         if (string.IsNullOrWhiteSpace(command))
         {
             return _Error("`command` is required.");
@@ -194,6 +206,11 @@ internal sealed class SessionStatusTools(
         if (string.IsNullOrEmpty(caller))
         {
             return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
+        }
+
+        if (_ShellRefusal() is { } shellRefusal)
+        {
+            return shellRefusal;
         }
 
         if (elevated is null || !elevated.IsSupported)

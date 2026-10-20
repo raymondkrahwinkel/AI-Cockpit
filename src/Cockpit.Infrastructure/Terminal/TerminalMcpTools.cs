@@ -4,6 +4,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Consent;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -31,11 +32,14 @@ internal sealed class TerminalMcpTools
 
     // The consent broker is optional so the tool's own tests construct it without a host; the container injects the
     // shared singleton, so a real access is gated behind an operator Approve/Deny that fails closed when nobody can ask.
-    public TerminalMcpTools(ITerminalAccessRegistry registry, IConsentBroker? consent = null)
+    public TerminalMcpTools(ITerminalAccessRegistry registry, IConsentBroker? consent = null, IOrgPolicy? orgPolicy = null)
     {
         _registry = registry;
         _consent = consent;
+        _orgPolicy = orgPolicy;
     }
+
+    private readonly IOrgPolicy? _orgPolicy;
 
     [McpServerTool(Name = "list_terminals", ReadOnly = true)]
     [Description("Lists the shell panes the operator has open that you could ask to use: each with a stable id and the name the operator sees (e.g. \"zsh-5\"), and whether you are already coupled to it. Only the operator's shell panes are offered — a pane the cockpit started as an agent session is not one of them, whatever its name. Reading or driving a pane needs the operator to approve it first (see read_terminal / send_terminal); this list only names the panes so you can reference one.")]
@@ -208,6 +212,12 @@ internal sealed class TerminalMcpTools
     // the widening it is — the operator's live view and Disconnect are the counterpart to whatever was granted.
     private async Task<string?> _EnsureCoupledAsync(string caller, TerminalPane pane, TerminalCouplingMode needed)
     {
+        // AC-1593: typing into a terminal is running commands, so an organisation's shell ban leaves only watching.
+        if (needed == TerminalCouplingMode.Drive && OrgPolicyCeilings.ShellForbidden(_orgPolicy?.Current))
+        {
+            return $"{_orgPolicy?.Current?.By} does not allow agents to run commands, so terminal pane \"{pane.Name}\" can be read but not typed into.";
+        }
+
         // Drive covers reading too; anything else has to be exactly what is needed. Spelled out rather than leaning on
         // the enum's order, so widening the enum later cannot silently widen the gate.
         var held = _registry.CouplingOf(caller, pane.PaneId);

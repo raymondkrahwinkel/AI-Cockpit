@@ -34,8 +34,17 @@ internal sealed class OrgPolicy : IOrgPolicy, ISingletonService
         {
             if (_stale)
             {
+                // Cleared before the read, so a save during it marks it stale again; a failed read leaves it stale and throws.
                 _stale = false;
-                _current = ReadAsync().GetAwaiter().GetResult();
+                try
+                {
+                    _current = ReadAsync().GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    _stale = true;
+                    throw;
+                }
             }
 
             return _current;
