@@ -17,7 +17,7 @@ public sealed class OrgProviderConverter(bool label) : IMultiValueConverter
     {
         var policy = values.Count > 1 ? values[1] as ProvisionPolicy : null;
         var refused = values.Count > 0 && values[0] is SessionProfile profile && policy is not null
-            && OrgProviderPolicy.Refusal(policy, profile, OrgProviderPolicy.ModelOf(profile)) is not null;
+            && OrgProviderPolicy.Refusal(policy, profile) is not null;
         return label ? (refused && policy is not null ? OrgProviderPolicy.NotAllowedLabel(policy) : null) : !refused;
     }
 }

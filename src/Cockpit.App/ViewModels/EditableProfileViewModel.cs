@@ -140,7 +140,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public string? AutoApproveToolsManagedLabel => OrgPolicyMarking.AutoApproveLabel(_orgPolicy);
 
     // AC-1593: why sessions under this profile do not start, as stored; the profile itself is kept and stays editable.
-    public string? ProviderManagedLabel => OrgProviderPolicy.Refusal(_orgPolicy, _storedProfile, OrgProviderPolicy.ModelOf(_storedProfile));
+    public string? ProviderManagedLabel => OrgProviderPolicy.Refusal(_orgPolicy, _storedProfile);
 
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;

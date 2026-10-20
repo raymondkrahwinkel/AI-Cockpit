@@ -121,11 +121,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
         _policy = await _ReadPolicyAsync(cancellationToken);
-        if (OrgProviderPolicy.Refusal(_policy, profile, LaunchPermissionClamp.ModelOf(launchOptions) ?? model ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
-        {
-            throw new OrgPolicyRefusedException(refusal);
-        }
-
+        (launchOptions, model) = LaunchPermissionClamp.PinModel(_policy, profile, launchOptions, model);
         _driver = _driverFactory.Create(profile);
         var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
@@ -350,7 +346,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private async Task _EnsureModelAllowedAsync(string? model, CancellationToken cancellationToken)
     {
         _policy = await _ReadPolicyAsync(cancellationToken);
-        if (OrgProviderPolicy.Refusal(_policy, Profile, model) is { } refusal)
+        if (OrgProviderPolicy.SwitchRefusal(_policy, Profile, model) is { } refusal)
         {
             throw new OrgPolicyRefusedException(refusal);
         }
