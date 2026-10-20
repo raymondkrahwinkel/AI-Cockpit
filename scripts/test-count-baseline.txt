@@ -35,6 +35,6 @@ plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
 tests/Cockpit.App.ViewTests	1539
 tests/Cockpit.Backend.Tests	78
 tests/Cockpit.Core.Tests	1345
-tests/Cockpit.Infrastructure.Tests	795
+tests/Cockpit.Infrastructure.Tests	798
 tests/Cockpit.Journeys	29
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

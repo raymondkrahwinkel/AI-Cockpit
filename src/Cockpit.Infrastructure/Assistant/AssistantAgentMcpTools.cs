@@ -1080,7 +1080,12 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    // Assistant threads: these three are used mid-turn or not at all, so Claude Code must not defer them behind its
+    // tool search — the assistant skipped set_thread in practice when it had to look it up first.
+    internal const string AlwaysLoadMeta = "anthropic/alwaysLoad";
+
     [McpServerTool(Name = "ask_structured_question", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Puts a clarifying question to the operator as a card in the chat window, with its options beside it to tick or click, rather than in a sentence. USE IT WHEN AN INSTRUCTION IS GENUINELY AMBIGUOUS AND THE ANSWERS ARE A SHORT, CLOSED LIST — which desk, which profile, which of three tickets they meant, which of two ways to do a thing — where the difference is between guessing and knowing. NOT for a yes or no, not for something you could go and look up yourself, and never for something this conversation has already settled. RETURNS AT ONCE — IT DOES NOT WAIT FOR AN ANSWER: the card is shown, and that is the whole of what this call does. Their answer, if they click it, comes back as their own next message in this same conversation — an ordinary user turn, not a return value from this call — and they may just as well ignore the card entirely and answer you in words, or ask about something else altogether. So never say you are waiting on it, never treat the call's return as a decision made, and do not ask the same thing again in the meantime. SAY THE QUESTION AS WELL, IN ONE SHORT SENTENCE: the card is not read aloud and its options never are, so a listening operator hears nothing of it unless you say the question yourself, the way you would say it to someone standing next to you. ONLY YOU MAY CALL THIS — a session cannot: it has AskUserQuestion already, and that one works there.")]
     public async Task<string> AskStructuredQuestionAsync(
         [Description("The question, in the operator's own language — the same one you would say out loud.")] string question,
@@ -1135,6 +1140,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "set_thread", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Files the rest of this turn — your reply, your tool calls, your questions — under the project threads it is about. Your conversation is one, but the operator reads it per project: a thread for each, plus General for what is about none. WITHOUT THIS CALL a turn follows what opened it: the thread the operator typed in, or the project of the session whose message you are answering. CALL IT WHEN THAT IS WRONG OR UNKNOWN: they asked in All or by voice and named a project (\"hoe staat Depot ervoor?\"), or the turn is about two projects at once. Ids come from list_projects; an empty list is General. Once per turn, early, before you write the reply. It never moves the operator's own prompt — tag_prompt does that.")]
     public async Task<string> SetThreadAsync(
         [Description("The project ids this turn is about, from list_projects. Empty for General.")] string[] projectIds)
@@ -1156,6 +1162,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "tag_prompt", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Splits the operator's last prompt over the projects it is about, when one prompt asks for two things in two projects (\"voor Depot dit, voor WayMark dat\"). For each project, quote the words of the prompt that belong to it, exactly as they were said; the prompt then shows in each thread, with its own part in front. A quote that is not in the prompt still gives the prompt that project, and the reply says so. Pair it with set_thread for the same projects, and write your reply in blocks: a line `<!-- project:<id> -->` on its own opens the block for that project, so each thread shows only its own part. Text before the first marker belongs to all of them. Ids come from list_projects.")]
     public async Task<string> TagPromptAsync(
         [Description("One entry per project: its id from list_projects and the words of the prompt that belong to it.")] List<TagPromptPartArg> parts)
