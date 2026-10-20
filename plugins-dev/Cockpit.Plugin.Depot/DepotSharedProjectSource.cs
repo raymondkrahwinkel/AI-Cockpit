@@ -182,7 +182,9 @@ internal sealed class DepotSharedProjectSource(
 
             if (response.StatusCode == HttpStatusCode.NotModified)
             {
-            return _EndpointResult.From(SharedProjectListResult.Failed("Depot confirmed an unchanged project list, but no local list is available."));
+                return cached is { } known
+                    ? _EndpointResult.From(known.Result)
+                    : _EndpointResult.From(SharedProjectListResult.Failed("Depot confirmed an unchanged project list, but no local list is available."));
             }
 
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
