@@ -491,12 +491,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
         _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
-            closing => _logger?.LogWarning(closing.Exception!.GetBaseException(), "Closing the Depot inbox failed."),
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the Depot inbox failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
         _ = _events?.DisposeAsync().AsTask().ContinueWith(
-            closing => _logger?.LogWarning(closing.Exception!.GetBaseException(), "Closing Depot events failed."),
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot events failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);

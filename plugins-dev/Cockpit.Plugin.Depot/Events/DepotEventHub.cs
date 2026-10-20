@@ -21,10 +21,13 @@ internal delegate IDepotEventHub DepotEventHubFactory(
     Func<Task> onReconnected,
     Func<Exception?, Task> onClosed);
 
+internal static class DepotEventReconnect
+{
+    internal static readonly TimeSpan[] Backoff = [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
+}
+
 internal sealed class SignalRDepotEventHub : IDepotEventHub
 {
-    private static readonly TimeSpan[] Backoff = [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
-
     private readonly HubConnection _connection;
 
     public SignalRDepotEventHub(
@@ -39,7 +42,7 @@ internal sealed class SignalRDepotEventHub : IDepotEventHub
             .WithUrl(
                 $"{connection.Url.TrimEnd('/')}/hubs/cockpit?expectedUser={Uri.EscapeDataString(userId)}",
                 options => options.HttpMessageHandlerFactory = _ => handler())
-            .WithAutomaticReconnect(Backoff)
+            .WithAutomaticReconnect(DepotEventReconnect.Backoff)
             .Build();
         _connection.On<JsonElement>("event", payload =>
         {

@@ -54,7 +54,15 @@ internal sealed class DepotEvents(
             _subscribers[connection.Id] = subscriber;
         }
 
-        _ = stale?.DisposeAsync().AsTask();
+        if (stale is not null)
+        {
+            _ = stale.DisposeAsync().AsTask().ContinueWith(
+                closing => logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing stale Depot events for {Connection} failed.", stale.Connection.Name),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+        }
+
         return subscriber;
     }
 }

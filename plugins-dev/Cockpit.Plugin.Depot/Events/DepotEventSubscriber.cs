@@ -195,8 +195,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
             return;
         }
 
-        var delays = new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30) };
-        var delay = delays[Math.Min(_attempt++, delays.Length - 1)];
+        var delay = DepotEventReconnect.Backoff[Math.Min(_attempt++, DepotEventReconnect.Backoff.Length - 1)];
         _ = Task.Run(async () =>
         {
             try
