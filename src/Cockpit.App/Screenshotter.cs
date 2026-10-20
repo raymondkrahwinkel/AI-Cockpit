@@ -1991,6 +1991,11 @@ internal static class Screenshotter
         var runAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
         var run = new ProjectJobRun("scene-release", running.Id, job.Id, runAt, runAt, "Checking the release notes.");
 
+        if (cockpit.Workspaces.Active is not { } activeWorkspace)
+        {
+            throw new InvalidOperationException("The Projects workspace scene has no active workspace.");
+        }
+
         cockpit.Projects.Projects.Clear();
         cockpit.Projects.Projects.Add(noProfile);
         cockpit.Projects.Projects.Add(running);
@@ -2005,7 +2010,7 @@ internal static class Screenshotter
         {
             Title = "Release validation",
             ProjectId = running.Id,
-            WorkspaceId = cockpit.Workspaces.Active!.Id,
+            WorkspaceId = activeWorkspace.Id,
             SessionStatus = SessionStatus.Busy,
         });
         cockpit.Projects.SharedProjectGroups.Clear();
