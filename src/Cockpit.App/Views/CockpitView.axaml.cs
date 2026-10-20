@@ -231,6 +231,7 @@ public partial class CockpitView : UserControl
         if (e.PropertyName is nameof(CockpitViewModel.SidebarWidth) or nameof(CockpitViewModel.SidebarCollapsed))
         {
             _ApplySidebarWidth();
+            _ApplyDockRailWidth();
         }
         else if (e.PropertyName is nameof(CockpitViewModel.DockRailWidth)
                  or nameof(CockpitViewModel.EffectiveOpenDockPanelId))
@@ -374,8 +375,16 @@ public partial class CockpitView : UserControl
         var column = _DockRailColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
         column.Width = new GridLength(
-            !cockpit.ShowDockRail ? 0 : collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
+            !cockpit.ShowDockRail ? 0 : collapsed ? CollapsedRailWidth : CockpitViewModel.ClampDockRailWidth(cockpit.DockRailWidth, PanelsRoot.Bounds.Width, cockpit.SidebarWidth));
         PanelsRoot.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
+    }
+
+    private void OnPanelsRootSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.SetDockRailWindowWidth(e.NewSize.Width);
+        }
     }
 
     private async void OnDockRailSplitterDragCompleted(object? sender, VectorEventArgs e)

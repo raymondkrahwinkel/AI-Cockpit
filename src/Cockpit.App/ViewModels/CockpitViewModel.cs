@@ -955,11 +955,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private double _dockRailWidth = LayoutSettings.DefaultDockRailWidth;
 
+    private double _dockRailWindowWidth = 900;
+
+    public double MaxDockRailWidth => _DockRailMaximum(_dockRailWindowWidth, SidebarWidth);
+
     // Which dock panel is open, by id; null collapses the rail to its 40px strip. Toggled by clicking a rail
     // tab — the same tab again closes it, a different one switches straight to it (one panel open at a time).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     private string? _openDockPanelId;
+
+    partial void OnSidebarWidthChanged(double value)
+    {
+        OnPropertyChanged(nameof(MaxDockRailWidth));
+    }
+
+    public static double ClampDockRailWidth(double preferredWidth, double windowWidth, double sidebarWidth) =>
+        Math.Clamp(preferredWidth, LayoutSettings.MinDockRailWidth, _DockRailMaximum(windowWidth, sidebarWidth));
+
+    public void SetDockRailWindowWidth(double width)
+    {
+        if (_dockRailWindowWidth == width)
+        {
+            return;
+        }
+
+        _dockRailWindowWidth = width;
+        OnPropertyChanged(nameof(MaxDockRailWidth));
+        OnPropertyChanged(nameof(DockRailWidth));
+    }
+
+    private static double _DockRailMaximum(double windowWidth, double sidebarWidth) =>
+        Math.Max(LayoutSettings.MinDockRailWidth, windowWidth - sidebarWidth - LayoutSettings.MinWorkspaceWidth);
 
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). Nothing
     // sets this true yet — the field round-trips through LayoutSettings from day one so that sub does not have
@@ -5254,11 +5281,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _PersistLayoutSettingsAsync();
     }
 
-    // Persists the dock rail's width alone (AC-951), the sidebar's `SetSidebarWidthAsync` mirrored: called from
-    // the view when its `GridSplitter` drag ends, clamped before both the assignment and the save.
+    // Persists the dock rail's preferred width alone (AC-951), called from the view when its `GridSplitter` drag ends.
     public async Task SetDockRailWidthAsync(double width)
     {
-        DockRailWidth = Math.Clamp(width, LayoutSettings.MinDockRailWidth, LayoutSettings.MaxDockRailWidth);
+        DockRailWidth = ClampDockRailWidth(width, _dockRailWindowWidth, SidebarWidth);
 
         if (_layoutSettingsStore is null)
         {

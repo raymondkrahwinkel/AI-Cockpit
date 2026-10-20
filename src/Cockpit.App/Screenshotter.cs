@@ -585,7 +585,7 @@ internal static class Screenshotter
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
         ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
-        ["dock-panel-pull-requests-max"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MaxDockRailWidth),
+        ["dock-panel-pull-requests-max"] = (width, _) => _DockRailWithPullRequestsPanel(ViewModels.CockpitViewModel.ClampDockRailWidth(double.MaxValue, width, Cockpit.Core.Layout.LayoutSettings.DefaultSidebarWidth)),
         ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
